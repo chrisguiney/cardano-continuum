@@ -18,7 +18,7 @@ config:
           {
             "accessPoints": [
               {
-                "address": "pool-b.ns.svc",
+                "address": "pool-b.ns.svc.cluster.local",
                 "port": 3001
               }
             ],

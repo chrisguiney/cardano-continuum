@@ -56,7 +56,7 @@ func TestRenderDingoRelay(t *testing.T) {
 			t.Errorf("relay config sets %s", k)
 		}
 	}
-	if !strings.Contains(w.Config.Data[dingoTopology], "pool-b.ns.svc") {
+	if !strings.Contains(w.Config.Data[dingoTopology], "pool-b.ns.svc.cluster.local") {
 		t.Errorf("topology does not list the peer: %s", w.Config.Data[dingoTopology])
 	}
 	if got, want := cfg["topology"], ConfigDir+"/"+dingoTopology; got != want {
