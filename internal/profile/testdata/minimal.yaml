@@ -1,0 +1,11 @@
+version: 1
+profiles:
+  - name: casual-wallet
+    kind: wallet
+    agenda: hodl
+    traits:
+      competence: beta(8, 2)
+      patience: lognormal(1.0, 0.5)
+      learning_rate: const(0.05)
+      care: beta(2, 2)
+    budget: 1000000000
