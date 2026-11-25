@@ -86,7 +86,7 @@ func TestPayments(t *testing.T) {
 }
 
 // installOperator applies the CRDs and RBAC and runs the operator in ns.
-func installOperator(t *testing.T, ns string) {
+func installOperator(t *testing.T, ns string, args ...string) {
 	t.Helper()
 	root := repoRoot(t)
 	crds := filepath.Join(root, "config", "crd", "bases")
@@ -106,11 +106,12 @@ func installOperator(t *testing.T, ns string) {
 	kube(t, "", "delete", "clusterrolebinding", operatorBinding, "--ignore-not-found")
 	kube(t, "", "create", "clusterrolebinding", operatorBinding, "--clusterrole=continuum-operator",
 		"--serviceaccount="+ns+":continuum-operator")
-	kube(t, operatorDeployment(koBuild(t, "continuum-operator")), "-n", ns, "apply", "-f", "-")
+	kube(t, operatorDeployment(koBuild(t, "continuum-operator"), args), "-n", ns, "apply", "-f", "-")
 	kube(t, "", "-n", ns, "wait", "--for=condition=Available", "--timeout=3m", "deployment/continuum-operator")
 }
 
-func operatorDeployment(image string) string {
+func operatorDeployment(image string, extra []string) string {
+	args := append([]string{"--leader-elect=false"}, extra...)
 	return `apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -127,7 +128,7 @@ spec:
       containers:
         - name: operator
           image: ` + image + `
-          args: [--leader-elect=false]
+          args: [` + strings.Join(args, ", ") + `]
 `
 }
 
@@ -214,7 +215,7 @@ func applyNetwork(t *testing.T, ns string, s genesis.Spec) []string {
 			Magic: s.Magic, EpochLength: s.EpochLength, SecurityParam: s.SecurityParam,
 			GenesisRef: "devnet-genesis",
 			Topology:   v1alpha1.TopologyPolicy{Policy: v1alpha1.TopologyMesh},
-			Budget:     v1alpha1.BudgetSpec{CPUMillis: 4000, MemoryMiB: 8192, MaxPools: int32(s.Pools)},
+			Budget:     v1alpha1.BudgetSpec{CPUMillis: 4000, MemoryMiB: 8192, MaxPools: int32(s.Pools) + 1},
 		},
 	})
 	var pods []string

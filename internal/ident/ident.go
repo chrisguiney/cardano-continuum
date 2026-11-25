@@ -19,4 +19,12 @@ const (
 
 	// MetricsNS is the Prometheus metric name prefix, without the trailing underscore.
 	MetricsNS = "continuum"
+
+	// UpstreamModuleOrg prefixes the Go module paths of the dependencies an
+	// overlay build swaps into dingo.
+	UpstreamModuleOrg = "github.com/blinklabs-io"
+
+	// UpstreamDingoImage is the repository of the published dingo images
+	// that overlay builds layer over.
+	UpstreamDingoImage = "ghcr.io/blinklabs-io/dingo"
 )

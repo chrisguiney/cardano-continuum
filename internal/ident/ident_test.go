@@ -16,6 +16,8 @@ func TestValues(t *testing.T) {
 		{"APIGroup", APIGroup, "continuum.blinklabs.io"},
 		{"LabelPrefix", LabelPrefix, "continuum.blinklabs.io"},
 		{"MetricsNS", MetricsNS, "continuum"},
+		{"UpstreamModuleOrg", UpstreamModuleOrg, "github.com/blinklabs-io"},
+		{"UpstreamDingoImage", UpstreamDingoImage, "ghcr.io/blinklabs-io/dingo"},
 	}
 	for _, tt := range tests {
 		if tt.got != tt.want {

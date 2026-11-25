@@ -1,0 +1,2 @@
+FROM ghcr.io/blinklabs-io/dingo@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+COPY --chmod=0755 dingo /bin/dingo

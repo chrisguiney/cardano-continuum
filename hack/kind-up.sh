@@ -37,5 +37,13 @@ server = "http://${REGISTRY}:5000"
 [host."http://${REGISTRY}:5000"]
   capabilities = ["pull", "resolve"]
 TOML
+  # The operator and the nodes name the registry by its in-cluster address.
+  docker exec "$node" mkdir -p "/etc/containerd/certs.d/${REGISTRY}:5000"
+  docker exec -i "$node" tee "/etc/containerd/certs.d/${REGISTRY}:5000/hosts.toml" >/dev/null <<TOML
+server = "http://${REGISTRY}:5000"
+
+[host."http://${REGISTRY}:5000"]
+  capabilities = ["pull", "resolve"]
+TOML
 done
 echo "cluster $CLUSTER up; registry localhost:${PORT}"

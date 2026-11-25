@@ -68,6 +68,7 @@ KIND := go run sigs.k8s.io/kind@$(KIND_VERSION)
 CONTINUUM_REGISTRY ?=
 CONTINUUM_REGISTRY_INSECURE ?=
 DINGO_SRC ?=
+GOUROBOROS_SRC ?=
 KO_INSECURE := $(if $(filter true,$(CONTINUUM_REGISTRY_INSECURE)),--insecure-registry)
 REGISTRY_HOST = $(firstword $(subst /, ,$(CONTINUUM_REGISTRY)))
 
@@ -78,14 +79,21 @@ require-registry:
 ko-images: require-registry ## Build and push continuum binaries with ko to CONTINUUM_REGISTRY
 	KO_DOCKER_REPO=$(CONTINUUM_REGISTRY) $(KO) build $(KO_INSECURE) ./cmd/...
 
-image-dingo: require-registry ## Build DINGO_SRC with its Dockerfile and push to CONTINUUM_REGISTRY
+# WITH is a space-separated list of module=path|sha overlays (gouroboros,
+# plutigo, ouroboros-mock). MODE is fast (host build layered over upstream
+# main, uncommitted changes allowed) or repro (committed refs, dingo's own
+# Dockerfile); it defaults to fast with overlays and repro without.
+# REF builds a dingo commit in repro mode; FORK is a space-separated list of
+# module=gomodule forks. The digest reference is printed on success.
+WITH ?=
+FORK ?=
+REF ?=
+MODE ?= $(if $(strip $(WITH)),fast,repro)
+image-dingo: require-registry ## Build DINGO_SRC (WITH=mod=path ... MODE=fast|repro) and push to CONTINUUM_REGISTRY
 	@test -n "$(DINGO_SRC)" || { echo "DINGO_SRC is not set"; exit 1; }
 	@if [ -n "$(KO_INSECURE)" ]; then docker info | grep -q '$(REGISTRY_HOST)' || { echo "add $(REGISTRY_HOST) to insecure-registries in the Docker daemon config"; exit 1; }; fi
-	rev=$$(git -C $(DINGO_SRC) rev-parse HEAD); tag=dev-$$(echo $$rev | cut -c1-7); \
-	docker build --build-arg COMMIT_HASH=$$rev \
-	  --label org.opencontainers.image.revision=$$rev \
-	  --label $(LABEL_PREFIX)/build-mode=repro \
-	  -t $(CONTINUUM_REGISTRY)/dingo:$$tag $(DINGO_SRC) && docker push $(CONTINUUM_REGISTRY)/dingo:$$tag
+	go run ./cmd/continuum build --dingo '$(DINGO_SRC)' --mode '$(MODE)' $(if $(REF),--ref '$(REF)') \
+	  $(foreach w,$(WITH),--with '$(w)') $(foreach f,$(FORK),--fork '$(f)')
 
 # The determinism tests: once without the race detector (the crash sweep then
 # kills the engine at every step), then under it at one and eight procs, where
@@ -140,4 +148,5 @@ kind-down: ## Remove the kind cluster and the registry
 
 e2e: kind-up ## Run the kind e2e suite (about 25 minutes; go test -short skips the slowest)
 	CONTINUUM_REGISTRY=localhost:$(E2E_PORT)/continuum CONTINUUM_REGISTRY_INSECURE=true \
-	CONTINUUM_KO="$(KO)" go test -tags e2e -count=1 -timeout $(E2E_TIMEOUT) -v ./test/e2e/...
+	CONTINUUM_KO="$(KO)" CONTINUUM_DINGO_SRC="$(DINGO_SRC)" CONTINUUM_GOUROBOROS_SRC="$(GOUROBOROS_SRC)" \
+	CONTINUUM_OVERLAY_MODE="$(MODE)" go test -tags e2e -count=1 -timeout $(E2E_TIMEOUT) -v ./test/e2e/...
