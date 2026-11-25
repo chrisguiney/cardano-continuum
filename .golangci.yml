@@ -1,5 +1,11 @@
 version: "2"
 
+# envtest files build only with the envtest tag; listing it lints them too.
+run:
+  build-tags:
+    - debug
+    - envtest
+
 # A conservative default: the standard linter set plus gofmt. Add linters only
 # with a concrete finding behind them.
 linters:

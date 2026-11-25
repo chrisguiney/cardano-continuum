@@ -1,0 +1,163 @@
+config:
+  data:
+    topology.json: |
+      {
+        "localRoots": [
+          {
+            "accessPoints": [
+              {
+                "address": "pool-b.ns.svc",
+                "port": 3001
+              }
+            ],
+            "advertise": false,
+            "trustable": true,
+            "valency": 1
+          }
+        ],
+        "publicRoots": [],
+        "useLedgerAfterSlot": -1
+      }
+  metadata:
+    annotations:
+      continuum.blinklabs.io/pool-name: r
+    labels:
+      continuum.blinklabs.io/impl: cardano-node
+      continuum.blinklabs.io/owner: uid-0000
+      continuum.blinklabs.io/pool: fa6c9f96d373eca1
+      continuum.blinklabs.io/role: relay
+      continuum.blinklabs.io/workload: relay-454349e422f05297
+    name: relay-454349e422f05297-config
+    namespace: ns
+    ownerReferences:
+    - apiVersion: continuum.blinklabs.io/v1alpha1
+      blockOwnerDeletion: true
+      controller: true
+      kind: ContinuumPool
+      name: r
+      uid: uid-0000
+service:
+  apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      continuum.blinklabs.io/pool-name: r
+    labels:
+      continuum.blinklabs.io/impl: cardano-node
+      continuum.blinklabs.io/owner: uid-0000
+      continuum.blinklabs.io/pool: fa6c9f96d373eca1
+      continuum.blinklabs.io/role: relay
+      continuum.blinklabs.io/workload: relay-454349e422f05297
+    name: relay-454349e422f05297
+    namespace: ns
+    ownerReferences:
+    - apiVersion: continuum.blinklabs.io/v1alpha1
+      blockOwnerDeletion: true
+      controller: true
+      kind: ContinuumPool
+      name: r
+      uid: uid-0000
+  spec:
+    clusterIP: None
+    ports:
+    - name: n2n
+      port: 3001
+      targetPort: 3001
+    publishNotReadyAddresses: true
+    selector:
+      continuum.blinklabs.io/workload: relay-454349e422f05297
+  status:
+    loadBalancer: {}
+statefulSet:
+  apiVersion: apps/v1
+  kind: StatefulSet
+  metadata:
+    annotations:
+      continuum.blinklabs.io/pool-name: r
+    labels:
+      continuum.blinklabs.io/impl: cardano-node
+      continuum.blinklabs.io/owner: uid-0000
+      continuum.blinklabs.io/pool: fa6c9f96d373eca1
+      continuum.blinklabs.io/role: relay
+      continuum.blinklabs.io/workload: relay-454349e422f05297
+    name: relay-454349e422f05297
+    namespace: ns
+    ownerReferences:
+    - apiVersion: continuum.blinklabs.io/v1alpha1
+      blockOwnerDeletion: true
+      controller: true
+      kind: ContinuumPool
+      name: r
+      uid: uid-0000
+  spec:
+    podManagementPolicy: OrderedReady
+    replicas: 1
+    selector:
+      matchLabels:
+        continuum.blinklabs.io/workload: relay-454349e422f05297
+    serviceName: relay-454349e422f05297
+    template:
+      metadata:
+        annotations:
+          continuum.blinklabs.io/pool-name: r
+        labels:
+          continuum.blinklabs.io/impl: cardano-node
+          continuum.blinklabs.io/owner: uid-0000
+          continuum.blinklabs.io/pool: fa6c9f96d373eca1
+          continuum.blinklabs.io/role: relay
+          continuum.blinklabs.io/workload: relay-454349e422f05297
+      spec:
+        automountServiceAccountToken: false
+        containers:
+        - args:
+          - run
+          - --config
+          - /genesis/config.json
+          - --topology
+          - /config/topology.json
+          - --database-path
+          - /data/db
+          - --socket-path
+          - /data/node.socket
+          - --host-addr
+          - 0.0.0.0
+          - --port
+          - "3001"
+          command:
+          - cardano-node
+          image: r@sha256:aaaa
+          imagePullPolicy: IfNotPresent
+          name: node
+          ports:
+          - containerPort: 3001
+            name: n2n
+          resources:
+            requests:
+              cpu: 250m
+              memory: 1Gi
+          volumeMounts:
+          - mountPath: /genesis
+            name: genesis
+            readOnly: true
+          - mountPath: /config
+            name: config
+            readOnly: true
+          - mountPath: /data
+            name: data
+        enableServiceLinks: false
+        imagePullSecrets:
+        - name: pull
+        volumes:
+        - configMap:
+            name: genesis
+          name: genesis
+        - configMap:
+            name: relay-454349e422f05297-config
+          name: config
+        - emptyDir: {}
+          name: data
+    updateStrategy:
+      type: RollingUpdate
+  status:
+    availableReplicas: 0
+    replicas: 0

@@ -40,8 +40,9 @@ lint: ## Run golangci-lint (CI installs $(GOLANGCI_LINT_VERSION))
 
 check: build vet fmt-check test-race lint check-manifests ## Everything CI runs
 
-manifests: ## Regenerate the CRD YAML under config/crd/bases from api/ markers
+manifests: ## Regenerate the CRD YAML and the operator ClusterRole from markers
 	$(CONTROLLER_GEN) crd paths="./api/..." output:crd:artifacts:config=config/crd/bases
+	$(CONTROLLER_GEN) rbac:roleName=continuum-operator paths="./internal/operator/..." output:rbac:artifacts:config=config/rbac
 
 generate: ## Regenerate DeepCopy methods under api/
 	$(CONTROLLER_GEN) object paths="./api/..."
@@ -89,9 +90,24 @@ determinism: ## Run the determinism tests: same seed, same log; replay; crash re
 	GOMAXPROCS=1 go test -race -tags debug -count=1 -run '$(DETERMINISM_TESTS)' ./internal/engine ./cmd/continuum
 	GOMAXPROCS=8 go test -race -tags debug -count=1 -run '$(DETERMINISM_TESTS)' ./internal/engine ./cmd/continuum
 
+# envtest runs a real kube-apiserver and etcd. setup-envtest is pinned and
+# installs, with the control-plane binaries it downloads, under .tools/.
+SETUP_ENVTEST_VERSION := v0.25.3
+ENVTEST_K8S_VERSION   := 1.37.0
+TOOLS_BIN             := $(CURDIR)/.tools/bin
+SETUP_ENVTEST         := $(TOOLS_BIN)/setup-envtest
+
+.PHONY: test-envtest
+$(SETUP_ENVTEST):
+	GOBIN=$(TOOLS_BIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@$(SETUP_ENVTEST_VERSION)
+
+test-envtest: $(SETUP_ENVTEST) ## Run the operator tests against envtest's API server
+	KUBEBUILDER_ASSETS="$$($(SETUP_ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(CURDIR)/.tools/envtest -p path)" \
+		go test -race -tags 'debug envtest' ./internal/operator/...
+
 # Stubs for targets that need components landing in later steps. Each prints
 # "not yet implemented" and exits 0 so that the target names stay reserved.
-STUBS := test-envtest e2e web images ident vectors harvest \
+STUBS := e2e web images ident vectors harvest \
 	fuzz-smoke kind-up kind-down bisect tools
 .PHONY: $(STUBS)
 $(STUBS): ; @echo "$@: not yet implemented"
