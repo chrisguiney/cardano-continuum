@@ -1,0 +1,13 @@
+# One control plane and two workers. containerd reads per-registry settings
+# from /etc/containerd/certs.d, where hack/kind-up.sh writes the hosts.toml
+# that lets nodes pull from the plain-HTTP e2e registry.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".registry]
+      config_path = "/etc/containerd/certs.d"
+nodes:
+  - role: control-plane
+  - role: worker
+  - role: worker

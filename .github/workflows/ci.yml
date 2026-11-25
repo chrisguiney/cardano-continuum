@@ -3,12 +3,16 @@ name: ci
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * *"
 
 permissions:
   contents: read
 
 jobs:
   check:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -29,3 +33,27 @@ jobs:
 
       - name: make check
         run: make check
+
+  # The kind e2e suite takes about half an hour, so it runs nightly and on
+  # demand instead of on every push. Docker is preinstalled on the runner;
+  # kind and ko run through `go run` at the versions pinned in the Makefile.
+  e2e:
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: make e2e
+        run: make e2e
+
+      - name: make kind-down
+        if: always()
+        run: make kind-down

@@ -54,6 +54,13 @@ check-manifests: ## Fail if regenerating api/ or config/ changes anything
 	@git diff --exit-code -- api config || { echo "generated files drift: run make manifests generate and commit"; exit 1; }
 	@untracked=$$(git ls-files --others --exclude-standard -- api config); if [ -n "$$untracked" ]; then echo "$$untracked"; echo "untracked generated files: commit them"; exit 1; fi
 
+# ko and kind run at pinned versions and are never added to go.mod, so a
+# developer needs only Go and Docker.
+KO_VERSION := v0.19.1
+KO := go run github.com/google/ko@$(KO_VERSION)
+KIND_VERSION := v0.33.0
+KIND := go run sigs.k8s.io/kind@$(KIND_VERSION)
+
 # Developer registry. CONTINUUM_REGISTRY is host[:port][/path]; there is no
 # default, so a push without it fails instead of reaching a public registry.
 # CONTINUUM_REGISTRY_INSECURE=true marks it plain HTTP and adds ko's
@@ -69,7 +76,7 @@ require-registry:
 	@test -n "$(CONTINUUM_REGISTRY)" || { echo "CONTINUUM_REGISTRY is not set"; exit 1; }
 
 ko-images: require-registry ## Build and push continuum binaries with ko to CONTINUUM_REGISTRY
-	KO_DOCKER_REPO=$(CONTINUUM_REGISTRY) ko build $(KO_INSECURE) ./cmd/...
+	KO_DOCKER_REPO=$(CONTINUUM_REGISTRY) $(KO) build $(KO_INSECURE) ./cmd/...
 
 image-dingo: require-registry ## Build DINGO_SRC with its Dockerfile and push to CONTINUUM_REGISTRY
 	@test -n "$(DINGO_SRC)" || { echo "DINGO_SRC is not set"; exit 1; }
@@ -107,8 +114,8 @@ test-envtest: $(SETUP_ENVTEST) ## Run the operator tests against envtest's API s
 
 # Stubs for targets that need components landing in later steps. Each prints
 # "not yet implemented" and exits 0 so that the target names stay reserved.
-STUBS := e2e web images ident vectors harvest \
-	fuzz-smoke kind-up kind-down bisect tools
+STUBS := web images ident vectors harvest \
+	fuzz-smoke bisect tools
 .PHONY: $(STUBS)
 $(STUBS): ; @echo "$@: not yet implemented"
 
@@ -118,3 +125,19 @@ models-install: ## Install the pinned Java and TLA+ tools into models/.tools
 
 models: ## Check every TLA+ model directory under models/specs
 	@set -e; cd models; for d in specs/*/; do scripts/run-model.sh "$${d%/}"; done
+
+# kind e2e. kind-up starts a throwaway plain-HTTP registry next to the cluster;
+# e2e points CONTINUUM_REGISTRY at it. kind-down removes both.
+E2E_PORT ?= 5001
+E2E_TIMEOUT ?= 50m
+
+.PHONY: kind-up kind-down e2e
+kind-up: ## Start the kind cluster and its plain-HTTP registry (names continuum-e2e*)
+	KIND="$(KIND)" CONTINUUM_E2E_PORT=$(E2E_PORT) hack/kind-up.sh
+
+kind-down: ## Remove the kind cluster and the registry
+	KIND="$(KIND)" hack/kind-down.sh
+
+e2e: kind-up ## Run the kind e2e suite (about 25 minutes; go test -short skips the slowest)
+	CONTINUUM_REGISTRY=localhost:$(E2E_PORT)/continuum CONTINUUM_REGISTRY_INSECURE=true \
+	CONTINUUM_KO="$(KO)" go test -tags e2e -count=1 -timeout $(E2E_TIMEOUT) -v ./test/e2e/...
