@@ -1,0 +1,30 @@
+{
+  "intent": {
+    "kind": "delegate",
+    "actor": 7,
+    "target": 11
+  },
+  "scores": [
+    {
+      "kind": "delegate",
+      "value": 1,
+      "target": 11,
+      "why": "pool 11 beats current by 0.0200, patience 0.0100"
+    },
+    {
+      "kind": "idle",
+      "value": 1,
+      "why": "yield farmer waits"
+    },
+    {
+      "kind": "register_stake",
+      "value": 0,
+      "why": "stake key already registered"
+    },
+    {
+      "kind": "withdraw_rewards",
+      "value": 0.05,
+      "why": "collect rewards"
+    }
+  ]
+}
