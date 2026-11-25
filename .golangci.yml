@@ -1,0 +1,10 @@
+version: "2"
+
+# A conservative default: the standard linter set plus gofmt. Add linters only
+# with a concrete finding behind them.
+linters:
+  default: standard
+
+formatters:
+  enable:
+    - gofmt

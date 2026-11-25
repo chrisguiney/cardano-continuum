@@ -1,0 +1,14 @@
+# Local git worktrees for feature branches.
+.worktrees/
+
+# Downloaded Java and TLA+ tools. Recreate with `make models-install`.
+.tools/
+
+# Build outputs at the module root and in bin/ (models/bin holds committed wrappers).
+/bin/
+/dist/
+
+# Go test and coverage artifacts.
+*.test
+*.out
+coverage.txt
