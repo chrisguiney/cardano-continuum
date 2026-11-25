@@ -65,6 +65,7 @@ type Pools struct {
 	images   image.Resolver
 	defaults v1alpha1.ImageSet
 	log      *slog.Logger
+	now      func() time.Time
 
 	mu sync.Mutex
 	// protects seen
@@ -79,6 +80,7 @@ func NewPools(c client.Client, drivers Registry, images image.Resolver, log *slo
 		images:   images,
 		defaults: drivers.Defaults(),
 		log:      log.With("component", "pools"),
+		now:      time.Now,
 		seen:     map[types.UID]int64{},
 	}
 }
@@ -161,6 +163,10 @@ func (r *Pools) converge(ctx context.Context, p *v1alpha1.ContinuumPool) (reconc
 		return res, nil
 	}
 	r.condition(p, CondAdmitted, metav1.ConditionTrue, ReasonAdmitted, "workload "+w.StatefulSet.Name)
+	if roll := image.Roll(p.Status.Image, img, r.now()); roll != nil {
+		p.Status.LastRoll = roll
+		r.log.Info("image rolled", "pool", p.Name, "from", roll.From, "to", roll.To)
+	}
 	p.Status.Workload, p.Status.Image, p.Status.Build = w.StatefulSet.Name, img, img.Build
 	return res, r.observe(ctx, p, w.StatefulSet.Name)
 }

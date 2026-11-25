@@ -91,12 +91,30 @@ type ContinuumPoolStatus struct {
 	// +optional
 	Build BuildInfo `json:"build,omitempty"`
 
+	// LastRoll records the most recent change of the workload's image
+	// digest. A first start is not a roll.
+	//
+	// +optional
+	LastRoll *RollStatus `json:"lastRoll,omitempty"`
+
 	// Conditions report admission, fencing and budget decisions.
 	//
 	// +optional
 	// +listType=map
 	// +listMapKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
+// RollStatus is one image roll: the pod ran From, then To.
+type RollStatus struct {
+	// From is the digest the pool ran before the roll.
+	From string `json:"from"`
+
+	// To is the digest the pool runs after it.
+	To string `json:"to"`
+
+	// Time is when the operator changed the workload.
+	Time metav1.Time `json:"time"`
 }
 
 // ContinuumPool is one simulated stake pool on a ContinuumNetwork.

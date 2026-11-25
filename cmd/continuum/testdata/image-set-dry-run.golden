@@ -1,0 +1,17 @@
+$ continuum image set [dingo=ghcr.io/x/dingo:dev-abc --network demo --dry-run]
+network demo: images[dingo] "dingo:main" -> "ghcr.io/x/dingo:dev-abc"
+1 change(s), dry run, nothing applied
+$ continuum image set [dingo=ghcr.io/x/dingo:dev-abc --network demo --pools 40% --dry-run]
+pool p0 (pool0, dingo, forging): image "" -> "ghcr.io/x/dingo:dev-abc"
+pool p1 (pool1, dingo, forging): image "" -> "ghcr.io/x/dingo:dev-abc"
+2 change(s), dry run, nothing applied
+$ continuum image set [dingo=ghcr.io/x/dingo:dev-abc --network demo --pool pool3 --dry-run]
+pool p3 (pool3, dingo, forging): image "" -> "ghcr.io/x/dingo:dev-abc"
+1 change(s), dry run, nothing applied
+$ continuum image set [dingo=ghcr.io/x/dingo:dev-abc --network demo --tier forging --dry-run]
+pool p0 (pool0, dingo, forging): image "" -> "ghcr.io/x/dingo:dev-abc"
+pool p1 (pool1, dingo, forging): image "" -> "ghcr.io/x/dingo:dev-abc"
+pool p2 (pool2, dingo, forging): image "" -> "ghcr.io/x/dingo:dev-abc"
+pool p3 (pool3, dingo, forging): image "" -> "ghcr.io/x/dingo:dev-abc"
+pool p4 (pool4, dingo, forging): image "" -> "ghcr.io/x/dingo:dev-abc"
+5 change(s), dry run, nothing applied

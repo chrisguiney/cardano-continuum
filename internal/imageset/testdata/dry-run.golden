@@ -1,0 +1,10 @@
+network demo: images[dingo] "dingo:main" -> "ghcr.io/x/dingo:dev-abc"
+1 change(s), dry run, nothing applied
+pool p0 (pool00, dingo, forging): image "" -> "ghcr.io/x/dingo:dev-abc"
+pool p1 (pool01, dingo, forging): image "" -> "ghcr.io/x/dingo:dev-abc"
+pool p2 (pool02, dingo, forging): image "" -> "ghcr.io/x/dingo:dev-abc"
+3 change(s), dry run, nothing applied
+pool relay (pool99, dingo, validating): image "old" -> "ghcr.io/x/dingo:dev-abc"
+1 change(s), dry run, nothing applied
+pool p0 (pool00, dingo, forging): image "" -> "ghcr.io/x/dingo:dev-abc"
+1 change(s), applied

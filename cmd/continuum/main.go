@@ -2,6 +2,7 @@
 //
 //	continuum run --fake --seed N --out DIR [flags]
 //	continuum replay --seed N [flags] DIR/events.log
+//	continuum image set <impl>=<ref> --network N [--pools N% | --pool ID] [--tier T] [--dry-run]
 //
 // replay takes the same population and chain flags as run; the log header's
 // fingerprints refuse a log recorded under different ones.
@@ -42,7 +43,7 @@ func main() {
 	}
 }
 
-var errUsage = errors.New("usage: continuum run|replay [flags]")
+var errUsage = errors.New("usage: continuum run|replay|image [flags]")
 
 func run(ctx context.Context, args []string, out io.Writer) error {
 	if len(args) == 0 {
@@ -53,6 +54,8 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 		return cmdRun(ctx, args[1:], out)
 	case "replay":
 		return cmdReplay(ctx, args[1:], out)
+	case "image":
+		return cmdImage(ctx, args[1:], out, openKube)
 	}
 	return fmt.Errorf("%w: unknown command %q", errUsage, args[0])
 }

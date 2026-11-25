@@ -5,9 +5,11 @@ package image
 
 import (
 	"strings"
+	"time"
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // Source says which level of the precedence chain supplied an image.
@@ -55,4 +57,13 @@ func NeedsRoll(cur, next v1alpha1.ResolvedImage) bool {
 		return false
 	}
 	return cur.Digest != next.Digest
+}
+
+// Roll describes the roll from cur to next at now, or is nil when NeedsRoll
+// says there is none or cur was never resolved (a first start).
+func Roll(cur, next v1alpha1.ResolvedImage, now time.Time) *v1alpha1.RollStatus {
+	if cur.Digest == "" || !NeedsRoll(cur, next) {
+		return nil
+	}
+	return &v1alpha1.RollStatus{From: cur.Digest, To: next.Digest, Time: metav1.NewTime(now)}
 }

@@ -238,6 +238,26 @@ spec:
                     description: Ref is the reference as configured.
                     type: string
                 type: object
+              lastRoll:
+                description: |-
+                  LastRoll records the most recent change of the workload's image
+                  digest. A first start is not a roll.
+                properties:
+                  from:
+                    description: From is the digest the pool ran before the roll.
+                    type: string
+                  time:
+                    description: Time is when the operator changed the workload.
+                    format: date-time
+                    type: string
+                  to:
+                    description: To is the digest the pool runs after it.
+                    type: string
+                required:
+                - from
+                - time
+                - to
+                type: object
               phase:
                 description: Phase is the observed lifecycle phase.
                 enum:
