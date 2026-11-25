@@ -4,6 +4,10 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/chrisguiney/cardano-continuum/internal/genesis"
+	"github.com/chrisguiney/cardano-continuum/internal/keys"
+	"github.com/chrisguiney/cardano-continuum/internal/rng"
 )
 
 func TestGenesisGuard(t *testing.T) {
@@ -38,5 +42,33 @@ func TestGenesisGuard(t *testing.T) {
 		if err := Guard(g, g); !errors.Is(err, ErrPublicNetwork) {
 			t.Errorf("magic %d: Guard = %v, want ErrPublicNetwork", magic, err)
 		}
+	}
+}
+
+// TestParseShelleyGenesis reads back what internal/genesis renders, so the
+// engine can guard a node against the genesis files it was deployed with.
+func TestParseShelleyGenesis(t *testing.T) {
+	s := genesis.Default()
+	s.SystemStart = time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC)
+	var seed rng.Seed
+	ks, err := keys.New(seed, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := genesis.Render(s, ks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := ParseShelleyGenesis(b.Shelley)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Genesis{Magic: s.Magic, Start: s.SystemStart, EpochLength: uint64(s.EpochLength),
+		SecurityParam: uint64(s.SecurityParam), SlotLength: s.SlotLength}
+	if err := Guard(want, got); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ParseShelleyGenesis([]byte(`{"networkMagic": 42}`)); err == nil {
+		t.Error("a genesis without systemStart parsed")
 	}
 }

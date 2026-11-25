@@ -102,6 +102,9 @@ type Tx struct {
 	// transaction that failed phase-2 validation.
 	Proposals []GovID
 	Votes     []Vote
+	// Fee is the lovelace the transaction moves to the fee pot: the body
+	// fee, or for an invalid transaction its forfeited total collateral.
+	Fee uint64
 }
 
 // TxFrom converts a ledger transaction through gouroboros' Consumed and
@@ -117,6 +120,11 @@ func TxFrom(tx common.Transaction) Tx {
 			out.Proposals = append(out.Proposals, GovID{Tx: out.Hash, Index: uint32(i)})
 		}
 		out.Votes = votesOf(tx.VotingProcedures())
+		if f := tx.Fee(); f != nil {
+			out.Fee = f.Uint64()
+		}
+	} else if c := tx.TotalCollateral(); c != nil {
+		out.Fee = c.Uint64()
 	}
 	return out
 }

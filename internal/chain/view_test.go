@@ -397,3 +397,14 @@ func TestSetReturnsFeedsPools(t *testing.T) {
 		t.Error("empty view lists pools")
 	}
 }
+
+// TestTxFromFee: a valid transaction pays its body fee; an invalid one
+// forfeits its total collateral, and the body fee never reaches the pot.
+func TestTxFromFee(t *testing.T) {
+	a1, a2 := addrOf(t, 1), addrOf(t, 2)
+	in := utxo(txid(10), 0, a1, 50)
+	coll := utxo(txid(11), 0, a1, 9_800_000)
+	if got := TxFrom(invalidTx(t, RefOf(in.Id), RefOf(coll.Id), a2, a1)).Fee; got != 5_000_000 {
+		t.Errorf("invalid tx fee %d, want its total collateral 5000000", got)
+	}
+}
