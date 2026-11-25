@@ -1,0 +1,13 @@
+version: 1
+profiles:
+  - name: p
+    kind: wallet
+    agenda: hodl
+    budget: 1
+    traits:
+      competence: beta(8, 2)
+      patience: const(1)
+      learning_rate: const(0.1)
+      care: const(0.5)
+    hazards:
+      dormancy_onset: -1

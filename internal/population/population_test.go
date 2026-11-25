@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand/v2"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -42,7 +43,7 @@ func seed(n byte) rng.Seed { return rng.Seed{n} }
 func TestLifecycleTables(t *testing.T) {
 	legal := map[profile.Kind][][2]State{
 		profile.Wallet:   {{Born, Active}, {Active, Dormant}, {Dormant, Active}, {Active, Abandoned}, {Dormant, Abandoned}},
-		profile.Pool:     {{Registered, Active}, {Active, Retiring}, {Retiring, Retired}},
+		profile.Pool:     {{Registered, Active}, {Active, Retiring}, {Retiring, Retired}, {Retiring, Active}},
 		profile.DRep:     {{Registered, Voting}, {Voting, Expired}},
 		profile.Contract: {{Deployed, Used}, {Used, Abandoned}},
 	}
@@ -214,21 +215,57 @@ func TestActivityPareto(t *testing.T) {
 		}
 		sum += math.Log(a.Traits.RateMult)
 	}
-	if hat := n / sum; math.Abs(hat-ActivityTailAlpha)/ActivityTailAlpha > 0.03 {
-		t.Fatalf("Hill alpha %.3f, want %.3f", hat, ActivityTailAlpha)
+	alpha := profile.DefaultTail
+	if hat := n / sum; math.Abs(hat-alpha)/alpha > 0.03 {
+		t.Fatalf("Hill alpha %.3f, want %.3f", hat, alpha)
+	}
+}
+
+// TestActivityTailFromProfile: the profile's tail index, not a package
+// constant, shapes the activity multiplier.
+func TestActivityTailFromProfile(t *testing.T) {
+	p := walletProfile()
+	p.Rates.Tail = 3
+	c := &Census{}
+	const n = 20000
+	sum := 0.0
+	for i := 0; i < n; i++ {
+		sum += math.Log(c.Spawn(p, seed(4), 0).Traits.RateMult)
+	}
+	if hat := n / sum; math.Abs(hat-3)/3 > 0.03 {
+		t.Fatalf("Hill alpha %.3f, want 3", hat)
+	}
+}
+
+// TestDormancyOnsetFromProfile: a profile with a faster onset goes dormant
+// sooner, at the rate it names.
+func TestDormancyOnsetFromProfile(t *testing.T) {
+	p := walletProfile()
+	p.Hazards.Abandon = 0
+	p.Hazards.Onset = 0.01
+	r := seed(6).Rand()
+	a := Actor{Kind: profile.Wallet, State: Active}
+	s := 0.0
+	const n = 20000
+	for i := 0; i < n; i++ {
+		at, _ := NextHazard(a, p, r, 0)
+		s += float64(at) / 1000
+	}
+	if mean := s / n; math.Abs(mean-100)/100 > 0.03 {
+		t.Fatalf("mean onset %.2fs, want 100s", mean)
 	}
 }
 
 func TestFrustrationRaisesHazard(t *testing.T) {
 	prev := -1.0
 	for f := 0.0; f <= 5; f += 0.25 {
-		r := DormancyOnsetRate(f)
+		r := DormancyOnsetRate(profile.DefaultOnset, f)
 		if r <= prev {
 			t.Fatalf("rate %v at frustration %v not above %v", r, f, prev)
 		}
 		prev = r
 	}
-	if DormancyOnsetRate(-1) != DormancyOnsetRate(0) {
+	if DormancyOnsetRate(profile.DefaultOnset, -1) != DormancyOnsetRate(profile.DefaultOnset, 0) {
 		t.Fatal("negative frustration must clamp to zero")
 	}
 	p := walletProfile()
@@ -335,7 +372,10 @@ func TestCounts(t *testing.T) {
 		}
 		to := next[r.IntN(len(next))]
 		cause := Cause(Timer{})
-		if ChainGated(a.Kind, a.State, to) {
+		switch {
+		case a.Kind == profile.Pool && to == Retired:
+			cause = EpochApplied{Epoch: 1}
+		case ChainGated(a.Kind, a.State, to):
 			cause = Confirmed{Tx: "tx"}
 		}
 		if err := c.Apply(Transition{ID: id, To: to, At: sched.Time(i), Cause: cause}); err != nil {
@@ -443,5 +483,96 @@ func TestAddingActorLeavesOthersUnchanged(t *testing.T) {
 	}
 	if fmt.Sprint(small) != fmt.Sprint(got) {
 		t.Fatal("actor 31 changed the history of actors 1..30")
+	}
+}
+
+// activePool spawns a pool and confirms its registration.
+func activePool(t *testing.T, c *Census) Actor {
+	t.Helper()
+	p := c.Spawn(kindProfile(profile.Pool), seed(1), 0)
+	if err := c.Apply(Transition{ID: p.ID, To: Active, At: 1, Cause: Confirmed{Tx: "reg"}}); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// TestPoolRetiringNeedsConfirmation: a pool is Retiring only once its
+// retirement certificate confirms, never on the engine's decision alone.
+func TestPoolRetiringNeedsConfirmation(t *testing.T) {
+	c := &Census{}
+	p := activePool(t, c)
+	for _, cause := range []Cause{Timer{}, Intent{}, Confirmed{}} {
+		if err := c.Apply(Transition{ID: p.ID, To: Retiring, At: 2, Cause: cause}); !errors.Is(err, ErrNotConfirmed) {
+			t.Fatalf("cause %T: got %v", cause, err)
+		}
+	}
+	if err := c.Apply(Transition{ID: p.ID, To: Retiring, At: 2, Cause: Confirmed{Tx: "retire"}}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := c.Get(p.ID); got.State != Retiring {
+		t.Fatalf("state %s", got.State)
+	}
+}
+
+// TestPoolRetiredOnlyAtEpochApply: the certificate's confirmation does not
+// retire a pool; only the epoch transition that applies it does.
+func TestPoolRetiredOnlyAtEpochApply(t *testing.T) {
+	c := &Census{}
+	p := activePool(t, c)
+	if err := c.Apply(Transition{ID: p.ID, To: Retiring, At: 2, Cause: Confirmed{Tx: "retire"}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, cause := range []Cause{Timer{}, Intent{}, Confirmed{Tx: "retire"}} {
+		if err := c.Apply(Transition{ID: p.ID, To: Retired, At: 3, Cause: cause}); !errors.Is(err, ErrNotConfirmed) {
+			t.Fatalf("cause %T: got %v", cause, err)
+		}
+	}
+	if err := c.Apply(Transition{ID: p.ID, To: Retired, At: 3, Cause: EpochApplied{Epoch: 5}}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := c.Get(p.ID); got.State != Retired {
+		t.Fatalf("state %s", got.State)
+	}
+	if ChainGated(profile.Pool, Retiring, Retired) != true {
+		t.Fatal("retirement must be chain gated")
+	}
+}
+
+// TestPoolReregisterCancelsRetiring: a confirmed re-registration takes a
+// retiring pool back to Active; nothing else does.
+func TestPoolReregisterCancelsRetiring(t *testing.T) {
+	c := &Census{}
+	p := activePool(t, c)
+	if err := c.Apply(Transition{ID: p.ID, To: Retiring, At: 2, Cause: Confirmed{Tx: "retire"}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, cause := range []Cause{Timer{}, Intent{}, EpochApplied{Epoch: 3}} {
+		if err := c.Apply(Transition{ID: p.ID, To: Active, At: 3, Cause: cause}); !errors.Is(err, ErrNotConfirmed) {
+			t.Fatalf("cause %T: got %v", cause, err)
+		}
+	}
+	if err := c.Apply(Transition{ID: p.ID, To: Active, At: 3, Cause: Confirmed{Tx: "rereg"}}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := c.Get(p.ID); got.State != Active {
+		t.Fatalf("state %s", got.State)
+	}
+}
+
+// TestCensusNotAStakeSource: the census offers nothing a stake-floor guard
+// could take a denominator from. A retired pool's stake stays in the leader
+// schedule for two epochs, so stake must come from the ledger's snapshots.
+func TestCensusNotAStakeSource(t *testing.T) {
+	typ := reflect.TypeOf(&Census{})
+	for i := 0; i < typ.NumMethod(); i++ {
+		if m := typ.Method(i); strings.Contains(strings.ToLower(m.Name), "stake") {
+			t.Errorf("Census.%s looks like a stake source", m.Name)
+		}
+	}
+	at := reflect.TypeOf(Actor{})
+	for i := 0; i < at.NumField(); i++ {
+		if f := at.Field(i); strings.Contains(strings.ToLower(f.Name), "stake") {
+			t.Errorf("Actor.%s looks like a stake source", f.Name)
+		}
 	}
 }

@@ -16,17 +16,12 @@ import (
 // spawn order.
 type ActorID uint64
 
-// ActivityTailAlpha is the tail index of the Pareto distribution that scales
-// each actor's activity rate. Profiles carry no field for it: the skew of
-// activity across actors is a property of the population, not of a persona.
-const ActivityTailAlpha = 1.5
-
 // Sampled holds an actor's drawn personal parameters.
 type Sampled struct {
 	profile.SampledTraits
 	// RateMult multiplies the profile's base activity rates. It is Pareto
-	// distributed with scale 1 and index ActivityTailAlpha, so a few actors
-	// are far busier than the rest.
+	// distributed with scale 1 and the profile's tail index
+	// (profile.Rates.TailIndex), so a few actors are far busier than the rest.
 	RateMult float64
 }
 
@@ -75,7 +70,7 @@ func (c *Census) Spawn(p profile.Profile, root rng.Seed, now sched.Time) Actor {
 	id := ActorID(len(c.actors) + 1)
 	seed := root.Derive("actor", strconv.FormatUint(uint64(id), 10))
 	traits := p.Traits.Sample(seed.Derive("traits").Rand())
-	rate := profile.Pareto{Xm: 1, Alpha: ActivityTailAlpha}.Sample(seed.Derive("rate").Rand())
+	rate := profile.Pareto{Xm: 1, Alpha: p.Rates.TailIndex()}.Sample(seed.Derive("rate").Rand())
 	a := Actor{
 		ID: id, Kind: p.Kind, Profile: p.Name, State: initialState[p.Kind],
 		Traits: Sampled{SampledTraits: traits, RateMult: rate},

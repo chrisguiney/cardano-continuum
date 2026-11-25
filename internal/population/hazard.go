@@ -12,11 +12,6 @@ import (
 const Never = sched.Time(math.MaxInt64)
 
 const (
-	// baseDormancyOnset is the rate, per second, at which an unfrustrated
-	// active wallet goes dormant (a mean of one hour). Profiles give the
-	// length of a dormancy but not its onset, so the onset is a population
-	// constant scaled by frustration.
-	baseDormancyOnset = 1.0 / 3600
 	// frustrationGain is how many times frustration 1 multiplies the onset.
 	frustrationGain = 4.0
 
@@ -26,10 +21,11 @@ const (
 )
 
 // DormancyOnsetRate is the per-second hazard that an active wallet goes
-// dormant at the given frustration. It is strictly increasing in frustration;
-// negative frustration is treated as zero.
-func DormancyOnsetRate(frustration float64) float64 {
-	return baseDormancyOnset * (1 + frustrationGain*max(frustration, 0))
+// dormant at the given frustration, from the profile's unfrustrated rate
+// base (profile.Hazards.OnsetRate). It is strictly increasing in
+// frustration; negative frustration is treated as zero.
+func DormancyOnsetRate(base, frustration float64) float64 {
+	return base * (1 + frustrationGain*max(frustration, 0))
 }
 
 // abandonRate converts the profile's per-second abandon probability into an
@@ -124,7 +120,7 @@ func onset(frustration float64, p profile.Profile) func(*rand.Rand) float64 {
 	if p.Hazards.Dormancy == nil {
 		return nil
 	}
-	return expDraw(DormancyOnsetRate(frustration))
+	return expDraw(DormancyOnsetRate(p.Hazards.OnsetRate(), frustration))
 }
 
 func abandon(p profile.Profile) func(*rand.Rand) float64 {

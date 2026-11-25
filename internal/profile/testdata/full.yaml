@@ -14,6 +14,7 @@ profiles:
         send: 0.2
         delegate: 0.05
       diurnal: 0.4
+      activity_tail: 2.5
       hawkes:
         alpha: 0.3
         beta: 1.5
@@ -23,6 +24,7 @@ profiles:
     hazards:
       birth: 0.01
       dormancy: lognormal(2, 0.8)
+      dormancy_onset: 0.001
       abandon: 0.001
   - name: griefer
     kind: wallet

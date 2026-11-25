@@ -85,6 +85,18 @@ func (t Traits) Sample(src Source) SampledTraits {
 // means none. Alpha < Beta keeps the process stationary.
 type Hawkes struct{ Alpha, Beta float64 }
 
+// Defaults for the optional population parameters. They are the values the
+// population package used before profiles could set them, so a profile that
+// leaves them out behaves as before.
+const (
+	// DefaultOnset is the per-second rate at which an unfrustrated active
+	// wallet goes dormant: a mean of one hour.
+	DefaultOnset = 1.0 / 3600
+	// DefaultTail is the Pareto tail index of the per-actor activity
+	// multiplier.
+	DefaultTail = 1.5
+)
+
 // Rates are an actor's activity rates.
 type Rates struct {
 	// Base is the per-intent base rate in events per unit of simulated time.
@@ -92,6 +104,18 @@ type Rates struct {
 	// Diurnal is the amplitude in [0, 1] of the daily rate modulation.
 	Diurnal float64
 	Hawkes  Hawkes
+	// Tail is the Pareto tail index (above 1) of the multiplier that scales
+	// each actor's base rates, so a few actors are far busier than the rest.
+	// Zero means DefaultTail.
+	Tail float64
+}
+
+// TailIndex is Tail, or DefaultTail when it is unset.
+func (r Rates) TailIndex() float64 {
+	if r.Tail == 0 {
+		return DefaultTail
+	}
+	return r.Tail
 }
 
 // Hazards drive the actor lifecycle.
@@ -99,6 +123,17 @@ type Hazards struct {
 	Birth    float64 // new-actor rate
 	Dormancy Dist    // dormancy duration; nil means actors never go dormant
 	Abandon  float64 // per-unit-time probability of leaving for good
+	// Onset is the per-second rate at which an unfrustrated active actor
+	// goes dormant; frustration scales it. Zero means DefaultOnset.
+	Onset float64
+}
+
+// OnsetRate is Onset, or DefaultOnset when it is unset.
+func (h Hazards) OnsetRate() float64 {
+	if h.Onset == 0 {
+		return DefaultOnset
+	}
+	return h.Onset
 }
 
 // AdversarySpec describes an adversarial actor's attacks and limits.

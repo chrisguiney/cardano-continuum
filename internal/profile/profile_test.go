@@ -39,6 +39,20 @@ func TestParseMinimal(t *testing.T) {
 	if len(ps) != 1 || !reflect.DeepEqual(ps[0], want) {
 		t.Fatalf("got %#v, want %#v", ps, want)
 	}
+	if got := ps[0].Hazards.OnsetRate(); got != DefaultOnset {
+		t.Errorf("default onset %v, want %v", got, DefaultOnset)
+	}
+	if got := ps[0].Rates.TailIndex(); got != DefaultTail {
+		t.Errorf("default tail %v, want %v", got, DefaultTail)
+	}
+}
+
+// TestPopulationDefaults pins the defaults to the values the population
+// package used as constants, so existing runs and goldens are unchanged.
+func TestPopulationDefaults(t *testing.T) {
+	if DefaultOnset != 1.0/3600 || DefaultTail != 1.5 {
+		t.Fatalf("onset %v tail %v", DefaultOnset, DefaultTail)
+	}
 }
 
 func TestParseFull(t *testing.T) {
@@ -52,7 +66,7 @@ func TestParseFull(t *testing.T) {
 	y := ps[0]
 	if (y.Traits.Patience != Pareto{Xm: 50, Alpha: 1.3}) || y.Rates.Base[IntentSend] != 0.2 ||
 		y.Rates.Hawkes != (Hawkes{Alpha: 0.3, Beta: 1.5}) || y.Hazards.Dormancy != (LogNormal{Mu: 2, Sigma: 0.8}) ||
-		y.Weights[IntentDelegate] != 0.25 {
+		y.Weights[IntentDelegate] != 0.25 || y.Rates.TailIndex() != 2.5 || y.Hazards.OnsetRate() != 0.001 {
 		t.Fatalf("unexpected yield-farmer: %#v", y)
 	}
 	g := ps[1]
@@ -77,6 +91,8 @@ func TestParseRejects(t *testing.T) {
 		{"wrong-version", "version"},
 		{"unknown-kind", `profile "p": kind`},
 		{"hawkes-unstable", `profile "p": rates.hawkes`},
+		{"tail-too-light", `profile "p": rates.activity_tail`},
+		{"onset-negative", `profile "p": hazards.dormancy_onset`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.file, func(t *testing.T) {

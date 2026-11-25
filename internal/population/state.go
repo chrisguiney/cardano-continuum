@@ -48,25 +48,46 @@ type edge struct {
 	from, to State
 }
 
-// lifecycle lists every legal edge; the value says whether it reflects a chain
-// effect and so may be applied only from a confirmation. Faucets never leave
-// Active, so they have no edges.
-var lifecycle = map[edge]bool{
-	{profile.Wallet, Born, Active}:       false,
-	{profile.Wallet, Active, Dormant}:    false,
-	{profile.Wallet, Dormant, Active}:    false,
-	{profile.Wallet, Active, Abandoned}:  false,
-	{profile.Wallet, Dormant, Abandoned}: false,
+// gate is the cause an edge needs. A chain effect is applied only from the
+// chain: a transaction's confirmation, or an epoch transition the ledger has
+// run.
+type gate int
 
-	{profile.Pool, Registered, Active}: true,
-	{profile.Pool, Active, Retiring}:   false,
-	{profile.Pool, Retiring, Retired}:  true,
+const (
+	// free edges follow the actor's own clock or the engine's decision.
+	free gate = iota
+	// confirmed edges need the confirmation of a transaction.
+	confirmed
+	// epochApplied edges need an epoch transition that applied the effect.
+	epochApplied
+)
 
-	{profile.DRep, Registered, Voting}: false,
-	{profile.DRep, Voting, Expired}:    true,
+// lifecycle lists every legal edge and the cause it needs. Faucets never
+// leave Active, so they have no edges.
+//
+// A pool is Retiring once its retirement certificate confirms, Retired only
+// when the epoch transition the certificate names has retired it, and back
+// to Active when a re-registration confirms before then (the stake-floor
+// guard contract, rule 11, in models/specs/stake-floor). Marking it Retired
+// on the certificate would let a reader drop its stake from the leader
+// schedule two epochs early.
+var lifecycle = map[edge]gate{
+	{profile.Wallet, Born, Active}:       free,
+	{profile.Wallet, Active, Dormant}:    free,
+	{profile.Wallet, Dormant, Active}:    free,
+	{profile.Wallet, Active, Abandoned}:  free,
+	{profile.Wallet, Dormant, Abandoned}: free,
 
-	{profile.Contract, Deployed, Used}:  false,
-	{profile.Contract, Used, Abandoned}: false,
+	{profile.Pool, Registered, Active}: confirmed,
+	{profile.Pool, Active, Retiring}:   confirmed,
+	{profile.Pool, Retiring, Active}:   confirmed,
+	{profile.Pool, Retiring, Retired}:  epochApplied,
+
+	{profile.DRep, Registered, Voting}: free,
+	{profile.DRep, Voting, Expired}:    confirmed,
+
+	{profile.Contract, Deployed, Used}:  free,
+	{profile.Contract, Used, Abandoned}: free,
 }
 
 // initialState is the state Spawn gives a new actor of each kind.
@@ -85,10 +106,11 @@ func Allowed(kind profile.Kind, from, to State) bool {
 }
 
 // ChainGated reports whether the edge reflects a chain effect (a pool going
-// active or retiring at an epoch boundary, a DRep expiring) and so is refused
-// unless its cause is a Confirmed.
+// active, retiring or retired, a DRep expiring) and so is refused unless its
+// cause comes from the chain: a Confirmed, or an EpochApplied for a pool's
+// retirement.
 func ChainGated(kind profile.Kind, from, to State) bool {
-	return lifecycle[edge{kind, from, to}]
+	return lifecycle[edge{kind, from, to}] != free
 }
 
 // Cause says why a transition happens.
@@ -97,12 +119,23 @@ type Cause interface{ cause() }
 // Timer is a transition fired by the actor's own hazard clock.
 type Timer struct{}
 
-// Confirmed is a transition caused by a transaction or epoch effect seen on
-// the confirmed chain. Tx names the confirming transaction and must be set.
+// Intent is a transition the engine or an agenda chose, before the chain
+// shows any effect of it. It moves no chain-gated edge.
+type Intent struct{}
+
+// Confirmed is a transition caused by a transaction seen on the confirmed
+// chain. Tx names the confirming transaction and must be set.
 type Confirmed struct{ Tx string }
 
-func (Timer) cause()     {}
-func (Confirmed) cause() {}
+// EpochApplied is a transition caused by an epoch transition the ledger has
+// run, such as a pool's retirement taking effect. Epoch is the epoch the
+// transition opened.
+type EpochApplied struct{ Epoch uint64 }
+
+func (Timer) cause()        {}
+func (Intent) cause()       {}
+func (Confirmed) cause()    {}
+func (EpochApplied) cause() {}
 
 // Transition requests moving actor ID to state To at time At.
 type Transition struct {
@@ -116,10 +149,20 @@ func (t Transition) check(kind profile.Kind, from State) error {
 	if !Allowed(kind, from, t.To) {
 		return fmt.Errorf("%w: %s %s->%s", ErrIllegalTransition, kind, from, t.To)
 	}
-	if ChainGated(kind, from, t.To) {
-		if c, ok := t.Cause.(Confirmed); !ok || c.Tx == "" {
-			return fmt.Errorf("%w: %s %s->%s", ErrNotConfirmed, kind, from, t.To)
-		}
+	if !satisfies(lifecycle[edge{kind, from, t.To}], t.Cause) {
+		return fmt.Errorf("%w: %s %s->%s by %T", ErrNotConfirmed, kind, from, t.To, t.Cause)
 	}
 	return nil
+}
+
+func satisfies(g gate, c Cause) bool {
+	switch g {
+	case confirmed:
+		tx, ok := c.(Confirmed)
+		return ok && tx.Tx != ""
+	case epochApplied:
+		_, ok := c.(EpochApplied)
+		return ok
+	}
+	return true
 }

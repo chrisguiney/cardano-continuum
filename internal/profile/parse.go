@@ -52,6 +52,7 @@ type rawRates struct {
 	Base    map[string]float64 `yaml:"base,omitempty"`
 	Diurnal float64            `yaml:"diurnal,omitempty"`
 	Hawkes  rawHawkes          `yaml:"hawkes,omitempty"`
+	Tail    float64            `yaml:"activity_tail,omitempty"`
 }
 
 type rawHawkes struct {
@@ -63,6 +64,7 @@ type rawHazards struct {
 	Birth    float64 `yaml:"birth,omitempty"`
 	Dormancy string  `yaml:"dormancy,omitempty"`
 	Abandon  float64 `yaml:"abandon,omitempty"`
+	Onset    float64 `yaml:"dormancy_onset,omitempty"`
 }
 
 type rawAdversary struct {
@@ -260,6 +262,15 @@ func (rr rawRates) validate(r *Rates) error {
 		}
 	}
 	r.Hawkes = Hawkes(h)
+	if err := finiteNonNeg("rates.activity_tail", rr.Tail); err != nil {
+		return err
+	}
+	// A tail index at or below 1 gives the multiplier an infinite mean, so
+	// one actor could dominate the whole run's activity.
+	if rr.Tail != 0 && rr.Tail <= 1 {
+		return fieldErr("rates.activity_tail", "must be > 1, got %s", ff(rr.Tail))
+	}
+	r.Tail = rr.Tail
 	return nil
 }
 
@@ -270,7 +281,10 @@ func (rh rawHazards) validate(h *Hazards) error {
 	if err := finiteNonNeg("hazards.abandon", rh.Abandon); err != nil {
 		return err
 	}
-	h.Birth, h.Abandon = rh.Birth, rh.Abandon
+	if err := finiteNonNeg("hazards.dormancy_onset", rh.Onset); err != nil {
+		return err
+	}
+	h.Birth, h.Abandon, h.Onset = rh.Birth, rh.Abandon, rh.Onset
 	if rh.Dormancy != "" {
 		d, err := parseDist(rh.Dormancy)
 		if err != nil {
@@ -318,9 +332,10 @@ func Marshal(ps []Profile) ([]byte, error) {
 			Rates: rawRates{
 				Base: toRaw(p.Rates.Base), Diurnal: p.Rates.Diurnal,
 				Hawkes: rawHawkes{Alpha: p.Rates.Hawkes.Alpha, Beta: p.Rates.Hawkes.Beta},
+				Tail:   p.Rates.Tail,
 			},
 			Weights: toRaw(p.Weights),
-			Hazards: rawHazards{Birth: p.Hazards.Birth, Abandon: p.Hazards.Abandon},
+			Hazards: rawHazards{Birth: p.Hazards.Birth, Abandon: p.Hazards.Abandon, Onset: p.Hazards.Onset},
 		}
 		if p.Hazards.Dormancy != nil {
 			rp.Hazards.Dormancy = p.Hazards.Dormancy.String()
