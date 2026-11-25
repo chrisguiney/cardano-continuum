@@ -102,11 +102,13 @@ func (s utxoSet) applyTx(tx *conway.ConwayTransaction, u *undo) {
 	u.fees += tx.Fee().Uint64()
 }
 
+// revert reverses u. Restoring before deleting matters: an output a block
+// both created and spent appears in both lists, and must end up absent.
 func (s utxoSet) revert(u undo) {
-	for _, r := range u.created {
-		delete(s, r)
-	}
 	for _, out := range u.spent {
 		s[refOf(out.Id)] = out
+	}
+	for _, r := range u.created {
+		delete(s, r)
 	}
 }

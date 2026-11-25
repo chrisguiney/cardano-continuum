@@ -281,6 +281,29 @@ func TestRollbackRestores(t *testing.T) {
 	}
 }
 
+// A block whose second transaction spends the first's change: unwinding it
+// must not bring back the change, which did not exist before the block.
+func TestRollbackUnwindsChainedBlock(t *testing.T) {
+	f := newFixture(t, nil)
+	want := f.chain.AllUtxos()
+	first := f.pay(f.alice, f.bob.Address(), 10_000_000)
+	id := f.mustSubmit(first.build(t))
+	change := first.outs[1].coin
+	child := txSpec{ins: []Ref{{TxID: id, Index: 1}}, outs: []out{{f.bob.Address(), 5_000_000}, {f.alice.Address(), 0}},
+		fee: -1, signers: []keys.Wallet{f.alice}}
+	f.mustSubmit(child.balanced(t, change).build(t))
+	f.advance(2)
+	if got := f.chain.Blocks(); len(got) != 1 || len(got[0].Txs) != 2 {
+		t.Fatalf("blocks %+v, want one block of two", got)
+	}
+	if err := f.chain.Inject(Rollback{Depth: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.chain.AllUtxos(); !equalUtxos(got, want) {
+		t.Fatalf("UTxO set after rollback has %d outputs, genesis had %d", len(got), len(want))
+	}
+}
+
 func TestRollbackReadd(t *testing.T) {
 	f := newFixture(t, nil)
 	id := f.mustSubmit(f.pay(f.alice, f.bob.Address(), 10_000_000).build(t))
