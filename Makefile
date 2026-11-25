@@ -53,10 +53,36 @@ check-manifests: ## Fail if regenerating api/ or config/ changes anything
 	@git diff --exit-code -- api config || { echo "generated files drift: run make manifests generate and commit"; exit 1; }
 	@untracked=$$(git ls-files --others --exclude-standard -- api config); if [ -n "$$untracked" ]; then echo "$$untracked"; echo "untracked generated files: commit them"; exit 1; fi
 
+# Developer registry. CONTINUUM_REGISTRY is host[:port][/path]; there is no
+# default, so a push without it fails instead of reaching a public registry.
+# CONTINUUM_REGISTRY_INSECURE=true marks it plain HTTP and adds ko's
+# --insecure-registry; image-dingo also checks the Docker daemon lists it.
+CONTINUUM_REGISTRY ?=
+CONTINUUM_REGISTRY_INSECURE ?=
+DINGO_SRC ?=
+KO_INSECURE := $(if $(filter true,$(CONTINUUM_REGISTRY_INSECURE)),--insecure-registry)
+REGISTRY_HOST = $(firstword $(subst /, ,$(CONTINUUM_REGISTRY)))
+
+.PHONY: require-registry ko-images image-dingo
+require-registry:
+	@test -n "$(CONTINUUM_REGISTRY)" || { echo "CONTINUUM_REGISTRY is not set"; exit 1; }
+
+ko-images: require-registry ## Build and push continuum binaries with ko to CONTINUUM_REGISTRY
+	KO_DOCKER_REPO=$(CONTINUUM_REGISTRY) ko build $(KO_INSECURE) ./cmd/...
+
+image-dingo: require-registry ## Build DINGO_SRC with its Dockerfile and push to CONTINUUM_REGISTRY
+	@test -n "$(DINGO_SRC)" || { echo "DINGO_SRC is not set"; exit 1; }
+	@if [ -n "$(KO_INSECURE)" ]; then docker info | grep -q '$(REGISTRY_HOST)' || { echo "add $(REGISTRY_HOST) to insecure-registries in the Docker daemon config"; exit 1; }; fi
+	rev=$$(git -C $(DINGO_SRC) rev-parse HEAD); tag=dev-$$(echo $$rev | cut -c1-7); \
+	docker build --build-arg COMMIT_HASH=$$rev \
+	  --label org.opencontainers.image.revision=$$rev \
+	  --label $(LABEL_PREFIX)/build-mode=repro \
+	  -t $(CONTINUUM_REGISTRY)/dingo:$$tag $(DINGO_SRC) && docker push $(CONTINUUM_REGISTRY)/dingo:$$tag
+
 # Stubs for targets that need components landing in later steps. Each prints
 # "not yet implemented" and exits 0 so that the target names stay reserved.
 STUBS := test-envtest e2e web images ident vectors harvest \
-	fuzz-smoke determinism kind-up kind-down image-dingo ko-images bisect tools
+	fuzz-smoke determinism kind-up kind-down bisect tools
 .PHONY: $(STUBS)
 $(STUBS): ; @echo "$@: not yet implemented"
 
