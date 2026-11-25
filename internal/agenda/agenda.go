@@ -18,25 +18,36 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 )
 
-// Idle is the intent of doing nothing this turn. It is not a profile intent
-// kind: it has no rate, only a score.
-const Idle profile.IntentKind = "idle"
-
-// Errors returned by For.
-var (
-	ErrUnknown       = errors.New("unknown agenda")
-	ErrUnimplemented = errors.New("agenda not implemented yet")
+// Intents that are not profile intent kinds: they have no rate, only a
+// score. GoDark and GoLive are the operator's pool lifecycle steps, taken by
+// the engine rather than by a transaction.
+const (
+	Idle   profile.IntentKind = "idle"
+	GoDark profile.IntentKind = "go_dark"
+	GoLive profile.IntentKind = "go_live"
 )
+
+// ErrUnknown is returned by For for a name with no agenda.
+var ErrUnknown = errors.New("unknown agenda")
 
 // PoolInfo is one row of the pool return table.
 type PoolInfo struct {
 	ID population.ActorID
 	// ROI is the pool's expected return to delegators per epoch, as a fraction.
 	ROI float64
+	// Stake is the lovelace delegated to the pool now.
+	Stake profile.Lovelace
+	// Saturation is the stake above which the pool's rewards stop growing;
+	// zero means no cap is known.
+	Saturation profile.Lovelace
 }
 
 // View is the agenda's read-only window onto the chain and world. The engine
 // implements it from the chain follower; tests use a fake.
+//
+// A View may also implement Floor, Pods, Governance and Market. Agendas
+// that need one and find it missing fail closed: they offer no step that
+// could lower forging stake, and no vote.
 type View interface {
 	// Balance is the spendable lovelace of the actor.
 	Balance(population.ActorID) profile.Lovelace
@@ -54,19 +65,22 @@ type View interface {
 
 // Score is a policy's appetite for one intent. Value is non-negative; zero
 // means the intent is off the table and Why says why. Target is the actor the
-// intent is aimed at (a pool to delegate to), or zero.
+// intent is aimed at (a pool to delegate to), or zero; Proposal is the
+// governance action a vote is on, or empty.
 type Score struct {
-	Kind   profile.IntentKind `json:"kind"`
-	Value  float64            `json:"value"`
-	Target population.ActorID `json:"target,omitempty"`
-	Why    string             `json:"why"`
+	Kind     profile.IntentKind `json:"kind"`
+	Value    float64            `json:"value"`
+	Target   population.ActorID `json:"target,omitempty"`
+	Proposal ProposalID         `json:"proposal,omitempty"`
+	Why      string             `json:"why"`
 }
 
 // Intent is the chosen action.
 type Intent struct {
-	Kind   profile.IntentKind `json:"kind"`
-	Actor  population.ActorID `json:"actor"`
-	Target population.ActorID `json:"target,omitempty"`
+	Kind     profile.IntentKind `json:"kind"`
+	Actor    population.ActorID `json:"actor"`
+	Target   population.ActorID `json:"target,omitempty"`
+	Proposal ProposalID         `json:"proposal,omitempty"`
 }
 
 // Decision is an intent with the scores it was drawn from.
@@ -76,7 +90,7 @@ type Decision struct {
 }
 
 // Policy scores the intents available to an actor. It must be a pure function
-// of its arguments and return each kind at most once.
+// of its arguments and return each kind, target and proposal at most once.
 type Policy interface {
 	Score(a population.Actor, v View) []Score
 }
@@ -90,22 +104,20 @@ type descriptor struct {
 func (d descriptor) Score(a population.Actor, v View) []Score { return d.score(a, v) }
 
 var registry = map[profile.AgendaName]Policy{
-	"hodl":     descriptor{hodlScores},
-	"yield":    descriptor{yieldScores},
-	"operator": descriptor{operatorScores},
-	"disrupt":  descriptor{idleOnly("disrupt agenda is a stub")},
-	"extract":  descriptor{idleOnly("extract agenda is a stub")},
+	"hodl":        descriptor{hodlScores},
+	"yield":       descriptor{yieldScores},
+	"profit":      descriptor{profitScores},
+	"civic":       descriptor{civicScores},
+	"operator":    descriptor{operatorScores},
+	"opportunist": descriptor{opportunistScores},
+	"disrupt":     adversary{cover: disruptCover},
+	"extract":     adversary{cover: extractCover},
 }
-
-var pending = map[profile.AgendaName]bool{"profit": true, "civic": true, "opportunist": true}
 
 // For returns the policy for an agenda name.
 func For(name profile.AgendaName) (Policy, error) {
 	if p, ok := registry[name]; ok {
 		return p, nil
-	}
-	if pending[name] {
-		return nil, fmt.Errorf("%w: %s", ErrUnimplemented, name)
 	}
 	return nil, fmt.Errorf("%w: %q", ErrUnknown, name)
 }
@@ -119,7 +131,7 @@ func Decide(a population.Actor, r *rand.Rand, v View, p Policy, w map[profile.In
 // Choose samples an intent with probability proportional to score times the
 // weight in w (missing means 1). Scores and weights that are negative, NaN or
 // infinite count as zero. When nothing is positive the intent is Idle. The
-// returned scores are a copy sorted by kind then target, so the draw does not
+// returned scores are a copy sorted by kind, target and proposal, so the draw does not
 // depend on the order the policy produced them in.
 func Choose(actor population.ActorID, r *rand.Rand, scores []Score, w map[profile.IntentKind]float64) (Intent, []Score) {
 	out := append([]Score(nil), scores...)
@@ -127,7 +139,10 @@ func Choose(actor population.ActorID, r *rand.Rand, scores []Score, w map[profil
 		if out[i].Kind != out[j].Kind {
 			return out[i].Kind < out[j].Kind
 		}
-		return out[i].Target < out[j].Target
+		if out[i].Target != out[j].Target {
+			return out[i].Target < out[j].Target
+		}
+		return out[i].Proposal < out[j].Proposal
 	})
 	eff := make([]float64, len(out))
 	total := 0.0
@@ -154,7 +169,7 @@ func Choose(actor population.ActorID, r *rand.Rand, scores []Score, w map[profil
 		}
 		u -= e
 	}
-	return Intent{Kind: out[last].Kind, Actor: actor, Target: out[last].Target}, out
+	return Intent{Kind: out[last].Kind, Actor: actor, Target: out[last].Target, Proposal: out[last].Proposal}, out
 }
 
 func finite(x float64) float64 {
@@ -174,6 +189,11 @@ var cost = map[profile.IntentKind]profile.Lovelace{
 	profile.IntentWithdraw:      500_000,
 	profile.IntentRegisterPool:  505_000_000,
 	profile.IntentRetirePool:    500_000,
+	profile.IntentRegisterDRep:  500_500_000,
+	profile.IntentDelegateDRep:  500_000,
+	profile.IntentVote:          500_000,
+	profile.IntentScriptCall:    2_000_000,
+	profile.IntentMint:          2_000_000,
 }
 
 // pick scores kind at value, or zero with a reason when the actor cannot pay.
@@ -185,9 +205,3 @@ func pick(kind profile.IntentKind, value float64, bal profile.Lovelace, why stri
 }
 
 func off(kind profile.IntentKind, why string) Score { return Score{Kind: kind, Why: why} }
-
-func idleOnly(why string) func(population.Actor, View) []Score {
-	return func(population.Actor, View) []Score {
-		return []Score{{Kind: Idle, Value: 1, Why: why}}
-	}
-}

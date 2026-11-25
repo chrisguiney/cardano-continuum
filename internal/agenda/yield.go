@@ -34,14 +34,9 @@ func delegateScore(a population.Actor, v View, bal profile.Lovelace) Score {
 	if !delegated {
 		s := pick(profile.IntentDelegate, 1, bal, "not delegated")
 		s.Target = best.ID
-		return s
+		return vetMove(v, s, a.ID, 0)
 	}
-	curROI := 0.0
-	for _, p := range v.Pools() {
-		if p.ID == cur {
-			curROI = p.ROI
-		}
-	}
+	curROI := poolROI(v.Pools(), cur)
 	gap, patience := best.ROI-curROI, a.Traits.Patience
 	if best.ID == cur || gap <= patience {
 		return off(profile.IntentDelegate, fmt.Sprintf("gap %.4f within patience %.4f", gap, patience))
@@ -52,7 +47,17 @@ func delegateScore(a population.Actor, v View, bal profile.Lovelace) Score {
 	}
 	s := pick(profile.IntentDelegate, value, bal, fmt.Sprintf("pool %d beats current by %.4f, patience %.4f", best.ID, gap, patience))
 	s.Target = best.ID
-	return s
+	return vetMove(v, s, a.ID, cur)
+}
+
+// poolROI is the ROI of pool id, or zero if it is not listed.
+func poolROI(ps []PoolInfo, id population.ActorID) float64 {
+	for _, p := range ps {
+		if p.ID == id {
+			return p.ROI
+		}
+	}
+	return 0
 }
 
 // bestPool returns the highest-ROI pool, the lowest ID winning ties.
