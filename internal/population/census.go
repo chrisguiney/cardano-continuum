@@ -3,7 +3,7 @@ package population
 import (
 	"fmt"
 	"math/rand/v2"
-	"sort"
+	"slices"
 	"strconv"
 
 	"github.com/chrisguiney/cardano-continuum/internal/check"
@@ -108,7 +108,7 @@ func (c *Census) Apply(tr Transition) error {
 	a.State, a.Changed = tr.To, tr.At
 	c.actors[a.ID-1] = a
 	c.add(a)
-	check.Slow("population: indexes agree with a scan", c.consistent)
+	check.PostFn(c.consistent, "population: indexes agree with a scan")
 	return nil
 }
 
@@ -133,7 +133,7 @@ func (c *Census) IDs(kind profile.Kind, st State) []ActorID {
 	for id := range set {
 		ids = append(ids, id)
 	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	slices.Sort(ids)
 	return ids
 }
 

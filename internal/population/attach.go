@@ -25,11 +25,11 @@ func Attach(r *rand.Rand, stake []PoolStake, floor uint64) (id ActorID, ok bool)
 	}
 	x := r.Float64() * total
 	for _, s := range stake {
-		if w := weight(s); x < w {
+		w := weight(s)
+		if x < w {
 			return s.ID, true
-		} else {
-			x -= w
 		}
+		x -= w
 	}
 	return stake[len(stake)-1].ID, true
 }
