@@ -3,6 +3,7 @@ module github.com/chrisguiney/cardano-continuum
 go 1.27.4
 
 require (
+	github.com/Salvionied/apollo/v2 v2.2.1
 	github.com/blinklabs-io/bursa v0.29.0
 	github.com/blinklabs-io/gouroboros v0.220.1
 	github.com/blinklabs-io/ouroboros-mock v0.21.4
