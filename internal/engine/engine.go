@@ -11,8 +11,10 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/build"
+	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
+	"github.com/chrisguiney/cardano-continuum/internal/plan"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/rng"
@@ -31,6 +33,11 @@ var (
 	ErrTimeBackwards = errors.New("engine: tick moves time backwards")
 	// ErrUnknownInput: an input kind the engine does not handle.
 	ErrUnknownInput = errors.New("engine: unknown input kind")
+	// ErrUnknownVerdict: a SubmitResult whose verdict is missing or unknown.
+	ErrUnknownVerdict = errors.New("engine: submit result has no known verdict")
+	// ErrBadPoint: a block point that is neither the origin nor a 32-byte
+	// hash.
+	ErrBadPoint = errors.New("engine: malformed block point")
 )
 
 // Payment sizing. A payment sends a drawn fraction of the actor's spendable
@@ -81,13 +88,14 @@ type birth struct {
 	h    sched.Handle
 }
 
-type utxo struct {
-	owner    population.ActorID
-	lovelace uint64
-}
-
 // Engine is the pure core. It is not safe for concurrent use: the loop is one
 // goroutine by design.
+//
+// Which outputs exist, which are reserved and when a payment is settled or
+// dead is the planner's ledger (led), fed the same chain events as the
+// engine's own window. The engine keeps only what the ledger does not know:
+// each payment's actor, bytes and TTL, and the fees and foreign outputs the
+// supply check needs.
 type Engine struct {
 	cfg     Config
 	keys    *keys.Store
@@ -106,15 +114,13 @@ type Engine struct {
 	conf   eventlog.ChainPoint
 	window []blockRec
 
-	utxos     map[Ref]utxo
-	owned     map[population.ActorID]map[Ref]struct{}
-	spendable map[population.ActorID]uint64
-	reserved  map[Ref]uint64
-	pending   map[uint64]*pendingRec
-	awaiting  []uint64 // ascending intent IDs without a node answer
-	nextID    uint64
-	fees      uint64
-	foreign   uint64
+	led      *plan.Ledger
+	pending  map[uint64]*pendingRec
+	byTx     map[TxID]uint64
+	awaiting []uint64 // ascending intent IDs without a node answer
+	nextID   uint64
+	fees     uint64
+	foreign  uint64
 
 	out []eventlog.Record
 }
@@ -130,6 +136,7 @@ func New(cfg Config) (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
+	var genesis []plan.Utxo
 	i := 0
 	for _, co := range cfg.Cohorts {
 		p, _ := cfg.Profiles.Get(co.Profile)
@@ -143,8 +150,11 @@ func New(cfg Config) (*Engine, error) {
 			}
 			// Genesis outputs are (Blake2b-256 of the address, 0), as in
 			// Shelley genesis and the fake chain.
-			e.addUtxo(Ref{Tx: TxID(blake2b256(addr)), Index: 0}, a.ID, f.Lovelace)
+			genesis = append(genesis, plan.Utxo{Ref: plan.Ref{Tx: blake2b256(addr)}, Owner: a.ID, Lovelace: f.Lovelace})
 		}
+	}
+	if e.led, err = plan.New(e.ledgerConfig(), genesis); err != nil {
+		return nil, fmt.Errorf("engine: ledger: %w", err)
 	}
 	for _, b := range e.births {
 		e.scheduleBirth(b, 0)
@@ -168,8 +178,7 @@ func newEmpty(cfg Config) (*Engine, error) {
 	e := &Engine{
 		cfg: cfg, keys: ks, builder: build.New(cfg.Build), sel: sel, root: cfg.Seed.Derive(censusStream),
 		actors: map[population.ActorID]*actor{}, byAddr: map[string]population.ActorID{},
-		utxos: map[Ref]utxo{}, owned: map[population.ActorID]map[Ref]struct{}{},
-		spendable: map[population.ActorID]uint64{}, reserved: map[Ref]uint64{}, pending: map[uint64]*pendingRec{},
+		pending: map[uint64]*pendingRec{}, byTx: map[TxID]uint64{},
 	}
 	for _, n := range cfg.Profiles.Names() {
 		p, _ := cfg.Profiles.Get(n)
@@ -199,19 +208,19 @@ func (e *Engine) Handle(ctx context.Context, in eventlog.Record) ([]eventlog.Rec
 				return nil, fmt.Errorf("engine: decode block content: %w", err)
 			}
 		}
-		e.applyBlock(in.At, blockRec{Point: b.Point, Txs: c.Txs})
+		err = e.applyBlock(ctx, in.At, blockRec{Point: b.Point, Txs: c.Txs})
 	case eventlog.KindRolledBack:
 		var b eventlog.RolledBack
 		if err = eventlog.Decode(in.Body, &b); err != nil {
 			return nil, fmt.Errorf("engine: decode rollback: %w", err)
 		}
-		err = e.rollback(b.To)
+		err = e.rollback(ctx, b.To)
 	case eventlog.KindSubmitResult:
 		var r SubmitResult
 		if err = eventlog.Decode(in.Body, &r); err != nil {
 			return nil, fmt.Errorf("engine: decode submit result: %w", err)
 		}
-		e.submitResult(in.At, r)
+		err = e.submitResult(ctx, in.At, r)
 	default:
 		err = fmt.Errorf("%w: %s", ErrUnknownInput, in.Kind)
 	}
@@ -424,9 +433,11 @@ func (e *Engine) pay(ctx context.Context, at sched.Time, a population.Actor, st 
 		return nil
 	}
 	to := targets[r.IntN(len(targets))]
-	bal := e.spendable[a.ID]
+	id := e.nextID + 1
+	avail := e.coins(a.ID, plan.IntentID(id))
+	bal := sumCoins(avail)
 	amount := max(uint64(float64(bal)*(minFraction+fracSpread*r.Float64())), minPayment)
-	coins := e.sel.Select(e.available(a.ID), amount+feeHeadroom)
+	coins := e.sel.Select(avail, amount+feeHeadroom)
 	if coins == nil {
 		skip(fmt.Sprintf("spendable %d below %d", bal, amount+feeHeadroom))
 		return nil
@@ -446,8 +457,15 @@ func (e *Engine) pay(ctx context.Context, at sched.Time, a population.Actor, st 
 		skip("build: " + err.Error())
 		return nil
 	}
-	e.nextID++
-	p := &pendingRec{ID: e.nextID, Actor: uint64(a.ID), Tx: TxID(built.ID), Inputs: inputs, TTL: ttl, Cbor: built.Tx, Awaiting: true}
+	// The reservation is part of this decision. It is durable once the input
+	// that caused it is, since replaying the input repeats it; the Runner
+	// also syncs the Submitted record before the transaction leaves.
+	if err := e.led.Reserve(ctx, plan.IntentID(id), attempt(a.ID, TxID(built.ID), inputs, ttl)); err != nil {
+		skip("reserve: " + err.Error())
+		return nil
+	}
+	e.nextID = id
+	p := &pendingRec{ID: id, Actor: uint64(a.ID), Tx: TxID(built.ID), TTL: ttl, Cbor: built.Tx, Awaiting: true}
 	e.addPending(p)
 	e.emit(at, KindSubmitted, a.ID, Submitted{
 		Intent: p.ID, ID: p.Tx, To: uint64(to), Amount: amount, Fee: built.Fee, TTL: ttl, Inputs: inputs, Tx: built.Tx,
@@ -455,35 +473,26 @@ func (e *Engine) pay(ctx context.Context, at sched.Time, a population.Actor, st 
 	return nil
 }
 
+func attempt(a population.ActorID, tx TxID, inputs []Ref, ttl uint64) plan.Attempt {
+	ins := make([]plan.Ref, len(inputs))
+	for i, r := range inputs {
+		ins[i] = plan.Ref{Tx: plan.TxID(r.Tx), Index: r.Index}
+	}
+	return plan.Attempt{Tx: plan.TxID(tx), Actor: a, Inputs: ins, TTL: ttl}
+}
+
 func (e *Engine) addPending(p *pendingRec) {
 	e.pending[p.ID] = p
-	for _, r := range p.Inputs {
-		e.reserved[r] = p.ID
-		if u, ok := e.utxos[r]; ok {
-			e.spendable[u.owner] -= u.lovelace
-		}
-	}
+	e.byTx[p.Tx] = p.ID
 	if p.Awaiting {
 		e.awaiting = append(e.awaiting, p.ID)
 	}
 }
 
-// dropPending removes a payment and frees whichever of its inputs are still
-// unspent.
 func (e *Engine) dropPending(id uint64) {
-	p, ok := e.pending[id]
-	if !ok {
-		return
-	}
-	delete(e.pending, id)
-	for _, r := range p.Inputs {
-		if e.reserved[r] != id {
-			continue
-		}
-		delete(e.reserved, r)
-		if u, ok := e.utxos[r]; ok {
-			e.spendable[u.owner] += u.lovelace
-		}
+	if p, ok := e.pending[id]; ok {
+		delete(e.byTx, p.Tx)
+		delete(e.pending, id)
 	}
 	e.stopAwaiting(id)
 }
@@ -494,124 +503,166 @@ func (e *Engine) stopAwaiting(id uint64) {
 	}
 }
 
-func (e *Engine) submitResult(at sched.Time, r SubmitResult) {
+// submitResult records the node's answer. Only a rejection of the first
+// send writes the payment off: a transport error, or a rejection of a
+// resend (which the transaction's own earlier arrival can cause), leaves it
+// reserved until the ledger settles it or finds it dead
+// (PlannerReleaseOnSubmitErrorBug in models/specs/planner-reservations).
+func (e *Engine) submitResult(ctx context.Context, at sched.Time, r SubmitResult) error {
 	p, ok := e.pending[r.Intent]
 	if !ok || !p.Awaiting {
-		return
+		return nil
+	}
+	switch r.Verdict {
+	case VerdictAccepted, VerdictUnreached:
+	case VerdictRejected:
+		if r.Resend {
+			break
+		}
+		dead, err := e.led.Refused(ctx, plan.TxID(p.Tx))
+		if err != nil {
+			return fmt.Errorf("engine: refuse intent %d: %w", p.ID, err)
+		}
+		e.release(at, dead, "rejected: "+r.Reason)
+		return nil
+	default:
+		return fmt.Errorf("%w: intent %d", ErrUnknownVerdict, r.Intent)
 	}
 	p.Awaiting, p.Cbor = false, nil
 	e.stopAwaiting(p.ID)
-	if !r.OK {
-		e.dropPending(p.ID)
-		e.emit(at, KindReleased, population.ActorID(p.Actor), Released{Intent: p.ID, Why: "rejected: " + r.Reason})
+	return nil
+}
+
+// release emits Released for the payments of dead transactions and forgets
+// them. An empty why names the cause per payment: expiry or conflict.
+func (e *Engine) release(at sched.Time, dead []plan.TxID, why string) {
+	for _, tx := range dead {
+		id, ok := e.byTx[TxID(tx)]
+		if !ok {
+			continue
+		}
+		p := e.pending[id]
+		w := why
+		if w == "" {
+			w = "conflict"
+			if p.TTL <= e.conf.Slot {
+				w = "expired"
+			}
+		}
+		e.dropPending(id)
+		e.emit(at, KindReleased, population.ActorID(p.Actor), Released{Intent: id, Why: w})
 	}
 }
 
-// available lists the actor's confirmed, unreserved outputs sorted by Ref.
-func (e *Engine) available(id population.ActorID) []Coin {
-	var out []Coin
-	for r := range e.owned[id] {
-		if _, held := e.reserved[r]; !held {
-			out = append(out, Coin{Ref: r, Lovelace: e.utxos[r].lovelace})
-		}
+// coins lists what the ledger offers actor a for intent id, sorted by Ref.
+func (e *Engine) coins(a population.ActorID, id plan.IntentID) []Coin {
+	us := e.led.Available(a, id, plan.Opts{})
+	out := make([]Coin, len(us))
+	for i, u := range us {
+		out[i] = Coin{Ref: Ref{Tx: TxID(u.Ref.Tx), Index: u.Ref.Index}, Lovelace: u.Lovelace}
 	}
-	slices.SortFunc(out, func(a, b Coin) int { return compareRefs(a.Ref, b.Ref) })
 	return out
 }
 
-func (e *Engine) addUtxo(r Ref, owner population.ActorID, lovelace uint64) {
-	e.utxos[r] = utxo{owner: owner, lovelace: lovelace}
-	m := e.owned[owner]
-	if m == nil {
-		m = map[Ref]struct{}{}
-		e.owned[owner] = m
+func sumCoins(cs []Coin) uint64 {
+	var sum uint64
+	for _, c := range cs {
+		sum += c.Lovelace
 	}
-	m[r] = struct{}{}
-	if _, held := e.reserved[r]; !held {
-		e.spendable[owner] += lovelace
-	}
+	return sum
 }
 
-func (e *Engine) spend(r Ref) {
-	u, ok := e.utxos[r]
-	if !ok {
-		return
+// applyBlock pushes a block onto the volatile window and the ledger's view.
+// A block with K successors is settled: its fees and foreign outputs count,
+// and the ledger reports the payments it settled or killed.
+func (e *Engine) applyBlock(ctx context.Context, at sched.Time, b blockRec) error {
+	lb, err := e.ledgerBlock(e.Tip(), b)
+	if err != nil {
+		return err
 	}
-	delete(e.utxos, r)
-	delete(e.owned[u.owner], r)
-	if _, held := e.reserved[r]; !held {
-		e.spendable[u.owner] -= u.lovelace
+	res, err := e.led.Advance(ctx, chain.Event{Kind: chain.Forward, Block: lb, Point: lb.Point})
+	if err != nil {
+		return fmt.Errorf("engine: ledger: %w", err)
 	}
-}
-
-// applyBlock pushes a block onto the volatile window and makes durable every
-// block that now has K successors.
-func (e *Engine) applyBlock(at sched.Time, b blockRec) {
 	e.window = append(e.window, b)
 	for uint64(len(e.window)) > e.cfg.K {
-		e.confirm(at, e.window[0])
+		e.confirm(e.window[0])
 		e.window = slices.Delete(e.window, 0, 1)
 	}
+	for _, tx := range res.Settled {
+		if id, ok := e.byTx[TxID(tx)]; ok {
+			p := e.pending[id]
+			e.dropPending(id)
+			e.emit(at, KindConfirmed, population.ActorID(p.Actor), Confirmed{Intent: id, ID: p.Tx})
+		}
+	}
+	e.release(at, res.Dead, "")
+	return nil
 }
 
-func (e *Engine) confirm(at sched.Time, b blockRec) {
-	byTx := map[TxID]uint64{}
-	for _, p := range e.pending {
-		byTx[p.Tx] = p.ID
-	}
+func (e *Engine) confirm(b blockRec) {
 	for _, tx := range b.Txs {
-		for _, r := range tx.Inputs {
-			e.spend(r)
-		}
 		for _, o := range tx.Outputs {
-			if owner, ok := e.byAddr[string(o.Address)]; ok {
-				e.addUtxo(Ref{Tx: tx.ID, Index: o.Index}, owner, o.Lovelace)
-			} else {
+			if _, ok := e.byAddr[string(o.Address)]; !ok {
 				e.foreign += o.Lovelace
 			}
 		}
 		e.fees += tx.Fee
-		if id, ok := byTx[tx.ID]; ok {
-			p := e.pending[id]
-			e.dropPending(id)
-			e.emit(at, KindConfirmed, population.ActorID(p.Actor), Confirmed{Intent: id, ID: tx.ID})
-		}
 	}
 	e.conf = b.Point
-	// A block with a slot past a payment's TTL is now durable, so every block
-	// that could have held the payment is durable too: it never will confirm.
-	for _, id := range e.pendingIDs() {
-		if p := e.pending[id]; p.TTL < e.conf.Slot {
-			e.dropPending(id)
-			e.emit(at, KindReleased, population.ActorID(p.Actor), Released{Intent: id, Why: "expired"})
+}
+
+// ledgerBlock is b as the ledger reads it. The digest has no previous hash;
+// the follower delivers blocks in chain order, so it is the engine's tip.
+// Only outputs to the population are passed: the ledger tracks no others.
+func (e *Engine) ledgerBlock(prev eventlog.ChainPoint, b blockRec) (chain.Block, error) {
+	p, ok := chain.PointFromLog(b.Point)
+	if !ok {
+		return chain.Block{}, fmt.Errorf("%w: slot %d, hash of %d bytes", ErrBadPoint, b.Point.Slot, len(b.Point.Hash))
+	}
+	pp, _ := chain.PointFromLog(prev)
+	out := chain.Block{Point: p, Prev: pp.Hash}
+	for _, tx := range b.Txs {
+		t := chain.Tx{Hash: chain.TxID(tx.ID)}
+		for _, r := range tx.Inputs {
+			t.Spends = append(t.Spends, chain.Ref{Tx: chain.TxID(r.Tx), Index: r.Index})
 		}
+		for _, o := range tx.Outputs {
+			owner, ok := e.byAddr[string(o.Address)]
+			if !ok {
+				continue
+			}
+			t.Creates = append(t.Creates, ownedUtxo(e.actors[owner].wallet.Address(), Ref{Tx: tx.ID, Index: o.Index}, o.Lovelace))
+		}
+		out.Txs = append(out.Txs, t)
 	}
+	return out, nil
 }
 
-func (e *Engine) pendingIDs() []uint64 {
-	ids := make([]uint64, 0, len(e.pending))
-	for id := range e.pending {
-		ids = append(ids, id)
-	}
-	slices.Sort(ids)
-	return ids
-}
-
-// rollback unwinds the volatile window to p. It checks before it changes
-// anything, so a refused rollback leaves the engine as it was.
-func (e *Engine) rollback(p eventlog.ChainPoint) error {
+// rollback unwinds the volatile window and the ledger's view to p. It checks
+// before it changes anything, so a refused rollback leaves the engine as it
+// was. The ledger keeps every reservation: a rolled-back payment may be
+// included again.
+func (e *Engine) rollback(ctx context.Context, p eventlog.ChainPoint) error {
+	keep := -1
 	if samePoint(p, e.conf) {
-		e.window = nil
-		return nil
+		keep = 0
 	}
-	for i := len(e.window) - 1; i >= 0; i-- {
+	for i := len(e.window) - 1; i >= 0 && keep < 0; i-- {
 		if samePoint(e.window[i].Point, p) {
-			e.window = e.window[:i+1]
-			return nil
+			keep = i + 1
 		}
 	}
-	if p.Slot < e.conf.Slot {
-		return fmt.Errorf("%w: slot %d, confirmed slot %d", ErrRollbackBelowConfirmed, p.Slot, e.conf.Slot)
+	if keep < 0 {
+		if p.Slot < e.conf.Slot {
+			return fmt.Errorf("%w: slot %d, confirmed slot %d", ErrRollbackBelowConfirmed, p.Slot, e.conf.Slot)
+		}
+		return fmt.Errorf("%w: slot %d", ErrUnknownPoint, p.Slot)
 	}
-	return fmt.Errorf("%w: slot %d", ErrUnknownPoint, p.Slot)
+	lp, _ := chain.PointFromLog(p)
+	if _, err := e.led.Advance(ctx, chain.Event{Kind: chain.Backward, Point: lp}); err != nil {
+		return fmt.Errorf("engine: ledger: %w", err)
+	}
+	e.window = e.window[:keep]
+	return nil
 }

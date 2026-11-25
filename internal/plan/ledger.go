@@ -3,6 +3,8 @@ package plan
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/check"
@@ -184,3 +186,14 @@ func (l *Ledger) Holder(r Ref) (IntentID, bool) {
 	id, ok := l.st.held[r]
 	return id, ok
 }
+
+// Settled returns the owned outputs unspent at the settled point, reserved
+// or not, sorted by Ref. Blocks above the settled point are not reflected.
+func (l *Ledger) Settled() []Utxo {
+	return slices.SortedFunc(maps.Values(l.st.utxos), func(a, b Utxo) int { return compareRefs(a.Ref, b.Ref) })
+}
+
+// Blob returns the encoding a Commit of the current state would write. A
+// caller that keeps durability elsewhere (the engine, whose event log
+// replays every Reserve) stores it in its own checkpoint.
+func (l *Ledger) Blob() (store.Blob, error) { return l.st.encode() }

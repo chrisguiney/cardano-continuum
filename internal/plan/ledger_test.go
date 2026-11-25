@@ -441,3 +441,42 @@ func TestOpenRefusesBadBlobs(t *testing.T) {
 		}
 	}
 }
+
+// TestSettledListsOutputsAtTheSettledPoint: Settled is every owned output
+// unspent at the settled point, reserved or not, and ignores blocks above it.
+func TestSettledListsOutputsAtTheSettledPoint(t *testing.T) {
+	w := newWorld(t)
+	a := w.attempt(1, 1, farTTL, g1)
+	w.reserve(1, a)
+	wantRefs(t, "settled before", refsOf(w.l.Settled()), []Ref{g1, g2, g3})
+	w.block(10, w.txOf(a))
+	w.block(20)
+	wantRefs(t, "settled, block 10 not K deep", refsOf(w.l.Settled()), []Ref{g1, g2, g3})
+	w.block(30)
+	wantRefs(t, "settled, block 10 K deep", refsOf(w.l.Settled()), []Ref{ref(1), g2, g3})
+}
+
+// TestBlobIsWhatACommitWrites: Blob encodes the current state as Commit
+// would, and Open of it gives a ledger with the same Blob.
+func TestBlobIsWhatACommitWrites(t *testing.T) {
+	w := newWorld(t)
+	w.reserve(1, w.attempt(1, 1, farTTL, g1))
+	b, err := w.l.Blob()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.Version != w.disk.last.Version || !slices.Equal(b.Data, w.disk.last.Data) {
+		t.Fatal("Blob differs from the last commit")
+	}
+	l, err := Open(w.cfg(), b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b2, err := l.Blob()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(b.Data, b2.Data) {
+		t.Fatal("reopened ledger encodes differently")
+	}
+}

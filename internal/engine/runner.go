@@ -11,6 +11,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/store"
+	"github.com/chrisguiney/cardano-continuum/internal/submit"
 )
 
 // ChainEvent is one chain-sync message as the loop reads it.
@@ -29,6 +30,10 @@ type Follower interface {
 
 // Node is the chain the loop submits to and follows.
 type Node interface {
+	// Submit returns nil when the node accepted tx. A refusal must be an
+	// error internal/submit recognises (submit.RejectedError, the fake
+	// chain's or local-tx-submission's rejection); any other error is
+	// taken as unreached, which releases nothing.
 	Submit(ctx context.Context, tx []byte) error
 	// HasTx reports whether the mempool already holds the transaction, so a
 	// submission repeated after a crash is not mistaken for a conflict.
@@ -92,7 +97,7 @@ var ErrDiverged = errors.New("engine: replay diverged from the log")
 
 // Stats count what the loop did in this process.
 type Stats struct {
-	Inputs, Ticks, Blocks, Rollbacks, Submissions, Rejections uint64
+	Inputs, Ticks, Blocks, Rollbacks, Submissions, Rejections, Unreached uint64
 }
 
 // Runner is the I/O shell around Engine: one goroutine that logs each input
@@ -104,9 +109,11 @@ type Runner struct {
 	eng    *Engine
 	sess   eventlog.Session
 	follow Follower
-	since  int
-	stats  Stats
-	log    *slog.Logger
+	// resumed are the intents in flight when this process started.
+	resumed map[uint64]bool
+	since   int
+	stats   Stats
+	log     *slog.Logger
 }
 
 // Start opens a run: a fresh one on an empty log, otherwise a recovery from
@@ -145,6 +152,12 @@ func Start(ctx context.Context, cfg Config, d Deps) (*Runner, error) {
 		return nil, err
 	}
 	r.sess = eventlog.Session{Eng: r.eng, Log: d.Log}
+	// A payment in flight at a restart may have been sent by the process
+	// that died, so a rejection of it proves nothing.
+	r.resumed = map[uint64]bool{}
+	for _, s := range r.eng.InFlight() {
+		r.resumed[s.Intent] = true
+	}
 	r.log.Info("engine started", "covers", covers, "log_seq", d.Log.LastSeq(), "actors", r.eng.Actors())
 	if err := r.effects(ctx); err != nil {
 		return nil, err
@@ -274,7 +287,8 @@ func (r *Runner) step(ctx context.Context, feed func() error) error {
 }
 
 // effects submits every payment the engine is waiting on, oldest first, and
-// logs each answer as a SubmitResult input.
+// logs each answer as a SubmitResult input. The Submitted decision, which
+// carries the reservation, is synced before its transaction leaves.
 func (r *Runner) effects(ctx context.Context) error {
 	for {
 		inf := r.eng.InFlight()
@@ -282,16 +296,11 @@ func (r *Runner) effects(ctx context.Context) error {
 			return nil
 		}
 		s := inf[0]
-		res := SubmitResult{Intent: s.Intent, OK: true}
-		if !r.d.Node.HasTx(s.ID) {
-			if err := r.d.Node.Submit(ctx, s.Tx); err != nil {
-				if ctx.Err() != nil {
-					return ctx.Err()
-				}
-				res.OK, res.Reason = false, err.Error()
-				r.stats.Rejections++
-			}
+		res, err := r.send(ctx, s)
+		if err != nil {
+			return err
 		}
+		delete(r.resumed, s.Intent)
 		r.stats.Submissions++
 		if err := r.crash(StageSubmitted); err != nil {
 			return err
@@ -306,6 +315,40 @@ func (r *Runner) effects(ctx context.Context) error {
 		}
 	}
 }
+
+// send submits s unless the mempool already holds it, and classifies the
+// answer with internal/submit.
+func (r *Runner) send(ctx context.Context, s Submission) (SubmitResult, error) {
+	res := SubmitResult{Intent: s.Intent, Verdict: VerdictAccepted}
+	if r.d.Node.HasTx(s.ID) {
+		return res, nil
+	}
+	if err := r.d.Log.Sync(ctx); err != nil {
+		return res, fmt.Errorf("engine: sync before submit: %w", err)
+	}
+	o := submit.Send(ctx, nodeTarget{r.d.Node}, 0, s.Tx)
+	if ctx.Err() != nil {
+		return res, ctx.Err()
+	}
+	switch o.Verdict {
+	case submit.Rejected:
+		res.Verdict, res.Reason = VerdictRejected, (&submit.RejectedError{Failures: o.Failures}).Error()
+		res.Resend = r.resumed[s.Intent]
+		r.stats.Rejections++
+	case submit.Unreached:
+		res.Verdict, res.Reason = VerdictUnreached, o.Err.Error()
+		r.stats.Unreached++
+	}
+	return res, nil
+}
+
+// nodeTarget lets internal/submit classify a Node's answer. The era is the
+// Node's concern.
+type nodeTarget struct{ n Node }
+
+func (t nodeTarget) Submit(ctx context.Context, _ uint, tx []byte) error { return t.n.Submit(ctx, tx) }
+
+func (nodeTarget) Name() string { return "node" }
 
 // drain feeds every chain event the follower has.
 func (r *Runner) drain(ctx context.Context) error {
@@ -410,9 +453,13 @@ func (r *Runner) Checkpoint(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	res, err := r.eng.Reservations()
+	if err != nil {
+		return err
+	}
 	c := store.Checkpoint{
 		Seq: r.d.Log.LastSeq(), Points: r.eng.Points(), Confirmed: r.eng.Confirmed(),
-		Actors: snap, ActorRows: r.eng.ActorRows(),
+		Actors: snap, ActorRows: r.eng.ActorRows(), Reservations: res,
 	}
 	if err := r.d.Store.SaveCheckpoint(ctx, c); err != nil {
 		return fmt.Errorf("engine: checkpoint: %w", err)

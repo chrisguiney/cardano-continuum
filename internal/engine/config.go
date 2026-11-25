@@ -9,6 +9,12 @@
 // itself is in the snapshot, so a restart can unwind it when FindIntersect
 // answers below the stored tip.
 //
+// Outputs, reservations and when a payment is settled or dead belong to the
+// planner's ledger (internal/plan), which Handle feeds the same blocks and
+// rollbacks. The ledger lives inside the pure state: its changes are
+// reproduced by replaying the inputs that caused them, and its blob rides in
+// the snapshot and in the checkpoint's Reservations.
+//
 // Everything Handle decides is a function of the configuration, the seed and
 // the logged inputs: it reads no clock (time arrives as Tick inputs), starts
 // no goroutine and never lets map order reach an output.
@@ -161,7 +167,8 @@ func (c *Config) Header() (eventlog.HeaderBody, error) {
 		EpochMs    sched.Time   `cbor:"6,keyasint"`
 		TTL        uint64       `cbor:"7,keyasint"`
 		Build      build.Params `cbor:"8,keyasint"`
-	}{K: c.K, BlockEvery: c.BlockEvery, NetworkID: c.NetworkID, SlotMs: c.Slots.SlotStart(1),
+		Format     uint32       `cbor:"9,keyasint"`
+	}{Format: logFormat, K: c.K, BlockEvery: c.BlockEvery, NetworkID: c.NetworkID, SlotMs: c.Slots.SlotStart(1),
 		EpochMs: c.Slots.EpochStart(1), TTL: c.TTL, Build: c.Build}
 	for _, f := range funds {
 		a, err := f.Address.Bytes()

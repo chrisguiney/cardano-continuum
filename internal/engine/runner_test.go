@@ -137,6 +137,18 @@ func (c *checkingStore) SaveCheckpoint(ctx context.Context, cp store.Checkpoint)
 	if !bytes.Equal(res.State, cp.Actors) {
 		c.t.Fatalf("checkpoint at seq %d is not the replay of the log up to it", cp.Seq)
 	}
+	// The ledger's blob is saved with the state it belongs to.
+	e, err := Restore(c.cfg, cp.Actors)
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	want, err := e.Reservations()
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	if cp.Reservations.Version != want.Version || !bytes.Equal(cp.Reservations.Data, want.Data) {
+		c.t.Fatalf("checkpoint at seq %d: reservations are not the snapshot's ledger", cp.Seq)
+	}
 	return nil
 }
 

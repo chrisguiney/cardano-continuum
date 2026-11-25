@@ -2,7 +2,6 @@ package engine
 
 import (
 	"bytes"
-	"cmp"
 
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
@@ -28,13 +27,6 @@ type Ref struct {
 	Index uint32 `cbor:"2,keyasint"`
 }
 
-func compareRefs(a, b Ref) int {
-	if c := bytes.Compare(a.Tx[:], b.Tx[:]); c != 0 {
-		return c
-	}
-	return cmp.Compare(a.Index, b.Index)
-}
-
 // TxOut is an output as the engine reads it: who it pays and how much.
 type TxOut struct {
 	Index    uint32 `cbor:"1,keyasint"`
@@ -57,12 +49,34 @@ type BlockContent struct {
 	Txs []TxDigest `cbor:"1,keyasint"`
 }
 
+// Verdict is what a submission established, as internal/submit classifies
+// a node's answer.
+type Verdict uint8
+
+// Verdicts. The zero value is none, so a body without one is refused.
+const (
+	// VerdictAccepted: a node took the transaction into its mempool.
+	VerdictAccepted Verdict = iota + 1
+	// VerdictRejected: a node refused it.
+	VerdictRejected
+	// VerdictUnreached: the answer is unknown (a dial, timeout or broken
+	// connection); the transaction may be in a mempool.
+	VerdictUnreached
+)
+
 // SubmitResult is the body of a SubmitResult input: what the node said to a
 // submission.
 type SubmitResult struct {
-	Intent uint64 `cbor:"1,keyasint"`
-	OK     bool   `cbor:"2,keyasint"`
-	Reason string `cbor:"3,keyasint,omitempty"`
+	Intent  uint64  `cbor:"1,keyasint"`
+	Verdict Verdict `cbor:"2,keyasint"`
+	Reason  string  `cbor:"3,keyasint,omitempty"`
+	// Resend marks a rejection of a transaction that may have been sent
+	// before, by a process that died before logging the answer. The
+	// transaction's own arrival can cause that rejection, so it proves
+	// nothing. It is recorded for rejections only, the one verdict it
+	// changes, so a resumed accepted submission logs the same record as an
+	// uninterrupted one.
+	Resend bool `cbor:"4,keyasint,omitempty"`
 }
 
 // Spawned is the body of a Spawned decision.
@@ -110,7 +124,12 @@ type Confirmed struct {
 }
 
 // snapshotVersion is bumped whenever snapshot's shape changes.
-const snapshotVersion = 1
+const snapshotVersion = 2
+
+// logFormat is the version of the engine's input and decision bodies. It is
+// part of the log header's genesis fingerprint, so a log written in another
+// format is refused at the header rather than failing on its first body.
+const logFormat = 2
 
 // snapshot is the engine state in canonical form: every slice sorted, so
 // equal states encode to equal bytes.
@@ -122,10 +141,16 @@ type snapshot struct {
 	Births     []birthRec          `cbor:"5,keyasint"`
 	Conf       eventlog.ChainPoint `cbor:"6,keyasint"`
 	Window     []blockRec          `cbor:"7,keyasint"`
-	Utxos      []utxoRec           `cbor:"8,keyasint"`
-	Pending    []pendingRec        `cbor:"9,keyasint"`
-	Fees       uint64              `cbor:"10,keyasint"`
-	Foreign    uint64              `cbor:"11,keyasint"`
+	Pending    []pendingRec        `cbor:"8,keyasint"`
+	Fees       uint64              `cbor:"9,keyasint"`
+	Foreign    uint64              `cbor:"10,keyasint"`
+	Ledger     ledgerBlob          `cbor:"11,keyasint"`
+}
+
+// ledgerBlob is the planner ledger's store.Blob.
+type ledgerBlob struct {
+	Version uint32 `cbor:"1,keyasint"`
+	Data    []byte `cbor:"2,keyasint"`
 }
 
 type actorRec struct {
@@ -152,22 +177,17 @@ type blockRec struct {
 	Txs   []TxDigest          `cbor:"2,keyasint"`
 }
 
-type utxoRec struct {
-	Ref      Ref    `cbor:"1,keyasint"`
-	Owner    uint64 `cbor:"2,keyasint"`
-	Lovelace uint64 `cbor:"3,keyasint"`
-}
-
+// pendingRec is a payment the ledger holds unfinished. Its inputs and
+// reservation are the ledger's.
 type pendingRec struct {
-	ID     uint64 `cbor:"1,keyasint"`
-	Actor  uint64 `cbor:"2,keyasint"`
-	Tx     TxID   `cbor:"3,keyasint"`
-	Inputs []Ref  `cbor:"4,keyasint"`
-	TTL    uint64 `cbor:"5,keyasint"`
+	ID    uint64 `cbor:"1,keyasint"`
+	Actor uint64 `cbor:"2,keyasint"`
+	Tx    TxID   `cbor:"3,keyasint"`
+	TTL   uint64 `cbor:"4,keyasint"`
 	// Cbor is held only while the node's answer is outstanding, so a
 	// restart can resubmit it.
-	Cbor     []byte `cbor:"6,keyasint"`
-	Awaiting bool   `cbor:"7,keyasint"`
+	Cbor     []byte `cbor:"5,keyasint"`
+	Awaiting bool   `cbor:"6,keyasint"`
 }
 
 func samePoint(a, b eventlog.ChainPoint) bool {
