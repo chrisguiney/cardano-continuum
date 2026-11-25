@@ -42,18 +42,14 @@ spec:
       storage: 100Mi
 `
 
-// Arguments of deploy/genesis/job.yaml that deployGenesis rewrites.
-const (
-	startDelayArg = "-start-delay=60s"
-	poolHostArg   = "-pool-host=pool-%d"
-)
+// startDelayArg is the argument of deploy/genesis/job.yaml that deployGenesis
+// rewrites.
+const startDelayArg = "-start-delay=60s"
 
 // deployGenesis renders the default spec into the continuum-genesis volume of
 // ns with deploy/genesis/job.yaml and waits for the Job to finish. The job's
-// start delay is replaced by delay. Pool host names are made fully qualified
-// within ns: cardano-node resolves topology hosts with its own DNS client,
-// which ignores the pod's search domains, so a bare "pool-0" never resolves
-// in Kubernetes and the pools never connect to each other.
+// start delay is replaced by delay. The Job qualifies pool host names with
+// its own namespace.
 func deployGenesis(t *testing.T, ns string, delay time.Duration) {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join(repoRoot(t), "deploy", "genesis", "job.yaml"))
@@ -64,7 +60,6 @@ func deployGenesis(t *testing.T, ns string, delay time.Duration) {
 	for from, to := range map[string]string{
 		"image: continuum-genesis": "image: " + koBuild(t, "continuum-genesis"),
 		startDelayArg:              "-start-delay=" + delay.String(),
-		poolHostArg:                "-pool-host=pool-%d." + ns + ".svc.cluster.local",
 	} {
 		if strings.Count(job, from) != 1 {
 			t.Fatalf("deploy/genesis/job.yaml: want exactly one %q", from)

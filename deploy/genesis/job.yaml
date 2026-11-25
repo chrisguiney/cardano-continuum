@@ -2,6 +2,10 @@
 # from the continuum-seed Secret (key "seed", 64 hex characters). Rerunning
 # the Job against the same volume and spec is a no-op, so systemStart is kept.
 # The image is built by `make ko-images` and pushed to CONTINUUM_REGISTRY.
+# Pool host names are fully qualified with the Job's namespace: cardano-node
+# resolves topology hosts with its own DNS client, which ignores the pod's
+# search domains, so a bare "pool-0" never resolves and the pools never
+# connect. Kubernetes expands $(POD_NAMESPACE) in args from the env below.
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -20,9 +24,13 @@ spec:
           image: continuum-genesis
           args:
             - -out=/genesis
-            - -pool-host=pool-%d
+            - -pool-host=pool-%d.$(POD_NAMESPACE).svc.cluster.local
             - -start-delay=60s
           env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
             - name: CONTINUUM_SEED
               valueFrom:
                 secretKeyRef:
