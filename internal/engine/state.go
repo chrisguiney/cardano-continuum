@@ -26,7 +26,7 @@ func blake2b256(b []byte) common.Blake2b256 { return common.Blake2b256Hash(b) }
 // Snapshot implements eventlog.Engine: the whole state in canonical CBOR,
 // the ledger's blob included.
 func (e *Engine) Snapshot() ([]byte, error) {
-	s := snapshot{Version: snapshotVersion, Now: e.now, NextIntent: e.nextID, Conf: e.conf, Fees: e.fees, Foreign: e.foreign}
+	s := snapshot{Version: snapshotVersion, Now: e.now, NextIntent: e.nextID, Conf: e.conf, Fees: e.fees, Foreign: e.foreign, RefillAt: e.refillAt}
 	for _, id := range e.order {
 		a, _ := e.census.Get(id)
 		st := e.actors[id]
@@ -91,6 +91,10 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 		}
 		b.at, b.n = r.At, r.N
 		e.pushBirth(b)
+	}
+	if cfg.Faucet > 0 {
+		e.refillAt = s.RefillAt
+		e.queue.Push(e.refillAt, qev{kind: evRefill})
 	}
 	if err := e.restoreLedger(s); err != nil {
 		return nil, err

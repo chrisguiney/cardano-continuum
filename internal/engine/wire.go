@@ -19,6 +19,7 @@ const (
 	KindConfirmed    = "Confirmed"
 	KindRefused      = "Refused"
 	KindGaveUp       = "GaveUp"
+	KindRefill       = "Refill"
 )
 
 // TxID is a transaction hash.
@@ -112,6 +113,21 @@ type Submitted struct {
 	Tx     []byte `cbor:"8,keyasint"`
 }
 
+// Refill is the body of a Refill decision: the faucet pays To[i]
+// Amounts[i] in one transaction, whose inputs are reserved like a
+// payment's. A refill has no retry machine: a refused one is released and
+// the next round is its retry.
+type Refill struct {
+	Intent  uint64   `cbor:"1,keyasint"`
+	ID      TxID     `cbor:"2,keyasint"`
+	To      []uint64 `cbor:"3,keyasint"`
+	Amounts []uint64 `cbor:"4,keyasint"`
+	Fee     uint64   `cbor:"5,keyasint"`
+	TTL     uint64   `cbor:"6,keyasint"`
+	Inputs  []Ref    `cbor:"7,keyasint"`
+	Tx      []byte   `cbor:"8,keyasint"`
+}
+
 // Skipped is the body of a Skipped decision: an intent the engine chose but
 // did not act on.
 type Skipped struct {
@@ -150,7 +166,7 @@ type Confirmed struct {
 }
 
 // snapshotVersion is bumped whenever snapshot's shape changes.
-const snapshotVersion = 3
+const snapshotVersion = 4
 
 // logFormat is the version of the engine's input and decision bodies. It is
 // part of the log header's genesis fingerprint, so a log written in another
@@ -171,6 +187,8 @@ type snapshot struct {
 	Fees       uint64              `cbor:"9,keyasint"`
 	Foreign    uint64              `cbor:"10,keyasint"`
 	Ledger     ledgerBlob          `cbor:"11,keyasint"`
+	// RefillAt is the faucet's next round; zero without a faucet.
+	RefillAt sched.Time `cbor:"12,keyasint,omitempty"`
 }
 
 // ledgerBlob is the planner ledger's store.Blob.
@@ -224,6 +242,8 @@ type pendingRec struct {
 	Txs []TxID `cbor:"10,keyasint"`
 	// NotBefore is when the current attempt may next be sent: the backoff.
 	NotBefore sched.Time `cbor:"11,keyasint,omitempty"`
+	// Refill marks the faucet's refill, which M does not drive.
+	Refill bool `cbor:"12,keyasint,omitempty"`
 }
 
 func samePoint(a, b eventlog.ChainPoint) bool {

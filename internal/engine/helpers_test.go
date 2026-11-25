@@ -240,6 +240,7 @@ func derive(t testing.TB, cfg Config, c *fakechain.Chain) map[uint64]uint64 {
 	for _, f := range funds {
 		a, _ := f.Address.Bytes()
 		set[Ref{Tx: TxID(blake2b256(a))}] = out{f.Actor, f.Lovelace}
+		owner[string(a)] = f.Actor
 	}
 	ks, err := keys.New(cfg.Seed.Derive("keys"), cfg.NetworkID)
 	if err != nil {

@@ -64,6 +64,8 @@ const (
 	// evRetry only wakes the loop at the end of a backoff; InFlight reads
 	// the payment's NotBefore against the clock.
 	evRetry
+	// evRefill is the faucet's round.
+	evRefill
 )
 
 type qev struct {
@@ -109,6 +111,9 @@ type Engine struct {
 	root    rng.Seed
 	retry   submit.Policy
 	diag    submit.Diagnoser
+	// faucet is set only when cfg.Faucet is positive.
+	faucet   keys.Wallet
+	refillAt sched.Time
 
 	census population.Census
 	queue  sched.Queue
@@ -143,22 +148,27 @@ func New(cfg Config) (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
-	var genesis []plan.Utxo
-	i := 0
+	var owners []population.ActorID
 	for _, co := range cfg.Cohorts {
 		p, _ := cfg.Profiles.Get(co.Profile)
 		for range co.Count {
-			a := e.spawn(p, 0)
-			f := funds[i]
-			i++
-			addr, err := f.Address.Bytes()
-			if err != nil {
-				return nil, err
-			}
-			// Genesis outputs are (Blake2b-256 of the address, 0), as in
-			// Shelley genesis and the fake chain.
-			genesis = append(genesis, plan.Utxo{Ref: plan.Ref{Tx: blake2b256(addr)}, Owner: a.ID, Lovelace: f.Lovelace})
+			owners = append(owners, e.spawn(p, 0).ID)
 		}
+	}
+	if cfg.Faucet > 0 {
+		owners = []population.ActorID{faucetActor}
+		e.refillAt = 0
+		e.queue.Push(0, qev{kind: evRefill})
+	}
+	var genesis []plan.Utxo
+	for i, f := range funds {
+		addr, err := f.Address.Bytes()
+		if err != nil {
+			return nil, err
+		}
+		// Genesis outputs are (Blake2b-256 of the address, 0), as in
+		// Shelley genesis and the fake chain.
+		genesis = append(genesis, plan.Utxo{Ref: plan.Ref{Tx: blake2b256(addr)}, Owner: owners[i], Lovelace: f.Lovelace})
 	}
 	if e.led, err = plan.New(e.ledgerConfig(), genesis); err != nil {
 		return nil, fmt.Errorf("engine: ledger: %w", err)
@@ -197,6 +207,16 @@ func newEmpty(cfg Config) (*Engine, error) {
 		if p.Hazards.Birth > 0 {
 			e.births = append(e.births, &birth{prof: p})
 		}
+	}
+	if cfg.Faucet > 0 {
+		if e.faucet, err = faucetWallet(&cfg); err != nil {
+			return nil, err
+		}
+		addr, err := e.faucet.Address().Bytes()
+		if err != nil {
+			return nil, fmt.Errorf("engine: faucet address: %w", err)
+		}
+		e.byAddr[string(addr)] = faucetActor
 	}
 	return e, nil
 }
@@ -301,6 +321,8 @@ func (e *Engine) run(ctx context.Context, at sched.Time, ev qev) error {
 	case evAct:
 		return e.act(ctx, at, ev.actor)
 	case evRetry:
+	case evRefill:
+		return e.refill(ctx, at)
 	}
 	return nil
 }
@@ -534,6 +556,9 @@ func (e *Engine) submitResult(ctx context.Context, at sched.Time, r SubmitResult
 	if !ok || !p.Awaiting {
 		return nil
 	}
+	if p.Refill {
+		return e.refillResult(ctx, at, p, r)
+	}
 	out, err := outcomeOf(r)
 	if err != nil {
 		return err
@@ -649,7 +674,7 @@ func (e *Engine) ledgerBlock(prev eventlog.ChainPoint, b blockRec) (chain.Block,
 			if !ok {
 				continue
 			}
-			t.Creates = append(t.Creates, ownedUtxo(e.actors[owner].wallet.Address(), Ref{Tx: tx.ID, Index: o.Index}, o.Lovelace))
+			t.Creates = append(t.Creates, ownedUtxo(e.walletOf(owner).Address(), Ref{Tx: tx.ID, Index: o.Index}, o.Lovelace))
 		}
 		out.Txs = append(out.Txs, t)
 	}
@@ -682,4 +707,12 @@ func (e *Engine) rollback(ctx context.Context, p eventlog.ChainPoint) error {
 	}
 	e.window = e.window[:keep]
 	return nil
+}
+
+// walletOf is the wallet of a ledger owner: an actor or the faucet.
+func (e *Engine) walletOf(id population.ActorID) keys.Wallet {
+	if id == faucetActor {
+		return e.faucet
+	}
+	return e.actors[id].wallet
 }

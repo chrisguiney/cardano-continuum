@@ -31,6 +31,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
+	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/rng"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
@@ -72,6 +73,16 @@ type Config struct {
 	// Diagnoser reads a node's rejection for the retry machine; nil means
 	// submit.Perfect. It chooses the fix and never the refusal.
 	Diagnoser submit.Diagnoser
+
+	// Faucet, when positive, is the lovelace the run's faucet holds at
+	// genesis, and the population starts with nothing: the faucet refills
+	// it. The faucet is keys.Store.Faucet of the root Seed, the wallet
+	// internal/genesis funds, so the engine spends a devnet's genesis funds
+	// with no key import. Zero funds every genesis actor directly.
+	Faucet uint64
+	// RefillEvery is the slots between the faucet's refill rounds. It must
+	// be positive when Faucet is.
+	RefillEvery uint64
 }
 
 // Fund is one genesis output.
@@ -124,6 +135,9 @@ func (c *Config) validate() error {
 			return fmt.Errorf("%w: profile %q has kind %s; only wallets are supported", ErrConfig, n, p.Kind)
 		}
 	}
+	if c.Faucet > 0 && c.RefillEvery == 0 {
+		return fmt.Errorf("%w: a faucet needs RefillEvery", ErrConfig)
+	}
 	if total > maxActors {
 		return fmt.Errorf("%w: %d actors over %d", ErrConfig, total, maxActors)
 	}
@@ -131,10 +145,18 @@ func (c *Config) validate() error {
 }
 
 // Genesis returns the genesis outputs: actors 1..n in cohort order, each
-// funded with its profile's budget. Actors born later start with nothing.
+// funded with its profile's budget, or with a Faucet only the faucet's
+// output. Actors born later start with nothing.
 func (c *Config) Genesis() ([]Fund, error) {
 	if err := c.validate(); err != nil {
 		return nil, err
+	}
+	if c.Faucet > 0 {
+		w, err := faucetWallet(c)
+		if err != nil {
+			return nil, err
+		}
+		return []Fund{{Actor: uint64(faucetActor), Address: w.Address(), Lovelace: c.Faucet}}, nil
 	}
 	ks, err := keys.New(c.Seed.Derive("keys"), c.NetworkID)
 	if err != nil {
@@ -184,8 +206,9 @@ func (c *Config) Header() (eventlog.HeaderBody, error) {
 		Build      build.Params  `cbor:"8,keyasint"`
 		Format     uint32        `cbor:"9,keyasint"`
 		Retry      submit.Policy `cbor:"10,keyasint"`
+		Refill     uint64        `cbor:"11,keyasint,omitempty"`
 	}{Format: logFormat, K: c.K, BlockEvery: c.BlockEvery, NetworkID: c.NetworkID, SlotMs: c.Slots.SlotStart(1),
-		EpochMs: c.Slots.EpochStart(1), TTL: c.TTL, Build: c.Build, Retry: c.retry()}
+		EpochMs: c.Slots.EpochStart(1), TTL: c.TTL, Build: c.Build, Retry: c.retry(), Refill: c.RefillEvery}
 	for _, f := range funds {
 		a, err := f.Address.Bytes()
 		if err != nil {
@@ -216,6 +239,20 @@ func (c Config) Factory() eventlog.Factory {
 		}
 		return Restore(c, snap)
 	}
+}
+
+// faucetActor is the faucet's owner ID in the ledger. It is above maxActors,
+// so no census actor can take it.
+const faucetActor = population.ActorID(keys.FaucetID)
+
+// faucetWallet is internal/genesis's faucet for c's seed: keys.New on the
+// root seed itself, where actor keys come from a derived one.
+func faucetWallet(c *Config) (keys.Wallet, error) {
+	ks, err := keys.New(c.Seed, c.NetworkID)
+	if err != nil {
+		return keys.Wallet{}, fmt.Errorf("engine: faucet keystore: %w", err)
+	}
+	return ks.Faucet(), nil
 }
 
 // SeedFromInt turns a small integer into a root seed, for reproducible fake
