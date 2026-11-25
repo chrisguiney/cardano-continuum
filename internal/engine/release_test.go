@@ -1,11 +1,12 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
-	"strings"
 	"testing"
+	"time"
 
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
@@ -13,9 +14,11 @@ import (
 )
 
 // The tests in this file pin when a payment's reservation is released, the
-// rules of models/specs/planner-reservations: only a first-send rejection
-// or a settled conflict or expiry releases (PlannerReleaseOnSubmitErrorBug,
-// PlannerExpireAtTipBug).
+// rules of models/specs/planner-reservations and submit-retry: only a
+// rejection the answer proves never arrived (a first send, or a rule that
+// reads the transaction alone) or a settled conflict or expiry releases;
+// giving up releases nothing (PlannerReleaseOnSubmitErrorBug,
+// PlannerExpireAtTipBug, RetryReleaseOnGiveUpBug).
 
 // scriptedNode answers the n-th Submit (counted from 1) with answer, which
 // may deliver the transaction to the chain before it returns.
@@ -36,11 +39,13 @@ type payments struct {
 	submitted []Submitted
 	confirmed map[uint64]int
 	released  map[uint64][]string
+	refused   map[TxID]int
+	gaveUp    map[uint64]int
 }
 
 func readPayments(t *testing.T, l eventlog.Reader) payments {
 	t.Helper()
-	p := payments{confirmed: map[uint64]int{}, released: map[uint64][]string{}}
+	p := payments{confirmed: map[uint64]int{}, released: map[uint64][]string{}, refused: map[TxID]int{}, gaveUp: map[uint64]int{}}
 	for _, rec := range logRecords(t, l) {
 		switch rec.Kind {
 		case KindSubmitted:
@@ -55,6 +60,18 @@ func readPayments(t *testing.T, l eventlog.Reader) payments {
 				t.Fatal(err)
 			}
 			p.confirmed[c.Intent]++
+		case KindRefused:
+			var r Refused
+			if err := eventlog.Decode(rec.Body, &r); err != nil {
+				t.Fatal(err)
+			}
+			p.refused[r.ID]++
+		case KindGaveUp:
+			var g GaveUp
+			if err := eventlog.Decode(rec.Body, &g); err != nil {
+				t.Fatal(err)
+			}
+			p.gaveUp[g.Intent]++
 		case KindReleased:
 			var r Released
 			if err := eventlog.Decode(rec.Body, &r); err != nil {
@@ -70,7 +87,8 @@ func readPayments(t *testing.T, l eventlog.Reader) payments {
 }
 
 // paidOnce checks the intent kept its reservation and confirmed exactly
-// once, and that no payment was refused for spending a released input.
+// once, and that its first attempt, which may have reached a node, was never
+// refused.
 func (p payments) paidOnce(t *testing.T, intent uint64) {
 	t.Helper()
 	if why := p.released[intent]; len(why) > 0 {
@@ -79,12 +97,8 @@ func (p payments) paidOnce(t *testing.T, intent uint64) {
 	if n := p.confirmed[intent]; n != 1 {
 		t.Errorf("intent %d confirmed %d times, want 1", intent, n)
 	}
-	for id, why := range p.released {
-		for _, w := range why {
-			if strings.HasPrefix(w, "rejected") {
-				t.Errorf("intent %d refused (%s): an input was offered while still reserved", id, w)
-			}
-		}
+	if n := p.refused[p.submitted[0].ID]; n > 0 {
+		t.Errorf("intent %d: the first attempt, which may have reached a node, was refused", intent)
 	}
 }
 
@@ -157,9 +171,10 @@ func TestResendOfIncludedTxKeepsReservation(t *testing.T) {
 	pays.paidOnce(t, pays.submitted[0].Intent)
 }
 
-// TestFirstSendRejectionReleases: a node refusing the first submission is
-// proof the transaction never reached a mempool, so the reservation goes.
-func TestFirstSendRejectionReleases(t *testing.T) {
+// TestFirstSendRejectionRefuses: a node refusing the first submission is
+// proof the attempt never reached a mempool, so the ledger writes it off and
+// the machine builds the next attempt, which confirms.
+func TestFirstSendRejectionRefuses(t *testing.T) {
 	w := newWorld(t, testConfig(t, 5, 6))
 	sn := &scriptedNode{FakeNode: w.node}
 	sn.answer = func(ctx context.Context, n int, tx []byte) error {
@@ -173,16 +188,93 @@ func TestFirstSendRejectionReleases(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := r.Run(context.Background(), 120_000); err != nil {
+	if err := r.Run(context.Background(), 240_000); err != nil {
+		t.Fatal(err)
+	}
+	p := readPayments(t, l)
+	first := p.submitted[0]
+	if p.refused[first.ID] != 1 {
+		t.Fatalf("first attempt refused %d times, want once", p.refused[first.ID])
+	}
+	if why := p.released[first.Intent]; len(why) != 0 {
+		t.Fatalf("intent %d released %v: a refusal builds the next attempt, it does not end the payment", first.Intent, why)
+	}
+	if p.confirmed[first.Intent] != 1 {
+		t.Fatalf("intent %d confirmed %d times, want the rebuilt attempt once", first.Intent, p.confirmed[first.Intent])
+	}
+	if e := r.Engine(); e.Supply() != genesisTotal(t, w.cfg) {
+		t.Fatalf("supply %d, genesis %d", e.Supply(), genesisTotal(t, w.cfg))
+	}
+}
+
+// TestIntrinsicRejectionAfterUnreachedRefuses: a resend rejected with a rule
+// that reads the transaction alone proves the bytes never landed, even after
+// an unanswered send.
+func TestIntrinsicRejectionAfterUnreachedRefuses(t *testing.T) {
+	w := newWorld(t, testConfig(t, 5, 6))
+	sn := &scriptedNode{FakeNode: w.node}
+	sn.answer = func(ctx context.Context, n int, tx []byte) error {
+		switch n {
+		case 1:
+			return errors.New("connection reset by peer")
+		case 2:
+			return &submit.RejectedError{Failures: []submit.Failure{{Class: submit.FeeTooSmall}}}
+		}
+		return w.node.Submit(ctx, tx)
+	}
+	l := &eventlog.MemLog{}
+	r, err := Start(context.Background(), w.cfg, Deps{Clock: w.clock, Log: l, Node: sn, Pacer: w.node})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Run(context.Background(), 240_000); err != nil {
+		t.Fatal(err)
+	}
+	p := readPayments(t, l)
+	if first := p.submitted[0]; p.refused[first.ID] != 1 {
+		t.Fatalf("first attempt refused %d times, want once", p.refused[first.ID])
+	}
+}
+
+// TestGiveUpReleasesNothing: a node that never answers exhausts the actor's
+// patience. The engine stops sending, records GaveUp once, and the
+// reservation stays until the ledger writes the attempt off at settled
+// expiry (RetryReleaseOnGiveUpBug).
+func TestGiveUpReleasesNothing(t *testing.T) {
+	cfg := testConfig(t, 5, 6)
+	// Ten sends fit well inside the 30-slot TTL.
+	cfg.Retry = submit.Policy{Base: 100 * time.Millisecond, Cap: 100 * time.Millisecond}
+	w := newWorld(t, cfg)
+	sn := &scriptedNode{FakeNode: w.node}
+	var sent [][]byte
+	sn.answer = func(_ context.Context, _ int, tx []byte) error {
+		sent = append(sent, tx)
+		return errors.New("connection reset by peer")
+	}
+	l := &eventlog.MemLog{}
+	r, err := Start(context.Background(), w.cfg, Deps{Clock: w.clock, Log: l, Node: sn, Pacer: w.node})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Run(context.Background(), 900_000); err != nil {
 		t.Fatal(err)
 	}
 	p := readPayments(t, l)
 	id := p.submitted[0].Intent
-	if why := p.released[id]; len(why) != 1 || !strings.HasPrefix(why[0], "rejected") {
-		t.Fatalf("intent %d released %v, want one rejection", id, why)
+	if p.gaveUp[id] != 1 {
+		t.Fatalf("intent %d gave up %d times, want once", id, p.gaveUp[id])
 	}
-	if p.confirmed[id] != 0 {
-		t.Fatalf("a refused intent confirmed")
+	if why := p.released[id]; len(why) != 1 || why[0] != "expired" {
+		t.Fatalf("intent %d released %v, want one settled expiry and nothing at give-up", id, why)
+	}
+	n := 0
+	for _, tx := range sent {
+		if bytes.Equal(tx, p.submitted[0].Tx) {
+			n++
+		}
+	}
+	if n != 10 {
+		t.Fatalf("the first attempt was sent %d times, want exactly the actor's patience (10)", n)
 	}
 }
 

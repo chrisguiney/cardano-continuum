@@ -19,6 +19,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/rng"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
+	"github.com/chrisguiney/cardano-continuum/internal/submit"
 )
 
 // Errors returned by Handle.
@@ -60,12 +61,16 @@ const (
 	evBirth evKind = iota + 1
 	evHazard
 	evAct
+	// evRetry only wakes the loop at the end of a backoff; InFlight reads
+	// the payment's NotBefore against the clock.
+	evRetry
 )
 
 type qev struct {
-	kind  evKind
-	actor population.ActorID
-	birth int
+	kind   evKind
+	actor  population.ActorID
+	birth  int
+	intent uint64
 }
 
 type actor struct {
@@ -102,6 +107,8 @@ type Engine struct {
 	builder *build.Builder
 	sel     Selector
 	root    rng.Seed
+	retry   submit.Policy
+	diag    submit.Diagnoser
 
 	census population.Census
 	queue  sched.Queue
@@ -175,8 +182,13 @@ func newEmpty(cfg Config) (*Engine, error) {
 	if sel == nil {
 		sel = LargestFirst{}
 	}
+	var diag submit.Diagnoser = submit.Perfect{}
+	if cfg.Diagnoser != nil {
+		diag = cfg.Diagnoser
+	}
 	e := &Engine{
 		cfg: cfg, keys: ks, builder: build.New(cfg.Build), sel: sel, root: cfg.Seed.Derive(censusStream),
+		retry: cfg.retry(), diag: diag,
 		actors: map[population.ActorID]*actor{}, byAddr: map[string]population.ActorID{},
 		pending: map[uint64]*pendingRec{}, byTx: map[TxID]uint64{},
 	}
@@ -288,6 +300,7 @@ func (e *Engine) run(ctx context.Context, at sched.Time, ev qev) error {
 		return e.hazard(at, ev.actor)
 	case evAct:
 		return e.act(ctx, at, ev.actor)
+	case evRetry:
 	}
 	return nil
 }
@@ -465,7 +478,11 @@ func (e *Engine) pay(ctx context.Context, at sched.Time, a population.Actor, st 
 		return nil
 	}
 	e.nextID = id
-	p := &pendingRec{ID: id, Actor: uint64(a.ID), Tx: TxID(built.ID), TTL: ttl, Cbor: built.Tx, Awaiting: true}
+	p := &pendingRec{ID: id, Actor: uint64(a.ID), Tx: TxID(built.ID), TTL: ttl, Cbor: built.Tx, Awaiting: true,
+		To: uint64(to), Amount: amount, Txs: []TxID{TxID(built.ID)}}
+	if err := e.begin(p); err != nil {
+		return err
+	}
 	e.addPending(p)
 	e.emit(at, KindSubmitted, a.ID, Submitted{
 		Intent: p.ID, ID: p.Tx, To: uint64(to), Amount: amount, Fee: built.Fee, TTL: ttl, Inputs: inputs, Tx: built.Tx,
@@ -483,7 +500,9 @@ func attempt(a population.ActorID, tx TxID, inputs []Ref, ttl uint64) plan.Attem
 
 func (e *Engine) addPending(p *pendingRec) {
 	e.pending[p.ID] = p
-	e.byTx[p.Tx] = p.ID
+	for _, tx := range p.Txs {
+		e.byTx[tx] = p.ID
+	}
 	if p.Awaiting {
 		e.awaiting = append(e.awaiting, p.ID)
 	}
@@ -491,7 +510,9 @@ func (e *Engine) addPending(p *pendingRec) {
 
 func (e *Engine) dropPending(id uint64) {
 	if p, ok := e.pending[id]; ok {
-		delete(e.byTx, p.Tx)
+		for _, tx := range p.Txs {
+			delete(e.byTx, tx)
+		}
 		delete(e.pending, id)
 	}
 	e.stopAwaiting(id)
@@ -503,38 +524,30 @@ func (e *Engine) stopAwaiting(id uint64) {
 	}
 }
 
-// submitResult records the node's answer. Only a rejection of the first
-// send writes the payment off: a transport error, or a rejection of a
-// resend (which the transaction's own earlier arrival can cause), leaves it
-// reserved until the ledger settles it or finds it dead
-// (PlannerReleaseOnSubmitErrorBug in models/specs/planner-reservations).
+// submitResult feeds the node's answer to the payment's retry machine.
+// Whether a rejection writes the attempt off is the machine's call, from the
+// answer alone: a rejection of a resend (which the attempt's own arrival can
+// cause) proves nothing unless it names a rule that reads the transaction
+// only (RetryRebuildOnOwnSpendBug in models/specs/submit-retry).
 func (e *Engine) submitResult(ctx context.Context, at sched.Time, r SubmitResult) error {
 	p, ok := e.pending[r.Intent]
 	if !ok || !p.Awaiting {
 		return nil
 	}
-	switch r.Verdict {
-	case VerdictAccepted, VerdictUnreached:
-	case VerdictRejected:
-		if r.Resend {
-			break
-		}
-		dead, err := e.led.Refused(ctx, plan.TxID(p.Tx))
-		if err != nil {
-			return fmt.Errorf("engine: refuse intent %d: %w", p.ID, err)
-		}
-		e.release(at, dead, "rejected: "+r.Reason)
-		return nil
-	default:
-		return fmt.Errorf("%w: intent %d", ErrUnknownVerdict, r.Intent)
+	out, err := outcomeOf(r)
+	if err != nil {
+		return err
 	}
-	p.Awaiting, p.Cbor = false, nil
-	e.stopAwaiting(p.ID)
-	return nil
+	if r.Resend {
+		// The process that died before logging may have sent these bytes.
+		p.M.Sent = true
+	}
+	return e.apply(ctx, at, p, submit.Answered{Out: out}, reasonOf(r))
 }
 
-// release emits Released for the payments of dead transactions and forgets
-// them. An empty why names the cause per payment: expiry or conflict.
+// release emits Released for the payments whose last unfinished attempt is
+// dead and forgets them. An empty why names the cause per payment: expiry or
+// conflict.
 func (e *Engine) release(at sched.Time, dead []plan.TxID, why string) {
 	for _, tx := range dead {
 		id, ok := e.byTx[TxID(tx)]
@@ -542,6 +555,10 @@ func (e *Engine) release(at sched.Time, dead []plan.TxID, why string) {
 			continue
 		}
 		p := e.pending[id]
+		e.forgetTx(TxID(tx))
+		if len(p.Txs) > 0 {
+			continue
+		}
 		w := why
 		if w == "" {
 			w = "conflict"

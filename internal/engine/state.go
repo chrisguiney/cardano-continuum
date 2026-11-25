@@ -96,10 +96,18 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 		return nil, err
 	}
 	for i := range s.Pending {
-		e.addPending(&s.Pending[i])
+		p := &s.Pending[i]
+		e.addPending(p)
+		if p.Awaiting && p.NotBefore > e.now {
+			e.wake(p)
+		}
 	}
-	if n := len(e.led.Unfinished()); n != len(e.pending) {
-		return nil, fmt.Errorf("engine: snapshot has %d payments, ledger %d unfinished", len(e.pending), n)
+	attempts := 0
+	for _, p := range e.pending {
+		attempts += len(p.Txs)
+	}
+	if n := len(e.led.Unfinished()); n != attempts {
+		return nil, fmt.Errorf("engine: snapshot has %d attempts, ledger %d unfinished", attempts, n)
 	}
 	return e, nil
 }
@@ -306,12 +314,15 @@ type Submission struct {
 }
 
 // InFlight returns the payments decided but not yet answered by the node,
-// oldest first. It is the loop's effect queue: derived from state, so a
+// oldest first, leaving out those still backing off. It is the loop's effect queue: derived from state, so a
 // restart resumes exactly the submissions a crash interrupted.
 func (e *Engine) InFlight() []Submission {
 	out := make([]Submission, 0, len(e.awaiting))
 	for _, id := range e.awaiting {
 		p := e.pending[id]
+		if p.NotBefore > e.now {
+			continue
+		}
 		out = append(out, Submission{Intent: id, Actor: p.Actor, ID: p.Tx, Tx: p.Cbor})
 	}
 	return out

@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -113,9 +114,88 @@ type Outcome struct {
 	Err error
 }
 
-// Dead reports whether the attempt provably never reached a node. A
+// Dead reports whether a rejection of a transaction's first send proves it
+// never reached a node. It is sound only for a first send: after an earlier
+// send that was accepted or unanswered, "inputs spent" can be the
+// transaction's own doing. Use Refutes for anything that may be a resend. A
 // transport error is not dead.
 func (o Outcome) Dead() bool { return o.Verdict == Rejected }
+
+// Refutes reports whether this answer proves the attempt never reached a
+// mempool, given whether an earlier send of the same bytes returned Accepted
+// or Unreached (or the process restarted with the attempt unfinished). A
+// first send rejected for any reason is refuted. After an earlier send only
+// a rejection naming an Intrinsic class is: BadInputs, MempoolFailure and
+// the other state-dependent rules are what a node answers to bytes it
+// already holds or has already seen in a block. The actor's diagnosis never
+// enters. See models/specs/submit-retry, rule 2.
+func (o Outcome) Refutes(sentBefore bool) bool {
+	if o.Verdict != Rejected {
+		return false
+	}
+	if !sentBefore {
+		return true
+	}
+	for _, f := range o.Failures {
+		if Intrinsic(f.Class) {
+			return true
+		}
+	}
+	return false
+}
+
+// Intrinsic reports whether a rule's verdict reads only the transaction and
+// the protocol parameters, so a resend cannot change it and the same
+// rejection after an earlier send still proves the bytes never landed.
+// Rules that read the UTXO set, the slot or the era are not: the
+// transaction's own earlier arrival can trigger them. A witness check reads
+// the transaction and the inputs' addresses; reference scripts and phase-2
+// results read chain state, so they are left out.
+func Intrinsic(c Class) bool {
+	switch c {
+	case FeeTooSmall, MissingVKeyWitnesses, InvalidWitnesses,
+		WrongNetwork, WrongNetworkWithdrawal, WrongNetworkInTxBody,
+		OutputTooSmall, OutputTooBig, OutputBootAddrAttrs, MaxTxSize,
+		InputSetEmpty, NonDisjointRefInputs, Undecodable:
+		return true
+	}
+	return false
+}
+
+// Aggregate is the answer to one send across every target. An attempt is
+// rejected only when every target rejected it, with the union of their
+// failures; one Accepted or Unreached answer means it may be at a node.
+// Accepted wins over Unreached. No answers at all is Unreached.
+func Aggregate(outs []Outcome) Outcome {
+	agg := Outcome{Target: "all", Verdict: Rejected}
+	if len(outs) == 0 {
+		return Outcome{Target: "all", Verdict: Unreached, Err: errors.New("submit: no targets")}
+	}
+	for _, o := range outs {
+		switch o.Verdict {
+		case Accepted:
+			return Outcome{Target: "all", Verdict: Accepted}
+		case Unreached:
+			if agg.Verdict != Unreached {
+				agg = Outcome{Target: "all", Verdict: Unreached, Err: o.Err}
+			}
+		default:
+			if agg.Verdict == Rejected {
+				agg.Failures = unionFailures(agg.Failures, o.Failures)
+			}
+		}
+	}
+	return agg
+}
+
+func unionFailures(have, more []Failure) []Failure {
+	for _, f := range more {
+		if !slices.ContainsFunc(have, func(h Failure) bool { return h.Class == f.Class }) {
+			have = append(have, f)
+		}
+	}
+	return have
+}
 
 // Has reports whether c is among the failures.
 func (o Outcome) Has(c Class) bool {

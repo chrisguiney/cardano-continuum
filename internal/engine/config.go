@@ -34,6 +34,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/rng"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
+	"github.com/chrisguiney/cardano-continuum/internal/submit"
 )
 
 // Cohort is a group of actors of one profile that exists at genesis, each
@@ -64,6 +65,13 @@ type Config struct {
 	Selector Selector
 	// BinaryVersion goes into the log header.
 	BinaryVersion string
+
+	// Retry shapes the waits between attempts at a payment; the zero value
+	// means submit.DefaultPolicy. It is part of the log header.
+	Retry submit.Policy
+	// Diagnoser reads a node's rejection for the retry machine; nil means
+	// submit.Perfect. It chooses the fix and never the refusal.
+	Diagnoser submit.Diagnoser
 }
 
 // Fund is one genesis output.
@@ -80,6 +88,13 @@ var (
 
 // maxActors keeps every actor ID a valid CIP-1852 account index.
 const maxActors = 1 << 30
+
+func (c *Config) retry() submit.Policy {
+	if c.Retry == (submit.Policy{}) {
+		return submit.DefaultPolicy
+	}
+	return c.Retry
+}
 
 func (c *Config) validate() error {
 	if c.Profiles == nil {
@@ -159,17 +174,18 @@ func (c *Config) Header() (eventlog.HeaderBody, error) {
 		Lovelace uint64 `cbor:"3,keyasint"`
 	}
 	g := struct {
-		Funds      []fund       `cbor:"1,keyasint"`
-		K          uint64       `cbor:"2,keyasint"`
-		BlockEvery uint64       `cbor:"3,keyasint"`
-		NetworkID  uint8        `cbor:"4,keyasint"`
-		SlotMs     sched.Time   `cbor:"5,keyasint"`
-		EpochMs    sched.Time   `cbor:"6,keyasint"`
-		TTL        uint64       `cbor:"7,keyasint"`
-		Build      build.Params `cbor:"8,keyasint"`
-		Format     uint32       `cbor:"9,keyasint"`
+		Funds      []fund        `cbor:"1,keyasint"`
+		K          uint64        `cbor:"2,keyasint"`
+		BlockEvery uint64        `cbor:"3,keyasint"`
+		NetworkID  uint8         `cbor:"4,keyasint"`
+		SlotMs     sched.Time    `cbor:"5,keyasint"`
+		EpochMs    sched.Time    `cbor:"6,keyasint"`
+		TTL        uint64        `cbor:"7,keyasint"`
+		Build      build.Params  `cbor:"8,keyasint"`
+		Format     uint32        `cbor:"9,keyasint"`
+		Retry      submit.Policy `cbor:"10,keyasint"`
 	}{Format: logFormat, K: c.K, BlockEvery: c.BlockEvery, NetworkID: c.NetworkID, SlotMs: c.Slots.SlotStart(1),
-		EpochMs: c.Slots.EpochStart(1), TTL: c.TTL, Build: c.Build}
+		EpochMs: c.Slots.EpochStart(1), TTL: c.TTL, Build: c.Build, Retry: c.retry()}
 	for _, f := range funds {
 		a, err := f.Address.Bytes()
 		if err != nil {

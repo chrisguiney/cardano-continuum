@@ -333,6 +333,9 @@ func (r *Runner) send(ctx context.Context, s Submission) (SubmitResult, error) {
 	switch o.Verdict {
 	case submit.Rejected:
 		res.Verdict, res.Reason = VerdictRejected, (&submit.RejectedError{Failures: o.Failures}).Error()
+		for _, f := range o.Failures {
+			res.Failures = append(res.Failures, string(f.Class))
+		}
 		res.Resend = r.resumed[s.Intent]
 		r.stats.Rejections++
 	case submit.Unreached:
