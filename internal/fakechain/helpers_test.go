@@ -86,6 +86,8 @@ type txSpec struct {
 	start   uint64
 	network *uint8
 	signers []keys.Wallet
+	// extra signs with keys other than wallet payment keys.
+	extra []keys.Signer
 	// bodyHook may change the encoded body map before signing.
 	bodyHook func(map[uint]any)
 }
@@ -128,6 +130,10 @@ func (s txSpec) encode(t *testing.T, fee uint64) []byte {
 	var wits []any
 	for _, w := range s.signers {
 		sig := w.SignTxBody(body)
+		wits = append(wits, []any{sig.VKey, sig.Signature})
+	}
+	for _, k := range s.extra {
+		sig := k.SignTxBody(body)
 		wits = append(wits, []any{sig.VKey, sig.Signature})
 	}
 	ws := map[uint]any{}

@@ -53,10 +53,13 @@ type overlay struct {
 	base  utxoSet
 	spent map[Ref]struct{}
 	added map[Ref]common.Utxo
+	// certs is a private copy of the confirmed certState with the same
+	// transactions applied.
+	certs *certState
 }
 
-func newOverlay(base utxoSet) *overlay {
-	return &overlay{base: base, spent: map[Ref]struct{}{}, added: map[Ref]common.Utxo{}}
+func newOverlay(base utxoSet, certs *certState) *overlay {
+	return &overlay{base: base, spent: map[Ref]struct{}{}, added: map[Ref]common.Utxo{}, certs: certs.clone()}
 }
 
 func (o *overlay) get(r Ref) (common.Utxo, bool) {
@@ -70,13 +73,14 @@ func (o *overlay) get(r Ref) (common.Utxo, bool) {
 	return u, ok
 }
 
-func (o *overlay) apply(tx *conway.ConwayTransaction) {
+func (o *overlay) apply(tx *conway.ConwayTransaction, slot uint64, r effects) {
 	for _, in := range tx.Inputs() {
 		o.spent[refOf(in)] = struct{}{}
 	}
 	for _, u := range tx.Produced() {
 		o.added[refOf(u.Id)] = u
 	}
+	o.certs.apply(tx, slot, r)
 }
 
 // undo records what applying one block changed, so a rollback can reverse it.
@@ -84,6 +88,8 @@ type undo struct {
 	spent   []common.Utxo
 	created []Ref
 	fees    uint64
+	// certs is the certState before the block.
+	certs *certState
 }
 
 // applyTx moves tx into s and records the change in u. tx has already passed

@@ -12,12 +12,14 @@ type mempool struct {
 	view  *overlay
 }
 
-func newMempool(base utxoSet) mempool { return mempool{view: newOverlay(base)} }
+func newMempool(base utxoSet, certs *certState) mempool {
+	return mempool{view: newOverlay(base, certs)}
+}
 
-func (m *mempool) push(tx *conway.ConwayTransaction) {
+func (m *mempool) push(tx *conway.ConwayTransaction, slot uint64, r effects) {
 	m.txs = append(m.txs, tx)
 	m.bytes += uint64(len(tx.Cbor()))
-	m.view.apply(tx)
+	m.view.apply(tx, slot, r)
 }
 
 func (m *mempool) find(id TxID) *conway.ConwayTransaction {

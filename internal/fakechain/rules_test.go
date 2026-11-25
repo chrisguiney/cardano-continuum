@@ -250,9 +250,8 @@ func TestUnsupportedEra(t *testing.T) {
 func TestUnsupportedFeature(t *testing.T) {
 	f := newFixture(t, nil)
 	s := f.pay(f.alice, f.bob.Address(), 10_000_000)
-	cred := f.alice.StakeKeyHash()
-	// A Conway stake registration certificate: [0, [0, keyhash]].
-	s.bodyHook = func(m map[uint]any) { m[4] = []any{[]any{0, []any{0, cred[:]}}} }
+	// A treasury donation (body key 22).
+	s.bodyHook = func(m map[uint]any) { m[22] = 1 }
 	if err := f.submit(s.build(t)); !errors.Is(err, ErrUnsupported) {
 		t.Fatalf("err = %v, want ErrUnsupported", err)
 	}

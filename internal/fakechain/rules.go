@@ -7,6 +7,7 @@ import (
 
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 	"github.com/blinklabs-io/gouroboros/ledger/conway"
+	"github.com/blinklabs-io/gouroboros/ledger/shelley"
 )
 
 // Class names a ledger predicate failure the way cardano-ledger names it in a
@@ -36,6 +37,42 @@ const (
 	MissingScriptWitnesses  Class = "MissingScriptWitnessesUTXOW"
 	ScriptWitnessNotValid   Class = "ScriptWitnessNotValidatingUTXOW"
 	NonDisjointRefInputs    Class = "BabbageNonDisjointRefInputs"
+	ExtraRedeemers          Class = "ExtraRedeemers"
+	MissingRedeemers        Class = "MissingRedeemers"
+	ScriptIntegrityHash     Class = "PPViewHashesDontMatch"
+	NotAllowedSupplemental  Class = "NotAllowedSupplementalDatums"
+	ValidationTagMismatch   Class = "ValidationTagMismatch"
+	InsufficientCollateral  Class = "InsufficientCollateral"
+	NoCollateralInputs      Class = "NoCollateralInputs"
+	CollateralNonADA        Class = "CollateralContainsNonADA"
+	ExUnitsTooBig           Class = "ExUnitsTooBigUTxO"
+)
+
+// Certificate and governance failure classes. Conway reports these from the
+// CERTS, DELEG, POOL, GOVCERT and GOV rules
+// (eras/conway/impl/src/Cardano/Ledger/Conway/Rules/{Deleg,GovCert,Gov}.hs and
+// eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Pool.hs).
+const (
+	StakeKeyRegistered           Class = "StakeKeyRegisteredDELEG"
+	StakeKeyNotRegistered        Class = "StakeKeyNotRegisteredDELEG"
+	DelegateeNotRegistered       Class = "DelegateeStakePoolNotRegisteredDELEG"
+	DelegateeDRepNotRegistered   Class = "DelegateeDRepNotRegisteredDELEG"
+	IncorrectDeposit             Class = "IncorrectDepositDELEG"
+	RefundIncorrect              Class = "RefundIncorrectDELEG"
+	DRepAlreadyRegistered        Class = "ConwayDRepAlreadyRegistered"
+	DRepNotRegistered            Class = "ConwayDRepNotRegistered"
+	CommitteeIsUnknown           Class = "ConwayCommitteeIsUnknown"
+	PoolNotRegistered            Class = "StakePoolNotRegisteredOnKeyPOOL"
+	PoolRetirementWrongEpoch     Class = "StakePoolRetirementWrongEpochPOOL"
+	PoolCostTooLow               Class = "StakePoolCostTooLowPOOL"
+	WithdrawalsNotInRewards      Class = "WithdrawalsNotInRewardsCERTS"
+	WdrlNotDelegatedToDRep       Class = "ConwayWdrlNotDelegatedToDRep"
+	VotersDoNotExist             Class = "VotersDoNotExist"
+	GovActionsDoNotExist         Class = "GovActionsDoNotExist"
+	VotingOnExpired              Class = "VotingOnExpiredGovAction"
+	ProposalDepositIncorrect     Class = "ProposalDepositIncorrect"
+	ProposalReturnAccountMissing Class = "ProposalReturnAccountDoesNotExist"
+	DisallowedVoters             Class = "DisallowedVoters"
 )
 
 // unmappedPrefix marks a failure from a gouroboros rule that has no
@@ -44,24 +81,104 @@ const (
 const unmappedPrefix = "gouroboros:"
 
 var classByRule = map[common.UtxoValidationRuleId]Class{
-	common.UtxoValidationRuleBadInputs:                 BadInputs,
-	common.UtxoValidationRuleFeeTooSmall:               FeeTooSmall,
-	common.UtxoValidationRuleValueNotConserved:         ValueNotConserved,
-	common.UtxoValidationRuleOutsideValidityInterval:   OutsideValidityInterval,
-	common.UtxoValidationRuleOutputTooSmall:            OutputTooSmall,
-	common.UtxoValidationRuleOutputTooBig:              OutputTooBig,
-	common.UtxoValidationRuleOutputBootAddrAttrsTooBig: OutputBootAddrAttrs,
-	common.UtxoValidationRuleMaxTxSize:                 MaxTxSize,
-	common.UtxoValidationRuleInputSetEmpty:             InputSetEmpty,
-	common.UtxoValidationRuleWrongNetwork:              WrongNetwork,
-	common.UtxoValidationRuleWrongNetworkWithdrawal:    WrongNetworkWithdrawal,
-	common.UtxoValidationRuleTransactionNetworkId:      WrongNetworkInTxBody,
-	common.UtxoValidationRuleOutsideForecast:           OutsideForecast,
-	common.UtxoValidationRuleRequiredVKeyWitnesses:     MissingVKeyWitnesses,
-	common.UtxoValidationRuleCollateralVKeyWitnesses:   MissingVKeyWitnesses,
-	common.UtxoValidationRuleScriptWitnesses:           MissingScriptWitnesses,
-	common.UtxoValidationRuleNativeScripts:             ScriptWitnessNotValid,
-	common.UtxoValidationRuleDisjointRefInputs:         NonDisjointRefInputs,
+	common.UtxoValidationRuleBadInputs:                   BadInputs,
+	common.UtxoValidationRuleFeeTooSmall:                 FeeTooSmall,
+	common.UtxoValidationRuleValueNotConserved:           ValueNotConserved,
+	common.UtxoValidationRuleOutsideValidityInterval:     OutsideValidityInterval,
+	common.UtxoValidationRuleOutputTooSmall:              OutputTooSmall,
+	common.UtxoValidationRuleOutputTooBig:                OutputTooBig,
+	common.UtxoValidationRuleOutputBootAddrAttrsTooBig:   OutputBootAddrAttrs,
+	common.UtxoValidationRuleMaxTxSize:                   MaxTxSize,
+	common.UtxoValidationRuleInputSetEmpty:               InputSetEmpty,
+	common.UtxoValidationRuleWrongNetwork:                WrongNetwork,
+	common.UtxoValidationRuleWrongNetworkWithdrawal:      WrongNetworkWithdrawal,
+	common.UtxoValidationRuleTransactionNetworkId:        WrongNetworkInTxBody,
+	common.UtxoValidationRuleOutsideForecast:             OutsideForecast,
+	common.UtxoValidationRuleRequiredVKeyWitnesses:       MissingVKeyWitnesses,
+	common.UtxoValidationRuleCollateralVKeyWitnesses:     MissingVKeyWitnesses,
+	common.UtxoValidationRuleScriptWitnesses:             MissingScriptWitnesses,
+	common.UtxoValidationRuleNativeScripts:               ScriptWitnessNotValid,
+	common.UtxoValidationRuleDisjointRefInputs:           NonDisjointRefInputs,
+	common.UtxoValidationRuleExtraneousRedeemers:         ExtraRedeemers,
+	common.UtxoValidationRuleRequiredRedeemers:           MissingRedeemers,
+	common.UtxoValidationRuleScriptDataHash:              ScriptIntegrityHash,
+	common.UtxoValidationRuleSupplementalDatums:          NotAllowedSupplemental,
+	common.UtxoValidationRulePlutusScripts:               ValidationTagMismatch,
+	common.UtxoValidationRuleInsufficientCollateral:      InsufficientCollateral,
+	common.UtxoValidationRuleNoCollateralInputs:          NoCollateralInputs,
+	common.UtxoValidationRuleCollateralContainsNonAda:    CollateralNonADA,
+	common.UtxoValidationRuleExUnitsTooBig:               ExUnitsTooBig,
+	common.UtxoValidationRuleProposalDeposit:             ProposalDepositIncorrect,
+	common.UtxoValidationRuleProposalReturnAccounts:      ProposalReturnAccountMissing,
+	common.UtxoValidationRuleUnknownVoters:               VotersDoNotExist,
+	common.UtxoValidationRuleUnknownGovActionIds:         GovActionsDoNotExist,
+	common.UtxoValidationRuleVotingOnExpiredGovAction:    VotingOnExpired,
+	common.UtxoValidationRuleStakePoolVotingRestrictions: DisallowedVoters,
+	common.UtxoValidationRuleCCVotingRestrictions:        DisallowedVoters,
+	common.UtxoValidationRuleBootstrapVotingRestrictions: DisallowedVoters,
+	common.UtxoValidationRuleCommitteeCertificates:       CommitteeIsUnknown,
+}
+
+// classByError refines a rule that reports several ledger failures (the
+// delegation, deposit, pool and withdrawal rules) by the gouroboros error it
+// returned. The first match wins.
+var classByError = []errClass{
+	errAs[conway.StakeCredentialAlreadyRegisteredError](StakeKeyRegistered),
+	errAs[conway.StakeCredentialNotRegisteredError](StakeKeyNotRegistered),
+	errAs[shelley.DelegateUnregisteredStakeCredentialError](StakeKeyNotRegistered),
+	errAs[shelley.DelegateToUnregisteredPoolError](DelegateeNotRegistered),
+	errAs[conway.DelegateVoteToUnregisteredDRepError](DelegateeDRepNotRegistered),
+	errAs[conway.CertificateDepositIncorrectError](IncorrectDeposit),
+	errAs[conway.CertificateRefundIncorrectError](RefundIncorrect),
+	errAs[conway.DRepAlreadyRegisteredError](DRepAlreadyRegistered),
+	errAs[conway.DRepNotRegisteredError](DRepNotRegistered),
+	errAs[conway.NotCommitteeMemberError](CommitteeIsUnknown),
+	errAs[shelley.StakePoolNotRegisteredOnKeyError](PoolNotRegistered),
+	errAs[shelley.StakePoolRetirementWrongEpochError](PoolRetirementWrongEpoch),
+	errAs[shelley.StakePoolCostTooLowError](PoolCostTooLow),
+	errAs[shelley.WithdrawalFromUnregisteredRewardAccountError](WithdrawalsNotInRewards),
+	errAs[shelley.IncorrectWithdrawalAmountError](WithdrawalsNotInRewards),
+	errAs[conway.WithdrawalNotDelegatedToDRepError](WdrlNotDelegatedToDRep),
+}
+
+type errClass struct {
+	class Class
+	match func(error) bool
+}
+
+// errAs matches an error of type T or *T anywhere in the chain: gouroboros
+// returns some failures by value and some by pointer.
+func errAs[T error](c Class) errClass {
+	var match func(error) bool
+	match = func(err error) bool {
+		switch any(err).(type) {
+		case nil:
+			return false
+		case T, *T:
+			return true
+		}
+		switch u := err.(type) {
+		case interface{ Unwrap() error }:
+			return match(u.Unwrap())
+		case interface{ Unwrap() []error }:
+			for _, e := range u.Unwrap() {
+				if match(e) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	return errClass{c, match}
+}
+
+func refine(c Class, err error) Class {
+	for _, e := range classByError {
+		if e.match(err) {
+			return e.class
+		}
+	}
+	return c
 }
 
 // Unmapped reports whether c came from a gouroboros rule with no
@@ -107,9 +224,9 @@ var (
 	// submission in the protocol's deserialiser, not in the ledger.
 	ErrDecode = errors.New("fakechain: transaction does not decode")
 	// ErrUnsupported: a well-formed transaction uses a feature the fake does
-	// not model (certificates, withdrawals, minting, governance, Plutus,
-	// collateral, another era). Refusing it keeps the fake from accepting
-	// what it cannot check.
+	// not model (treasury donations, the current-treasury-value field,
+	// phase-2-invalid transactions, PlutusV1 and V2 scripts, another era).
+	// Refusing it keeps the fake from accepting what it cannot check.
 	ErrUnsupported = errors.New("fakechain: unsupported")
 	// ErrMempoolFull: the transaction does not fit in the mempool. A real
 	// node blocks the submitter instead; the fake returns at once so a test
@@ -171,13 +288,18 @@ func validate(tx common.Transaction, slot uint64, ls common.LedgerState, pp comm
 	var out []Failure
 	for _, r := range rules {
 		if err := r.fn(tx, slot, ls, pp); err != nil {
-			out = append(out, Failure{Class: r.class, Rule: r.id, Err: err})
+			out = append(out, Failure{Class: refine(r.class, err), Rule: r.id, Err: err})
 		}
 	}
 	return out
 }
 
 // unsupported names the first feature of tx the fake does not model, or "".
+//
+// PlutusV1 and V2 are refused because the fake's V1 and V2 cost models are
+// ouroboros-mock placeholders, so their budgets would be meaningless.
+// Phase-2-invalid transactions are refused because collateral collection is
+// not modelled.
 func unsupported(tx *conway.ConwayTransaction) string {
 	w := tx.Witnesses()
 	checks := []struct {
@@ -185,16 +307,9 @@ func unsupported(tx *conway.ConwayTransaction) string {
 		used bool
 	}{
 		{"phase-2-invalid flag", !tx.IsValid()},
-		{"certificates", len(tx.Certificates()) > 0},
-		{"withdrawals", len(tx.Withdrawals()) > 0},
-		{"minting", tx.AssetMint() != nil},
-		{"voting procedures", len(tx.VotingProcedures()) > 0},
-		{"proposal procedures", len(tx.ProposalProcedures()) > 0},
 		{"treasury donation", tx.Donation() != nil && tx.Donation().Sign() > 0},
 		{"current treasury value", tx.CurrentTreasuryValuePresent()},
-		{"collateral", len(tx.Collateral()) > 0},
-		{"redeemers", w != nil && w.Redeemers() != nil && redeemerCount(w) > 0},
-		{"plutus scripts", w != nil && len(w.PlutusV1Scripts())+len(w.PlutusV2Scripts())+len(w.PlutusV3Scripts()) > 0},
+		{"plutus v1/v2 scripts", w != nil && len(w.PlutusV1Scripts())+len(w.PlutusV2Scripts()) > 0},
 	}
 	for _, c := range checks {
 		if c.used {
@@ -202,12 +317,4 @@ func unsupported(tx *conway.ConwayTransaction) string {
 		}
 	}
 	return ""
-}
-
-func redeemerCount(w common.TransactionWitnessSet) int {
-	n := 0
-	for range w.Redeemers().Iter() {
-		n++
-	}
-	return n
 }

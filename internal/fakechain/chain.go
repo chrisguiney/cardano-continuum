@@ -22,14 +22,20 @@
 // transactions that no longer apply are evicted. Transactions in rolled-back
 // blocks vanish unless the rollback asks for them to be re-added.
 //
-// Certificates, withdrawals, minting, governance, collateral and Plutus are
-// not modelled and are refused with ErrUnsupported, so the supply invariant
-// is exactly: unspent lovelace + collected fees = genesis lovelace.
+// Certificates, withdrawals, minting, votes, proposals, collateral and
+// PlutusV3 scripts are checked by the same gouroboros rules against the
+// fake's delegation and governance state (see certState), which accepted
+// transactions update. Epoch-boundary effects are not modelled: no rewards,
+// pool retirement, ratification or enactment. Treasury donations, the
+// current-treasury-value field and phase-2-invalid transactions are refused
+// with ErrUnsupported, so the supply invariant is exactly: unspent lovelace +
+// collected fees + deposits held = genesis lovelace.
 package fakechain
 
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"sync"
 	"time"
@@ -40,6 +46,7 @@ import (
 	mockledger "github.com/blinklabs-io/ouroboros-mock/ledger"
 
 	"github.com/chrisguiney/cardano-continuum/internal/check"
+	"github.com/chrisguiney/cardano-continuum/internal/genesis"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 )
 
@@ -74,15 +81,23 @@ type Config struct {
 	Faults []Scheduled
 	// Issuer is the block issuer key written into every header.
 	Issuer common.IssuerVkey
+	// Committee is the genesis constitutional committee.
+	Committee []CommitteeSeat
 }
 
 // DefaultParams returns ouroboros-mock's mainnet-like Conway parameters at
-// protocol version 10 (past the Conway bootstrap phase).
+// protocol version 10 (past the Conway bootstrap phase), with the devnet
+// genesis PlutusV3 cost model in place of the mock's placeholder one.
 func DefaultParams() conway.ConwayProtocolParameters {
 	pp := mockledger.NewMockConwayProtocolParams()
 	pp.ProtocolVersion.Major, pp.ProtocolVersion.Minor = 10, 0
+	pp.CostModels = maps.Clone(pp.CostModels)
+	pp.CostModels[plutusV3] = genesis.PlutusV3CostModel()
 	return pp
 }
+
+// plutusV3 is the PlutusV3 key in ConwayProtocolParameters.CostModels.
+const plutusV3 = 2
 
 // Block is one block on the fake chain.
 type Block struct {
@@ -129,7 +144,7 @@ type Eviction struct {
 type Chain struct {
 	cfg      Config
 	pp       *conway.ConwayProtocolParameters
-	ls       *mockledger.MockLedgerState
+	ls       *ledgerView
 	capBytes uint64
 
 	mu sync.Mutex
@@ -138,6 +153,7 @@ type Chain struct {
 	nextBlock uint64
 	faults    []Scheduled
 	utxo      utxoSet
+	certs     *certState
 	fees      uint64
 	supply    uint64
 	blocks    []record
@@ -162,6 +178,7 @@ func New(cfg Config) (*Chain, error) {
 		capBytes:  cfg.MempoolBytes,
 		nextBlock: cfg.BlockEvery,
 		utxo:      utxoSet{},
+		certs:     newCertState(cfg.Committee),
 	}
 	if c.capBytes == 0 {
 		c.capBytes = 2 * uint64(cfg.Params.MaxBlockBodySize)
@@ -169,7 +186,7 @@ func New(cfg Config) (*Chain, error) {
 	if err := c.loadGenesis(cfg.Genesis); err != nil {
 		return nil, err
 	}
-	c.pool = newMempool(c.utxo)
+	c.pool = newMempool(c.utxo, c.certs)
 	faults, err := sortFaults(cfg.Faults)
 	if err != nil {
 		return nil, err
@@ -199,13 +216,12 @@ func (c *Chain) loadGenesis(gs []GenesisOutput) error {
 }
 
 // ledgerState adapts the fake to the common.LedgerState the gouroboros rules
-// read. Only UTxO lookup, network id and slot arithmetic carry state;
-// stake, pool and governance state are empty, which is exact for the
-// transactions the fake accepts.
-func (c *Chain) ledgerState() *mockledger.MockLedgerState {
+// read: UTxO lookup, network id and slot arithmetic here, delegation and
+// governance state in ledgerView.
+func (c *Chain) ledgerState() *ledgerView {
 	g := c.cfg.Slots
 	start := time.Unix(0, 0).UTC()
-	return mockledger.NewLedgerStateBuilder().
+	ls := mockledger.NewLedgerStateBuilder().
 		WithNetworkId(uint(c.cfg.NetworkID)).
 		WithUtxoById(func(in common.TransactionInput) (common.Utxo, error) {
 			if u, ok := c.view(refOf(in)); ok {
@@ -220,13 +236,25 @@ func (c *Chain) ledgerState() *mockledger.MockLedgerState {
 		WithTimeToSlot(func(t time.Time) (uint64, error) {
 			return g.SlotAt(sched.Time(t.Sub(start).Milliseconds())), nil
 		}).
+		WithConstitutionValue(&common.Constitution{}).
+		WithGovPurposeRootsValue(&common.GovPurposeRoots{}).
 		Build()
+	return &ledgerView{MockLedgerState: ls}
+}
+
+// effects returns what certState.apply needs. A proposal can be voted on up to
+// the end of the epoch govActionLifetime epochs after the one it was made in.
+func (c *Chain) effects() effects {
+	g, life := c.cfg.Slots, uint64(c.pp.GovActionValidityPeriod)
+	return effects{pp: c.pp, expiry: func(slot uint64) uint64 {
+		return g.SlotAt(g.EpochStart(g.EpochOfSlot(slot)+life+1)) - 1
+	}}
 }
 
 // check runs the rule list against view at slot. The caller holds c.mu.
-func (c *Chain) check(tx *conway.ConwayTransaction, slot uint64, view func(Ref) (common.Utxo, bool)) []Failure {
-	c.view = view
-	defer func() { c.view = nil }()
+func (c *Chain) check(tx *conway.ConwayTransaction, slot uint64, view *overlay) []Failure {
+	c.view, c.ls.certs = view.get, view.certs
+	defer func() { c.view, c.ls.certs = nil, nil }()
 	return validate(tx, slot, c.ls, c.pp)
 }
 
@@ -255,10 +283,11 @@ func (c *Chain) Submit(ctx context.Context, era uint, txCbor []byte) error {
 	if c.pool.bytes+size > c.capBytes {
 		return fmt.Errorf("%w: %d + %d bytes over %d", ErrMempoolFull, c.pool.bytes, size, c.capBytes)
 	}
-	if fs := c.check(tx, c.mempoolSlot(), c.pool.view.get); len(fs) > 0 {
+	slot := c.mempoolSlot()
+	if fs := c.check(tx, slot, c.pool.view); len(fs) > 0 {
 		return &RejectError{Tx: tx.Hash(), Failures: fs}
 	}
-	c.pool.push(tx)
+	c.pool.push(tx, slot, c.effects())
 	return nil
 }
 
@@ -317,9 +346,11 @@ func (c *Chain) step() error {
 // produce assembles, applies and records the block at c.slot.
 func (c *Chain) produce() error {
 	txs := c.assemble()
-	var u undo
+	u := undo{certs: c.certs.clone()}
+	r := c.effects()
 	for _, tx := range txs {
 		c.utxo.applyTx(tx, &u)
+		c.certs.apply(tx, c.slot, r)
 	}
 	c.fees += u.fees
 	b, err := c.encode(txs)
@@ -343,11 +374,12 @@ func (c *Chain) assemble() []*conway.ConwayTransaction {
 		cands = c.pool.pick(c.include)
 		c.include = nil
 	}
-	view := newOverlay(c.utxo)
+	view := newOverlay(c.utxo, c.certs)
+	r := c.effects()
 	var chosen []*conway.ConwayTransaction
 	var used uint64
 	for _, tx := range cands {
-		if fs := c.check(tx, c.slot, view.get); len(fs) > 0 {
+		if fs := c.check(tx, c.slot, view); len(fs) > 0 {
 			c.evict(tx, ReasonInvalid, fs)
 			continue
 		}
@@ -356,7 +388,7 @@ func (c *Chain) assemble() []*conway.ConwayTransaction {
 			break
 		}
 		used += size
-		view.apply(tx)
+		view.apply(tx, c.slot, r)
 		chosen = append(chosen, tx)
 	}
 	c.pool.remove(chosen)
@@ -372,14 +404,15 @@ func (c *Chain) evict(tx *conway.ConwayTransaction, why Reason, fs []Failure) {
 // evicting what no longer applies.
 func (c *Chain) revalidate() {
 	old := c.pool.txs
-	c.pool = newMempool(c.utxo)
+	c.pool = newMempool(c.utxo, c.certs)
 	slot := c.mempoolSlot()
+	r := c.effects()
 	for _, tx := range old {
-		if fs := c.check(tx, slot, c.pool.view.get); len(fs) > 0 {
+		if fs := c.check(tx, slot, c.pool.view); len(fs) > 0 {
 			c.evicted = append(c.evicted, Eviction{Tx: tx.Hash(), Slot: c.slot, Reason: ReasonInvalid, Failures: fs})
 			continue
 		}
-		c.pool.push(tx)
+		c.pool.push(tx, slot, r)
 	}
 }
 
@@ -397,7 +430,7 @@ func (c *Chain) conserved() bool {
 	for _, u := range c.utxo {
 		sum += u.Output.Amount().Uint64()
 	}
-	return sum+c.fees == c.supply
+	return sum+c.fees+c.certs.deposits() == c.supply
 }
 
 // rollback removes the last depth blocks.
@@ -410,6 +443,7 @@ func (c *Chain) rollback(depth uint64, readd bool) error {
 	for i := len(c.blocks) - 1; i >= cut; i-- {
 		c.utxo.revert(c.blocks[i].undo)
 		c.fees -= c.blocks[i].undo.fees
+		c.certs = c.blocks[i].undo.certs
 	}
 	for _, r := range c.blocks[cut:] {
 		back = append(back, r.txs...)

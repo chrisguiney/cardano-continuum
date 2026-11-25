@@ -2,8 +2,10 @@ package fakechain
 
 import (
 	"bytes"
+	"fmt"
 
 	"github.com/blinklabs-io/gouroboros/ledger/common"
+	"github.com/blinklabs-io/gouroboros/ledger/conway"
 	ocommon "github.com/blinklabs-io/gouroboros/protocol/common"
 )
 
@@ -116,4 +118,38 @@ func (c *Chain) Evictions() []Eviction {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return append([]Eviction(nil), c.evicted...)
+}
+
+// Deposits returns the lovelace held in confirmed stake, pool, DRep and
+// proposal deposits.
+func (c *Chain) Deposits() uint64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.certs.deposits()
+}
+
+// StakeRegistered reports whether cred is a confirmed registered stake
+// credential.
+func (c *Chain) StakeRegistered(cred common.Credential) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	_, ok := c.certs.accounts[keyOf(cred)]
+	return ok
+}
+
+// Evaluate runs txCbor's Plutus scripts against the mempool's view of the
+// ledger, each against the per-transaction budget rather than its declared
+// units, and returns the units each redeemer used. It is the measurement
+// the PlutusScripts rule compares declared units with.
+func (c *Chain) Evaluate(txCbor []byte) (map[common.RedeemerKey]common.ExUnits, error) {
+	tx, err := conway.NewConwayTransactionFromCbor(txCbor)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrDecode, err)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.view, c.ls.certs = c.pool.view.get, c.pool.view.certs
+	defer func() { c.view, c.ls.certs = nil, nil }()
+	budget := c.pp.MaxTxExUnits
+	return conway.EvaluatePlutusScripts(tx, c.ls, c.pp, &budget)
 }
