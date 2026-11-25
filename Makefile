@@ -146,7 +146,7 @@ models: ## Check every TLA+ model directory under models/specs
 # kind e2e. kind-up starts a throwaway plain-HTTP registry next to the cluster;
 # e2e points CONTINUUM_REGISTRY at it. kind-down removes both.
 E2E_PORT ?= 5001
-E2E_TIMEOUT ?= 50m
+E2E_TIMEOUT ?= 100m
 
 .PHONY: kind-up kind-down e2e
 kind-up: ## Start the kind cluster and its plain-HTTP registry (names continuum-e2e*)
@@ -155,7 +155,7 @@ kind-up: ## Start the kind cluster and its plain-HTTP registry (names continuum-
 kind-down: ## Remove the kind cluster and the registry
 	KIND="$(KIND)" hack/kind-down.sh
 
-e2e: kind-up ## Run the kind e2e suite (about 25 minutes; go test -short skips the slowest)
+e2e: kind-up ## Run the kind e2e suite (about an hour; go test -short skips the slowest)
 	CONTINUUM_REGISTRY=localhost:$(E2E_PORT)/continuum CONTINUUM_REGISTRY_INSECURE=true \
 	CONTINUUM_KO="$(KO)" CONTINUUM_DINGO_SRC="$(DINGO_SRC)" CONTINUUM_GOUROBOROS_SRC="$(GOUROBOROS_SRC)" \
 	CONTINUUM_OVERLAY_MODE="$(MODE)" go test -tags e2e -count=1 -timeout $(E2E_TIMEOUT) -v ./test/e2e/...

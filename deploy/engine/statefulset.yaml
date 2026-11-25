@@ -1,0 +1,83 @@
+# Runs the engine against a live devnet: `continuum run --node`, persisting
+# its event log and SQLite store on the PVC, so a restarted pod resumes from
+# the store instead of starting over. One replica only: two engines on one
+# store would both pay.
+#
+# It reads:
+#   - the continuum-seed Secret (key "seed"), the run seed the genesis Job
+#     used, so the engine holds the genesis faucet's keys;
+#   - the devnet-genesis ConfigMap, the network's genesisRef, whose Shelley
+#     genesis the node must match;
+#   - the continuum-engine ConfigMap, key "node": host:port of a cardano-node
+#     pool's node-to-client bridge (the operator's ntc sidecar, port 3002),
+#     such as pool-<id>.<namespace>.svc.cluster.local:3002. dingo pools have
+#     no bridge yet.
+# The image is ./cmd/continuum built by `make ko-images`.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: continuum-engine
+spec:
+  replicas: 1
+  serviceName: continuum-engine
+  selector:
+    matchLabels: {app: continuum-engine}
+  template:
+    metadata:
+      labels: {app: continuum-engine}
+    spec:
+      # SIGTERM flushes the log and checkpoints; that takes well under this.
+      terminationGracePeriodSeconds: 30
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        fsGroup: 65532
+      containers:
+        - name: engine
+          image: continuum
+          args:
+            - run
+            - --node=$(CONTINUUM_NODE)
+            - --state=/state
+            - --genesis=/genesis/shelley-genesis.json
+            - --wallets=20
+            - --epochs=0
+          env:
+            - name: CONTINUUM_NODE
+              valueFrom:
+                configMapKeyRef:
+                  name: continuum-engine
+                  key: node
+            - name: CONTINUUM_SEED
+              valueFrom:
+                secretKeyRef:
+                  name: continuum-seed
+                  key: seed
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - {name: state, mountPath: /state}
+            - {name: genesis, mountPath: /genesis, readOnly: true}
+            # SQLite's temporary files; the root filesystem is read-only.
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: genesis
+          configMap:
+            name: devnet-genesis
+  volumeClaimTemplates:
+    - metadata:
+        name: state
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: 1Gi

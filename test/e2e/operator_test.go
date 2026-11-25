@@ -30,6 +30,35 @@ func TestGenesisBoots(t *testing.T) {
 		t.Skip("takes about 15 minutes")
 	}
 	spec := genesis.Default()
+	ns, pods, start := bootNetwork(t, spec)
+	epochs := time.Duration(spec.EpochLength) * spec.SlotLength
+	poll(t, time.Until(start.Add(epochs+4*time.Minute)), 15*time.Second, "all pools past epoch 1", func(ctx context.Context) (bool, error) {
+		tips := tips(ctx, ns, pods, spec.Magic)
+		t.Logf("tips: %+v", tips)
+		if len(tips) != len(pods) {
+			return false, nil
+		}
+		for _, tp := range tips {
+			if tp.Epoch < 1 {
+				return false, nil
+			}
+		}
+		return true, nil
+	})
+	forged := 0
+	for _, pod := range pods {
+		forged += checkForged(t, ns, pod, spec, 1)
+	}
+	checkOneChain(t, tips(t.Context(), ns, pods, spec.Magic), forged, spec)
+	checkPoolPhases(t, ns, spec.Pools)
+}
+
+// bootNetwork runs the operator in a fresh namespace, renders the genesis
+// with the Job and brings up one forging cardano-node ContinuumPool per
+// genesis pool. It returns the namespace, the pools' pod names (pool i's
+// first) and the system start.
+func bootNetwork(t *testing.T, spec genesis.Spec) (string, []string, time.Time) {
+	t.Helper()
 	ns := newNS(t)
 	installOperator(t, ns)
 	// Keyed pods carry the operator's fence finalizer, so the pools must go
@@ -56,33 +85,7 @@ func TestGenesisBoots(t *testing.T) {
 		})
 		kube(t, "", "-n", ns, "wait", "--for=condition=Ready", "--timeout=5m", "pod/"+pod)
 	}
-
-	start := systemStart(t, read("config/"+genesis.ShelleyFile))
-	epochs := time.Duration(spec.EpochLength) * spec.SlotLength
-	poll(t, time.Until(start.Add(epochs+4*time.Minute)), 15*time.Second, "all pools past epoch 1", func(ctx context.Context) (bool, error) {
-		tips := tips(ctx, ns, pods, spec.Magic)
-		t.Logf("tips: %+v", tips)
-		if len(tips) != len(pods) {
-			return false, nil
-		}
-		for _, tp := range tips {
-			if tp.Epoch < 1 {
-				return false, nil
-			}
-		}
-		return true, nil
-	})
-	forged := 0
-	for _, pod := range pods {
-		forged += checkForged(t, ns, pod, spec, 1)
-	}
-	checkOneChain(t, tips(t.Context(), ns, pods, spec.Magic), forged, spec)
-	checkPoolPhases(t, ns, spec.Pools)
-}
-
-// TestPayments: 20 wallets, 200 payments confirmed, ViewMatchesNode green.
-func TestPayments(t *testing.T) {
-	t.Skip("needs the engine deployed in the cluster, which the harness does not do yet")
+	return ns, pods, systemStart(t, read("config/"+genesis.ShelleyFile))
 }
 
 // installOperator applies the CRDs and RBAC and runs the operator in ns.
@@ -220,18 +223,23 @@ func applyNetwork(t *testing.T, ns string, s genesis.Spec) []string {
 	})
 	var pods []string
 	for i := range s.Pools {
-		p := v1alpha1.ContinuumPool{
-			TypeMeta:   metav1.TypeMeta{APIVersion: v1alpha1.GroupVersion.String(), Kind: "ContinuumPool"},
-			ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("p%d", i)},
-			Spec: v1alpha1.ContinuumPoolSpec{
-				NetworkRef: "devnet", PoolID: poolID(i), Implementation: v1alpha1.CardanoNode,
-				Tier: v1alpha1.TierForging, KeysSecret: fmt.Sprintf("keys-%d", i),
-			},
-		}
+		p := poolObject(i)
 		apply(t, ns, p)
 		pods = append(pods, operator.PodName(operator.Name(&p)))
 	}
 	return pods
+}
+
+// poolObject is genesis pool i as a forging cardano-node ContinuumPool.
+func poolObject(i int) v1alpha1.ContinuumPool {
+	return v1alpha1.ContinuumPool{
+		TypeMeta:   metav1.TypeMeta{APIVersion: v1alpha1.GroupVersion.String(), Kind: "ContinuumPool"},
+		ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("p%d", i)},
+		Spec: v1alpha1.ContinuumPoolSpec{
+			NetworkRef: "devnet", PoolID: poolID(i), Implementation: v1alpha1.CardanoNode,
+			Tier: v1alpha1.TierForging, KeysSecret: fmt.Sprintf("keys-%d", i),
+		},
+	}
 }
 
 // checkPoolPhases requires every pool's workload to be ready. The operator

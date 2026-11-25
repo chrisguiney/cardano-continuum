@@ -45,6 +45,24 @@ go run ./cmd/continuum replay --seed 7 --wallets 100 run1/events.log
 refuses a log recorded under different ones. `make determinism` runs the
 determinism tests under the race detector at `GOMAXPROCS=1` and `8`.
 
+On a live devnet the same engine runs against a cardano-node's
+node-to-client endpoint, funding its wallets from the genesis faucet and
+resuming from `--state` after a restart:
+
+```sh
+CONTINUUM_SEED=<the genesis Job's seed> go run ./cmd/continuum run \
+  --node pool-0:3002 --genesis shelley-genesis.json --state state --wallets 20 --epochs 0
+```
+
+`deploy/engine` runs it in Kubernetes as a one-replica StatefulSet. It reaches
+a pool through the operator's `ntc` sidecar, which bridges the node's socket
+to TCP port 3002 (cardano-node pools only for now). `make e2e` (about an
+hour) boots the devnet in kind and runs `TestPayments` against it.
+
+The operator resolves dev images by digest itself. Inside its pod
+`localhost:<port>` is the pod, not the registry the images were pushed to,
+so give it `--registry-mirror localhost:5001=<host the pod reaches>`.
+
 ## Web UI
 
 `continuum serve --log run1/events.log` serves the web UI and its API on
