@@ -1,0 +1,125 @@
+package chain
+
+import (
+	"bytes"
+	"cmp"
+
+	"github.com/blinklabs-io/gouroboros/ledger"
+	"github.com/blinklabs-io/gouroboros/ledger/common"
+	ocommon "github.com/blinklabs-io/gouroboros/protocol/common"
+
+	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
+)
+
+// TxID is a transaction hash.
+type TxID = common.Blake2b256
+
+// Point is a slot and block hash. The zero Point is the origin.
+type Point struct {
+	Slot uint64
+	Hash common.Blake2b256
+}
+
+// IsOrigin reports whether p is the origin.
+func (p Point) IsOrigin() bool { return p == Point{} }
+
+// Wire returns p as a chain-sync point.
+func (p Point) Wire() ocommon.Point {
+	if p.IsOrigin() {
+		return ocommon.NewPointOrigin()
+	}
+	return ocommon.NewPoint(p.Slot, bytes.Clone(p.Hash[:]))
+}
+
+// Log returns p as an event-log point; the origin has no hash.
+func (p Point) Log() eventlog.ChainPoint {
+	if p.IsOrigin() {
+		return eventlog.ChainPoint{}
+	}
+	return eventlog.ChainPoint{Slot: p.Slot, Hash: bytes.Clone(p.Hash[:])}
+}
+
+// PointFromWire converts a chain-sync point. A hash that is not 32 bytes
+// gives the origin only when it is empty; otherwise ok is false.
+func PointFromWire(w ocommon.Point) (p Point, ok bool) {
+	return pointFrom(w.Slot, w.Hash)
+}
+
+// PointFromLog converts an event-log point.
+func PointFromLog(c eventlog.ChainPoint) (p Point, ok bool) {
+	return pointFrom(c.Slot, c.Hash)
+}
+
+func pointFrom(slot uint64, hash []byte) (Point, bool) {
+	if len(hash) == 0 {
+		return Point{}, slot == 0
+	}
+	if len(hash) != len(common.Blake2b256{}) {
+		return Point{}, false
+	}
+	return Point{Slot: slot, Hash: common.Blake2b256(hash)}, true
+}
+
+// Ref names a transaction output.
+type Ref struct {
+	Tx    TxID
+	Index uint32
+}
+
+// RefOf converts a ledger input.
+func RefOf(in common.TransactionInput) Ref {
+	return Ref{Tx: in.Id(), Index: in.Index()}
+}
+
+func (r Ref) compare(o Ref) int {
+	if c := bytes.Compare(r.Tx[:], o.Tx[:]); c != 0 {
+		return c
+	}
+	return cmp.Compare(r.Index, o.Index)
+}
+
+// Block is what the view needs of a block: its place in the chain and the
+// ledger effect of each transaction.
+type Block struct {
+	Point  Point
+	Prev   common.Blake2b256
+	Number uint64
+	Txs    []Tx
+}
+
+// Tx is the ledger effect of one transaction. A transaction that failed
+// phase-2 validation (isValid = false) spends its collateral and creates
+// only its collateral return, and its certificates take no effect, so
+// Spends, Creates and Certs already reflect the flag.
+type Tx struct {
+	Hash    TxID
+	Spends  []Ref
+	Creates []common.Utxo
+	Certs   []common.Certificate
+}
+
+// TxFrom converts a ledger transaction through gouroboros' Consumed and
+// Produced, which apply the isValid rule (ledger/conway/conway.go).
+func TxFrom(tx common.Transaction) Tx {
+	out := Tx{Hash: tx.Hash(), Creates: tx.Produced()}
+	for _, in := range tx.Consumed() {
+		out.Spends = append(out.Spends, RefOf(in))
+	}
+	if tx.IsValid() {
+		out.Certs = tx.Certificates()
+	}
+	return out
+}
+
+// BlockFrom converts a decoded ledger block.
+func BlockFrom(b ledger.Block) Block {
+	out := Block{
+		Point:  Point{Slot: b.SlotNumber(), Hash: b.Hash()},
+		Prev:   b.PrevHash(),
+		Number: b.BlockNumber(),
+	}
+	for _, tx := range b.Transactions() {
+		out.Txs = append(out.Txs, TxFrom(tx))
+	}
+	return out
+}
