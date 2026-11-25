@@ -11,7 +11,7 @@ METRICS_NS   := continuum
 
 GOLANGCI_LINT_VERSION := v2.15.0
 
-.PHONY: help build test test-race vet fmt-check lint check
+.PHONY: help build test test-race vet fmt-check lint check models models-install
 
 help: ## Show this list
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-16s %s\n", $$1, $$2}'
@@ -42,3 +42,10 @@ STUBS := test-envtest e2e manifests generate web images ident vectors harvest \
 	fuzz-smoke determinism kind-up kind-down image-dingo ko-images bisect tools
 .PHONY: $(STUBS)
 $(STUBS): ; @echo "$@: not yet implemented"
+
+# Models live in models/. The TLA+ tools install into models/.tools (gitignored).
+models-install: ## Install the pinned Java and TLA+ tools into models/.tools
+	models/scripts/install-tla.sh
+
+models: ## Check every TLA+ model directory under models/specs
+	@set -e; cd models; for d in specs/*/; do scripts/run-model.sh "$${d%/}"; done
