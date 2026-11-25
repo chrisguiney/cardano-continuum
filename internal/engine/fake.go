@@ -1,0 +1,125 @@
+package engine
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/blinklabs-io/gouroboros/ledger/conway"
+	ocommon "github.com/blinklabs-io/gouroboros/protocol/common"
+
+	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
+	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
+	"github.com/chrisguiney/cardano-continuum/internal/sched"
+)
+
+// NewFakeChain returns a fake chain holding cfg's genesis funds, with the
+// given faults scheduled.
+func NewFakeChain(cfg *Config, faults ...fakechain.Scheduled) (*fakechain.Chain, error) {
+	funds, err := cfg.Genesis()
+	if err != nil {
+		return nil, err
+	}
+	gs := make([]fakechain.GenesisOutput, len(funds))
+	for i, f := range funds {
+		gs[i] = fakechain.GenesisOutput{Address: f.Address, Lovelace: f.Lovelace}
+	}
+	return fakechain.New(fakechain.Config{
+		Slots: cfg.Slots, NetworkID: cfg.NetworkID, K: cfg.K, BlockEvery: cfg.BlockEvery, Genesis: gs, Faults: faults,
+	})
+}
+
+// FakeNode adapts a fake chain to Node and Pacer for `continuum run --fake`
+// and tests.
+type FakeNode struct {
+	Chain *fakechain.Chain
+	Slots sched.Slots
+	// BlockEvery is the chain's block interval; the pacer wakes at each
+	// block slot.
+	BlockEvery uint64
+}
+
+// Submit implements Node.
+func (f *FakeNode) Submit(ctx context.Context, tx []byte) error {
+	return f.Chain.Submit(ctx, fakechain.EraConway, tx)
+}
+
+// HasTx implements Node.
+func (f *FakeNode) HasTx(id TxID) bool { return f.Chain.HasTx(fakechain.TxID(id)) }
+
+// Intersect implements Node.
+func (f *FakeNode) Intersect(points []eventlog.ChainPoint) (Follower, eventlog.ChainPoint, error) {
+	ps := make([]ocommon.Point, len(points))
+	for i, p := range points {
+		if p.Slot == 0 && len(p.Hash) == 0 {
+			ps[i] = ocommon.NewPointOrigin()
+		} else {
+			ps[i] = ocommon.NewPoint(p.Slot, p.Hash)
+		}
+	}
+	fl, at, err := f.Chain.FollowFrom(ps, 0)
+	if err != nil {
+		return nil, eventlog.ChainPoint{}, err
+	}
+	return fakeFollower{fl}, chainPoint(at), nil
+}
+
+// Advance implements Pacer: the fake chain's clock follows the run's.
+func (f *FakeNode) Advance(t sched.Time) error { return f.Chain.AdvanceToTime(t) }
+
+// NextChange implements Pacer: the start of the next block slot after now.
+func (f *FakeNode) NextChange(now sched.Time) sched.Time {
+	slot := f.Slots.SlotAt(now)
+	return f.Slots.SlotStart((slot/f.BlockEvery + 1) * f.BlockEvery)
+}
+
+func chainPoint(p ocommon.Point) eventlog.ChainPoint {
+	if len(p.Hash) == 0 {
+		return eventlog.ChainPoint{Slot: p.Slot}
+	}
+	return eventlog.ChainPoint{Slot: p.Slot, Hash: append([]byte(nil), p.Hash...)}
+}
+
+type fakeFollower struct{ f *fakechain.Follower }
+
+func (ff fakeFollower) Next() (ChainEvent, bool, error) {
+	ev, ok := ff.f.Next()
+	if !ok {
+		return ChainEvent{}, false, nil
+	}
+	if ev.Kind == fakechain.RollBackward {
+		return ChainEvent{Rollback: true, Point: chainPoint(ev.Point)}, true, nil
+	}
+	content, err := Digest(ev.Block.Cbor)
+	if err != nil {
+		return ChainEvent{}, false, err
+	}
+	return ChainEvent{Point: chainPoint(ev.Block.Point()), Content: content}, true, nil
+}
+
+// Digest reads a Conway block into BlockContent and encodes it. It is the
+// I/O-side half of a BlockApplied input: the engine sees only the digest.
+func Digest(blockCbor []byte) ([]byte, error) {
+	blk, err := conway.NewConwayBlockFromCbor(blockCbor)
+	if err != nil {
+		return nil, fmt.Errorf("engine: decode block: %w", err)
+	}
+	var c BlockContent
+	for _, tx := range blk.Transactions() {
+		d := TxDigest{ID: TxID(tx.Hash())}
+		if f := tx.Fee(); f != nil {
+			d.Fee = f.Uint64()
+		}
+		for _, in := range tx.Consumed() {
+			d.Inputs = append(d.Inputs, Ref{Tx: TxID(in.Id()), Index: in.Index()})
+		}
+		for _, u := range tx.Produced() {
+			addr, err := u.Output.Address().Bytes()
+			if err != nil {
+				return nil, fmt.Errorf("engine: output address: %w", err)
+			}
+			d.Outputs = append(d.Outputs, TxOut{Index: u.Id.Index(), Address: addr, Lovelace: u.Output.Amount().Uint64()})
+		}
+		c.Txs = append(c.Txs, d)
+	}
+	return eventlog.Encode(c)
+}

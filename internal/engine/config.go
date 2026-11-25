@@ -1,0 +1,205 @@
+// Package engine assembles the simulation: the population, its agendas, the
+// engine's own view of the chain and payment building, behind one pure step
+// (Engine.Handle) that the live loop (Runner) and replay both drive.
+//
+// Durable actor state comes only from blocks K deep (design A of the
+// engine-recovery model): a block enters a volatile window of the last K
+// blocks and changes balances only when its Kth successor arrives, so a
+// rollback the node can make never has to undo durable state. The window
+// itself is in the snapshot, so a restart can unwind it when FindIntersect
+// answers below the stored tip.
+//
+// Everything Handle decides is a function of the configuration, the seed and
+// the logged inputs: it reads no clock (time arrives as Tick inputs), starts
+// no goroutine and never lets map order reach an output.
+package engine
+
+import (
+	"crypto/sha256"
+	"encoding/binary"
+	"errors"
+	"fmt"
+
+	"github.com/blinklabs-io/gouroboros/ledger/common"
+
+	"github.com/chrisguiney/cardano-continuum/internal/build"
+	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
+	"github.com/chrisguiney/cardano-continuum/internal/keys"
+	"github.com/chrisguiney/cardano-continuum/internal/profile"
+	"github.com/chrisguiney/cardano-continuum/internal/rng"
+	"github.com/chrisguiney/cardano-continuum/internal/sched"
+)
+
+// Cohort is a group of actors of one profile that exists at genesis, each
+// funded with the profile's budget.
+type Cohort struct {
+	Profile string
+	Count   int
+}
+
+// Config is everything an engine is built from besides its inputs. Two
+// engines with equal configs fed equal inputs make equal decisions.
+type Config struct {
+	Seed     rng.Seed
+	Profiles *profile.Registry
+	Cohorts  []Cohort
+	Slots    sched.Slots
+	// K is the security parameter: a block is durable once K blocks follow it.
+	K uint64
+	// BlockEvery is the fake chain's block interval in slots. It is part of
+	// the genesis fingerprint, so a log is replayed only against the chain
+	// shape it was recorded on.
+	BlockEvery uint64
+	NetworkID  uint8
+	Build      build.Params
+	// TTL is how many slots after its decision a payment stays valid.
+	TTL uint64
+	// Selector chooses payment inputs; nil means LargestFirst.
+	Selector Selector
+	// BinaryVersion goes into the log header.
+	BinaryVersion string
+}
+
+// Fund is one genesis output.
+type Fund struct {
+	Actor    uint64
+	Address  common.Address
+	Lovelace uint64
+}
+
+// Errors returned for configurations the engine cannot run.
+var (
+	ErrConfig = errors.New("engine: invalid config")
+)
+
+// maxActors keeps every actor ID a valid CIP-1852 account index.
+const maxActors = 1 << 30
+
+func (c *Config) validate() error {
+	if c.Profiles == nil {
+		return fmt.Errorf("%w: no profiles", ErrConfig)
+	}
+	if c.K == 0 {
+		return fmt.Errorf("%w: K must be positive", ErrConfig)
+	}
+	if c.TTL == 0 {
+		return fmt.Errorf("%w: TTL must be positive", ErrConfig)
+	}
+	total := 0
+	for _, co := range c.Cohorts {
+		if _, ok := c.Profiles.Get(co.Profile); !ok {
+			return fmt.Errorf("%w: cohort names unknown profile %q", ErrConfig, co.Profile)
+		}
+		if co.Count < 0 {
+			return fmt.Errorf("%w: cohort %q count %d", ErrConfig, co.Profile, co.Count)
+		}
+		total += co.Count
+	}
+	for _, n := range c.Profiles.Names() {
+		p, _ := c.Profiles.Get(n)
+		if p.Kind != profile.Wallet {
+			// Pools, DReps and contracts need certificates and scripts
+			// the M1 builder and fake chain do not support.
+			return fmt.Errorf("%w: profile %q has kind %s; only wallets are supported", ErrConfig, n, p.Kind)
+		}
+	}
+	if total > maxActors {
+		return fmt.Errorf("%w: %d actors over %d", ErrConfig, total, maxActors)
+	}
+	return nil
+}
+
+// Genesis returns the genesis outputs: actors 1..n in cohort order, each
+// funded with its profile's budget. Actors born later start with nothing.
+func (c *Config) Genesis() ([]Fund, error) {
+	if err := c.validate(); err != nil {
+		return nil, err
+	}
+	ks, err := keys.New(c.Seed.Derive("keys"), c.NetworkID)
+	if err != nil {
+		return nil, fmt.Errorf("engine: keystore: %w", err)
+	}
+	var out []Fund
+	id := uint64(0)
+	for _, co := range c.Cohorts {
+		p, _ := c.Profiles.Get(co.Profile)
+		for range co.Count {
+			id++
+			out = append(out, Fund{Actor: id, Address: ks.Wallet(keys.ActorID(id)).Address(), Lovelace: uint64(p.Budget)})
+		}
+	}
+	return out, nil
+}
+
+// Header returns the log header for this config: fingerprints of the seed,
+// the profile set and the genesis, never the seed itself.
+func (c *Config) Header() (eventlog.HeaderBody, error) {
+	funds, err := c.Genesis()
+	if err != nil {
+		return eventlog.HeaderBody{}, err
+	}
+	var ps []profile.Profile
+	for _, n := range c.Profiles.Names() {
+		p, _ := c.Profiles.Get(n)
+		ps = append(ps, p)
+	}
+	praw, err := profile.Marshal(ps)
+	if err != nil {
+		return eventlog.HeaderBody{}, fmt.Errorf("engine: marshal profiles: %w", err)
+	}
+	type fund struct {
+		Actor    uint64 `cbor:"1,keyasint"`
+		Address  []byte `cbor:"2,keyasint"`
+		Lovelace uint64 `cbor:"3,keyasint"`
+	}
+	g := struct {
+		Funds      []fund       `cbor:"1,keyasint"`
+		K          uint64       `cbor:"2,keyasint"`
+		BlockEvery uint64       `cbor:"3,keyasint"`
+		NetworkID  uint8        `cbor:"4,keyasint"`
+		SlotMs     sched.Time   `cbor:"5,keyasint"`
+		EpochMs    sched.Time   `cbor:"6,keyasint"`
+		TTL        uint64       `cbor:"7,keyasint"`
+		Build      build.Params `cbor:"8,keyasint"`
+	}{K: c.K, BlockEvery: c.BlockEvery, NetworkID: c.NetworkID, SlotMs: c.Slots.SlotStart(1),
+		EpochMs: c.Slots.EpochStart(1), TTL: c.TTL, Build: c.Build}
+	for _, f := range funds {
+		a, err := f.Address.Bytes()
+		if err != nil {
+			return eventlog.HeaderBody{}, fmt.Errorf("engine: genesis address: %w", err)
+		}
+		g.Funds = append(g.Funds, fund{f.Actor, a, f.Lovelace})
+	}
+	graw, err := eventlog.Encode(g)
+	if err != nil {
+		return eventlog.HeaderBody{}, err
+	}
+	fp := c.Seed.Derive("fingerprint")
+	ph, gh, sh := sha256.Sum256(praw), sha256.Sum256(graw), sha256.Sum256(fp[:])
+	return eventlog.HeaderBody{
+		SeedFingerprint: sh[:],
+		ProfileHash:     ph[:],
+		GenesisHash:     gh[:],
+		BinaryVersion:   c.BinaryVersion,
+	}, nil
+}
+
+// Factory returns the eventlog factory for this config: a fresh engine from
+// nil, or one restored from a snapshot.
+func (c Config) Factory() eventlog.Factory {
+	return func(snap []byte) (eventlog.Engine, error) {
+		if snap == nil {
+			return New(c)
+		}
+		return Restore(c, snap)
+	}
+}
+
+// SeedFromInt turns a small integer into a root seed, for reproducible fake
+// runs (`--seed N`). Real runs use a random seed from the store.
+func SeedFromInt(n uint64) rng.Seed {
+	var s rng.Seed
+	copy(s[:], "continuum/seed/int")
+	binary.BigEndian.PutUint64(s[24:], n)
+	return s.Derive("int-seed")
+}

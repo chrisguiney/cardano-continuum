@@ -33,6 +33,18 @@ make check
 detector and the `debug` build tag, and runs `golangci-lint`. Install
 `golangci-lint` v2.15.0 first; CI uses that version.
 
+Simulate a wallet population paying each other on the in-process fake chain,
+then replay the log and check that every decision is reproduced:
+
+```sh
+go run ./cmd/continuum run --fake --seed 7 --wallets 100 --epochs 2 --out run1
+go run ./cmd/continuum replay --seed 7 --wallets 100 run1/events.log
+```
+
+`replay` takes the same seed and population flags as `run`; the log header
+refuses a log recorded under different ones. `make determinism` runs the
+determinism tests under the race detector at `GOMAXPROCS=1` and `8`.
+
 TLA+ models live under `models/`. Install the pinned tools once, then check
 every model:
 

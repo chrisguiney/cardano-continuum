@@ -15,7 +15,7 @@ GOLANGCI_LINT_VERSION := v2.15.0
 CONTROLLER_GEN_VERSION := v0.23.0
 CONTROLLER_GEN := go run sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_GEN_VERSION)
 
-.PHONY: help build test test-race vet fmt-check lint check check-manifests manifests generate models models-install
+.PHONY: help build test test-race vet fmt-check lint check check-manifests manifests generate determinism models models-install
 
 help: ## Show this list
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-16s %s\n", $$1, $$2}'
@@ -79,10 +79,20 @@ image-dingo: require-registry ## Build DINGO_SRC with its Dockerfile and push to
 	  --label $(LABEL_PREFIX)/build-mode=repro \
 	  -t $(CONTINUUM_REGISTRY)/dingo:$$tag $(DINGO_SRC) && docker push $(CONTINUUM_REGISTRY)/dingo:$$tag
 
+# The determinism tests: once without the race detector (the crash sweep then
+# kills the engine at every step), then under it at one and eight procs, where
+# a goroutine leaking into the loop shows up as a difference. They include two
+# same-seed CLI fake runs whose logs must be byte-identical, and a replay.
+DETERMINISM_TESTS := Determinism|TestHandleIsPure|TestCrashInjectionConverges|TestRestartAfterOfflineRollback|TestIntersectionHandledAsRollback
+determinism: ## Run the determinism tests: same seed, same log; replay; crash recovery
+	go test -tags debug -count=1 -run '$(DETERMINISM_TESTS)' ./internal/engine ./cmd/continuum
+	GOMAXPROCS=1 go test -race -tags debug -count=1 -run '$(DETERMINISM_TESTS)' ./internal/engine ./cmd/continuum
+	GOMAXPROCS=8 go test -race -tags debug -count=1 -run '$(DETERMINISM_TESTS)' ./internal/engine ./cmd/continuum
+
 # Stubs for targets that need components landing in later steps. Each prints
 # "not yet implemented" and exits 0 so that the target names stay reserved.
 STUBS := test-envtest e2e web images ident vectors harvest \
-	fuzz-smoke determinism kind-up kind-down bisect tools
+	fuzz-smoke kind-up kind-down bisect tools
 .PHONY: $(STUBS)
 $(STUBS): ; @echo "$@: not yet implemented"
 

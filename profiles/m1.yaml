@@ -1,0 +1,43 @@
+version: 1
+profiles:
+  # A casual holder: acts about once every ten seconds, mostly decides to
+  # wait, and now and then pays another wallet.
+  - name: holder
+    kind: wallet
+    agenda: hodl
+    traits:
+      competence: beta(8, 2)
+      patience: lognormal(1.0, 0.5)
+      learning_rate: const(0.05)
+      care: beta(2, 2)
+    budget: 1000000000
+    rates:
+      base:
+        send: 0.1
+      diurnal: 0.3
+    weights:
+      send: 1
+    hazards:
+      birth: 0.005
+      dormancy: lognormal(5, 1)
+      abandon: 0.00002
+  # A busier spender with a smaller budget.
+  - name: spender
+    kind: wallet
+    agenda: hodl
+    traits:
+      competence: beta(5, 3)
+      patience: const(10)
+      learning_rate: const(0.05)
+      care: beta(2, 2)
+    budget: 200000000
+    rates:
+      base:
+        send: 0.5
+      diurnal: 0.3
+    weights:
+      send: 1
+    hazards:
+      birth: 0.002
+      dormancy: lognormal(4, 0.8)
+      abandon: 0.0001
