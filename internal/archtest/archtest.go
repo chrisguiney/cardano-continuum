@@ -51,20 +51,44 @@ func violations(g graph) []string {
 	return out
 }
 
+// skipDir reports whether the walk should not descend into the directory.
+func skipDir(root, path, name string) bool {
+	return path != root && (strings.HasPrefix(name, ".") || name == "testdata" || name == "vendor")
+}
+
+// moduleImports returns the module-internal imports of one Go file, relative
+// to the module root.
+func moduleImports(fset *token.FileSet, path string) ([]string, error) {
+	f, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
+	if err != nil {
+		return nil, err
+	}
+	prefix := ident.Module + "/"
+	var out []string
+	for _, spec := range f.Imports {
+		p, err := strconv.Unquote(spec.Path.Value)
+		if err != nil {
+			return nil, err
+		}
+		if rest, ok := strings.CutPrefix(p, prefix); ok {
+			out = append(out, rest)
+		}
+	}
+	return out, nil
+}
+
 // load parses the import clauses of every .go file under root. Hidden
 // directories, testdata and vendor trees are skipped, so other checkouts
 // under .worktrees are not read.
 func load(root string) (graph, error) {
 	g := graph{}
-	prefix := ident.Module + "/"
 	fset := token.NewFileSet()
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if d.IsDir() {
-			name := d.Name()
-			if path != root && (strings.HasPrefix(name, ".") || name == "testdata" || name == "vendor") {
+			if skipDir(root, path, d.Name()) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -72,7 +96,7 @@ func load(root string) (graph, error) {
 		if !strings.HasSuffix(path, ".go") {
 			return nil
 		}
-		f, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
+		imps, err := moduleImports(fset, path)
 		if err != nil {
 			return err
 		}
@@ -81,15 +105,7 @@ func load(root string) (graph, error) {
 			return err
 		}
 		pkg := filepath.ToSlash(rel)
-		for _, spec := range f.Imports {
-			p, err := strconv.Unquote(spec.Path.Value)
-			if err != nil {
-				return err
-			}
-			if rest, ok := strings.CutPrefix(p, prefix); ok {
-				g[pkg] = append(g[pkg], rest)
-			}
-		}
+		g[pkg] = append(g[pkg], imps...)
 		return nil
 	})
 	return g, err
