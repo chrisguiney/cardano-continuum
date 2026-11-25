@@ -659,3 +659,30 @@ func FuzzDecodeFrame(f *testing.F) {
 		}
 	})
 }
+
+// TestBlockContentIsOpaque: a block input carries the engine's digest of the
+// block, which ApplyPoint ignores, and a body without one still decodes.
+func TestBlockContentIsOpaque(t *testing.T) {
+	p := ChainPoint{Slot: 7, Hash: []byte{1, 2}}
+	with, err := Encode(BlockApplied{Point: p, Content: []byte{0xa0}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	without, err := Encode(BlockApplied{Point: p})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, body := range [][]byte{with, without} {
+		pts, err := ApplyPoint(nil, Record{Class: Input, Kind: KindBlockApplied, Body: body})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(pts) != 1 || pts[0].Slot != 7 || !bytes.Equal(pts[0].Hash, p.Hash) {
+			t.Fatalf("points = %v", pts)
+		}
+	}
+	var got BlockApplied
+	if err := Decode(with, &got); err != nil || !bytes.Equal(got.Content, []byte{0xa0}) {
+		t.Fatalf("content round trip: %v %x", err, got.Content)
+	}
+}

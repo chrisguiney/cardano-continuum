@@ -68,6 +68,10 @@ type ChainPoint struct {
 // BlockApplied is the body of a BlockApplied input.
 type BlockApplied struct {
 	Point ChainPoint `cbor:"1,keyasint"`
+	// Content is what the engine reads from the block, in the engine's own
+	// encoding; the log never interprets it. It has to be in the input
+	// because replay has no chain to fetch the block from.
+	Content []byte `cbor:"2,keyasint,omitempty"`
 }
 
 // RolledBack is the body of a RolledBack input: the chain is now at To.
