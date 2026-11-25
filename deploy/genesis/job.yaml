@@ -1,0 +1,42 @@
+# Renders the devnet genesis into the continuum-genesis volume. The seed comes
+# from the continuum-seed Secret (key "seed", 64 hex characters). Rerunning
+# the Job against the same volume and spec is a no-op, so systemStart is kept.
+# The image is built by `make ko-images` and pushed to CONTINUUM_REGISTRY.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: continuum-genesis
+spec:
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        fsGroup: 65532
+      containers:
+        - name: genesis
+          image: continuum-genesis
+          args:
+            - -out=/genesis
+            - -pool-host=pool-%d
+            - -start-delay=60s
+          env:
+            - name: CONTINUUM_SEED
+              valueFrom:
+                secretKeyRef:
+                  name: continuum-seed
+                  key: seed
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: genesis
+              mountPath: /genesis
+      volumes:
+        - name: genesis
+          persistentVolumeClaim:
+            claimName: continuum-genesis
