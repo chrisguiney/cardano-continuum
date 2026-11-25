@@ -9,7 +9,7 @@
 //
 // Types that hold secret material render as a redacted fingerprint under
 // every fmt verb, JSON and slog. The only ways out are the explicit
-// accessors (TextEnvelope, SignTxBody, OpCert).
+// accessors (TextEnvelope, SignTxBody, OpCert, the Signer constructors).
 //
 // Changing derivationLabel invalidates every recorded run.
 package keys
@@ -217,31 +217,12 @@ func (s *Store) OpCert(id ActorID, kesIndex uint32, counter, kesPeriod uint64) (
 
 // DRep returns actor id's DRep key credential.
 func (s *Store) DRep(id ActorID) Credential {
-	acct, err := bursa.GetAccountKey(s.root, uint32(id))
-	if err != nil {
-		panic("keys: drep account: " + err.Error())
-	}
-	k, err := bursa.GetDRepKey(acct, 0)
-	if err != nil {
-		panic("keys: drep key: " + err.Error())
-	}
-	return Credential(k.Public().PublicKey().Hash())
+	return Credential(s.drepKey(id).Public().PublicKey().Hash())
 }
 
 // Committee returns the cold and hot credentials of committee member i.
 func (s *Store) Committee(i uint32) (cold, hot Credential) {
-	acct, err := bursa.GetAccountKey(s.root, uint32(committeeAccount))
-	if err != nil {
-		panic("keys: committee account: " + err.Error())
-	}
-	c, err := bursa.GetCommitteeColdKey(acct, i)
-	if err != nil {
-		panic("keys: committee cold: " + err.Error())
-	}
-	h, err := bursa.GetCommitteeHotKey(acct, i)
-	if err != nil {
-		panic("keys: committee hot: " + err.Error())
-	}
+	c, h := s.committeeKeys(i)
 	return Credential(c.Public().PublicKey().Hash()), Credential(h.Public().PublicKey().Hash())
 }
 
