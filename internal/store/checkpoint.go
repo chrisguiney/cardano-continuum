@@ -30,9 +30,10 @@ type Checkpoint struct {
 	Actors []byte
 	// ActorRows is the read model the UI pages through.
 	ActorRows []ActorRow
-	// Intents and Reservations are opaque to the store. Reservations stay
-	// an opaque blob until the planner-reservations contract defines their
-	// shape.
+	// Intents and Reservations are opaque to the store. Reservations holds
+	// the planner's ledger (internal/plan, version plan.BlobVersion); it is
+	// saved in the same transaction as Confirmed, so a release on disk is
+	// never ahead of the settled point it came from.
 	Intents      Blob
 	Reservations Blob
 }
