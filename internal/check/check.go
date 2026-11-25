@@ -1,7 +1,8 @@
 // Package check provides assertions that run only in debug builds.
 //
-// Pre and Post guard cheap contracts. Slow guards invariants that scan
-// whole structures, so its closure is never called in release builds. In
-// release builds every function here is an empty body that the compiler
-// inlines away. Use -tags debug to enable the checks.
+// Pre and Post guard cheap contracts; their argument is evaluated in every
+// build, so pass only a comparison. PreFn and PostFn take a closure that is
+// never called in release builds, for conditions that scan whole structures.
+// Slow is a constant for gating several expensive checks at once. Use
+// -tags debug to enable the checks.
 package check

@@ -18,19 +18,25 @@ func TestPrePassesInDebug(t *testing.T) {
 	Post(true, "x")
 }
 
-func TestSlowRunsInDebug(t *testing.T) {
+func TestPreFnRunsInDebug(t *testing.T) {
 	ran := false
-	Slow("x", func() bool { ran = true; return true })
+	PreFn(func() bool { ran = true; return true }, "x")
 	if !ran {
-		t.Fatal("Slow did not run its check in a debug build")
+		t.Fatal("PreFn did not run its check in a debug build")
 	}
 }
 
-func TestSlowFailsInDebug(t *testing.T) {
+func TestPostFnFailsInDebug(t *testing.T) {
 	defer func() {
 		if recover() == nil {
-			t.Fatal("Slow(false) did not panic in a debug build")
+			t.Fatal("PostFn(false) did not panic in a debug build")
 		}
 	}()
-	Slow("x", func() bool { return false })
+	PostFn(func() bool { return false }, "x")
+}
+
+func TestSlowIsTrueInDebug(t *testing.T) {
+	if !Slow {
+		t.Fatal("Slow is false in a debug build")
+	}
 }

@@ -329,7 +329,7 @@ func (c *Chain) produce() error {
 	c.blocks = append(c.blocks, record{Block: b, txs: txs, undo: u})
 	c.trimUndo()
 	c.revalidate()
-	check.Slow("fakechain: supply conserved", c.conserved)
+	check.PostFn(c.conserved, "fakechain: supply conserved")
 	return nil
 }
 
@@ -419,6 +419,6 @@ func (c *Chain) rollback(depth uint64, readd bool) error {
 		c.pool.txs = append(back, c.pool.txs...)
 	}
 	c.revalidate()
-	check.Slow("fakechain: supply conserved", c.conserved)
+	check.PostFn(c.conserved, "fakechain: supply conserved")
 	return nil
 }
