@@ -9,6 +9,7 @@ require (
 	github.com/blinklabs-io/ouroboros-mock v0.21.4
 	github.com/fxamacker/cbor/v2 v2.10.0
 	github.com/google/go-containerregistry v0.22.1
+	go.uber.org/goleak v1.3.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.37.0
 	k8s.io/apimachinery v0.37.0
