@@ -29,7 +29,32 @@ type ResolverConfig struct {
 	// InsecureRegistries lists host:port registries that may be reached over
 	// plain HTTP. Every other registry is HTTPS only.
 	InsecureRegistries []string
+	// Mirrors maps a registry host as image references name it to the host
+	// the operator fetches manifests from. A developer registry is pushed
+	// to as localhost:<port>, which inside the operator's pod is the pod
+	// itself; the nodes' containerd maps it separately (hack/kind-up.sh).
+	// The scheme follows the original host's InsecureRegistries entry.
+	Mirrors map[string]string
 }
+
+// ParseMirrors reads "from=to" pairs separated by commas, each a bare
+// host[:port]. An empty string is no mirrors.
+func ParseMirrors(s string) (map[string]string, error) {
+	if strings.TrimSpace(s) == "" {
+		return nil, nil
+	}
+	out := map[string]string{}
+	for _, pair := range strings.Split(s, ",") {
+		from, to, ok := strings.Cut(strings.TrimSpace(pair), "=")
+		if !ok || !bareHost(from) || !bareHost(to) {
+			return nil, fmt.Errorf("registry mirror %q: want host[:port]=host[:port]", pair)
+		}
+		out[from] = to
+	}
+	return out, nil
+}
+
+func bareHost(h string) bool { return h != "" && !strings.ContainsAny(h, "/=@ ") }
 
 // RegistryResolver resolves references with go-containerregistry.
 type RegistryResolver struct {
@@ -50,7 +75,7 @@ func (r *RegistryResolver) Resolve(ctx context.Context, ref string) (v1alpha1.Re
 	if err != nil {
 		return v1alpha1.ResolvedImage{}, err
 	}
-	desc, err := remote.Get(parsed, remote.WithContext(ctx))
+	desc, err := remote.Get(r.mirrored(parsed), remote.WithContext(ctx))
 	if err != nil {
 		return v1alpha1.ResolvedImage{}, fmt.Errorf("resolve %s: %w", ref, err)
 	}
@@ -89,6 +114,32 @@ func (r *RegistryResolver) parse(ref string) (name.Reference, error) {
 		return nil, fmt.Errorf("registry %s is plain HTTP and not listed in insecureRegistries", host)
 	}
 	return parsed, nil
+}
+
+// mirrored is ref with its registry replaced by the configured mirror.
+func (r *RegistryResolver) mirrored(ref name.Reference) name.Reference {
+	to, ok := r.cfg.Mirrors[ref.Context().RegistryStr()]
+	if !ok {
+		return ref
+	}
+	var opts []name.Option
+	if ref.Context().Scheme() == "http" {
+		opts = append(opts, name.Insecure)
+	}
+	reg, err := name.NewRegistry(to, opts...)
+	if err != nil {
+		// ParseMirrors admitted only bare hosts, which NewRegistry accepts.
+		return ref
+	}
+	repo := ref.Context()
+	repo.Registry = reg
+	switch t := ref.(type) {
+	case name.Tag:
+		return repo.Tag(t.TagStr())
+	case name.Digest:
+		return repo.Digest(t.DigestStr())
+	}
+	return ref
 }
 
 func commitOf(labels map[string]string, env []string) string {

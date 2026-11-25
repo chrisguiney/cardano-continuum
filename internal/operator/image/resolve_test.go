@@ -174,3 +174,41 @@ func TestBuildLabelsDefaultsAndErrors(t *testing.T) {
 		t.Fatal("want error for unparsable dirty")
 	}
 }
+
+// TestResolveThroughMirror: a dev image is named by the host the developer
+// pushed to (localhost:5001), which inside a pod is the pod itself. The
+// mirror maps it to the host the operator can reach; the resolved Ref keeps
+// the original name, which the nodes' containerd maps the same way.
+func TestResolveThroughMirror(t *testing.T) {
+	p := push(t, "dev", nil, nil)
+	ref := strings.Replace(p.ref, p.host, "localhost:5001", 1)
+	r := NewResolver(ResolverConfig{
+		InsecureRegistries: []string{"localhost:5001"},
+		Mirrors:            map[string]string{"localhost:5001": p.host},
+	}, slog.New(slog.DiscardHandler))
+	got, err := r.Resolve(context.Background(), ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Ref != ref || got.Digest != p.digest {
+		t.Fatalf("Resolve = %+v, want ref %s at digest %s", got, ref, p.digest)
+	}
+}
+
+func TestParseMirrors(t *testing.T) {
+	got, err := ParseMirrors("localhost:5001=continuum-e2e-registry:5000, a:1=b:2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got["localhost:5001"] != "continuum-e2e-registry:5000" || got["a:1"] != "b:2" {
+		t.Fatalf("mirrors %v", got)
+	}
+	for _, bad := range []string{"nohost", "a=", "=b", "a/x=b"} {
+		if _, err := ParseMirrors(bad); err == nil {
+			t.Errorf("ParseMirrors(%q) accepted", bad)
+		}
+	}
+	if m, err := ParseMirrors(""); err != nil || m != nil {
+		t.Errorf("empty: %v %v", m, err)
+	}
+}

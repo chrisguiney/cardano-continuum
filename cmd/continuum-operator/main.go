@@ -31,9 +31,9 @@ func main() {
 }
 
 type options struct {
-	metrics, probes, registry string
-	insecure                  *bool
-	leader                    bool
+	metrics, probes, registry, mirrors string
+	insecure                           *bool
+	leader                             bool
 }
 
 func parse(args []string) (options, error) {
@@ -43,6 +43,7 @@ func parse(args []string) (options, error) {
 	fs.StringVar(&o.probes, "health-probe-bind-address", ":8081", "health probe listen address")
 	fs.BoolVar(&o.leader, "leader-elect", true, "elect a leader so that one replica reconciles")
 	fs.StringVar(&o.registry, "registry", "", "developer registry host[:port][/path] (default $"+image.EnvRegistry+")")
+	fs.StringVar(&o.mirrors, "registry-mirror", "", "from=to registry hosts, comma separated: fetch manifests named by host from from to instead, as a pod reaches a registry pushed to as localhost:<port>")
 	insecure := fs.Bool("registry-insecure", false, "the developer registry speaks plain HTTP (default $"+image.EnvInsecure+")")
 	if err := fs.Parse(args); err != nil {
 		return o, err
@@ -62,6 +63,10 @@ func run(args []string, log *slog.Logger) error {
 	}
 	settings, err := image.NewSettings(o.registry, o.insecure, os.Getenv, "")
 	if err != nil {
+		return err
+	}
+	rc := settings.Resolver()
+	if rc.Mirrors, err = image.ParseMirrors(o.mirrors); err != nil {
 		return err
 	}
 	ctrl.SetLogger(logr.FromSlogHandler(log.Handler()))
@@ -91,7 +96,7 @@ func run(args []string, log *slog.Logger) error {
 	ctx := ctrl.SetupSignalHandler()
 	err = operator.Setup(ctx, mgr, operator.Options{
 		Drivers: operator.Drivers(),
-		Images:  image.NewResolver(settings.Resolver(), log),
+		Images:  image.NewResolver(rc, log),
 		Log:     log,
 	})
 	if err != nil {
