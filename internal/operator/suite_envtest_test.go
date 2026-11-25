@@ -158,7 +158,7 @@ func (h *harness) manager() ctrl.Manager {
 func (h *harness) startOperator() {
 	h.t.Helper()
 	mgr := h.manager()
-	h.must(Setup(h.ctx, mgr, Options{Drivers: testDrivers(), Images: fakeResolver{}, Log: quiet()}))
+	h.must(Setup(h.ctx, mgr, Options{Drivers: Drivers(), Images: fakeResolver{}, Log: quiet()}))
 	h.run("manager", mgr.Start)
 }
 
@@ -301,7 +301,7 @@ func (h *harness) keyedPods(role Role) int {
 // without running the operator.
 func (h *harness) renderDirect(p *v1alpha1.ContinuumPool) *appsv1.StatefulSet {
 	h.t.Helper()
-	d, err := testDrivers().Driver(p.Spec.Implementation)
+	d, err := Drivers().Driver(p.Spec.Implementation)
 	h.must(err)
 	img, _ := fakeResolver{}.Resolve(h.ctx, d.Image())
 	w, err := Render(d, Input{Network: network(h.ns), Pool: p, Image: Image{Name: pin(img.Ref, img.Digest)}})

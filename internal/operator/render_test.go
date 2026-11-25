@@ -32,7 +32,7 @@ func render(t *testing.T, d NodeDriver, p *v1alpha1.ContinuumPool, img string) W
 
 // TestWorkloadNameIgnoresImplAndDigest: rule 1 of the fencing contract.
 func TestWorkloadNameIgnoresImplAndDigest(t *testing.T) {
-	reg := testDrivers()
+	reg := Drivers()
 	var names []string
 	for _, impl := range []v1alpha1.Implementation{v1alpha1.CardanoNode, v1alpha1.Dingo} {
 		for _, img := range []string{"r@sha256:aaaa", "r@sha256:bbbb"} {
@@ -62,7 +62,7 @@ func TestWorkloadNameIgnoresImplAndDigest(t *testing.T) {
 // TestKeyedPodTemplateHasFinalizer: rule 3. The finalizer is on the
 // template, so it is on the pod from its first moment.
 func TestKeyedPodTemplateHasFinalizer(t *testing.T) {
-	reg := testDrivers()
+	reg := Drivers()
 	for _, impl := range []v1alpha1.Implementation{v1alpha1.CardanoNode, v1alpha1.Dingo} {
 		forger := pool("ns", "a", impl, v1alpha1.TierForging)
 		dup := pool("ns", "d", impl, v1alpha1.TierForging)
@@ -185,8 +185,14 @@ func golden(t *testing.T, name string, w Workload) {
 
 func TestDriverRegistry(t *testing.T) {
 	r := Drivers()
-	if _, err := r.Driver(v1alpha1.CardanoNode); err != nil {
-		t.Fatalf("cardano-node: %v", err)
+	for _, impl := range []v1alpha1.Implementation{v1alpha1.CardanoNode, v1alpha1.Dingo} {
+		d, err := r.Driver(impl)
+		if err != nil {
+			t.Fatalf("%s: %v", impl, err)
+		}
+		if d.Impl() != impl {
+			t.Errorf("driver for %s renders %s", impl, d.Impl())
+		}
 	}
 	r[v1alpha1.Amaru] = stubDriver{impl: v1alpha1.Amaru}
 	for _, impl := range []v1alpha1.Implementation{v1alpha1.Amaru, v1alpha1.Rogue} {

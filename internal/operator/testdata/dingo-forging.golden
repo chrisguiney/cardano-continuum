@@ -1,0 +1,201 @@
+config:
+  data:
+    dingo.yaml: |
+      bindAddr: 0.0.0.0
+      blockProducer: true
+      cardanoConfig: /genesis/config.json
+      databasePath: /data/db
+      network: devnet
+      networkMagic: 42
+      privateBindAddr: 127.0.0.1
+      privatePort: 3002
+      relayPort: 3001
+      shelleyKesKey: /keys/kes.skey
+      shelleyOperationalCertificate: /keys/opcert.cert
+      shelleyVrfKey: /keys/vrf.skey
+      socketPath: /tmp/node.socket
+      topology: /config/topology.json
+    topology.json: |
+      {
+        "localRoots": [
+          {
+            "accessPoints": [
+              {
+                "address": "pool-b.ns.svc",
+                "port": 3001
+              }
+            ],
+            "advertise": false,
+            "trustable": true,
+            "valency": 1
+          }
+        ],
+        "publicRoots": [],
+        "useLedgerAfterSlot": -1
+      }
+  metadata:
+    annotations:
+      continuum.blinklabs.io/pool-name: a
+    labels:
+      continuum.blinklabs.io/impl: dingo
+      continuum.blinklabs.io/owner: uid-0000
+      continuum.blinklabs.io/pool: fa6c9f96d373eca1
+      continuum.blinklabs.io/role: forger
+      continuum.blinklabs.io/workload: pool-fa6c9f96d373eca1
+    name: pool-fa6c9f96d373eca1-config
+    namespace: ns
+    ownerReferences:
+    - apiVersion: continuum.blinklabs.io/v1alpha1
+      blockOwnerDeletion: true
+      controller: true
+      kind: ContinuumPool
+      name: a
+      uid: uid-0000
+service:
+  apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      continuum.blinklabs.io/pool-name: a
+    labels:
+      continuum.blinklabs.io/impl: dingo
+      continuum.blinklabs.io/owner: uid-0000
+      continuum.blinklabs.io/pool: fa6c9f96d373eca1
+      continuum.blinklabs.io/role: forger
+      continuum.blinklabs.io/workload: pool-fa6c9f96d373eca1
+    name: pool-fa6c9f96d373eca1
+    namespace: ns
+    ownerReferences:
+    - apiVersion: continuum.blinklabs.io/v1alpha1
+      blockOwnerDeletion: true
+      controller: true
+      kind: ContinuumPool
+      name: a
+      uid: uid-0000
+  spec:
+    clusterIP: None
+    ports:
+    - name: n2n
+      port: 3001
+      targetPort: 3001
+    publishNotReadyAddresses: true
+    selector:
+      continuum.blinklabs.io/workload: pool-fa6c9f96d373eca1
+  status:
+    loadBalancer: {}
+statefulSet:
+  apiVersion: apps/v1
+  kind: StatefulSet
+  metadata:
+    annotations:
+      continuum.blinklabs.io/pool-name: a
+    labels:
+      continuum.blinklabs.io/impl: dingo
+      continuum.blinklabs.io/owner: uid-0000
+      continuum.blinklabs.io/pool: fa6c9f96d373eca1
+      continuum.blinklabs.io/role: forger
+      continuum.blinklabs.io/workload: pool-fa6c9f96d373eca1
+    name: pool-fa6c9f96d373eca1
+    namespace: ns
+    ownerReferences:
+    - apiVersion: continuum.blinklabs.io/v1alpha1
+      blockOwnerDeletion: true
+      controller: true
+      kind: ContinuumPool
+      name: a
+      uid: uid-0000
+  spec:
+    podManagementPolicy: OrderedReady
+    replicas: 1
+    selector:
+      matchLabels:
+        continuum.blinklabs.io/workload: pool-fa6c9f96d373eca1
+    serviceName: pool-fa6c9f96d373eca1
+    template:
+      metadata:
+        annotations:
+          continuum.blinklabs.io/pool-name: a
+        finalizers:
+        - continuum.blinklabs.io/fence
+        labels:
+          continuum.blinklabs.io/impl: dingo
+          continuum.blinklabs.io/owner: uid-0000
+          continuum.blinklabs.io/pool: fa6c9f96d373eca1
+          continuum.blinklabs.io/role: forger
+          continuum.blinklabs.io/workload: pool-fa6c9f96d373eca1
+      spec:
+        automountServiceAccountToken: false
+        containers:
+        - args:
+          - --config
+          - /config/dingo.yaml
+          - serve
+          command:
+          - dingo
+          env:
+          - name: CARDANO_NETWORK
+            value: devnet
+          - name: CARDANO_DATABASE_PATH
+            value: /data/db
+          - name: CARDANO_SOCKET_PATH
+            value: /tmp/node.socket
+          image: r@sha256:aaaa
+          imagePullPolicy: IfNotPresent
+          name: node
+          ports:
+          - containerPort: 3001
+            name: n2n
+          resources:
+            requests:
+              cpu: 250m
+              memory: 1Gi
+          securityContext:
+            runAsGroup: 0
+            runAsUser: 0
+          volumeMounts:
+          - mountPath: /genesis
+            name: genesis
+            readOnly: true
+          - mountPath: /config
+            name: config
+            readOnly: true
+          - mountPath: /data
+            name: data
+          - mountPath: /keys
+            name: keys
+            readOnly: true
+        enableServiceLinks: false
+        imagePullSecrets:
+        - name: pull
+        initContainers:
+        - command:
+          - test
+          - -s
+          - /keys/opcert.cert
+          image: r@sha256:aaaa
+          imagePullPolicy: IfNotPresent
+          name: keys-gate
+          resources: {}
+          volumeMounts:
+          - mountPath: /keys
+            name: keys
+            readOnly: true
+        volumes:
+        - configMap:
+            name: genesis
+          name: genesis
+        - configMap:
+            name: pool-fa6c9f96d373eca1-config
+          name: config
+        - emptyDir: {}
+          name: data
+        - name: keys
+          secret:
+            defaultMode: 256
+            optional: false
+            secretName: a-keys
+    updateStrategy:
+      type: RollingUpdate
+  status:
+    availableReplicas: 0
+    replicas: 0

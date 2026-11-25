@@ -8,6 +8,7 @@ package operator
 import (
 	"context"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -70,7 +71,7 @@ func TestCreateIsTheFence(t *testing.T) {
 	held := h.running(PodName(set.Name), v1alpha1.CardanoNode)
 
 	c := &emptyCache{Client: h.c}
-	res, err := NewPools(c, testDrivers(), fakeResolver{}, quiet()).Reconcile(h.ctx, request(p))
+	res, err := NewPools(c, Drivers(), fakeResolver{}, quiet()).Reconcile(h.ctx, request(p))
 	if err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
@@ -132,20 +133,32 @@ func (h *harness) record(events *[]event, mu *sync.Mutex) {
 }
 
 // TestSwitchImplSerial: ForgingCreateBeforeDeleteBug. The new driver's
-// StatefulSet is created only after the old pod object is gone.
+// StatefulSet is created only after the old pod object is gone, in both
+// directions between cardano-node and dingo.
 func TestSwitchImplSerial(t *testing.T) {
+	for _, tc := range []struct{ from, to v1alpha1.Implementation }{
+		{v1alpha1.CardanoNode, v1alpha1.Dingo},
+		{v1alpha1.Dingo, v1alpha1.CardanoNode},
+	} {
+		t.Run(string(tc.from)+"-to-"+string(tc.to), func(t *testing.T) {
+			switchSerial(t, tc.from, tc.to)
+		})
+	}
+}
+
+func switchSerial(t *testing.T, from, to v1alpha1.Implementation) {
 	h := newHarness(t, nil)
 	h.secret("a-keys", "opcert")
-	h.pool("a", v1alpha1.CardanoNode, v1alpha1.TierForging, nil)
+	h.pool("a", from, v1alpha1.TierForging, nil)
 	h.startOperator()
 	name := Name(h.get("a"))
-	old := h.running(PodName(name), v1alpha1.CardanoNode)
+	old := h.running(PodName(name), from)
 
 	var mu sync.Mutex
 	var events []event
 	h.record(&events, &mu)
-	h.edit("a", func(p *v1alpha1.ContinuumPool) { p.Spec.Implementation = v1alpha1.Dingo })
-	h.running(PodName(name), v1alpha1.Dingo)
+	h.edit("a", func(p *v1alpha1.ContinuumPool) { p.Spec.Implementation = to })
+	h.running(PodName(name), to)
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -154,15 +167,21 @@ func TestSwitchImplSerial(t *testing.T) {
 		if e.kind == "Pod" && e.uid == old.UID && e.typ == watch.Deleted {
 			gone = e.rv
 		}
-		if e.kind == "StatefulSet" && e.impl == string(v1alpha1.Dingo) && e.typ == watch.Added && created == 0 {
+		if e.kind == "StatefulSet" && e.impl == string(to) && e.typ == watch.Added && created == 0 {
 			created = e.rv
 		}
 	}
 	if gone == 0 || created == 0 {
-		t.Fatalf("old pod deleted at %d, dingo StatefulSet created at %d: missing event in %+v", gone, created, events)
+		t.Fatalf("old pod deleted at %d, %s StatefulSet created at %d: missing event in %+v", gone, to, created, events)
 	}
 	if created < gone {
-		t.Fatalf("dingo StatefulSet created at revision %d, before the old pod was gone at %d", created, gone)
+		t.Fatalf("%s StatefulSet created at revision %d, before the old pod was gone at %d", to, created, gone)
+	}
+	if n := h.keyedPods(RoleForger); n != 1 {
+		t.Fatalf("%d keyed pods after the switch, want 1", n)
+	}
+	if got, ok := h.set(name); !ok || got.Labels[LabelImpl] != string(to) {
+		t.Fatalf("StatefulSet %s after the switch: %v", name, got)
 	}
 }
 
@@ -313,7 +332,7 @@ func TestTwoReconcilersOneForger(t *testing.T) {
 	stale := h.manager()
 	h.must(Index(h.ctx, stale))
 	lag := &laggy{Client: stale.GetClient(), lag: time.Second, at: map[types.NamespacedName]time.Time{}, snap: map[types.NamespacedName]*v1alpha1.ContinuumPool{}}
-	h.must(NewPools(lag, testDrivers(), fakeResolver{}, quiet()).SetupWithManager(stale))
+	h.must(NewPools(lag, Drivers(), fakeResolver{}, quiet()).SetupWithManager(stale))
 	h.must(NewRelease(stale.GetClient(), stale.GetAPIReader(), quiet()).SetupWithManager(stale))
 	h.run("stale manager", stale.Start)
 
@@ -375,7 +394,7 @@ func TestStaleSpecDoesNotFlap(t *testing.T) {
 	if dark.Generation <= live.Generation {
 		t.Fatalf("generations %d then %d", live.Generation, dark.Generation)
 	}
-	r := NewPools(&scripted{Client: h.c, pools: []*v1alpha1.ContinuumPool{dark, live}}, testDrivers(), fakeResolver{}, quiet())
+	r := NewPools(&scripted{Client: h.c, pools: []*v1alpha1.ContinuumPool{dark, live}}, Drivers(), fakeResolver{}, quiet())
 	if _, err := r.Reconcile(h.ctx, request(dark)); err != nil {
 		t.Fatal(err)
 	}
@@ -401,7 +420,8 @@ func TestStaleSpecDoesNotFlap(t *testing.T) {
 	}
 }
 
-// TestDuplicateUsesOwnSecret: rule 4.
+// TestDuplicateUsesOwnSecret: rule 4, across implementations: a dingo
+// duplicate of a cardano-node pool.
 func TestDuplicateUsesOwnSecret(t *testing.T) {
 	h := newHarness(t, nil)
 	h.secret("a-keys", "opcert")
@@ -423,6 +443,14 @@ func TestDuplicateUsesOwnSecret(t *testing.T) {
 	}
 	if pa.Labels[LabelPool] != pd.Labels[LabelPool] {
 		t.Error("duplicate is not listed under the pool's label")
+	}
+	if pa.Labels[LabelImpl] != string(v1alpha1.CardanoNode) || pd.Labels[LabelImpl] != string(v1alpha1.Dingo) {
+		t.Errorf("forger runs %s and duplicate %s", pa.Labels[LabelImpl], pd.Labels[LabelImpl])
+	}
+	cm := &corev1.ConfigMap{}
+	h.must(h.c.Get(h.ctx, client.ObjectKey{Namespace: h.ns, Name: configName(d)}, cm))
+	if !strings.Contains(cm.Data[dingoConfigFile], KeysDir+"/"+KESKey) {
+		t.Errorf("dingo duplicate's config does not read its keys at %s:\n%s", KeysDir, cm.Data[dingoConfigFile])
 	}
 	h.pool("s", v1alpha1.Dingo, v1alpha1.TierForging, func(p *v1alpha1.ContinuumPool) {
 		p.Spec.UnsafeDuplicateOf = "a"

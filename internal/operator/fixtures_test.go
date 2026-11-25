@@ -9,8 +9,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 )
 
-// stubDriver stands in for a second implementation (dingo lands later) so
-// that switch and fence tests can cross implementations.
+// stubDriver stands in for an implementation this build has no driver for.
 type stubDriver struct{ impl v1alpha1.Implementation }
 
 func (d stubDriver) Impl() v1alpha1.Implementation { return d.impl }
@@ -24,13 +23,6 @@ func (d stubDriver) Node(s NodeSpec) (Node, error) {
 		Config:    map[string]string{"node.yaml": "peers: " + string(rune('0'+len(s.Peers)))},
 		Gate:      []string{"test", "-s", KeysDir + "/" + OpCert},
 	}, nil
-}
-
-// testDrivers is the real registry plus a stub dingo driver.
-func testDrivers() Registry {
-	r := Drivers()
-	r[v1alpha1.Dingo] = stubDriver{impl: v1alpha1.Dingo}
-	return r
 }
 
 func network(ns string) *v1alpha1.ContinuumNetwork {
