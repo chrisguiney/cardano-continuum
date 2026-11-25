@@ -7,6 +7,7 @@ import (
 	"github.com/blinklabs-io/gouroboros/ledger/conway"
 	ocommon "github.com/blinklabs-io/gouroboros/protocol/common"
 
+	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
@@ -103,16 +104,19 @@ func Digest(blockCbor []byte) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("engine: decode block: %w", err)
 	}
+	return digestOf(chain.BlockFrom(blk))
+}
+
+// digestOf encodes a block as chain-sync delivered it. Consumed, Produced
+// and the fee already follow the isValid rule (chain.TxFrom).
+func digestOf(b chain.Block) ([]byte, error) {
 	var c BlockContent
-	for _, tx := range blk.Transactions() {
-		d := TxDigest{ID: TxID(tx.Hash())}
-		if f := tx.Fee(); f != nil {
-			d.Fee = f.Uint64()
+	for _, tx := range b.Txs {
+		d := TxDigest{ID: TxID(tx.Hash), Fee: tx.Fee}
+		for _, in := range tx.Spends {
+			d.Inputs = append(d.Inputs, Ref{Tx: TxID(in.Tx), Index: in.Index})
 		}
-		for _, in := range tx.Consumed() {
-			d.Inputs = append(d.Inputs, Ref{Tx: TxID(in.Id()), Index: in.Index()})
-		}
-		for _, u := range tx.Produced() {
+		for _, u := range tx.Creates {
 			addr, err := u.Output.Address().Bytes()
 			if err != nil {
 				return nil, fmt.Errorf("engine: output address: %w", err)

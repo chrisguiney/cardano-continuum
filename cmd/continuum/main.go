@@ -1,6 +1,7 @@
 // Command continuum runs and replays simulations.
 //
 //	continuum run --fake --seed N --out DIR [flags]
+//	continuum run --node HOST:PORT --state DIR --genesis FILE [flags]
 //	continuum replay --seed N [flags] DIR/events.log
 //	continuum export EVENTS.LOG --out DIR
 //	continuum serve --log EVENTS.LOG [--store DB] [--addr 127.0.0.1:8088] [--controls]
@@ -21,6 +22,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/chrisguiney/cardano-continuum/internal/build"
@@ -37,7 +39,9 @@ import (
 const version = "m1"
 
 func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	// Kubernetes stops a pod with SIGTERM; the run then flushes and
+	// checkpoints before exiting.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	err := run(ctx, os.Args[1:], os.Stdout)
 	stop()
 	if err != nil {
@@ -94,38 +98,13 @@ func (s *simFlags) register(fs *flag.FlagSet) {
 }
 
 func (s *simFlags) config() (engine.Config, error) {
-	raw := profiles.M1
-	name := "m1.yaml"
-	if s.profiles != "" {
-		var err error
-		if raw, err = os.ReadFile(s.profiles); err != nil {
-			return engine.Config{}, err
-		}
-		name = s.profiles
-	}
-	ps, err := profile.ParseNamed(name, bytes.NewReader(raw))
-	if err != nil {
-		return engine.Config{}, err
-	}
-	reg, err := profile.NewRegistry(ps)
+	reg, cohorts, err := s.population()
 	if err != nil {
 		return engine.Config{}, err
 	}
 	slots, err := sched.NewSlots(sched.Time(s.slotMs), s.epochSlots)
 	if err != nil {
 		return engine.Config{}, err
-	}
-	if s.wallets < 0 {
-		return engine.Config{}, fmt.Errorf("--wallets %d", s.wallets)
-	}
-	names := reg.Names()
-	var cohorts []engine.Cohort
-	for i, n := range names {
-		c := s.wallets / len(names)
-		if i < s.wallets%len(names) {
-			c++
-		}
-		cohorts = append(cohorts, engine.Cohort{Profile: n, Count: c})
 	}
 	pp := fakechain.DefaultParams()
 	return engine.Config{
@@ -138,18 +117,57 @@ func (s *simFlags) config() (engine.Config, error) {
 	}, nil
 }
 
+// population reads the profile set and spreads the wallets evenly over it.
+func (s *simFlags) population() (*profile.Registry, []engine.Cohort, error) {
+	raw := profiles.M1
+	name := "m1.yaml"
+	if s.profiles != "" {
+		var err error
+		if raw, err = os.ReadFile(s.profiles); err != nil {
+			return nil, nil, err
+		}
+		name = s.profiles
+	}
+	ps, err := profile.ParseNamed(name, bytes.NewReader(raw))
+	if err != nil {
+		return nil, nil, err
+	}
+	reg, err := profile.NewRegistry(ps)
+	if err != nil {
+		return nil, nil, err
+	}
+	if s.wallets < 0 {
+		return nil, nil, fmt.Errorf("--wallets %d", s.wallets)
+	}
+	names := reg.Names()
+	var cohorts []engine.Cohort
+	for i, n := range names {
+		c := s.wallets / len(names)
+		if i < s.wallets%len(names) {
+			c++
+		}
+		cohorts = append(cohorts, engine.Cohort{Profile: n, Count: c})
+	}
+	return reg, cohorts, nil
+}
+
 func cmdRun(ctx context.Context, args []string, out io.Writer) error {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	var sf simFlags
 	sf.register(fs)
-	fake := fs.Bool("fake", false, "run against the in-process fake chain (required in M1)")
-	epochs := fs.Uint64("epochs", 2, "epochs to simulate")
+	fake := fs.Bool("fake", false, "run against the in-process fake chain")
+	epochs := fs.Uint64("epochs", 2, "epochs to simulate (a live run: 0 runs until stopped)")
 	dir := fs.String("out", "", "directory for events.log (must not hold one)")
+	var lf liveFlags
+	lf.register(fs)
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if !*fake {
-		return errors.New("run: only --fake is supported")
+		if lf.node == "" {
+			return errors.New("run: --fake or --node is required")
+		}
+		return runLive(ctx, sf, lf, *epochs)
 	}
 	if *dir == "" {
 		return errors.New("run: --out is required")
