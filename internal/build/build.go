@@ -66,7 +66,7 @@ type Builder struct {
 // New returns a Builder for the given protocol parameters.
 func New(p Params) *Builder { return &Builder{params: p} }
 
-// context adapts Params to Apollo's chain context. It serves no UTxOs, so
+// chainContext adapts Params to Apollo's chain context. It serves no UTxOs, so
 // Apollo can only spend what the caller offers through AddInput.
 func (b *Builder) chainContext() *fixed.FixedChainContext {
 	p := b.params

@@ -203,12 +203,10 @@ func TestPayInsufficientIsTyped(t *testing.T) {
 		Inputs: []common.Utxo{utxo(alice.Address(), 0, 3_000_000)}, To: bob.Address(), Amount: 10_000_000, TTL: 1,
 	})
 	var ins *InsufficientError
-	if !errorsAs(err, &ins) || ins.Shortfall == 0 {
+	if !errors.As(err, &ins) || ins.Shortfall == 0 {
 		t.Fatalf("want InsufficientError, got %v", err)
 	}
 }
-
-func errorsAs(err error, target **InsufficientError) bool { return errors.As(err, target) }
 
 func TestPayAcceptedByFakeChain(t *testing.T) {
 	alice, bob := testWallets(t)
