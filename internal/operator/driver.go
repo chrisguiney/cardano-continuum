@@ -34,6 +34,11 @@ const (
 // N2NPort is the node-to-node port of every node.
 const N2NPort int32 = 3001
 
+// NtCPort is where a node's node-to-client bridge listens, for the engine in
+// another pod. It serves local-state-query and local-tx-submission to the
+// whole namespace, which is what a devnet engine needs and nothing more.
+const NtCPort int32 = 3002
+
 // Peer is a node another node dials.
 type Peer struct {
 	Host string
@@ -62,6 +67,10 @@ type Node struct {
 	// only when the keys at KeysDir can be used. A blank Secret (the engine
 	// blanks it before every issue and retirement) keeps the pod pending.
 	Gate []string
+	// NtC is the command of a sidecar that serves the node-to-client
+	// socket on NtCPort, run from the node's image with the data volume
+	// mounted; nil when the driver has no bridge.
+	NtC []string
 }
 
 // Demand is the resources one node requests.

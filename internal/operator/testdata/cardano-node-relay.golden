@@ -63,6 +63,9 @@ service:
     - name: n2n
       port: 3001
       targetPort: 3001
+    - name: ntc
+      port: 3002
+      targetPort: 3002
     publishNotReadyAddresses: true
     selector:
       continuum.blinklabs.io/workload: relay-454349e422f05297
@@ -142,6 +145,23 @@ statefulSet:
           - mountPath: /config
             name: config
             readOnly: true
+          - mountPath: /data
+            name: data
+        - command:
+          - socat
+          - TCP-LISTEN:3002,fork,reuseaddr
+          - UNIX-CONNECT:/data/node.socket
+          image: r@sha256:aaaa
+          imagePullPolicy: IfNotPresent
+          name: ntc
+          ports:
+          - containerPort: 3002
+            name: ntc
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+          volumeMounts:
           - mountPath: /data
             name: data
         enableServiceLinks: false

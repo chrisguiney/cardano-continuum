@@ -71,7 +71,7 @@ func Render(d NodeDriver, in Input) (Workload, error) {
 	meta := func() metav1.ObjectMeta { return objectMeta(p, name, d.Impl()) }
 	w := Workload{
 		StatefulSet: statefulSet(meta(), podTemplate(d, in, n, meta()), p.Spec.Dark),
-		Service:     service(meta()),
+		Service:     service(meta(), len(n.NtC) > 0),
 		Config:      &corev1.ConfigMap{ObjectMeta: withName(meta(), configName(name)), Data: n.Config},
 	}
 	check.Post(w.StatefulSet.Name == name, "operator.Render: StatefulSet name is Name(pool)")
@@ -132,8 +132,8 @@ func statefulSet(meta metav1.ObjectMeta, tmpl corev1.PodTemplateSpec, dark bool)
 	}
 }
 
-func service(meta metav1.ObjectMeta) *corev1.Service {
-	return &corev1.Service{
+func service(meta metav1.ObjectMeta, ntc bool) *corev1.Service {
+	s := &corev1.Service{
 		TypeMeta:   metav1.TypeMeta{APIVersion: "v1", Kind: "Service"},
 		ObjectMeta: meta,
 		Spec: corev1.ServiceSpec{
@@ -146,6 +146,12 @@ func service(meta metav1.ObjectMeta) *corev1.Service {
 			}},
 		},
 	}
+	if ntc {
+		s.Spec.Ports = append(s.Spec.Ports, corev1.ServicePort{
+			Name: "ntc", Port: NtCPort, TargetPort: intstr.FromInt32(NtCPort),
+		})
+	}
+	return s
 }
 
 func podTemplate(d NodeDriver, in Input, n Node, meta metav1.ObjectMeta) corev1.PodTemplateSpec {
@@ -161,10 +167,19 @@ func podTemplate(d NodeDriver, in Input, n Node, meta metav1.ObjectMeta) corev1.
 		corev1.VolumeMount{Name: volConfig, MountPath: ConfigDir, ReadOnly: true},
 		corev1.VolumeMount{Name: volData, MountPath: DataMount},
 	)
+	containers := []corev1.Container{c}
+	if len(n.NtC) > 0 {
+		containers = append(containers, corev1.Container{
+			Name: "ntc", Image: c.Image, ImagePullPolicy: c.ImagePullPolicy, Command: n.NtC,
+			Ports:        []corev1.ContainerPort{{Name: "ntc", ContainerPort: NtCPort}},
+			Resources:    requests(Demand{CPUMillis: 10, MemoryMiB: 16}),
+			VolumeMounts: []corev1.VolumeMount{{Name: volData, MountPath: DataMount}},
+		})
+	}
 	spec := corev1.PodSpec{
 		AutomountServiceAccountToken: ptr.To(false),
 		EnableServiceLinks:           ptr.To(false),
-		Containers:                   []corev1.Container{c},
+		Containers:                   containers,
 		Volumes:                      volumes(in, meta.Name),
 	}
 	for _, s := range in.Network.Spec.ImagePullSecrets {

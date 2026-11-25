@@ -202,3 +202,33 @@ func TestDriverRegistry(t *testing.T) {
 		}
 	}
 }
+
+// TestRenderNtCBridge: a cardano-node pod serves its node-to-client socket
+// on NtCPort through a sidecar sharing the data volume, and the Service
+// publishes it, so the engine in another pod can follow and submit. Dingo
+// has no bridge yet.
+func TestRenderNtCBridge(t *testing.T) {
+	w := render(t, CardanoNode{}, pool("ns", "a", v1alpha1.CardanoNode, v1alpha1.TierForging), "r@sha256:aaaa")
+	spec := w.StatefulSet.Spec.Template.Spec
+	i := slices.IndexFunc(spec.Containers, func(c corev1.Container) bool { return c.Name == "ntc" })
+	if i < 0 {
+		t.Fatal("no ntc sidecar")
+	}
+	c := spec.Containers[i]
+	if c.Image != "r@sha256:aaaa" || !strings.Contains(strings.Join(c.Command, " "), DataMount+"/node.socket") {
+		t.Errorf("sidecar image %s command %v", c.Image, c.Command)
+	}
+	if len(c.Ports) != 1 || c.Ports[0].ContainerPort != NtCPort {
+		t.Errorf("sidecar ports %v", c.Ports)
+	}
+	if !slices.ContainsFunc(c.VolumeMounts, func(m corev1.VolumeMount) bool { return m.MountPath == DataMount }) {
+		t.Error("sidecar does not share the data volume")
+	}
+	if !slices.ContainsFunc(w.Service.Spec.Ports, func(p corev1.ServicePort) bool { return p.Port == NtCPort }) {
+		t.Errorf("service ports %v", w.Service.Spec.Ports)
+	}
+	d := render(t, Dingo{}, pool("ns", "a", v1alpha1.Dingo, v1alpha1.TierForging), "r@sha256:aaaa")
+	if n := len(d.StatefulSet.Spec.Template.Spec.Containers); n != 1 {
+		t.Errorf("dingo pod has %d containers, want no bridge", n)
+	}
+}

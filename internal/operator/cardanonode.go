@@ -60,6 +60,10 @@ func (CardanoNode) Node(s NodeSpec) (Node, error) {
 		// test(1) from coreutils, without a shell: a blank or missing opcert
 		// keeps the pod in its init phase.
 		Gate: []string{"test", "-s", KeysDir + "/" + OpCert},
+		// socat ships in the node image. A unix socket cannot be shared
+		// between pods, so the engine reaches this TCP bridge instead.
+		NtC: []string{"socat", fmt.Sprintf("TCP-LISTEN:%d,fork,reuseaddr", NtCPort),
+			"UNIX-CONNECT:" + DataMount + "/node.socket"},
 	}, nil
 }
 
