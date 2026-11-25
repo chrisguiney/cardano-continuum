@@ -74,7 +74,7 @@ func decode(k uint64, b store.Blob) (*state, error) {
 		if _, dup := s.utxos[u.Ref]; dup {
 			return nil, fmt.Errorf("%w: output %x#%d twice", ErrBlob, u.Ref.Tx[:4], u.Ref.Index)
 		}
-		s.utxos[u.Ref] = u
+		s.putUtxo(u)
 	}
 	for _, id := range d.Paid {
 		s.paid[id] = struct{}{}
@@ -111,7 +111,7 @@ func (s *state) restoreAttempts(recs []record, nextSeq uint64) error {
 			}
 			s.held[r] = rec.Intent
 		}
-		s.recs[rec.Tx] = rec
+		s.addRec(rec)
 	}
 	s.nextSeq = nextSeq
 	return nil

@@ -20,6 +20,23 @@ type Ledger struct {
 	// hints are drop notices. They live in memory only and change nothing
 	// but Dropped.
 	hints map[TxID]struct{}
+	// inPlace is true when the Committer discards: a step then edits the
+	// current state, since no commit can fail and force it back.
+	inPlace bool
+}
+
+func newLedger(cfg Config, s *state) *Ledger {
+	d, ok := cfg.Store.(Discarder)
+	return &Ledger{cfg: cfg, st: s, hints: map[TxID]struct{}{}, inPlace: ok && d.Discards()}
+}
+
+// next is the state a step applies itself to: the current one when a
+// failed commit is impossible, else a copy to adopt only once committed.
+func (l *Ledger) next() *state {
+	if l.inPlace {
+		return l.st
+	}
+	return l.st.clone()
 }
 
 // New returns a ledger at the origin holding genesis as settled outputs.
@@ -32,9 +49,9 @@ func New(cfg Config, genesis []Utxo) (*Ledger, error) {
 		if _, dup := s.utxos[u.Ref]; dup {
 			return nil, fmt.Errorf("plan: genesis output %x#%d twice", u.Ref.Tx[:4], u.Ref.Index)
 		}
-		s.utxos[u.Ref] = u
+		s.putUtxo(u)
 	}
-	return &Ledger{cfg: cfg, st: s, hints: map[TxID]struct{}{}}, nil
+	return newLedger(cfg, s), nil
 }
 
 // Open returns the ledger committed as b. Its view resumes at the settled
@@ -48,7 +65,7 @@ func Open(cfg Config, b store.Blob) (*Ledger, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Ledger{cfg: cfg, st: s, hints: map[TxID]struct{}{}}, nil
+	return newLedger(cfg, s), nil
 }
 
 // commit makes next durable and adopts it. On failure the ledger keeps its
@@ -58,6 +75,9 @@ func (l *Ledger) commit(ctx context.Context, next *state) error {
 		if err := next.consistent(); err != nil {
 			check.Post(false, "plan: "+err.Error())
 		}
+	}
+	if l.inPlace {
+		return nil
 	}
 	b, err := next.encode()
 	if err != nil {
@@ -86,7 +106,7 @@ func (l *Ledger) Available(a population.ActorID, id IntentID, o Opts) []Utxo {
 // beside an unfinished attempt of the same intent, and inputs that
 // contradict each other.
 func (l *Ledger) Reserve(ctx context.Context, id IntentID, a Attempt) error {
-	next := l.st.clone()
+	next := l.next()
 	if err := next.reserve(id, a); err != nil {
 		return err
 	}
@@ -98,7 +118,8 @@ func (l *Ledger) Reserve(ctx context.Context, id IntentID, a Attempt) error {
 // the chain releases a reservation. On error nothing changes and the event
 // must be delivered again.
 func (l *Ledger) Advance(ctx context.Context, ev chain.Event) (Result, error) {
-	next := l.st.clone()
+	was := l.st.settled
+	next := l.next()
 	var res Result
 	switch ev.Kind {
 	case chain.Forward:
@@ -114,7 +135,7 @@ func (l *Ledger) Advance(ctx context.Context, ev chain.Event) (Result, error) {
 	default:
 		return Result{}, fmt.Errorf("plan: unknown chain event %d", ev.Kind)
 	}
-	if next.settled == l.st.settled && len(res.Dead) == 0 {
+	if next.settled == was && len(res.Dead) == 0 {
 		// Only the volatile window moved, and it is not stored.
 		l.st = next
 		return res, nil
@@ -133,7 +154,7 @@ func (l *Ledger) Advance(ctx context.Context, ev chain.Event) (Result, error) {
 // may have arrived (a timeout, a broken connection, a previous process)
 // proves nothing, since the inputs may be spent by the attempt itself.
 func (l *Ledger) Refused(ctx context.Context, tx TxID) ([]TxID, error) {
-	next := l.st.clone()
+	next := l.next()
 	dead, err := next.refused(tx)
 	if err != nil {
 		return nil, err

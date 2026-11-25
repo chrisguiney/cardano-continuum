@@ -7,6 +7,7 @@ import (
 	"slices"
 
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/check"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 )
 
@@ -46,11 +47,57 @@ type state struct {
 	// paid are intents with a settled attempt. They accept no attempt.
 	paid    map[IntentID]struct{}
 	nextSeq uint64
+
+	// byOwner indexes utxos by owner and recsBy indexes recs by actor, so a
+	// balance query reads one actor's outputs instead of scanning all of
+	// them. Only putUtxo, dropUtxo, addRec and delRec write them, in step
+	// with utxos and recs; indexConsistent compares them with a scan.
+	byOwner map[population.ActorID]map[Ref]struct{}
+	recsBy  map[population.ActorID]map[TxID]*record
+	// spent caches spentAbove. It is never modified once built, so clones
+	// share it; nil means the window changed since. Rebuilding it for each
+	// query cost a scan of every window transaction.
+	spent map[Ref]struct{}
 }
 
 func newState(k uint64) *state {
 	return &state{k: k, utxos: map[Ref]Utxo{}, recs: map[TxID]*record{}, held: map[Ref]IntentID{},
-		paid: map[IntentID]struct{}{}}
+		paid: map[IntentID]struct{}{}, byOwner: map[population.ActorID]map[Ref]struct{}{},
+		recsBy: map[population.ActorID]map[TxID]*record{}}
+}
+
+func (s *state) putUtxo(u Utxo) {
+	s.utxos[u.Ref] = u
+	m := s.byOwner[u.Owner]
+	if m == nil {
+		m = map[Ref]struct{}{}
+		s.byOwner[u.Owner] = m
+	}
+	m[u.Ref] = struct{}{}
+}
+
+func (s *state) dropUtxo(r Ref) {
+	u, ok := s.utxos[r]
+	if !ok {
+		return
+	}
+	delete(s.utxos, r)
+	delete(s.byOwner[u.Owner], r)
+}
+
+func (s *state) addRec(rec *record) {
+	s.recs[rec.Tx] = rec
+	m := s.recsBy[rec.Actor]
+	if m == nil {
+		m = map[TxID]*record{}
+		s.recsBy[rec.Actor] = m
+	}
+	m[rec.Tx] = rec
+}
+
+func (s *state) delRec(rec *record) {
+	delete(s.recs, rec.Tx)
+	delete(s.recsBy[rec.Actor], rec.Tx)
 }
 
 // clone copies everything a step may change. Records and blocks are never
@@ -62,6 +109,14 @@ func (s *state) clone() *state {
 	c.recs = maps.Clone(s.recs)
 	c.held = maps.Clone(s.held)
 	c.paid = maps.Clone(s.paid)
+	c.byOwner = make(map[population.ActorID]map[Ref]struct{}, len(s.byOwner))
+	for a, m := range s.byOwner {
+		c.byOwner[a] = maps.Clone(m)
+	}
+	c.recsBy = make(map[population.ActorID]map[TxID]*record, len(s.recsBy))
+	for a, m := range s.recsBy {
+		c.recsBy[a] = maps.Clone(m)
+	}
 	return &c
 }
 
@@ -78,6 +133,9 @@ func (s *state) tip() chain.Point {
 
 // spentAbove is every output a block above the settled point spends.
 func (s *state) spentAbove() map[Ref]struct{} {
+	if s.spent != nil {
+		return s.spent
+	}
 	out := map[Ref]struct{}{}
 	for _, b := range s.window {
 		for _, tx := range b.txs {
@@ -86,6 +144,7 @@ func (s *state) spentAbove() map[Ref]struct{} {
 			}
 		}
 	}
+	s.spent = out
 	return out
 }
 
@@ -124,25 +183,94 @@ func (s *state) offerable(r Ref, id IntentID, spent map[Ref]struct{}) bool {
 func (s *state) available(a population.ActorID, id IntentID, o Opts) []Utxo {
 	spent := s.spentAbove()
 	var out []Utxo
+	for r := range s.byOwner[a] {
+		if s.offerable(r, id, spent) {
+			out = append(out, s.utxos[r])
+		}
+	}
+	out = s.appendChange(out, s.recsBy[a], id, o, spent)
+	slices.SortFunc(out, func(x, y Utxo) int { return compareRefs(x.Ref, y.Ref) })
+	check.PostFn(func() bool { return equalUtxos(out, s.availableScan(a, id, o)) },
+		"plan: owner index agrees with a full scan")
+	return out
+}
+
+// availableScan is available without the indexes: the reference that
+// check.PostFn holds the indexes to.
+func (s *state) availableScan(a population.ActorID, id IntentID, o Opts) []Utxo {
+	spent := map[Ref]struct{}{}
+	for _, b := range s.window {
+		for _, tx := range b.txs {
+			for _, r := range tx.spends {
+				spent[r] = struct{}{}
+			}
+		}
+	}
+	var out []Utxo
 	for r, u := range s.utxos {
 		if u.Owner == a && s.offerable(r, id, spent) {
 			out = append(out, u)
 		}
 	}
-	if o.Chain {
-		for _, rec := range s.recs {
-			if rec.Actor != a || o.MaxDepth > 0 && s.depth(rec)+1 > o.MaxDepth {
-				continue
-			}
-			for _, c := range rec.Change {
-				if s.offerable(c.Ref, id, spent) {
-					out = append(out, c)
-				}
+	scan := map[TxID]*record{}
+	for tx, rec := range s.recs {
+		if rec.Actor == a {
+			scan[tx] = rec
+		}
+	}
+	out = s.appendChange(out, scan, id, o, spent)
+	slices.SortFunc(out, func(x, y Utxo) int { return compareRefs(x.Ref, y.Ref) })
+	return out
+}
+
+// appendChange adds the offerable change of recs, within o.MaxDepth.
+func (s *state) appendChange(out []Utxo, recs map[TxID]*record, id IntentID, o Opts, spent map[Ref]struct{}) []Utxo {
+	if !o.Chain {
+		return out
+	}
+	for _, rec := range recs {
+		if o.MaxDepth > 0 && s.depth(rec)+1 > o.MaxDepth {
+			continue
+		}
+		for _, c := range rec.Change {
+			if s.offerable(c.Ref, id, spent) {
+				out = append(out, c)
 			}
 		}
 	}
-	slices.SortFunc(out, func(x, y Utxo) int { return compareRefs(x.Ref, y.Ref) })
 	return out
+}
+
+func equalUtxos(a, b []Utxo) bool { return slices.Equal(a, b) }
+
+// indexConsistent reports whether byOwner and recsBy hold exactly what
+// utxos and recs imply.
+func (s *state) indexConsistent() error {
+	n := 0
+	for a, m := range s.byOwner {
+		for r := range m {
+			if u, ok := s.utxos[r]; !ok || u.Owner != a {
+				return fmt.Errorf("owner index lists %x#%d under actor %d", r.Tx[:4], r.Index, a)
+			}
+			n++
+		}
+	}
+	if n != len(s.utxos) {
+		return fmt.Errorf("owner index has %d outputs, utxos %d", n, len(s.utxos))
+	}
+	n = 0
+	for a, m := range s.recsBy {
+		for tx, rec := range m {
+			if s.recs[tx] != rec || rec.Actor != a {
+				return fmt.Errorf("actor index lists %x under actor %d", tx[:4], a)
+			}
+			n++
+		}
+	}
+	if n != len(s.recs) {
+		return fmt.Errorf("actor index has %d attempts, recs %d", n, len(s.recs))
+	}
+	return nil
 }
 
 // ancestry is the unfinished attempts the inputs ins build on, directly or
@@ -254,7 +382,7 @@ func (s *state) reserve(id IntentID, a Attempt) error {
 		}
 	}
 	s.nextSeq++
-	s.recs[a.Tx] = &record{Intent: id, Seq: s.nextSeq, Attempt: a}
+	s.addRec(&record{Intent: id, Seq: s.nextSeq, Attempt: a})
 	for _, r := range a.Inputs {
 		s.held[r] = id
 	}
@@ -264,7 +392,7 @@ func (s *state) reserve(id IntentID, a Attempt) error {
 // finish drops rec and releases each input no other unfinished attempt of
 // its intent spends (the contract's rule 7).
 func (s *state) finish(rec *record) {
-	delete(s.recs, rec.Tx)
+	s.delRec(rec)
 	for _, r := range rec.Inputs {
 		if !s.spends(rec.Intent, r) {
 			delete(s.held, r)
@@ -320,13 +448,14 @@ func (s *state) reap() []TxID {
 func (s *state) settle() []TxID {
 	b := s.window[0]
 	s.window = s.window[1:]
+	s.spent = nil
 	var done []TxID
 	for _, tx := range b.txs {
 		for _, r := range tx.spends {
-			delete(s.utxos, r)
+			s.dropUtxo(r)
 		}
 		for _, u := range tx.creates {
-			s.utxos[u.Ref] = u
+			s.putUtxo(u)
 		}
 		if rec, ok := s.recs[tx.id]; ok {
 			s.paid[rec.Intent] = struct{}{}
@@ -354,6 +483,7 @@ func (s *state) forward(b chain.Block, o Owners) (Result, error) {
 		vb.txs = append(vb.txs, t)
 	}
 	s.window = append(s.window, vb)
+	s.spent = nil
 	var res Result
 	for uint64(len(s.window)) > s.k {
 		res.Settled = append(res.Settled, s.settle()...)
@@ -381,6 +511,7 @@ func (s *state) rollback(p chain.Point) error {
 		return fmt.Errorf("%w: slot %d, settled at slot %d", ErrTooDeep, p.Slot, s.settled.Slot)
 	}
 	s.window = s.window[:keep]
+	s.spent = nil
 	return nil
 }
 

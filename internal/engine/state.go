@@ -206,6 +206,10 @@ type logged struct{}
 
 func (logged) Commit(context.Context, store.Blob) error { return nil }
 
+// Discards tells the ledger not to encode or copy its state for a Commit
+// that stores nothing.
+func (logged) Discards() bool { return true }
+
 func ownedUtxo(addr common.Address, r Ref, lovelace uint64) common.Utxo {
 	o := babbage.BabbageTransactionOutput{
 		OutputAddress: addr,

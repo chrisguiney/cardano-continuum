@@ -146,6 +146,13 @@ type Committer interface {
 	Commit(ctx context.Context, b store.Blob) error
 }
 
+// Discarder is implemented by a Committer that stores nothing, because
+// durability lives elsewhere. The ledger then neither encodes its state nor
+// keeps a copy to fall back on: a Commit that cannot fail needs neither.
+type Discarder interface {
+	Discards() bool
+}
+
 // Config is fixed for a ledger's lifetime.
 type Config struct {
 	// K is the security parameter: a block with K successors is settled.
