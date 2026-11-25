@@ -141,12 +141,3 @@ func mustEnv(t *testing.T, name string) string {
 	}
 	return v
 }
-
-// requireOperator skips t until cmd/continuum-operator exists.
-func requireOperator(t *testing.T) {
-	t.Helper()
-	if _, err := os.Stat(filepath.Join(repoRoot(t), "cmd", "continuum-operator")); err != nil {
-		t.Skip("cmd/continuum-operator does not exist yet; this test drives the operator")
-	}
-	t.Skip("cmd/continuum-operator exists but this test's body is not written yet")
-}

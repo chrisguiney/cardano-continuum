@@ -104,10 +104,10 @@ func TestDefaultGenesisForges(t *testing.T) {
 		kube(t, "", "-n", ns, "wait", "--for=condition=Ready", "--timeout=5m", fmt.Sprintf("pod/pool-%d", i))
 	}
 
-	start := systemStart(t, ns)
+	start := systemStart(t, kube(t, "", "-n", ns, "exec", "pool-0", "--", "cat", "/config/"+genesis.ShelleyFile))
 	deadline := start.Add(time.Duration(epochsWanted)*time.Duration(spec.EpochLength)*spec.SlotLength + 4*time.Minute)
 	poll(t, time.Until(deadline), 15*time.Second, "all pools past epoch 2", func(ctx context.Context) (bool, error) {
-		tips := tips(ctx, ns, spec)
+		tips := tips(ctx, ns, poolPods(spec), spec.Magic)
 		t.Logf("tips: %+v", tips)
 		if len(tips) != spec.Pools {
 			return false, nil
@@ -120,10 +120,10 @@ func TestDefaultGenesisForges(t *testing.T) {
 		return true, nil
 	})
 	forged := 0
-	for i := range spec.Pools {
-		forged += checkForged(t, ns, i, spec)
+	for _, pod := range poolPods(spec) {
+		forged += checkForged(t, ns, pod, spec, epochsWanted)
 	}
-	checkOneChain(t, tips(t.Context(), ns, spec), forged, spec)
+	checkOneChain(t, tips(t.Context(), ns, poolPods(spec), spec.Magic), forged, spec)
 }
 
 // checkOneChain requires the pools to share one chain. Pools that never
@@ -152,13 +152,22 @@ type tip struct {
 	Era   string `json:"era"`
 }
 
-// tips returns the tip of every pool that answers; a pool still starting is
+// poolPods names the pods of the hand-made pools.
+func poolPods(s genesis.Spec) []string {
+	out := make([]string, s.Pools)
+	for i := range out {
+		out[i] = fmt.Sprintf("pool-%d", i)
+	}
+	return out
+}
+
+// tips returns the tip of every pod that answers; a pod still starting is
 // left out.
-func tips(ctx context.Context, ns string, s genesis.Spec) []tip {
+func tips(ctx context.Context, ns string, pods []string, magic uint32) []tip {
 	var out []tip
-	for i := range s.Pools {
-		raw, err := kubectl(ctx, "", "-n", ns, "exec", fmt.Sprintf("pool-%d", i), "--",
-			"cardano-cli", "query", "tip", "--testnet-magic", strconv.Itoa(int(s.Magic)),
+	for _, pod := range pods {
+		raw, err := kubectl(ctx, "", "-n", ns, "exec", pod, "--",
+			"cardano-cli", "query", "tip", "--testnet-magic", strconv.Itoa(int(magic)),
 			"--socket-path", "/data/node.socket")
 		if err != nil {
 			continue
@@ -171,13 +180,13 @@ func tips(ctx context.Context, ns string, s genesis.Spec) []tip {
 	return out
 }
 
-func systemStart(t *testing.T, ns string) time.Time {
+// systemStart reads slot 0's time from a shelley genesis file.
+func systemStart(t *testing.T, shelley string) time.Time {
 	t.Helper()
-	raw := kube(t, "", "-n", ns, "exec", "pool-0", "--", "cat", "/config/"+genesis.ShelleyFile)
 	var g struct {
 		SystemStart time.Time `json:"systemStart"`
 	}
-	if err := json.Unmarshal([]byte(raw), &g); err != nil {
+	if err := json.Unmarshal([]byte(shelley), &g); err != nil {
 		t.Fatal(err)
 	}
 	return g.SystemStart
@@ -185,13 +194,13 @@ func systemStart(t *testing.T, ns string) time.Time {
 
 var slotRe = regexp.MustCompile(`"slot":\s*(\d+)`)
 
-// checkForged requires pool i to have forged in each epoch below
-// epochsWanted and returns how many blocks it forged. NoLedgerView lines are logged: they are the failure the
+// checkForged requires pod to have forged in each of the first epochs epochs
+// and returns how many blocks it forged. NoLedgerView lines are logged: they are the failure the
 // default spec was suspected of.
-func checkForged(t *testing.T, ns string, i int, s genesis.Spec) int {
+func checkForged(t *testing.T, ns, pod string, s genesis.Spec, epochs int) int {
 	t.Helper()
-	logs := kube(t, "", "-n", ns, "logs", fmt.Sprintf("pool-%d", i))
-	perEpoch := make([]int, epochsWanted)
+	logs := kube(t, "", "-n", ns, "logs", pod)
+	perEpoch := make([]int, epochs)
 	for _, line := range strings.Split(logs, "\n") {
 		if !strings.Contains(line, "ForgedBlock") {
 			continue
@@ -201,14 +210,14 @@ func checkForged(t *testing.T, ns string, i int, s genesis.Spec) int {
 			continue
 		}
 		slot, _ := strconv.ParseInt(m[1], 10, 64)
-		if e := slot / s.EpochLength; e < epochsWanted {
+		if e := slot / s.EpochLength; e < int64(epochs) {
 			perEpoch[e]++
 		}
 	}
-	t.Logf("pool %d: forged per epoch %v, NoLedgerView lines %d", i, perEpoch, strings.Count(logs, "NoLedgerView"))
+	t.Logf("%s: forged per epoch %v, NoLedgerView lines %d", pod, perEpoch, strings.Count(logs, "NoLedgerView"))
 	for e, n := range perEpoch {
 		if n == 0 {
-			t.Errorf("pool %d forged nothing in epoch %d", i, e)
+			t.Errorf("%s forged nothing in epoch %d", pod, e)
 		}
 	}
 	total := 0

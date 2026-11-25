@@ -99,13 +99,11 @@ func deployGenesis(t *testing.T, ns string, delay time.Duration) {
 
 var hex64 = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
-// TestGenesisJob runs the genesis Job from deploy/genesis and reads the
-// default spec back from the volume.
-func TestGenesisJob(t *testing.T) {
-	ns := newNS(t)
-	deployGenesis(t, ns, 60*time.Second)
-
-	reader := `apiVersion: v1
+// genesisReader starts a pod that mounts the genesis volume and returns a
+// function reading a file from it.
+func genesisReader(t *testing.T, ns string) func(path string) string {
+	t.Helper()
+	const reader = `apiVersion: v1
 kind: Pod
 metadata:
   name: reader
@@ -126,6 +124,16 @@ spec:
 	read := func(path string) string {
 		return kube(t, "", "-n", ns, "exec", "reader", "--", "cat", "/genesis/"+path)
 	}
+	return read
+}
+
+// TestGenesisJob runs the genesis Job from deploy/genesis and reads the
+// default spec back from the volume.
+func TestGenesisJob(t *testing.T) {
+	ns := newNS(t)
+	deployGenesis(t, ns, 60*time.Second)
+
+	read := genesisReader(t, ns)
 
 	if h := strings.TrimSpace(read("spec.sha256")); !hex64.MatchString(h) {
 		t.Errorf("spec.sha256 = %q, want 64 hex characters", h)
