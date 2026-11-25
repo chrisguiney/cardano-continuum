@@ -6,6 +6,7 @@ require (
 	github.com/blinklabs-io/bursa v0.29.0
 	github.com/blinklabs-io/gouroboros v0.220.1
 	github.com/blinklabs-io/ouroboros-mock v0.21.4
+	github.com/fxamacker/cbor/v2 v2.10.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -21,7 +22,6 @@ require (
 	github.com/consensys/gnark-crypto v0.22.0 // indirect
 	github.com/decred/dcrd/crypto/blake256 v1.1.0 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1 // indirect
-	github.com/fxamacker/cbor/v2 v2.10.0 // indirect
 	github.com/jinzhu/copier v0.4.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/rogpeppe/go-internal v1.16.0 // indirect
