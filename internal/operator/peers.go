@@ -7,6 +7,12 @@ import (
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 )
 
+// ClusterDomain is the cluster's DNS domain. Peer hosts are fully qualified
+// with it because cardano-node resolves topology hosts with its own DNS
+// client, which ignores the pod's search domains: a name like "pool.ns.svc"
+// never resolves and the node never connects to that peer.
+const ClusterDomain = "cluster.local"
+
 // Member is a pool of a network that renders a workload, as Peers sees it.
 type Member struct {
 	Name   string // workload name
@@ -24,7 +30,7 @@ func Peers(policy v1alpha1.TopologyMode, namespace string, members []Member, sel
 		if m.Name == self.Name || !dials(policy, self, m) {
 			continue
 		}
-		out = append(out, Peer{Host: m.Name + "." + namespace + ".svc", Port: N2NPort})
+		out = append(out, Peer{Host: m.Name + "." + namespace + ".svc." + ClusterDomain, Port: N2NPort})
 	}
 	slices.SortFunc(out, func(a, b Peer) int { return strings.Compare(a.Host, b.Host) })
 	return out

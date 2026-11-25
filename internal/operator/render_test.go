@@ -21,7 +21,7 @@ func render(t *testing.T, d NodeDriver, p *v1alpha1.ContinuumPool, img string) W
 	w, err := Render(d, Input{
 		Network: network("ns"),
 		Pool:    p,
-		Peers:   []Peer{{Host: "pool-b.ns.svc", Port: N2NPort}},
+		Peers:   []Peer{{Host: "pool-b.ns.svc.cluster.local", Port: N2NPort}},
 		Image:   Image{Name: img, PullPolicy: corev1.PullIfNotPresent},
 	})
 	if err != nil {
@@ -122,7 +122,7 @@ func TestRenderCardanoNodeRelay(t *testing.T) {
 	if len(spec.InitContainers) != 0 {
 		t.Error("relay has a keys gate")
 	}
-	if !strings.Contains(w.Config.Data["topology.json"], "pool-b.ns.svc") {
+	if !strings.Contains(w.Config.Data["topology.json"], "pool-b.ns.svc.cluster.local") {
 		t.Errorf("topology does not list the peer: %s", w.Config.Data["topology.json"])
 	}
 	if !slices.ContainsFunc(spec.Volumes, func(v corev1.Volume) bool { return v.ConfigMap != nil && v.ConfigMap.Name == "genesis" }) {

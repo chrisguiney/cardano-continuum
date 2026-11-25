@@ -14,7 +14,7 @@ func TestPeersPolicy(t *testing.T) {
 		{Name: "pool-b", PoolID: "b", Role: RoleForger},
 		{Name: "relay-b1", PoolID: "b", Role: RoleRelay},
 	}
-	host := func(n string) Peer { return Peer{Host: n + ".ns.svc", Port: N2NPort} }
+	host := func(n string) Peer { return Peer{Host: n + ".ns.svc.cluster.local", Port: N2NPort} }
 	tests := []struct {
 		policy v1alpha1.TopologyMode
 		self   int
