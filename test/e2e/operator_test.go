@@ -55,7 +55,8 @@ func TestGenesisBoots(t *testing.T) {
 
 // bootNetwork runs the operator in a fresh namespace, renders the genesis
 // with the Job and brings up one forging cardano-node ContinuumPool per
-// genesis pool. It returns the namespace, the pools' pod names (pool i's
+// genesis pool, and stops the test unless they share one chain
+// (requireOneChain). It returns the namespace, the pools' pod names (pool i's
 // first) and the system start.
 func bootNetwork(t *testing.T, spec genesis.Spec) (string, []string, time.Time) {
 	t.Helper()
@@ -89,14 +90,20 @@ func bootNetworkWith(t *testing.T, spec genesis.Spec, pool func(int) v1alpha1.Co
 
 	publishGenesis(t, ns, read, spec)
 	pods := applyNetworkWith(t, ns, spec, pool)
-	for _, pod := range pods {
+	var nodes []string
+	for i, pod := range pods {
 		poll(t, 5*time.Minute, 5*time.Second, pod+" to exist", func(ctx context.Context) (bool, error) {
 			_, err := kubectl(ctx, "", "-n", ns, "get", "pod", pod)
 			return err == nil, nil
 		})
 		kube(t, "", "-n", ns, "wait", "--for=condition=Ready", "--timeout=5m", "pod/"+pod)
+		if p := pool(i); p.Spec.Implementation == v1alpha1.CardanoNode {
+			nodes = append(nodes, pod)
+		}
 	}
-	return ns, pods, systemStart(t, read("config/"+genesis.ShelleyFile))
+	start := systemStart(t, read("config/"+genesis.ShelleyFile))
+	requireOneChain(t, ns, nodes, spec, start)
+	return ns, pods, start
 }
 
 // installOperator applies the CRDs and RBAC and runs the operator in ns.

@@ -98,6 +98,7 @@ func TestGouroborosOverlayCanary(t *testing.T) {
 
 	pod := operator.PodName(operator.Name(&dingo))
 	start := systemStart(t, read("config/"+genesis.ShelleyFile))
+	requireOneChain(t, ns, pods, spec, start)
 	deadline := start.Add(10 * time.Minute)
 	poll(t, time.Until(deadline), 15*time.Second, "dingo to follow the chain", func(ctx context.Context) (bool, error) {
 		cn := tips(ctx, ns, pods, spec.Magic)

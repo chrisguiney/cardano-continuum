@@ -105,6 +105,7 @@ func TestDefaultGenesisForges(t *testing.T) {
 	}
 
 	start := systemStart(t, kube(t, "", "-n", ns, "exec", "pool-0", "--", "cat", "/config/"+genesis.ShelleyFile))
+	requireOneChain(t, ns, poolPods(spec), spec, start)
 	deadline := start.Add(time.Duration(epochsWanted)*time.Duration(spec.EpochLength)*spec.SlotLength + 4*time.Minute)
 	poll(t, time.Until(deadline), 15*time.Second, "all pools past epoch 2", func(ctx context.Context) (bool, error) {
 		tips := tips(ctx, ns, poolPods(spec), spec.Magic)
@@ -124,6 +125,39 @@ func TestDefaultGenesisForges(t *testing.T) {
 		forged += checkForged(t, ns, pod, spec, epochsWanted)
 	}
 	checkOneChain(t, tips(t.Context(), ns, poolPods(spec), spec.Magic), forged, spec)
+}
+
+// requireOneChain stops the test unless the cardano-node pods share one
+// chain once they have forged 2k blocks between them. Every devnet test calls
+// it before its own assertions: a pool that never dials its peers forges a
+// fork of its own, and an engine following it can pass the rest of a test.
+// It waits at most until the stability window (3k/f slots) has passed, plus
+// two minutes, after start.
+func requireOneChain(t *testing.T, ns string, pods []string, s genesis.Spec, start time.Time) {
+	t.Helper()
+	window := time.Duration(float64(3*s.SecurityParam)/s.ActiveSlotsCoeff) * s.SlotLength
+	want := int(2 * s.SecurityParam)
+	forged := 0
+	poll(t, time.Until(start.Add(window+2*time.Minute)), 10*time.Second, fmt.Sprintf("%d blocks forged", want), func(ctx context.Context) (bool, error) {
+		forged = 0
+		for _, pod := range pods {
+			logs, err := kubectl(ctx, "", "-n", ns, "logs", pod, "-c", "node")
+			if err != nil {
+				return false, nil
+			}
+			forged += len(forgedSlots(logs))
+		}
+		return forged >= want, nil
+	})
+	ts := tips(t.Context(), ns, pods, s.Magic)
+	t.Logf("tips after %d blocks forged: %+v", forged, ts)
+	if len(ts) != len(pods) {
+		t.Fatalf("%d of %d pools report a tip", len(ts), len(pods))
+	}
+	checkOneChain(t, ts, forged, s)
+	if t.Failed() {
+		t.FailNow()
+	}
 }
 
 // checkOneChain requires the pools to share one chain. Pools that never
@@ -195,6 +229,21 @@ func systemStart(t *testing.T, shelley string) time.Time {
 
 var slotRe = regexp.MustCompile(`"slot":\s*(\d+)`)
 
+// forgedSlots are the slots of the blocks a cardano-node log says it forged.
+func forgedSlots(logs string) []int64 {
+	var out []int64
+	for _, line := range strings.Split(logs, "\n") {
+		if !strings.Contains(line, "ForgedBlock") {
+			continue
+		}
+		if m := slotRe.FindStringSubmatch(line); m != nil {
+			slot, _ := strconv.ParseInt(m[1], 10, 64)
+			out = append(out, slot)
+		}
+	}
+	return out
+}
+
 // checkForged requires pod to have forged in each of the first epochs epochs
 // and returns how many blocks it forged. NoLedgerView lines are logged: they are the failure the
 // default spec was suspected of.
@@ -202,15 +251,7 @@ func checkForged(t *testing.T, ns, pod string, s genesis.Spec, epochs int) int {
 	t.Helper()
 	logs := kube(t, "", "-n", ns, "logs", pod)
 	perEpoch := make([]int, epochs)
-	for _, line := range strings.Split(logs, "\n") {
-		if !strings.Contains(line, "ForgedBlock") {
-			continue
-		}
-		m := slotRe.FindStringSubmatch(line)
-		if m == nil {
-			continue
-		}
-		slot, _ := strconv.ParseInt(m[1], 10, 64)
+	for _, slot := range forgedSlots(logs) {
 		if e := slot / s.EpochLength; e < int64(epochs) {
 			perEpoch[e]++
 		}
