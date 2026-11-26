@@ -369,7 +369,8 @@ func (e *Engine) prepareSend(a population.Actor, p *pendingRec, r *rand.Rand) (*
 	}
 	p.Kind, p.To = "", uint64(targets[r.IntN(len(targets))])
 	bal := e.Spendable(uint64(a.ID))
-	p.Amount = paymentSize(e.actors[a.ID].prof.Amount, bal, r)
+	floor := e.builder.MinPayment(e.walletOf(population.ActorID(p.To)).Address())
+	p.Amount = paymentSize(e.actors[a.ID].prof.Amount, bal, floor, r)
 	return p, ""
 }
 

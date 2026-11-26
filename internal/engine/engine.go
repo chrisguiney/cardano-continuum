@@ -46,8 +46,9 @@ var (
 )
 
 // Payment sizing. A payment sends a drawn fraction of the actor's spendable
-// balance, never less than minPayment, and needs feeHeadroom on top so the
-// builder can pay the fee and return change.
+// balance, never less than the payee output's min-UTxO, and needs
+// feeHeadroom on top so the builder can pay the fee and return change.
+// minPayment is what an adversary's probe payments send.
 const (
 	minPayment   = 2_000_000
 	feeHeadroom  = 1_000_000
@@ -626,20 +627,22 @@ func (e *Engine) act(ctx context.Context, at sched.Time, id population.ActorID) 
 	return nil
 }
 
-// paymentSize is the amount of a payment from an actor holding bal. Without
-// a profile distribution it is a drawn fraction of the balance. With one it
-// is a draw from the distribution, capped so the payment leaves feeHeadroom:
-// an oversize draw pays what the wallet can rather than being skipped, which
-// would bias the sizes of the payments that do go out toward the body.
-func paymentSize(a *profile.Amount, bal uint64, r *rand.Rand) uint64 {
+// paymentSize is the amount of a payment from an actor holding bal, never
+// below floor, the min-UTxO of the payee's output (build.MinPayment).
+// Without a profile distribution it is a drawn fraction of the balance.
+// With one it is a draw from the distribution, capped so the payment leaves
+// feeHeadroom: an oversize draw pays what the wallet can rather than being
+// skipped, which would bias the sizes of the payments that do go out
+// toward the body.
+func paymentSize(a *profile.Amount, bal, floor uint64, r *rand.Rand) uint64 {
 	if a == nil {
-		return max(uint64(float64(bal)*(minFraction+fracSpread*r.Float64())), minPayment)
+		return max(uint64(float64(bal)*(minFraction+fracSpread*r.Float64())), floor)
 	}
 	ceiling := float64(bal) - feeHeadroom
-	if ceiling < minPayment {
-		return minPayment
+	if ceiling < float64(floor) {
+		return floor
 	}
-	return max(uint64(min(a.Sample(r), ceiling)), minPayment)
+	return max(uint64(min(a.Sample(r), ceiling)), floor)
 }
 
 func attempt(a population.ActorID, tx TxID, inputs []Ref, ttl uint64) plan.Attempt {

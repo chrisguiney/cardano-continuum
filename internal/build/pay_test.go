@@ -11,6 +11,7 @@ import (
 	"github.com/blinklabs-io/gouroboros/ledger"
 	"github.com/blinklabs-io/gouroboros/ledger/babbage"
 	"github.com/blinklabs-io/gouroboros/ledger/common"
+	"github.com/blinklabs-io/gouroboros/ledger/conway"
 	"github.com/blinklabs-io/gouroboros/ledger/mary"
 	"github.com/blinklabs-io/gouroboros/ledger/shelley"
 
@@ -248,4 +249,41 @@ func TestPayTipRaisesTheFee(t *testing.T) {
 	if got.Fee != base.Fee+300_000 {
 		t.Fatalf("fee %d, want the minimum %d plus the tip", got.Fee, base.Fee)
 	}
+}
+
+// MinPayment is the ledger's min-UTxO for a plain payment to the address:
+// a payment of exactly that much is accepted, and the ledger's own
+// MinCoinTxOut of the output it creates is no more. For a base address it
+// is about 1 ADA, half the 2 ADA a wallet rule of thumb pays.
+func TestMinPaymentIsTheLedgerMinimum(t *testing.T) {
+	h := newHarness(t)
+	to := h.store.Wallet(2).Address()
+	floor := h.b.MinPayment(to)
+	if floor < 800_000 || floor >= 2_000_000 {
+		t.Fatalf("min payment %d, want about 1 ADA", floor)
+	}
+	got, err := h.b.Pay(ctx, h.alice, Payment{Inputs: h.spend().Inputs, TTL: h.spend().TTL, To: to, Amount: floor})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := conway.NewConwayTransactionFromCbor(got.Tx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, o := range tx.Outputs() {
+		if o.Address().String() != to.String() {
+			continue
+		}
+		need, err := conway.MinCoinTxOut(o, &h.pp)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if need > floor {
+			t.Fatalf("ledger needs %d for the payment, MinPayment said %d", need, floor)
+		}
+		if floor-need > 4*h.pp.AdaPerUtxoByte {
+			t.Fatalf("MinPayment %d is more than a few bytes above the ledger's %d", floor, need)
+		}
+	}
+	h.commit(got)
 }

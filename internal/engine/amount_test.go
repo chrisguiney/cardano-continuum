@@ -7,7 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
+	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 )
 
@@ -59,15 +61,16 @@ func TestPaymentSizesFollowAmount(t *testing.T) {
 	}
 }
 
-// A profile without the field keeps the balance-fraction sizing: payments of
-// at least 5% of a 200 ADA balance.
+// A profile without the field keeps the balance-fraction sizing: 5% to 30%
+// of the balance, never below the min-UTxO.
 func TestPaymentSizesDefaultWithoutAmount(t *testing.T) {
 	t.Parallel()
-	xs := submittedAmounts(t, testConfig(t, 5, 40))
+	cfg := testConfig(t, 5, 40)
+	xs := submittedAmounts(t, cfg)
 	if len(xs) == 0 {
 		t.Fatal("no payments")
 	}
-	if xs[0] < minPayment {
+	if xs[0] < float64(build.New(cfg.Build).MinPayment(newKeys(t, cfg).Wallet(1).Address())) {
 		t.Errorf("smallest payment %.0f below the minimum", xs[0])
 	}
 }
@@ -98,4 +101,29 @@ func TestPaymentSizeCappedToBalance(t *testing.T) {
 			t.Fatalf("actor %d skipped a payment of %d holding %d: the draw was not capped", rec.Actor, need-feeHeadroom, have)
 		}
 	}
+}
+
+// Payments drawn below the ledger's min-UTxO pay the min-UTxO of the
+// payee's output, about 1 ADA, not a fixed 2 ADA: a real chain has many
+// outputs at that floor.
+func TestPaymentFloorIsMinUtxo(t *testing.T) {
+	y := strings.Replace(amountProfileYAML, "lognormal(16.8, 0.4)", "lognormal(12, 0.3)", 1)
+	cfg := amountConfig(t, y, 5)
+	xs := submittedAmounts(t, cfg)
+	if len(xs) == 0 {
+		t.Fatal("no payments")
+	}
+	floor := float64(build.New(cfg.Build).MinPayment(newKeys(t, cfg).Wallet(1).Address()))
+	if xs[0] < floor || xs[len(xs)/2] >= 2_000_000 {
+		t.Fatalf("payments from %.0f, median %.0f: want them at the min-UTxO %.0f", xs[0], xs[len(xs)/2], floor)
+	}
+}
+
+func newKeys(t testing.TB, cfg Config) *keys.Store {
+	t.Helper()
+	ks, err := keys.New(cfg.Seed.Derive("keys"), cfg.NetworkID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ks
 }

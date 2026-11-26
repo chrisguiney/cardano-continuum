@@ -4,7 +4,9 @@ import (
 	"context"
 
 	"github.com/Salvionied/apollo/v2"
+	"github.com/blinklabs-io/gouroboros/ledger/babbage"
 	"github.com/blinklabs-io/gouroboros/ledger/common"
+	"github.com/blinklabs-io/gouroboros/ledger/mary"
 
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 )
@@ -32,4 +34,32 @@ func (b *Builder) Pay(ctx context.Context, w keys.Wallet, p Payment) (Built, err
 			return a.PayToAddress(p.To, int64(p.Amount)), nil
 		},
 	})
+}
+
+// minUtxoOverhead is the bytes CIP-55 adds to an output's size for its
+// input and UTxO map entry (Conway's MinCoinTxOut).
+const minUtxoOverhead = 160
+
+// MinPayment is the smallest plain-ADA payment to the address the ledger
+// accepts: coinsPerUTxOByte * (160 + size of the output). The size counts
+// the coin itself, so it is found by iterating to a fixed point, which a
+// CBOR integer's few size steps reach at once. The output is sized in
+// Babbage's map form, the larger of the two, so the result is never
+// below the ledger's minimum.
+func (b *Builder) MinPayment(to common.Address) uint64 {
+	coin := uint64(0)
+	for range 4 {
+		o := babbage.BabbageTransactionOutput{OutputAddress: to, OutputAmount: mary.MaryTransactionOutputValue{Amount: coin}}
+		size, err := common.TransactionOutputCborSize(&o)
+		if err != nil {
+			// An address the builder holds always encodes.
+			panic("build: size a payment output: " + err.Error())
+		}
+		next := b.params.CoinsPerUtxoByte * (minUtxoOverhead + size)
+		if next == coin {
+			break
+		}
+		coin = next
+	}
+	return coin
 }
