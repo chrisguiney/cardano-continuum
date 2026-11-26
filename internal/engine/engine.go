@@ -23,6 +23,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/rng"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
+	"github.com/chrisguiney/cardano-continuum/internal/store"
 	"github.com/chrisguiney/cardano-continuum/internal/submit"
 )
 
@@ -111,6 +112,10 @@ type actor struct {
 	waits uint8
 	// paid are the actor's payees, most recent last, at most maxPaid.
 	paid []population.ActorID
+	// ident is the actor's unchanging public identity (identity.go),
+	// computed on first use.
+	ident   store.Identity
+	identOK bool
 }
 
 type birth struct {

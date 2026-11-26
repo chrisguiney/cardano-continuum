@@ -1,11 +1,10 @@
 import { useEffect, useState } from "preact/hooks";
+import { ACTOR_COLUMNS } from "../lib/actorcols";
 import { count } from "../lib/format";
 import { usePoll } from "../lib/hooks";
-import { SORT_KEYS, clampOffset, initialPage, nextPage, pageInfo, prevPage, setFilter, setSort, toQuery, type FilterName, type PageState, type SortKey } from "../lib/paging";
+import { clampOffset, initialPage, nextPage, pageInfo, prevPage, setFilter, setSort, toQuery, type FilterName, type PageState, type SortKey } from "../lib/paging";
 import type { ActorPage, Snapshot } from "../lib/types";
 import { ErrorNote, Link } from "./common";
-
-const COLUMNS: [SortKey, string][] = SORT_KEYS.map((k) => [k, k[0]!.toUpperCase() + k.slice(1)]);
 
 function Filter({ name, label, value, options, onChange }: { name: FilterName; label: string; value: string; options: string[]; onChange: (n: FilterName, v: string) => void }) {
   return (
@@ -42,8 +41,12 @@ export function Actors() {
         <Filter name="profile" label="Profile" value={page.profile} options={Object.keys(snap?.population.by_profile ?? {}).sort()} onChange={change} />
         <Filter name="state" label="State" value={page.state} options={Object.keys(snap?.population.by_state ?? {}).sort()} onChange={change} />
         <label>
-          Role
-          <input type="text" value={page.role} placeholder="any" maxLength={64} onInput={(e) => change("role", e.currentTarget.value.trim().toLowerCase())} />
+          Delegated
+          <select value={page.delegated} onChange={(e) => change("delegated", e.currentTarget.value)}>
+            <option value="">Any</option>
+            <option value="true">Delegated</option>
+            <option value="false">Not delegated</option>
+          </select>
         </label>
         <span class="muted">{count(total)} matching</span>
       </div>
@@ -52,12 +55,16 @@ export function Actors() {
         <table>
           <thead>
             <tr>
-              {COLUMNS.map(([k, label]) => (
-                <th key={k} aria-sort={dirOf(k)}>
-                  <button type="button" class="th" onClick={() => setPage((p) => setSort(p, k))}>
-                    {label}
-                    <span aria-hidden="true">{page.sort === k ? (page.desc ? " ▼" : " ▲") : ""}</span>
-                  </button>
+              {ACTOR_COLUMNS.map((c) => (
+                <th key={c.label} aria-sort={c.sort ? dirOf(c.sort) : undefined}>
+                  {c.sort ? (
+                    <button type="button" class="th" onClick={() => setPage((p) => setSort(p, c.sort!))}>
+                      {c.label}
+                      <span aria-hidden="true">{page.sort === c.sort ? (page.desc ? " ▼" : " ▲") : ""}</span>
+                    </button>
+                  ) : (
+                    c.label
+                  )}
                 </th>
               ))}
             </tr>
@@ -65,20 +72,15 @@ export function Actors() {
           <tbody>
             {data?.rows.map((r) => (
               <tr key={r.id}>
-                <td><Link to={`/actors/${r.id}`}>{r.id}</Link></td>
-                <td>{r.name || <span class="muted">unnamed</span>}</td>
-                <td>{r.role}</td>
-                <td>{r.profile}</td>
-                <td>{r.state}</td>
-                <td class="num">{count(r.intents)}</td>
-                <td class="num">{count(r.txs)}</td>
-                <td class="num">{count(r.retries)}</td>
-                <td class="num">{count(r.confirmed)}</td>
-                <td class="num">{count(r.released)}</td>
+                {ACTOR_COLUMNS.map((c) => (
+                  <td key={c.label} class={c.num ? "num" : c.label === "Address" ? "mono" : undefined}>
+                    {c.label === "ID" ? <Link to={`/actors/${r.id}`}>{r.id}</Link> : c.cell(r) || <span class="muted">{c.label === "Name" ? "unnamed" : "-"}</span>}
+                  </td>
+                ))}
               </tr>
             ))}
             {data && data.rows.length === 0 && (
-              <tr><td colSpan={10} class="empty">No actors match.</td></tr>
+              <tr><td colSpan={ACTOR_COLUMNS.length} class="empty">No actors match.</td></tr>
             )}
           </tbody>
         </table>

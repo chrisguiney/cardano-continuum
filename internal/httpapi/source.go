@@ -14,6 +14,11 @@ type Source interface {
 	Actors(ctx context.Context, q ActorQuery) (ActorPage, error)
 	// ActorTimeline is one actor's timeline, or ErrNotFound.
 	ActorTimeline(ctx context.Context, id uint64) (Timeline, error)
+	// ActorDetail is one actor in full, or ErrNotFound.
+	ActorDetail(ctx context.Context, id uint64) (ActorDetail, error)
+	// Adversaries is the Adversaries view: each attacker's cost, counters
+	// and findings, and the run's impact on honest actors.
+	Adversaries(ctx context.Context) (AdversaryView, error)
 	// Pools is the Pools view with its topology graph.
 	Pools(ctx context.Context) (PoolsView, error)
 	// Findings pages oracle findings; none exist before the oracle lands.
@@ -26,4 +31,4 @@ type Source interface {
 }
 
 // SortKeys are the columns the actor table sorts by.
-var SortKeys = []string{"id", "name", "role", "profile", "state", "intents", "txs", "retries", "confirmed", "released"}
+var SortKeys = []string{"id", "name", "role", "profile", "state", "intents", "txs", "retries", "confirmed", "released", "kind", "balance", "tokens"}

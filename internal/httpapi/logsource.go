@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
+	"github.com/chrisguiney/cardano-continuum/internal/adversary"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/store"
@@ -49,6 +50,9 @@ type LogSourceConfig struct {
 	// K is the network's security parameter and ForkDepth the number of
 	// blocks two pools must differ on to be reported as forked.
 	K, ForkDepth uint64
+	// Control, when set, is the metrics of a control run (no adversaries)
+	// on the same seed; the Adversaries page reports deltas against it.
+	Control *adversary.Metrics
 }
 
 // Tips is what follows the pools' chains: each pool's newest blocks by
@@ -62,8 +66,9 @@ type Tips interface {
 type LogSource struct {
 	cfg LogSourceConfig
 
-	mu     sync.Mutex // protects cached, cachedAt
+	mu     sync.Mutex // protects cached, idents, cacheT
 	cached map[uint64]store.ActorRow
+	idents map[uint64]store.Identity
 	cacheT time.Time
 }
 
@@ -148,10 +153,14 @@ func (s *LogSource) Actors(ctx context.Context, q ActorQuery) (ActorPage, error)
 	if err != nil {
 		return ActorPage{}, err
 	}
+	idents := s.identities()
 	for i := range rows {
 		rows[i].Name, rows[i].Role = n[rows[i].ID].Name, n[rows[i].ID].Role
 		if rows[i].Profile == "" {
 			rows[i].Profile = n[rows[i].ID].Profile
+		}
+		if in, ok := idents[rows[i].ID]; ok {
+			rows[i].withIdentity(in)
 		}
 	}
 	return pageActors(rows, q), nil
@@ -183,9 +192,31 @@ func (s *LogSource) names(ctx context.Context) (map[uint64]store.ActorRow, error
 		}
 	}
 	s.mu.Lock()
-	s.cached, s.cacheT = all, s.cfg.Now()
+	s.cached, s.idents, s.cacheT = all, parseIdents(all), s.cfg.Now()
 	s.mu.Unlock()
 	return all, nil
+}
+
+// identities returns the identities parsed from the last names read. A row
+// whose identity does not parse is skipped: one bad row must not hide the
+// table.
+func (s *LogSource) identities() map[uint64]store.Identity {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.idents
+}
+
+func parseIdents(rows map[uint64]store.ActorRow) map[uint64]store.Identity {
+	out := make(map[uint64]store.Identity, len(rows))
+	for id, r := range rows {
+		if r.Identity == "" {
+			continue
+		}
+		if in, err := store.DecodeIdentity(r.Identity); err == nil {
+			out[id] = in
+		}
+	}
+	return out
 }
 
 // pageActors filters, sorts and slices rows. Sorting is stable on id, so a
@@ -195,7 +226,8 @@ func pageActors(rows []ActorRow, q ActorQuery) ActorPage {
 		f := q.Filter
 		return (f.Profile != "" && r.Profile != f.Profile) ||
 			(f.State != "" && r.State != f.State) ||
-			(f.Role != "" && r.Role != f.Role)
+			(f.Role != "" && r.Role != f.Role) ||
+			(f.Delegated != nil && r.Delegated != *f.Delegated)
 	})
 	slices.SortStableFunc(rows, func(a, b ActorRow) int {
 		c := compareActors(q.Sort, a, b)
@@ -234,6 +266,12 @@ func compareActors(key string, a, b ActorRow) int {
 		return a.Confirmed - b.Confirmed
 	case "released":
 		return a.Released - b.Released
+	case "kind":
+		return strings.Compare(a.Kind, b.Kind)
+	case "balance":
+		return cmpUint(a.Balance, b.Balance)
+	case "tokens":
+		return a.Tokens - b.Tokens
 	}
 	return cmpUint(a.ID, b.ID)
 }

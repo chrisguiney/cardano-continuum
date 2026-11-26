@@ -76,3 +76,14 @@ func (l *Ledger) Restore(cs []Charge) {
 		l.spent[account{population.ActorID(c.Actor), c.Epoch}] = c.Spent
 	}
 }
+
+// Total is what the actor has spent across every epoch.
+func (l *Ledger) Total(a population.ActorID) uint64 {
+	var sum uint64
+	for k, v := range l.spent {
+		if k.actor == a {
+			sum += v
+		}
+	}
+	return sum
+}

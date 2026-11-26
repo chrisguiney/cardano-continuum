@@ -35,6 +35,14 @@ export interface ActorRow {
   retries: number;
   confirmed: number;
   released: number;
+  kind: string;
+  address: string;
+  balance: number;
+  pending: number;
+  tokens: number;
+  delegated: boolean;
+  pool: string;
+  drep: string;
 }
 export interface ActorPage {
   total: number;
@@ -149,4 +157,72 @@ export interface Decision {
 export interface Receipt {
   seq: number;
   duplicate: boolean;
+}
+
+export interface Token {
+  policy: string;
+  name: string;
+  name_text?: string;
+  quantity: number;
+}
+export interface ActorFinding {
+  id: string;
+  seq: number;
+  kind: string;
+  severity: string;
+  summary: string;
+}
+export interface ActorDetail {
+  id: number;
+  name: string;
+  profile: string;
+  kind: string;
+  agenda: string;
+  has_identity: boolean;
+  wallet: { payment_addr: string; stake_addr: string; payment_key_hash: string; stake_key_hash: string; drep_id?: string; pool_id?: string };
+  holdings: { settled_lovelace: number; reserved_lovelace: number; unconfirmed_lovelace: number; utxos: number; in_flight: number; tokens: Token[] };
+  delegation: { stake_registered: boolean; pool?: string; pool_actor?: number; drep?: string };
+  lifecycle: { state: string; born_ms: number; changed_ms: number; frustration: number; hazard: number };
+  traits: { competence: number; care: number; patience: number; learning_rate: number };
+  activity: {
+    intents: number; submitted: number; confirmed: number; refused: number; released: number; gave_up: number; retries: number;
+    last_ms: number; lost_lovelace: number; recent: Decision[];
+  };
+  findings: ActorFinding[];
+  adversary?: { spent: number; ceiling: number; metric: string };
+  timeline: TimelineEntry[];
+}
+export interface AdversaryCost {
+  spent: number;
+  ceiling: number;
+  epoch: number;
+  epoch_spent: number;
+  by_epoch: { epoch: number; spent: number }[];
+}
+export interface AdversaryRow {
+  id: number;
+  name: string;
+  profile: string;
+  attack: string;
+  agenda: string;
+  budget: number;
+  cost: AdversaryCost;
+  metric: { name: string; value: number; control: number | null };
+  attempted: number;
+  landed: number;
+  detected: number;
+  rejected: number;
+  recent: { seq: number; at: number; intent: number; mutation?: string; cost: number; value?: number; txs: number }[];
+  findings: ActorFinding[];
+}
+export interface ImpactRow {
+  metric: string;
+  value: number;
+  control: number | null;
+  delta: number | null;
+}
+export interface AdversaryView {
+  has_control: boolean;
+  adversaries: AdversaryRow[];
+  impact: ImpactRow[];
 }

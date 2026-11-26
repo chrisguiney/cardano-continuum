@@ -13,6 +13,9 @@ type ActorRow struct {
 	Name    string
 	Role    string
 	Profile string
+	// Identity is the actor's public identity as JSON (addresses, key hashes,
+	// traits); the store never interprets it. Empty for rows written before v3.
+	Identity string
 }
 
 // ActorQuery pages the actor read model.
@@ -52,7 +55,7 @@ func (d *DB) Actors(ctx context.Context, q ActorQuery) ([]ActorRow, error) {
 		dir = "DESC"
 	}
 	rows, err := d.db.QueryContext(ctx,
-		"SELECT id, name, role, profile FROM actor ORDER BY "+col+" "+dir+", id ASC LIMIT ? OFFSET ?", limit, q.Offset)
+		"SELECT id, name, role, profile, identity FROM actor ORDER BY "+col+" "+dir+", id ASC LIMIT ? OFFSET ?", limit, q.Offset)
 	if err != nil {
 		return nil, fmt.Errorf("query actors: %w", err)
 	}
@@ -60,7 +63,7 @@ func (d *DB) Actors(ctx context.Context, q ActorQuery) ([]ActorRow, error) {
 	var out []ActorRow
 	for rows.Next() {
 		var a ActorRow
-		if err := rows.Scan(&a.ID, &a.Name, &a.Role, &a.Profile); err != nil {
+		if err := rows.Scan(&a.ID, &a.Name, &a.Role, &a.Profile, &a.Identity); err != nil {
 			return nil, err
 		}
 		out = append(out, a)

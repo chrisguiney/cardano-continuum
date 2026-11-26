@@ -8,7 +8,7 @@
 //	continuum replay --image impl=ref [--live --network N --node HOST:PORT --genesis FILE] DIR/events.log
 //	continuum bisect --dep D <good>..<bad> --repo DIR --check KIND|COMMAND [--dingo DIR] [--seed N]
 //	continuum export EVENTS.LOG --out DIR
-//	continuum serve --log EVENTS.LOG [--store DB] [--addr 127.0.0.1:8088] [--controls]
+//	continuum serve --log EVENTS.LOG [--store DB] [--control LOG] [--addr 127.0.0.1:8088] [--controls]
 //	continuum image set <impl>=<ref> --network N [--pools N% | --pool ID] [--tier T] [--dry-run]
 //	continuum profiles index [--out FILE]
 //	continuum build --dingo DIR [--with MODULE=PATH|SHA ...] [flags]

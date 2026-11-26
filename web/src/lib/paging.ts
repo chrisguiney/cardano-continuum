@@ -1,8 +1,8 @@
 /** Server-side paging state for the actors table. Only one page is ever fetched. */
 
-export const SORT_KEYS = ["id", "name", "role", "profile", "state", "intents", "txs", "retries", "confirmed", "released"] as const;
+export const SORT_KEYS = ["id", "name", "role", "profile", "state", "intents", "txs", "retries", "confirmed", "released", "kind", "balance", "tokens"] as const;
 export type SortKey = (typeof SORT_KEYS)[number];
-export type FilterName = "profile" | "state" | "role";
+export type FilterName = "profile" | "state" | "role" | "delegated";
 
 export interface PageState {
   offset: number;
@@ -12,10 +12,12 @@ export interface PageState {
   profile: string;
   state: string;
   role: string;
+  /** "" (any), "true" or "false". */
+  delegated: string;
 }
 
 export function initialPage(): PageState {
-  return { offset: 0, limit: 100, sort: "id", desc: false, profile: "", state: "", role: "" };
+  return { offset: 0, limit: 100, sort: "id", desc: false, profile: "", state: "", role: "", delegated: "" };
 }
 
 /** toQuery encodes the state as the /api/actors query string, omitting unset fields. */
@@ -23,7 +25,7 @@ export function toQuery(s: PageState): string {
   const q = new URLSearchParams({ limit: String(s.limit), offset: String(s.offset) });
   if (s.sort !== "id" || s.desc) q.set("sort", s.sort);
   if (s.desc) q.set("dir", "desc");
-  for (const f of ["profile", "state", "role"] as const) if (s[f]) q.set(f, s[f]);
+  for (const f of ["profile", "state", "role", "delegated"] as const) if (s[f]) q.set(f, s[f]);
   return q.toString();
 }
 

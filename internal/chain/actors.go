@@ -93,3 +93,34 @@ func (v *View) poolLive(id common.Blake2b224) bool {
 	p, ok := v.pools[id]
 	return ok && !p.Retired && (!p.Retiring || v.Epoch() < p.RetireAt)
 }
+
+// Owned returns the tracked outputs by owning actor, each list sorted by
+// reference. It walks every output once, so a caller wanting several
+// actors asks once.
+func (v *View) Owned() map[population.ActorID][]common.Utxo {
+	out := map[population.ActorID][]common.Utxo{}
+	for _, u := range v.sorted() {
+		if id, ok := v.owner[RefOf(u.Id)]; ok {
+			out[id] = append(out[id], u)
+		}
+	}
+	return out
+}
+
+// StakeOf is the state of the actor's stake credential, or false when the
+// book does not name one.
+func (v *View) StakeOf(id population.ActorID) (StakeState, bool) {
+	cred, ok := v.cfg.Book.stakeOf[id]
+	if !ok {
+		return StakeState{}, false
+	}
+	s := v.stake[cred]
+	s.Cred = cred
+	return s, true
+}
+
+// PoolActor is the pool actor the book names for a pool id.
+func (v *View) PoolActor(pool common.Blake2b224) (population.ActorID, bool) {
+	id, ok := v.cfg.Book.pools[pool]
+	return id, ok
+}

@@ -65,6 +65,14 @@ func parseActorQuery(r *http.Request) (ActorQuery, error) {
 			*dst = s
 		}
 	}
+	switch v.Get("delegated") {
+	case "":
+	case "true", "false":
+		d := v.Get("delegated") == "true"
+		q.Filter.Delegated = &d
+	default:
+		return q, badf("delegated must be true or false")
+	}
 	return q, nil
 }
 

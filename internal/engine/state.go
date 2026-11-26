@@ -410,12 +410,19 @@ func (e *Engine) InFlight() []Submission {
 	return out
 }
 
-// ActorRows is the read model the store pages for the UI.
+// ActorRows is the read model the store pages for the UI. Each row carries
+// the actor's public identity, holdings and delegation.
 func (e *Engine) ActorRows() []store.ActorRow {
+	hs := e.holdings()
 	out := make([]store.ActorRow, 0, len(e.order))
 	for _, id := range e.order {
 		a, _ := e.census.Get(id)
-		out = append(out, store.ActorRow{ID: uint64(id), Name: fmt.Sprintf("%s-%d", a.Profile, id), Role: string(a.State), Profile: a.Profile})
+		ident, err := e.identityOf(a, e.actors[id], hs).Encode()
+		if err != nil {
+			// Identity is a struct of plain fields; encoding cannot fail.
+			panic(fmt.Sprintf("engine: actor %d identity: %v", id, err))
+		}
+		out = append(out, store.ActorRow{ID: uint64(id), Name: fmt.Sprintf("%s-%d", a.Profile, id), Role: string(a.State), Profile: a.Profile, Identity: ident})
 	}
 	return out
 }

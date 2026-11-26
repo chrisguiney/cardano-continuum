@@ -1,0 +1,67 @@
+{
+  "id": 1,
+  "name": "alice",
+  "profile": "hodl",
+  "kind": "wallet",
+  "agenda": "hodl",
+  "has_identity": true,
+  "wallet": {
+    "payment_addr": "addr_test1qz",
+    "stake_addr": "stake_test1uz",
+    "payment_key_hash": "aa",
+    "stake_key_hash": "bb"
+  },
+  "holdings": {
+    "settled_lovelace": 5000000,
+    "reserved_lovelace": 0,
+    "unconfirmed_lovelace": 0,
+    "utxos": 2,
+    "in_flight": 0,
+    "tokens": [
+      {
+        "policy": "11",
+        "name": "6162",
+        "name_text": "ab",
+        "quantity": 3
+      }
+    ]
+  },
+  "delegation": {
+    "stake_registered": true,
+    "pool": "pool1abc"
+  },
+  "lifecycle": {
+    "state": "active",
+    "born_ms": 0,
+    "changed_ms": 5000,
+    "frustration": 0,
+    "hazard": 0.002
+  },
+  "traits": {
+    "competence": 0.9,
+    "care": 0,
+    "patience": 0,
+    "learning_rate": 0
+  },
+  "activity": {
+    "intents": 4,
+    "submitted": 2,
+    "confirmed": 1,
+    "refused": 0,
+    "released": 0,
+    "gave_up": 0,
+    "retries": 0,
+    "last_ms": 0,
+    "lost_lovelace": 0,
+    "recent": []
+  },
+  "findings": [],
+  "timeline": [
+    {
+      "seq": 2,
+      "at": 0,
+      "kind": "Spawned",
+      "detail": "hodl"
+    }
+  ]
+}

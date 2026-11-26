@@ -229,7 +229,7 @@ func TestCheckpointRestore(t *testing.T) {
 	want := Checkpoint{
 		Seq: 3, Points: []eventlog.ChainPoint{pt(1), pt(2), pt(3)}, Confirmed: pt(1),
 		Actors:    []byte("actors"),
-		ActorRows: []ActorRow{{1, "a", "wallet", "hodl"}, {2, "b", "wallet", "yield"}},
+		ActorRows: []ActorRow{{1, "a", "wallet", "hodl", `{"x":1}`}, {2, "b", "wallet", "yield", ""}},
 		Intents:   Blob{1, []byte("intents")}, Reservations: Blob{7, []byte("res")},
 	}
 	d := openDB(t, dir, log)
@@ -398,7 +398,7 @@ func TestSaveCheckpointIsAtomic(t *testing.T) {
 			_ = log.Sync(ctx)
 			old := Checkpoint{
 				Seq: 1, Points: []eventlog.ChainPoint{pt(1)}, Confirmed: pt(1), Actors: []byte("old"),
-				ActorRows: []ActorRow{{1, "old", "wallet", "hodl"}},
+				ActorRows: []ActorRow{{1, "old", "wallet", "hodl", ""}},
 				Intents:   Blob{1, []byte("old")}, Reservations: Blob{1, []byte("old")},
 			}
 			d := openDB(t, dir, log)
@@ -445,7 +445,7 @@ func crashChild(dir, stage string) {
 	}
 	_ = d.SaveCheckpoint(ctx, Checkpoint{
 		Seq: 2, Points: []eventlog.ChainPoint{pt(1), pt(2)}, Confirmed: pt(2), Actors: []byte("new"),
-		ActorRows: []ActorRow{{1, "new", "wallet", "yield"}, {2, "new2", "wallet", "yield"}},
+		ActorRows: []ActorRow{{1, "new", "wallet", "yield", ""}, {2, "new2", "wallet", "yield", ""}},
 		Intents:   Blob{1, []byte("new")}, Reservations: Blob{1, []byte("new")},
 	})
 	os.Exit(0)
@@ -476,7 +476,7 @@ func TestActorsPagedSorted(t *testing.T) {
 	ctx := context.Background()
 	d := openDB(t, t.TempDir(), &eventlog.MemLog{})
 	defer func() { _ = d.Close() }()
-	rows := []ActorRow{{1, "c", "x", "hodl"}, {2, "a", "z", "yield"}, {3, "b", "y", "hodl"}}
+	rows := []ActorRow{{1, "c", "x", "hodl", ""}, {2, "a", "z", "yield", ""}, {3, "b", "y", "hodl", ""}}
 	if err := d.SaveCheckpoint(ctx, Checkpoint{Points: []eventlog.ChainPoint{pt(1)}, Confirmed: pt(1), ActorRows: rows}); err != nil {
 		t.Fatal(err)
 	}
@@ -495,5 +495,21 @@ func TestActorsPagedSorted(t *testing.T) {
 	}
 	if _, err := d.Actors(ctx, ActorQuery{SortBy: "id", Limit: -1}); err == nil {
 		t.Fatal("negative limit accepted")
+	}
+}
+
+// An actor's public identity rides in its row, opaque to the store, and
+// pages back out of Actors as well as the checkpoint.
+func TestActorIdentityRoundTrips(t *testing.T) {
+	ctx := context.Background()
+	d := openDB(t, t.TempDir(), &eventlog.MemLog{})
+	defer func() { _ = d.Close() }()
+	rows := []ActorRow{{1, "a", "x", "hodl", `{"addr":"addr_test1"}`}}
+	if err := d.SaveCheckpoint(ctx, Checkpoint{Points: []eventlog.ChainPoint{pt(1)}, Confirmed: pt(1), ActorRows: rows}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := d.Actors(ctx, ActorQuery{SortBy: "id", Limit: 5})
+	if err != nil || !reflect.DeepEqual(got, rows) {
+		t.Fatalf("got %+v, %v", got, err)
 	}
 }

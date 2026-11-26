@@ -1,0 +1,61 @@
+{
+  "has_control": true,
+  "adversaries": [
+    {
+      "id": 3,
+      "name": "adversary-malformed-cbor-3",
+      "profile": "adversary-malformed-cbor",
+      "attack": "malformed-cbor",
+      "agenda": "profit",
+      "budget": 100000000,
+      "cost": {
+        "spent": 4000000,
+        "ceiling": 10000000,
+        "epoch": 1,
+        "epoch_spent": 4000000,
+        "by_epoch": [
+          {
+            "epoch": 1,
+            "spent": 4000000
+          }
+        ]
+      },
+      "metric": {
+        "name": "fatal_findings",
+        "value": 1,
+        "control": 0
+      },
+      "attempted": 2,
+      "landed": 0,
+      "detected": 2,
+      "rejected": 2,
+      "recent": [
+        {
+          "seq": 9,
+          "at": 3000,
+          "intent": 70,
+          "mutation": "bad-header",
+          "cost": 2000000,
+          "txs": 1
+        }
+      ],
+      "findings": [
+        {
+          "id": "f",
+          "seq": 5,
+          "kind": "unexpected_accept",
+          "severity": "fatal",
+          "summary": "malformed accepted"
+        }
+      ]
+    }
+  ],
+  "impact": [
+    {
+      "metric": "fatal_findings",
+      "value": 1,
+      "control": 0,
+      "delta": 1
+    }
+  ]
+}

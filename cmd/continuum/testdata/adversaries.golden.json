@@ -1,0 +1,373 @@
+{
+  "has_control": true,
+  "adversaries": [
+    {
+      "id": 21,
+      "name": "adversary-dust-flood-21",
+      "profile": "adversary-dust-flood",
+      "attack": "dust-flood",
+      "agenda": "disrupt",
+      "budget": 5000000000,
+      "cost": {
+        "spent": 40455392,
+        "ceiling": 300000000,
+        "epoch": 1,
+        "epoch_spent": 26423417,
+        "by_epoch": [
+          {
+            "epoch": 0,
+            "spent": 14031975
+          },
+          {
+            "epoch": 1,
+            "spent": 26423417
+          }
+        ]
+      },
+      "metric": {
+        "name": "utxo_growth",
+        "value": 58,
+        "control": 8
+      },
+      "attempted": 2,
+      "landed": 2,
+      "detected": 0,
+      "rejected": 0,
+      "recent": [
+        {
+          "seq": 41,
+          "at": 465,
+          "intent": 4,
+          "cost": 14031975,
+          "txs": 1
+        },
+        {
+          "seq": 1298,
+          "at": 61092,
+          "intent": 28,
+          "cost": 26423417,
+          "txs": 1
+        }
+      ],
+      "findings": []
+    },
+    {
+      "id": 22,
+      "name": "adversary-utxo-contention-22",
+      "profile": "adversary-utxo-contention",
+      "attack": "utxo-contention",
+      "agenda": "disrupt",
+      "budget": 5000000000,
+      "cost": {
+        "spent": 175310,
+        "ceiling": 300000000,
+        "epoch": 1,
+        "epoch_spent": 175310,
+        "by_epoch": [
+          {
+            "epoch": 1,
+            "spent": 175310
+          }
+        ]
+      },
+      "metric": {
+        "name": "honest_value_grabbed_ada",
+        "value": 0,
+        "control": 0
+      },
+      "attempted": 1,
+      "landed": 0,
+      "detected": 0,
+      "rejected": 0,
+      "recent": [
+        {
+          "seq": 1654,
+          "at": 77274,
+          "intent": 41,
+          "cost": 175310,
+          "value": 5000000,
+          "txs": 1
+        }
+      ],
+      "findings": []
+    },
+    {
+      "id": 23,
+      "name": "adversary-malformed-cbor-23",
+      "profile": "adversary-malformed-cbor",
+      "attack": "malformed-cbor",
+      "agenda": "disrupt",
+      "budget": 5000000000,
+      "cost": {
+        "spent": 1853907,
+        "ceiling": 300000000,
+        "epoch": 1,
+        "epoch_spent": 842685,
+        "by_epoch": [
+          {
+            "epoch": 0,
+            "spent": 1011222
+          },
+          {
+            "epoch": 1,
+            "spent": 842685
+          }
+        ]
+      },
+      "metric": {
+        "name": "fatal_findings",
+        "value": 0,
+        "control": 0
+      },
+      "attempted": 11,
+      "landed": 0,
+      "detected": 11,
+      "rejected": 11,
+      "recent": [
+        {
+          "seq": 225,
+          "at": 8045,
+          "intent": 15,
+          "mutation": "non-canonical",
+          "cost": 168537,
+          "txs": 1
+        },
+        {
+          "seq": 623,
+          "at": 27757,
+          "intent": 23,
+          "mutation": "trailing",
+          "cost": 168537,
+          "txs": 1
+        },
+        {
+          "seq": 748,
+          "at": 34130,
+          "intent": 24,
+          "mutation": "body-count",
+          "cost": 168537,
+          "txs": 1
+        },
+        {
+          "seq": 836,
+          "at": 38075,
+          "intent": 26,
+          "mutation": "body-count",
+          "cost": 168537,
+          "txs": 1
+        },
+        {
+          "seq": 899,
+          "at": 41518,
+          "intent": 27,
+          "mutation": "body-count",
+          "cost": 168537,
+          "txs": 1
+        },
+        {
+          "seq": 1334,
+          "at": 63049,
+          "intent": 30,
+          "mutation": "body-count",
+          "cost": 168537,
+          "txs": 1
+        },
+        {
+          "seq": 1505,
+          "at": 70572,
+          "intent": 36,
+          "mutation": "truncate",
+          "cost": 168537,
+          "txs": 1
+        },
+        {
+          "seq": 2146,
+          "at": 102463,
+          "intent": 43,
+          "mutation": "non-canonical",
+          "cost": 168537,
+          "txs": 1
+        },
+        {
+          "seq": 2269,
+          "at": 107730,
+          "intent": 47,
+          "mutation": "non-canonical",
+          "cost": 168537,
+          "txs": 1
+        },
+        {
+          "seq": 2294,
+          "at": 109600,
+          "intent": 48,
+          "mutation": "non-canonical",
+          "cost": 168537,
+          "txs": 1
+        }
+      ],
+      "findings": []
+    },
+    {
+      "id": 24,
+      "name": "adversary-front-run-24",
+      "profile": "adversary-front-run",
+      "attack": "front-run",
+      "agenda": "disrupt",
+      "budget": 5000000000,
+      "cost": {
+        "spent": 0,
+        "ceiling": 300000000,
+        "epoch": 2,
+        "epoch_spent": 0,
+        "by_epoch": []
+      },
+      "metric": {
+        "name": "honest_failure_rate",
+        "value": 0,
+        "control": 0
+      },
+      "attempted": 0,
+      "landed": 0,
+      "detected": 0,
+      "rejected": 0,
+      "recent": [],
+      "findings": []
+    },
+    {
+      "id": 25,
+      "name": "adversary-double-spend-25",
+      "profile": "adversary-double-spend",
+      "attack": "double-spend",
+      "agenda": "disrupt",
+      "budget": 5000000000,
+      "cost": {
+        "spent": 4337074,
+        "ceiling": 300000000,
+        "epoch": 1,
+        "epoch_spent": 2168537,
+        "by_epoch": [
+          {
+            "epoch": 0,
+            "spent": 2168537
+          },
+          {
+            "epoch": 1,
+            "spent": 2168537
+          }
+        ]
+      },
+      "metric": {
+        "name": "attack_landed",
+        "value": 4,
+        "control": 0
+      },
+      "attempted": 2,
+      "landed": 2,
+      "detected": 2,
+      "rejected": 2,
+      "recent": [
+        {
+          "seq": 104,
+          "at": 3185,
+          "intent": 8,
+          "cost": 2168537,
+          "txs": 3
+        },
+        {
+          "seq": 1458,
+          "at": 69082,
+          "intent": 35,
+          "cost": 2168537,
+          "txs": 2
+        }
+      ],
+      "findings": []
+    }
+  ],
+  "impact": [
+    {
+      "metric": "honest_intents",
+      "value": 31,
+      "control": 29,
+      "delta": 2
+    },
+    {
+      "metric": "honest_failure_rate",
+      "value": 0,
+      "control": 0,
+      "delta": 0
+    },
+    {
+      "metric": "honest_latency_p50_s",
+      "value": 56.569,
+      "control": 56.716,
+      "delta": -0.14699999999999847
+    },
+    {
+      "metric": "honest_latency_p99_s",
+      "value": 66.182,
+      "control": 59.786,
+      "delta": 6.396000000000001
+    },
+    {
+      "metric": "honest_retries",
+      "value": 5,
+      "control": 2,
+      "delta": 3
+    },
+    {
+      "metric": "honest_value_grabbed_ada",
+      "value": 0,
+      "control": 0,
+      "delta": 0
+    },
+    {
+      "metric": "utxo_growth",
+      "value": 58,
+      "control": 8,
+      "delta": 50
+    },
+    {
+      "metric": "node_rejections",
+      "value": 19,
+      "control": 4,
+      "delta": 15
+    },
+    {
+      "metric": "findings",
+      "value": 0,
+      "control": 0,
+      "delta": 0
+    },
+    {
+      "metric": "fatal_findings",
+      "value": 0,
+      "control": 0,
+      "delta": 0
+    },
+    {
+      "metric": "attack_steps",
+      "value": 16,
+      "control": 0,
+      "delta": 16
+    },
+    {
+      "metric": "attack_cost_ada",
+      "value": 46.821683,
+      "control": 0,
+      "delta": 46.821683
+    },
+    {
+      "metric": "attack_landed",
+      "value": 4,
+      "control": 0,
+      "delta": 4
+    },
+    {
+      "metric": "attack_detected",
+      "value": 13,
+      "control": 0,
+      "delta": 13
+    }
+  ]
+}

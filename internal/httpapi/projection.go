@@ -28,6 +28,11 @@ type actorInfo struct {
 	released  int
 	tl        []TimelineEntry
 	dropped   int
+	// The fields below feed the actor detail.
+	refused, gaveUp int
+	last, changed   int64
+	lost            uint64
+	recent          []Decision
 }
 
 type intentInfo struct {
@@ -54,13 +59,18 @@ type Projection struct {
 	// findings are the log's oracle findings, deduplicated by ID. The set
 	// has its own lock, taken inside mu.
 	findings *oracle.Set
+	// txOwner maps a submitted transaction to its actor, so a finding that
+	// names a transaction can be shown on the actor.
+	txOwner map[[32]byte]uint64
+	// meter folds the attack steps and the metrics Measure reads.
+	meter *engine.Meter
 }
 
 // NewProjection returns an empty projection.
 func NewProjection() *Projection {
 	return &Projection{
 		actors: map[uint64]*actorInfo{}, intents: map[uint64]*intentInfo{},
-		byState: map[string]int{}, findings: oracle.NewSet(),
+		byState: map[string]int{}, findings: oracle.NewSet(), txOwner: map[[32]byte]uint64{}, meter: engine.NewMeter(),
 	}
 }
 
@@ -73,6 +83,9 @@ func (p *Projection) Apply(r eventlog.Record) {
 	p.lastSeq = r.Seq
 	p.now = max(p.now, int64(r.At))
 	var err error
+	if merr := p.meter.Add(r); merr != nil {
+		p.bodyErrors++
+	}
 	switch r.Class {
 	case eventlog.Input:
 		err = p.applyInput(r)
@@ -168,6 +181,7 @@ func (p *Projection) actor(id uint64) *actorInfo {
 // bound in batches so the cost stays amortised constant.
 func (p *Projection) note(id uint64, r eventlog.Record, detail string, intent *uint64) {
 	a := p.actor(id)
+	a.last = int64(r.At)
 	var in *uint64
 	if intent != nil {
 		v := *intent
@@ -201,7 +215,7 @@ func (p *Projection) applyDecision(r eventlog.Record) error {
 		}
 		a := p.actor(id)
 		p.leave(a.state)
-		a.state = t.To
+		a.state, a.changed = t.To, int64(r.At)
 		p.byState[t.To]++
 		p.note(id, r, t.From+" -> "+t.To, nil)
 	case engine.KindIntentChosen:
@@ -210,6 +224,7 @@ func (p *Projection) applyDecision(r eventlog.Record) error {
 			return err
 		}
 		p.actor(id).intents++
+		p.recordDecision(id, r, d)
 		p.note(id, r, string(d.Intent.Kind), nil)
 	case engine.KindSubmitted:
 		var s engine.Submitted
@@ -235,6 +250,7 @@ func (p *Projection) leave(state string) {
 func (p *Projection) submitted(id uint64, r eventlog.Record, s engine.Submitted) {
 	a := p.actor(id)
 	a.txs++
+	p.txOwner[[32]byte(s.ID)] = id
 	p.txs.Submitted++
 	p.ada.SubmittedLovelace += s.Amount
 	in := p.intents[s.Intent]
@@ -258,6 +274,7 @@ func (p *Projection) applyOutcome(id uint64, r eventlog.Record) error {
 			return err
 		}
 		p.actor(id).confirmed++
+		p.actor(id).lost += c.Lost
 		p.txs.Confirmed++
 		if in := p.intents[c.Intent]; in != nil {
 			p.ada.ConfirmedLovelace += in.amount
@@ -268,6 +285,7 @@ func (p *Projection) applyOutcome(id uint64, r eventlog.Record) error {
 		if err := eventlog.Decode(r.Body, &x); err != nil {
 			return err
 		}
+		p.actor(id).refused++
 		p.txs.Refused++
 		p.note(id, r, x.Why, &x.Intent)
 	case engine.KindReleased:
@@ -283,6 +301,7 @@ func (p *Projection) applyOutcome(id uint64, r eventlog.Record) error {
 		if err := eventlog.Decode(r.Body, &x); err != nil {
 			return err
 		}
+		p.actor(id).gaveUp++
 		p.txs.GaveUp++
 		p.note(id, r, "", &x.Intent)
 	case engine.KindSkipped:

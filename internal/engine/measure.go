@@ -1,8 +1,10 @@
 package engine
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
@@ -37,6 +39,11 @@ type meter struct {
 	detected map[uint64]bool
 	// value is what each attack takes from an honest lock if it lands.
 	value map[uint64]uint64
+	// by tallies each adversary actor's steps; owner maps an attack intent
+	// to its actor and rejected holds the attack intents a node refused.
+	by       map[uint64]*AttackStat
+	owner    map[uint64]uint64
+	rejected map[uint64]bool
 	// blocks are the applied blocks still on the chain, with what each
 	// added to the UTxO set, so a rollback can take it off again.
 	blocks []blockDelta
@@ -48,7 +55,8 @@ type blockDelta struct {
 }
 
 func newMeter() *meter {
-	return &meter{first: map[uint64]sched.Time{}, attacks: map[uint64]bool{}, attackTx: map[TxID]uint64{}, detected: map[uint64]bool{}, value: map[uint64]uint64{}}
+	return &meter{first: map[uint64]sched.Time{}, attacks: map[uint64]bool{}, attackTx: map[TxID]uint64{}, detected: map[uint64]bool{}, value: map[uint64]uint64{},
+		by: map[uint64]*AttackStat{}, owner: map[uint64]uint64{}, rejected: map[uint64]bool{}}
 }
 
 func (m *meter) add(rec eventlog.Record) error {
@@ -72,6 +80,7 @@ func (m *meter) add(rec eventlog.Record) error {
 		}
 		m.AttackSteps++
 		m.AttackCost += a.Cost
+		m.tally(rec, a)
 		m.attacks[a.Intent] = true
 		m.value[a.Intent] = a.Value
 		for _, tx := range a.Txs {
@@ -112,6 +121,7 @@ func (m *meter) ended(at sched.Time, intent uint64, released bool) {
 		if !released {
 			m.AttackLanded++
 			m.Grabbed += m.value[intent]
+			m.by[m.owner[intent]].Landed++
 		}
 		return
 	}
@@ -197,6 +207,7 @@ func (m *meter) answers(r SubmitResult) {
 	m.Rejections += rejected
 	if rejected > 0 && m.attacks[r.Intent] {
 		m.detected[r.Intent] = true
+		m.rejected[r.Intent] = true
 	}
 }
 
@@ -206,4 +217,107 @@ func again(r SubmitResult) []Answer {
 		return nil
 	}
 	return []Answer{*r.Again}
+}
+
+// AttackStep is one logged attack step.
+type AttackStep struct {
+	Seq      uint64
+	At       int64
+	Intent   uint64
+	Mutation string
+	Cost     uint64
+	Value    uint64
+	Txs      int
+}
+
+// CostPoint is lovelace charged at a time, so a caller can bucket spend by
+// epoch.
+type CostPoint struct {
+	At   int64
+	Cost uint64
+}
+
+// AttackStat is one adversary actor's tally. Detected counts its steps a
+// node rejected or the oracle flagged, of which Rejected were rejected.
+type AttackStat struct {
+	Actor                             uint64
+	Name                              string
+	Steps, Landed, Detected, Rejected int
+	Cost                              uint64
+	Costs                             []CostPoint
+	Recent                            []AttackStep
+}
+
+// maxRecentSteps bounds the steps kept per adversary.
+const maxRecentSteps = 10
+
+func (m *meter) tally(rec eventlog.Record, a Attack) {
+	actor := uint64(rec.Actor)
+	st := m.by[actor]
+	if st == nil {
+		st = &AttackStat{Actor: actor}
+		m.by[actor] = st
+	}
+	st.Name, st.Steps, st.Cost = a.Name, st.Steps+1, st.Cost+a.Cost
+	st.Costs = append(st.Costs, CostPoint{At: int64(rec.At), Cost: a.Cost})
+	st.Recent = append(st.Recent, AttackStep{Seq: rec.Seq, At: int64(rec.At), Intent: a.Intent, Mutation: a.Mutation, Cost: a.Cost, Value: a.Value, Txs: len(a.Txs)})
+	if len(st.Recent) > maxRecentSteps {
+		st.Recent = slices.Delete(st.Recent, 0, len(st.Recent)-maxRecentSteps)
+	}
+	m.owner[a.Intent] = actor
+}
+
+// Meter folds records into Measure's metrics one at a time, so a live
+// server can keep them current. It is not safe for concurrent use.
+type Meter struct{ m *meter }
+
+// NewMeter returns an empty Meter.
+func NewMeter() *Meter { return &Meter{m: newMeter()} }
+
+// Add folds one record; records of other kinds are ignored.
+func (x *Meter) Add(rec eventlog.Record) error { return x.m.add(rec) }
+
+// Metrics are the metrics of the records added so far.
+func (x *Meter) Metrics() adversary.Metrics {
+	out := x.m.Metrics
+	out.AttackDetected = len(x.m.detected)
+	return out
+}
+
+// Attacks is each adversary's tally, by actor.
+func (x *Meter) Attacks() []AttackStat {
+	out := make([]AttackStat, 0, len(x.m.by))
+	for _, st := range x.m.by {
+		c := *st
+		c.Costs, c.Recent = slices.Clone(st.Costs), slices.Clone(st.Recent)
+		out = append(out, c)
+	}
+	for i := range out {
+		for intent := range x.m.detected {
+			if x.m.owner[intent] == out[i].Actor {
+				out[i].Detected++
+			}
+		}
+		for intent := range x.m.rejected {
+			if x.m.owner[intent] == out[i].Actor {
+				out[i].Rejected++
+			}
+		}
+	}
+	slices.SortFunc(out, func(a, b AttackStat) int { return cmp.Compare(a.Actor, b.Actor) })
+	return out
+}
+
+// AttackActor is the adversary that sent the transaction in an attack step.
+func (x *Meter) AttackActor(tx []byte) (uint64, bool) {
+	if len(tx) != len(TxID{}) {
+		return 0, false
+	}
+	var id TxID
+	copy(id[:], tx)
+	intent, ok := x.m.attackTx[id]
+	if !ok {
+		return 0, false
+	}
+	return x.m.owner[intent], true
 }

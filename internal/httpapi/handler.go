@@ -41,7 +41,9 @@ type api struct {
 //	GET  /healthz
 //	GET  /api/capabilities
 //	GET  /api/overview
-//	GET  /api/actors?limit&offset&sort&dir&profile&state&role
+//	GET  /api/actors?limit&offset&sort&dir&profile&state&role&delegated
+//	GET  /api/actors/{id}
+//	GET  /api/adversaries
 //	GET  /api/actors/{id}/timeline
 //	GET  /api/pools
 //	GET  /api/findings?limit&offset&known=true|false
@@ -70,6 +72,8 @@ func NewHandler(cfg Config) http.Handler {
 	mux.HandleFunc("GET /api/overview", a.overview)
 	mux.HandleFunc("GET /api/actors", a.actors)
 	mux.HandleFunc("GET /api/actors/{id}/timeline", a.timeline)
+	mux.HandleFunc("GET /api/actors/{id}", a.actorDetail)
+	mux.HandleFunc("GET /api/adversaries", a.adversaries)
 	mux.HandleFunc("GET /api/pools", a.pools)
 	mux.HandleFunc("GET /api/findings", a.findings)
 	mux.HandleFunc("GET /api/findings/{id}", func(w http.ResponseWriter, _ *http.Request) {
@@ -164,6 +168,29 @@ func (a *api) timeline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.json(w, http.StatusOK, t)
+}
+
+func (a *api) actorDetail(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
+	if err != nil {
+		a.fail(w, badf("actor id must be an unsigned integer"))
+		return
+	}
+	d, err := a.Source.ActorDetail(r.Context(), id)
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	a.json(w, http.StatusOK, d)
+}
+
+func (a *api) adversaries(w http.ResponseWriter, r *http.Request) {
+	v, err := a.Source.Adversaries(r.Context())
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	a.json(w, http.StatusOK, v)
 }
 
 func (a *api) pools(w http.ResponseWriter, r *http.Request) {

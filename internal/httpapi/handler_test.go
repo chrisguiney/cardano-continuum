@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"github.com/chrisguiney/cardano-continuum/internal/store"
 	"io"
 	"log/slog"
 	"net"
@@ -66,7 +67,7 @@ func (f *fakeSource) Snapshot(context.Context) (Snapshot, error) {
 func (f *fakeSource) Actors(_ context.Context, q ActorQuery) (ActorPage, error) {
 	f.lastQ = q
 	return ActorPage{Total: 2, Offset: q.Offset, Limit: q.Limit, Rows: []ActorRow{
-		{ID: 1, Name: "alice", Role: "wallet", Profile: "hodl", State: "active", Intents: 4, Txs: 2, Retries: 1, Confirmed: 1},
+		{ID: 1, Name: "alice", Role: "wallet", Profile: "hodl", State: "active", Intents: 4, Txs: 2, Retries: 1, Confirmed: 1, Kind: "wallet", Address: "addr_test1qz…abcdef", Balance: 5_000_000, Pending: 1_000_000, Tokens: 1, Delegated: true, Pool: "pool1abc…xyz123", DRep: "always_abstain"},
 		{ID: 2, Name: "bob", Role: "wallet", Profile: "yield", State: "active"},
 	}}, nil
 }
@@ -83,6 +84,35 @@ func (f *fakeSource) ActorTimeline(_ context.Context, id uint64) (Timeline, erro
 		{Seq: 2, At: 0, Kind: "Spawned", Detail: "hodl"},
 		{Seq: 6, At: 6000, Kind: "Submitted", Detail: "5000000 lovelace to 2", Intent: &in},
 	}}, nil
+}
+
+func (f *fakeSource) ActorDetail(_ context.Context, id uint64) (ActorDetail, error) {
+	if id != 1 {
+		return ActorDetail{}, ErrNotFound
+	}
+	return ActorDetail{
+		ID: 1, Name: "alice", Profile: "hodl", Kind: "wallet", Agenda: "hodl", HasIdentity: true,
+		Wallet:     WalletIDs{PaymentAddr: "addr_test1qz", StakeAddr: "stake_test1uz", PaymentKeyHash: "aa", StakeKeyHash: "bb"},
+		Holdings:   Holdings{SettledLovelace: 5_000_000, UTxOs: 2, Tokens: []store.Token{{Policy: "11", Name: "6162", NameText: "ab", Quantity: 3}}},
+		Delegation: Delegation{StakeRegistered: true, Pool: "pool1abc"},
+		Lifecycle:  Lifecycle{State: "active", ChangedMs: 5000, Hazard: 0.002},
+		Traits:     Traits{Competence: 0.9},
+		Activity:   Activity{Intents: 4, Submitted: 2, Confirmed: 1, Recent: []Decision{}},
+		Findings:   []ActorFinding{}, Timeline: []TimelineEntry{{Seq: 2, Kind: "Spawned", Detail: "hodl"}},
+	}, nil
+}
+
+func (f *fakeSource) Adversaries(context.Context) (AdversaryView, error) {
+	ctl := 0.0
+	delta := 1.0
+	return AdversaryView{HasControl: true, Adversaries: []AdversaryRow{{
+		ID: 3, Name: "adversary-malformed-cbor-3", Profile: "adversary-malformed-cbor", Attack: "malformed-cbor", Agenda: "profit", Budget: 100_000_000,
+		Cost:      CostView{Spent: 4_000_000, Ceiling: 10_000_000, Epoch: 1, EpochSpent: 4_000_000, ByEpoch: []EpochCost{{Epoch: 1, Spent: 4_000_000}}},
+		Metric:    SuccessView{Name: "fatal_findings", Value: 1, Control: &ctl},
+		Attempted: 2, Landed: 0, Detected: 2, Rejected: 2,
+		Recent:   []AttackStepRow{{Seq: 9, At: 3000, Intent: 70, Mutation: "bad-header", Cost: 2_000_000, Txs: 1}},
+		Findings: []ActorFinding{{ID: "f", Seq: 5, Kind: "unexpected_accept", Severity: "fatal", Summary: "malformed accepted"}},
+	}}, Impact: []ImpactRow{{Metric: "fatal_findings", Value: 1, Control: &ctl, Delta: &delta}}}, nil
 }
 
 func (f *fakeSource) Pools(context.Context) (PoolsView, error) {

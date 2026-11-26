@@ -3,6 +3,7 @@ import { getJSON } from "./lib/api";
 import { navigate, parseRoute } from "./lib/router";
 import { Actor } from "./views/Actor";
 import { Actors } from "./views/Actors";
+import { Adversaries } from "./views/Adversaries";
 import { Controls } from "./views/Controls";
 import { Decisions } from "./views/Decisions";
 import { Findings } from "./views/Findings";
@@ -63,6 +64,7 @@ const NAV: [string, string][] = [
   ["/pools", "Pools"],
   ["/decisions", "Decisions"],
   ["/findings", "Findings"],
+  ["/adversaries", "Adversaries"],
 ];
 
 export function App() {
@@ -105,6 +107,7 @@ export function App() {
         {route.name === "pools" && <Pools />}
         {route.name === "decisions" && <Decisions />}
         {route.name === "findings" && <Findings />}
+        {route.name === "adversaries" && <Adversaries />}
         {route.name === "controls" && (controls ? <Controls /> : <p class="empty">Controls are not enabled on this server (start it with --controls).</p>)}
         {route.name === "notfound" && <p class="empty">No such page.</p>}
       </main>

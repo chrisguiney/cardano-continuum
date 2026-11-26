@@ -1,0 +1,693 @@
+{
+  "id": 23,
+  "name": "adversary-malformed-cbor-23",
+  "profile": "adversary-malformed-cbor",
+  "kind": "adversary",
+  "agenda": "disrupt",
+  "has_identity": true,
+  "wallet": {
+    "payment_addr": "addr_test1qqz3xxqnzsstcwgn94xrcs0fnf02hku7xrjuwq3zgg6hrvzhhex2muxtxm59qum06z4j830qlz9m7z6pzea4res2sdsswmalfy",
+    "stake_addr": "stake_test1uptmun9d7r9nd6zswdhap2erchs03zalpdq3v763uc9gxcgln24v7",
+    "payment_key_hash": "051318131420bc39132d4c3c41e99a5eabdb9e30e5c70222423571b0",
+    "stake_key_hash": "57be4cadf0cb36e850736fd0ab23c5e0f88bbf0b41167b51e60a8361"
+  },
+  "holdings": {
+    "settled_lovelace": 5000000000,
+    "reserved_lovelace": 0,
+    "unconfirmed_lovelace": 0,
+    "utxos": 1,
+    "in_flight": 0,
+    "tokens": []
+  },
+  "delegation": {
+    "stake_registered": false
+  },
+  "lifecycle": {
+    "state": "active",
+    "born_ms": 0,
+    "changed_ms": 1,
+    "frustration": 0,
+    "hazard": 0.0002777777777777778
+  },
+  "traits": {
+    "competence": 0.9999844680759102,
+    "care": 1,
+    "patience": 1,
+    "learning_rate": 0
+  },
+  "activity": {
+    "intents": 17,
+    "submitted": 11,
+    "confirmed": 0,
+    "refused": 0,
+    "released": 11,
+    "gave_up": 0,
+    "retries": 0,
+    "last_ms": 109600,
+    "lost_lovelace": 0,
+    "recent": [
+      {
+        "id": 898,
+        "at": 41518,
+        "kind": "IntentChosen",
+        "actor": 23,
+        "intent": "malformed-cbor",
+        "scores": [
+          {
+            "kind": "idle",
+            "value": 1,
+            "why": "disruptor waits; attack steps come from its hook"
+          },
+          {
+            "kind": "malformed-cbor",
+            "value": 3,
+            "why": "attack"
+          },
+          {
+            "kind": "send",
+            "value": 0.3,
+            "why": "cover traffic"
+          }
+        ]
+      },
+      {
+        "id": 1233,
+        "at": 58593,
+        "kind": "IntentChosen",
+        "actor": 23,
+        "intent": "idle",
+        "scores": [
+          {
+            "kind": "idle",
+            "value": 1,
+            "why": "disruptor waits; attack steps come from its hook"
+          },
+          {
+            "kind": "malformed-cbor",
+            "value": 3,
+            "why": "attack"
+          },
+          {
+            "kind": "send",
+            "value": 0.3,
+            "why": "cover traffic"
+          }
+        ]
+      },
+      {
+        "id": 1333,
+        "at": 63049,
+        "kind": "IntentChosen",
+        "actor": 23,
+        "intent": "malformed-cbor",
+        "scores": [
+          {
+            "kind": "idle",
+            "value": 1,
+            "why": "disruptor waits; attack steps come from its hook"
+          },
+          {
+            "kind": "malformed-cbor",
+            "value": 3,
+            "why": "attack"
+          },
+          {
+            "kind": "send",
+            "value": 0.3,
+            "why": "cover traffic"
+          }
+        ]
+      },
+      {
+        "id": 1504,
+        "at": 70572,
+        "kind": "IntentChosen",
+        "actor": 23,
+        "intent": "malformed-cbor",
+        "scores": [
+          {
+            "kind": "idle",
+            "value": 1,
+            "why": "disruptor waits; attack steps come from its hook"
+          },
+          {
+            "kind": "malformed-cbor",
+            "value": 3,
+            "why": "attack"
+          },
+          {
+            "kind": "send",
+            "value": 0.3,
+            "why": "cover traffic"
+          }
+        ]
+      },
+      {
+        "id": 1776,
+        "at": 81728,
+        "kind": "IntentChosen",
+        "actor": 23,
+        "intent": "idle",
+        "scores": [
+          {
+            "kind": "idle",
+            "value": 1,
+            "why": "disruptor waits; attack steps come from its hook"
+          },
+          {
+            "kind": "malformed-cbor",
+            "value": 3,
+            "why": "attack"
+          },
+          {
+            "kind": "send",
+            "value": 0.3,
+            "why": "cover traffic"
+          }
+        ]
+      },
+      {
+        "id": 1952,
+        "at": 91018,
+        "kind": "IntentChosen",
+        "actor": 23,
+        "intent": "idle",
+        "scores": [
+          {
+            "kind": "idle",
+            "value": 1,
+            "why": "disruptor waits; attack steps come from its hook"
+          },
+          {
+            "kind": "malformed-cbor",
+            "value": 3,
+            "why": "attack"
+          },
+          {
+            "kind": "send",
+            "value": 0.3,
+            "why": "cover traffic"
+          }
+        ]
+      },
+      {
+        "id": 2043,
+        "at": 96257,
+        "kind": "IntentChosen",
+        "actor": 23,
+        "intent": "idle",
+        "scores": [
+          {
+            "kind": "idle",
+            "value": 1,
+            "why": "disruptor waits; attack steps come from its hook"
+          },
+          {
+            "kind": "malformed-cbor",
+            "value": 3,
+            "why": "attack"
+          },
+          {
+            "kind": "send",
+            "value": 0.3,
+            "why": "cover traffic"
+          }
+        ]
+      },
+      {
+        "id": 2145,
+        "at": 102463,
+        "kind": "IntentChosen",
+        "actor": 23,
+        "intent": "malformed-cbor",
+        "scores": [
+          {
+            "kind": "idle",
+            "value": 1,
+            "why": "disruptor waits; attack steps come from its hook"
+          },
+          {
+            "kind": "malformed-cbor",
+            "value": 3,
+            "why": "attack"
+          },
+          {
+            "kind": "send",
+            "value": 0.3,
+            "why": "cover traffic"
+          }
+        ]
+      },
+      {
+        "id": 2268,
+        "at": 107730,
+        "kind": "IntentChosen",
+        "actor": 23,
+        "intent": "malformed-cbor",
+        "scores": [
+          {
+            "kind": "idle",
+            "value": 1,
+            "why": "disruptor waits; attack steps come from its hook"
+          },
+          {
+            "kind": "malformed-cbor",
+            "value": 3,
+            "why": "attack"
+          },
+          {
+            "kind": "send",
+            "value": 0.3,
+            "why": "cover traffic"
+          }
+        ]
+      },
+      {
+        "id": 2293,
+        "at": 109600,
+        "kind": "IntentChosen",
+        "actor": 23,
+        "intent": "malformed-cbor",
+        "scores": [
+          {
+            "kind": "idle",
+            "value": 1,
+            "why": "disruptor waits; attack steps come from its hook"
+          },
+          {
+            "kind": "malformed-cbor",
+            "value": 3,
+            "why": "attack"
+          },
+          {
+            "kind": "send",
+            "value": 0.3,
+            "why": "cover traffic"
+          }
+        ]
+      }
+    ]
+  },
+  "findings": [],
+  "adversary": {
+    "spent": 1853907,
+    "ceiling": 300000000,
+    "metric": "fatal_findings"
+  },
+  "timeline": [
+    {
+      "seq": 20,
+      "at": 1,
+      "kind": "Transition",
+      "detail": "born -\u003e active"
+    },
+    {
+      "seq": 138,
+      "at": 4261,
+      "kind": "IntentChosen",
+      "detail": "malformed-cbor"
+    },
+    {
+      "seq": 139,
+      "at": 4261,
+      "kind": "Attack"
+    },
+    {
+      "seq": 140,
+      "at": 4261,
+      "kind": "Submitted",
+      "detail": "2000000 lovelace to 23",
+      "intent": 11
+    },
+    {
+      "seq": 141,
+      "at": 4261,
+      "kind": "SubmitResult",
+      "detail": "rejected: transaction rejected: DeserialiseFailure",
+      "intent": 11
+    },
+    {
+      "seq": 142,
+      "at": 4261,
+      "kind": "Released",
+      "detail": "transaction rejected: DeserialiseFailure",
+      "intent": 11
+    },
+    {
+      "seq": 224,
+      "at": 8045,
+      "kind": "IntentChosen",
+      "detail": "malformed-cbor"
+    },
+    {
+      "seq": 225,
+      "at": 8045,
+      "kind": "Attack"
+    },
+    {
+      "seq": 226,
+      "at": 8045,
+      "kind": "Submitted",
+      "detail": "2000000 lovelace to 23",
+      "intent": 15
+    },
+    {
+      "seq": 227,
+      "at": 8045,
+      "kind": "SubmitResult",
+      "detail": "rejected: transaction rejected: InvalidWitnessesUTXOW, FeeTooSmallUTxO",
+      "intent": 15
+    },
+    {
+      "seq": 228,
+      "at": 8045,
+      "kind": "Released",
+      "detail": "transaction rejected: InvalidWitnessesUTXOW, FeeTooSmallUTxO",
+      "intent": 15
+    },
+    {
+      "seq": 381,
+      "at": 15084,
+      "kind": "IntentChosen",
+      "detail": "idle"
+    },
+    {
+      "seq": 415,
+      "at": 16531,
+      "kind": "IntentChosen",
+      "detail": "idle"
+    },
+    {
+      "seq": 622,
+      "at": 27757,
+      "kind": "IntentChosen",
+      "detail": "malformed-cbor"
+    },
+    {
+      "seq": 623,
+      "at": 27757,
+      "kind": "Attack"
+    },
+    {
+      "seq": 624,
+      "at": 27757,
+      "kind": "Submitted",
+      "detail": "2000000 lovelace to 23",
+      "intent": 23
+    },
+    {
+      "seq": 625,
+      "at": 27757,
+      "kind": "SubmitResult",
+      "detail": "rejected: transaction rejected: DeserialiseFailure",
+      "intent": 23
+    },
+    {
+      "seq": 626,
+      "at": 27757,
+      "kind": "Released",
+      "detail": "transaction rejected: DeserialiseFailure",
+      "intent": 23
+    },
+    {
+      "seq": 747,
+      "at": 34130,
+      "kind": "IntentChosen",
+      "detail": "malformed-cbor"
+    },
+    {
+      "seq": 748,
+      "at": 34130,
+      "kind": "Attack"
+    },
+    {
+      "seq": 749,
+      "at": 34130,
+      "kind": "Submitted",
+      "detail": "2000000 lovelace to 23",
+      "intent": 24
+    },
+    {
+      "seq": 750,
+      "at": 34130,
+      "kind": "SubmitResult",
+      "detail": "rejected: transaction rejected: DeserialiseFailure",
+      "intent": 24
+    },
+    {
+      "seq": 751,
+      "at": 34130,
+      "kind": "Released",
+      "detail": "transaction rejected: DeserialiseFailure",
+      "intent": 24
+    },
+    {
+      "seq": 835,
+      "at": 38075,
+      "kind": "IntentChosen",
+      "detail": "malformed-cbor"
+    },
+    {
+      "seq": 836,
+      "at": 38075,
+      "kind": "Attack"
+    },
+    {
+      "seq": 837,
+      "at": 38075,
+      "kind": "Submitted",
+      "detail": "2000000 lovelace to 23",
+      "intent": 26
+    },
+    {
+      "seq": 838,
+      "at": 38075,
+      "kind": "SubmitResult",
+      "detail": "rejected: transaction rejected: DeserialiseFailure",
+      "intent": 26
+    },
+    {
+      "seq": 839,
+      "at": 38075,
+      "kind": "Released",
+      "detail": "transaction rejected: DeserialiseFailure",
+      "intent": 26
+    },
+    {
+      "seq": 898,
+      "at": 41518,
+      "kind": "IntentChosen",
+      "detail": "malformed-cbor"
+    },
+    {
+      "seq": 899,
+      "at": 41518,
+      "kind": "Attack"
+    },
+    {
+      "seq": 900,
+      "at": 41518,
+      "kind": "Submitted",
+      "detail": "2000000 lovelace to 23",
+      "intent": 27
+    },
+    {
+      "seq": 901,
+      "at": 41518,
+      "kind": "SubmitResult",
+      "detail": "rejected: transaction rejected: DeserialiseFailure",
+      "intent": 27
+    },
+    {
+      "seq": 902,
+      "at": 41518,
+      "kind": "Released",
+      "detail": "transaction rejected: DeserialiseFailure",
+      "intent": 27
+    },
+    {
+      "seq": 1233,
+      "at": 58593,
+      "kind": "IntentChosen",
+      "detail": "idle"
+    },
+    {
+      "seq": 1333,
+      "at": 63049,
+      "kind": "IntentChosen",
+      "detail": "malformed-cbor"
+    },
+    {
+      "seq": 1334,
+      "at": 63049,
+      "kind": "Attack"
+    },
+    {
+      "seq": 1335,
+      "at": 63049,
+      "kind": "Submitted",
+      "detail": "2000000 lovelace to 23",
+      "intent": 30
+    },
+    {
+      "seq": 1336,
+      "at": 63049,
+      "kind": "SubmitResult",
+      "detail": "rejected: transaction rejected: DeserialiseFailure",
+      "intent": 30
+    },
+    {
+      "seq": 1337,
+      "at": 63049,
+      "kind": "Released",
+      "detail": "transaction rejected: DeserialiseFailure",
+      "intent": 30
+    },
+    {
+      "seq": 1504,
+      "at": 70572,
+      "kind": "IntentChosen",
+      "detail": "malformed-cbor"
+    },
+    {
+      "seq": 1505,
+      "at": 70572,
+      "kind": "Attack"
+    },
+    {
+      "seq": 1506,
+      "at": 70572,
+      "kind": "Submitted",
+      "detail": "2000000 lovelace to 23",
+      "intent": 36
+    },
+    {
+      "seq": 1507,
+      "at": 70572,
+      "kind": "SubmitResult",
+      "detail": "rejected: transaction rejected: DeserialiseFailure",
+      "intent": 36
+    },
+    {
+      "seq": 1508,
+      "at": 70572,
+      "kind": "Released",
+      "detail": "transaction rejected: DeserialiseFailure",
+      "intent": 36
+    },
+    {
+      "seq": 1776,
+      "at": 81728,
+      "kind": "IntentChosen",
+      "detail": "idle"
+    },
+    {
+      "seq": 1952,
+      "at": 91018,
+      "kind": "IntentChosen",
+      "detail": "idle"
+    },
+    {
+      "seq": 2043,
+      "at": 96257,
+      "kind": "IntentChosen",
+      "detail": "idle"
+    },
+    {
+      "seq": 2145,
+      "at": 102463,
+      "kind": "IntentChosen",
+      "detail": "malformed-cbor"
+    },
+    {
+      "seq": 2146,
+      "at": 102463,
+      "kind": "Attack"
+    },
+    {
+      "seq": 2147,
+      "at": 102463,
+      "kind": "Submitted",
+      "detail": "2000000 lovelace to 23",
+      "intent": 43
+    },
+    {
+      "seq": 2148,
+      "at": 102463,
+      "kind": "SubmitResult",
+      "detail": "rejected: transaction rejected: InvalidWitnessesUTXOW, FeeTooSmallUTxO",
+      "intent": 43
+    },
+    {
+      "seq": 2149,
+      "at": 102463,
+      "kind": "Released",
+      "detail": "transaction rejected: InvalidWitnessesUTXOW, FeeTooSmallUTxO",
+      "intent": 43
+    },
+    {
+      "seq": 2268,
+      "at": 107730,
+      "kind": "IntentChosen",
+      "detail": "malformed-cbor"
+    },
+    {
+      "seq": 2269,
+      "at": 107730,
+      "kind": "Attack"
+    },
+    {
+      "seq": 2270,
+      "at": 107730,
+      "kind": "Submitted",
+      "detail": "2000000 lovelace to 23",
+      "intent": 47
+    },
+    {
+      "seq": 2271,
+      "at": 107730,
+      "kind": "SubmitResult",
+      "detail": "rejected: transaction rejected: InvalidWitnessesUTXOW, FeeTooSmallUTxO",
+      "intent": 47
+    },
+    {
+      "seq": 2272,
+      "at": 107730,
+      "kind": "Released",
+      "detail": "transaction rejected: InvalidWitnessesUTXOW, FeeTooSmallUTxO",
+      "intent": 47
+    },
+    {
+      "seq": 2293,
+      "at": 109600,
+      "kind": "IntentChosen",
+      "detail": "malformed-cbor"
+    },
+    {
+      "seq": 2294,
+      "at": 109600,
+      "kind": "Attack"
+    },
+    {
+      "seq": 2295,
+      "at": 109600,
+      "kind": "Submitted",
+      "detail": "2000000 lovelace to 23",
+      "intent": 48
+    },
+    {
+      "seq": 2296,
+      "at": 109600,
+      "kind": "SubmitResult",
+      "detail": "rejected: transaction rejected: InvalidWitnessesUTXOW, FeeTooSmallUTxO",
+      "intent": 48
+    },
+    {
+      "seq": 2297,
+      "at": 109600,
+      "kind": "Released",
+      "detail": "transaction rejected: InvalidWitnessesUTXOW, FeeTooSmallUTxO",
+      "intent": 48
+    }
+  ]
+}

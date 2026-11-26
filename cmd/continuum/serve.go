@@ -12,6 +12,8 @@ import (
 	"os"
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
+	"github.com/chrisguiney/cardano-continuum/internal/adversary"
+	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/httpapi"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
@@ -19,7 +21,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/web"
 )
 
-const serveUsage = "usage: continuum serve --log EVENTS.LOG [--store DB] [--addr HOST:PORT] [--controls] [--network N [--namespace NS] [--kubeconfig PATH]]"
+const serveUsage = "usage: continuum serve --log EVENTS.LOG [--store DB] [--addr HOST:PORT] [--controls] [--control LOG] [--network N [--namespace NS] [--kubeconfig PATH]]"
 
 // cmdServe serves the web UI and its API over an event log. It reads the log
 // without ever repairing it, so it can follow a run that is still writing;
@@ -28,6 +30,7 @@ const serveUsage = "usage: continuum serve --log EVENTS.LOG [--store DB] [--addr
 func cmdServe(ctx context.Context, args []string, out io.Writer, open openCluster) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	logPath := fs.String("log", "", "event log to serve (required)")
+	control := fs.String("control", "", "control run log (same seed, no adversaries), for the Adversaries page's deltas")
 	dbPath := fs.String("store", "", "store database, for actor names and roles")
 	addr := fs.String("addr", "127.0.0.1:8088", "listen address; loopback only unless --allow-remote")
 	remote := fs.Bool("allow-remote", false, "accept a non-loopback --addr; the API has no authentication")
@@ -59,6 +62,13 @@ func cmdServe(ctx context.Context, args []string, out io.Writer, open openCluste
 		}
 		defer func() { _ = db.Close() }()
 		cfg.Names = db
+	}
+	if *control != "" {
+		m, err := measureLog(ctx, *control)
+		if err != nil {
+			return err
+		}
+		cfg.Control = &m
 	}
 	if *network != "" {
 		cl, err := open(*kubeconfig, *ns)
@@ -160,4 +170,20 @@ func (k kubeView) Topology(ctx context.Context) (v1alpha1.TopologyMode, error) {
 
 func (k kubeView) Pools(ctx context.Context) ([]v1alpha1.ContinuumPool, error) {
 	return k.cl.Pools(ctx, k.network)
+}
+
+// measureLog folds the control run's log into its metrics.
+func measureLog(ctx context.Context, path string) (adversary.Metrics, error) {
+	l, err := eventlog.Open(path)
+	if err != nil {
+		return adversary.Metrics{}, fmt.Errorf("--control: %w", err)
+	}
+	m, err := engine.Measure(ctx, l)
+	if err = errors.Join(err, l.Close()); err != nil {
+		return adversary.Metrics{}, fmt.Errorf("--control %s: %w", path, err)
+	}
+	if m.AttackSteps > 0 {
+		return adversary.Metrics{}, fmt.Errorf("--control %s is not a control run: it has %d attacks", path, m.AttackSteps)
+	}
+	return m, nil
 }

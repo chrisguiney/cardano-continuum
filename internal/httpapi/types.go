@@ -113,6 +113,9 @@ type ActorFilter struct {
 	Profile string
 	State   string
 	Role    string
+	// Delegated, when set, keeps only actors that are (true) or are not
+	// (false) delegated to a pool.
+	Delegated *bool
 }
 
 // ActorQuery pages, sorts and filters the actor table.
@@ -137,6 +140,16 @@ type ActorRow struct {
 	Retries   int    `json:"retries"`
 	Confirmed int    `json:"confirmed"`
 	Released  int    `json:"released"`
+	// The columns below come from the engine's published identity, as of
+	// its last checkpoint, and are zero when the store has none.
+	Kind      string `json:"kind"`
+	Address   string `json:"address"`
+	Balance   uint64 `json:"balance"`
+	Pending   uint64 `json:"pending"`
+	Tokens    int    `json:"tokens"`
+	Delegated bool   `json:"delegated"`
+	Pool      string `json:"pool"`
+	DRep      string `json:"drep"`
 }
 
 // ActorPage is one page of actors; Total counts the filtered set.
