@@ -67,6 +67,9 @@ type Pools struct {
 	defaults v1alpha1.ImageSet
 	log      *slog.Logger
 	now      func() time.Time
+	// watch refines Syncing with the pool's chain; nil leaves a Ready pod
+	// Syncing.
+	watch *Watch
 
 	mu sync.Mutex
 	// protects seen
@@ -88,6 +91,12 @@ func NewPools(c client.Client, drivers Registry, images image.Resolver, exec Exe
 	}
 }
 
+// WithWatch makes r judge Forging and Following from w and returns r.
+func (r *Pools) WithWatch(w *Watch) *Pools {
+	r.watch = w
+	return r
+}
+
 // refusal is why a pool gets no workload.
 type refusal struct {
 	reason, message string
@@ -102,11 +111,13 @@ func (r *Pools) Reconcile(ctx context.Context, req reconcile.Request) (reconcile
 	var p v1alpha1.ContinuumPool
 	if err := r.client.Get(ctx, req.NamespacedName, &p); err != nil {
 		if apierrors.IsNotFound(err) {
+			r.forgetNamed(req)
 			return reconcile.Result{}, nil
 		}
 		return reconcile.Result{}, fmt.Errorf("get pool %s: %w", req.NamespacedName, err)
 	}
 	if p.DeletionTimestamp != nil {
+		r.forget(&p)
 		return reconcile.Result{}, nil
 	}
 	if !r.newest(&p) {
@@ -149,11 +160,13 @@ func (r *Pools) converge(ctx context.Context, p *v1alpha1.ContinuumPool) (reconc
 	if no != nil {
 		r.condition(p, CondAdmitted, metav1.ConditionFalse, no.reason, no.message)
 		p.Status.Workload = ""
+		r.forget(p)
 		return reconcile.Result{RequeueAfter: refusalRetry}, r.dropAll(ctx, p)
 	}
 	if w.StatefulSet == nil {
 		r.condition(p, CondAdmitted, metav1.ConditionTrue, ReasonLogical, "a logical pool renders nothing")
 		p.Status.Workload = ""
+		r.forget(p)
 		return reconcile.Result{}, r.dropAll(ctx, p)
 	}
 	holder, res, err := r.apply(ctx, p, w)
@@ -163,6 +176,7 @@ func (r *Pools) converge(ctx context.Context, p *v1alpha1.ContinuumPool) (reconc
 	if holder != "" {
 		r.condition(p, CondAdmitted, metav1.ConditionFalse, ReasonFenceHeld,
 			fmt.Sprintf("workload %s for PoolID %s is held by pool %q", w.StatefulSet.Name, p.Spec.PoolID, holder))
+		r.forget(p)
 		return res, nil
 	}
 	r.condition(p, CondAdmitted, metav1.ConditionTrue, ReasonAdmitted, "workload "+w.StatefulSet.Name)
@@ -175,8 +189,46 @@ func (r *Pools) converge(ctx context.Context, p *v1alpha1.ContinuumPool) (reconc
 	if err != nil {
 		return res, err
 	}
+	res = sooner(res, r.chains(ctx, p, live))
 	wait, err := r.reload(ctx, live, w)
 	return sooner(res, wait), err
+}
+
+func (r *Pools) forget(p *v1alpha1.ContinuumPool) {
+	if r.watch != nil {
+		r.watch.Forget(p)
+	}
+}
+
+func (r *Pools) forgetNamed(req reconcile.Request) {
+	if r.watch != nil {
+		r.watch.ForgetNamed(req.Namespace, req.Name)
+	}
+}
+
+// chains refines a Syncing pod's phase with what its chain shows, records
+// its tip and newest own block, and returns when to look again. A pod that
+// is not Ready, or a pool that is Dark, is no longer followed.
+func (r *Pools) chains(ctx context.Context, p *v1alpha1.ContinuumPool, pod *corev1.Pod) time.Duration {
+	if r.watch == nil {
+		return 0
+	}
+	if p.Status.Phase != v1alpha1.PhaseSyncing || pod == nil {
+		r.watch.Forget(p)
+		return 0
+	}
+	var net v1alpha1.ContinuumNetwork
+	if err := r.client.Get(ctx, types.NamespacedName{Namespace: p.Namespace, Name: p.Spec.NetworkRef}, &net); err != nil {
+		r.log.Warn("network for chain phase", "pool", p.Name, "err", err)
+		return r.watch.Poll()
+	}
+	o := r.watch.Observe(ctx, p, &net, pod)
+	if o.Seen.HaveTip {
+		p.Status.Tip = tipStatus(o.Seen.Tip)
+	}
+	p.Status.LastBlock = o.Last
+	p.Status.Phase = r.watch.Phase(p.Status.Phase, p, o)
+	return r.watch.Poll()
 }
 
 func (r *Pools) condition(p *v1alpha1.ContinuumPool, typ string, st metav1.ConditionStatus, reason, msg string) {

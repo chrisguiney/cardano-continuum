@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -22,6 +23,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/image"
+	"github.com/chrisguiney/cardano-continuum/internal/poolwatch"
 )
 
 // +kubebuilder:rbac:groups=continuum.blinklabs.io,resources=continuumpools;continuumnetworks,verbs=get;list;watch
@@ -44,6 +46,11 @@ type Options struct {
 	// Exec tells running nodes to reread their Config; nil disables it.
 	Exec Exec
 	Log  *slog.Logger
+	// Dial opens node-to-node connections to pool pods for a network magic,
+	// to judge Forging and Following; nil dials real nodes.
+	Dial func(magic uint32) poolwatch.Dialer
+	// Poll is how often followed pools are refreshed; 0 is five seconds.
+	Poll time.Duration
 }
 
 // CacheOptions limits the manager's caches of pods, StatefulSets, Services
@@ -64,9 +71,11 @@ func Setup(ctx context.Context, mgr manager.Manager, o Options) error {
 	if o.Drivers == nil || o.Images == nil || o.Log == nil {
 		return errors.New("operator setup: Drivers, Images and Log are required")
 	}
+	w := NewWatch(WatchOptions{Live: mgr.GetAPIReader(), Dial: o.Dial, Poll: o.Poll, Log: o.Log})
 	return errors.Join(
 		Index(ctx, mgr),
-		NewPools(mgr.GetClient(), o.Drivers, o.Images, o.Exec, o.Log).SetupWithManager(mgr),
+		mgr.Add(w),
+		NewPools(mgr.GetClient(), o.Drivers, o.Images, o.Exec, o.Log).WithWatch(w).SetupWithManager(mgr),
 		NewRelease(mgr.GetClient(), mgr.GetAPIReader(), o.Log).SetupWithManager(mgr),
 		NewNetworks(mgr.GetClient(), mgr.GetAPIReader(), o.Log).SetupWithManager(mgr),
 	)

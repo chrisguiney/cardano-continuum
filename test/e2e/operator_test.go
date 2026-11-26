@@ -265,18 +265,17 @@ func poolObject(i int) v1alpha1.ContinuumPool {
 	}
 }
 
-// checkPoolPhases requires every pool's workload to be ready. The operator
-// reports Syncing for a ready pod: Forging needs the node's tip, which it
-// does not read yet (operator.PhaseOf).
+// checkPoolPhases requires every pool's workload to be ready: a running
+// phase, whether the pool has caught up or not (operator.Judge).
 func checkPoolPhases(t *testing.T, ns string, pools int) {
 	t.Helper()
-	poll(t, 2*time.Minute, 5*time.Second, "pools to report Syncing", func(ctx context.Context) (bool, error) {
+	poll(t, 2*time.Minute, 5*time.Second, "pools to report a running phase", func(ctx context.Context) (bool, error) {
 		for i := range pools {
 			phase, err := kubectl(ctx, "", "-n", ns, "get", "continuumpool", fmt.Sprintf("p%d", i), "-o", "jsonpath={.status.phase}")
 			if err != nil {
 				return false, err
 			}
-			if phase != string(v1alpha1.PhaseSyncing) {
+			if !v1alpha1.PoolPhase(phase).Running() {
 				return false, nil
 			}
 		}

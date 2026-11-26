@@ -118,7 +118,7 @@ func TestPoolEnums(t *testing.T) {
 
 	status := schemaOf(t, c, "status")
 	assertStrings(t, "phase enum", enumOf(t, status, "phase"),
-		[]string{"Pending", "Syncing", "Forging", "Dark"})
+		[]string{"Pending", "Syncing", "Forging", "Following", "Dark"})
 }
 
 func TestNetworkEnums(t *testing.T) {

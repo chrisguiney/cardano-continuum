@@ -249,6 +249,7 @@ func (in *ContinuumPoolSpec) DeepCopy() *ContinuumPoolSpec {
 func (in *ContinuumPoolStatus) DeepCopyInto(out *ContinuumPoolStatus) {
 	*out = *in
 	out.Tip = in.Tip
+	out.LastBlock = in.LastBlock
 	in.Image.DeepCopyInto(&out.Image)
 	in.Build.DeepCopyInto(&out.Build)
 	if in.LastRoll != nil {

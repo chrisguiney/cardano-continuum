@@ -122,7 +122,7 @@ func (c *n2nConn) forward(_ chainsync.CallbackContext, _ uint, data any, _ chain
 	if !ok {
 		return fmt.Errorf("poolwatch: roll forward carried %T, not a header", data)
 	}
-	m := chain.Mark{Height: h.BlockNumber()}
+	m := chain.Mark{Height: h.BlockNumber(), Issuer: h.IssuerVkey().Hash()}
 	m.Slot, m.Hash = h.SlotNumber(), h.Hash()
 	return c.deliver(Event{Forward: &m})
 }

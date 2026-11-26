@@ -62,7 +62,7 @@ func newLiveTips(cl poolCluster, network string, magic uint32, k uint64, log *sl
 func podTargets(ps []v1alpha1.ContinuumPool) []poolwatch.Target {
 	var out []poolwatch.Target
 	for _, p := range ps {
-		run := p.Status.Phase == v1alpha1.PhaseSyncing || p.Status.Phase == v1alpha1.PhaseForging
+		run := p.Status.Phase.Running()
 		if !run || p.Spec.Dark || p.Spec.Tier == v1alpha1.TierLogical || p.Status.Workload == "" {
 			continue
 		}

@@ -42,22 +42,39 @@ const (
 
 // PoolPhase is the observed lifecycle phase of a ContinuumPool.
 //
-// +kubebuilder:validation:Enum=Pending;Syncing;Forging;Dark
+// +kubebuilder:validation:Enum=Pending;Syncing;Forging;Following;Dark
 type PoolPhase string
 
 const (
-	// PhasePending means no pod has been observed yet.
+	// PhasePending means the pool's pod is absent or not Ready. For a keyed
+	// pod that includes the keys gate not having passed.
 	PhasePending PoolPhase = "Pending"
 
-	// PhaseSyncing means a pod is ready but its tip is behind.
+	// PhaseSyncing means the pod is Ready but not caught up: its tip slot
+	// trails the network's current slot by more than ceil(6/f) slots, or
+	// the operator has not read its tip yet. A forging pool that is caught
+	// up but has not been seen to produce a block within its window stays
+	// Syncing too.
 	PhaseSyncing PoolPhase = "Syncing"
 
-	// PhaseForging means a forging-tier pool is at the current tip.
+	// PhaseForging means a forging-tier pool with its keys mounted is
+	// caught up and has produced a block, identified by the issuer key in
+	// the header, within the window described on status.phase.
 	PhaseForging PoolPhase = "Forging"
+
+	// PhaseFollowing means a pool that never forges (a validating pool) is
+	// Ready and caught up.
+	PhaseFollowing PoolPhase = "Following"
 
 	// PhaseDark means the pool is scaled to zero on purpose and misses blocks.
 	PhaseDark PoolPhase = "Dark"
 )
+
+// Running reports whether the phase means a pod is up: Syncing, Forging or
+// Following.
+func (p PoolPhase) Running() bool {
+	return p == PhaseSyncing || p == PhaseForging || p == PhaseFollowing
+}
 
 // BuildMode records how an image's binaries were produced.
 //
@@ -189,4 +206,9 @@ type TipStatus struct {
 	//
 	// +optional
 	Hash string `json:"hash,omitempty"`
+
+	// Height is the block number of the tip.
+	//
+	// +optional
+	Height int64 `json:"height,omitempty"`
 }

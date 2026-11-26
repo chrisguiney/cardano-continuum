@@ -109,7 +109,7 @@ func (l *livePools) Sync(ctx context.Context, plan []engine.PoolPlan) error {
 
 // Changes implements engine.PodSource: every interval it reads the pools'
 // phases and reports each genesis pool whose pod started or stopped
-// running. Syncing and Forging are running; Pending, Dark and anything else
+// running. Syncing, Forging and Following are running; Pending, Dark and anything else
 // are not.
 func (l *livePools) Changes(ctx context.Context, now sched.Time) ([]engine.PoolStatus, error) {
 	l.mu.Lock()
@@ -135,7 +135,7 @@ func (l *livePools) Changes(ctx context.Context, now sched.Time) ([]engine.PoolS
 		if !ok || !seen {
 			continue
 		}
-		run := p.Status.Phase == v1alpha1.PhaseSyncing || p.Status.Phase == v1alpha1.PhaseForging
+		run := p.Status.Phase.Running()
 		if was, known := l.running[actor]; !known && run || known && was == run {
 			l.running[actor] = run
 			continue

@@ -302,6 +302,10 @@ spec:
                     hash:
                       description: Hash is the tip block hash, hex encoded.
                       type: string
+                    height:
+                      description: Height is the block number of the tip.
+                      format: int64
+                      type: integer
                     slot:
                       description: Slot is the tip slot.
                       format: int64

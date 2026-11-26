@@ -68,6 +68,18 @@ type ContinuumPoolSpec struct {
 type ContinuumPoolStatus struct {
 	// Phase is the observed lifecycle phase.
 	//
+	// Pending: the pod is not Ready (for a keyed pod, the keys gate has not
+	// passed). Syncing: Ready, but the pool's tip slot trails the network's
+	// current slot by more than ceil(6/f) slots (f is activeSlotsCoeff; a
+	// healthy chain goes that long without a block with probability about
+	// 0.25%), or no tip has been read yet. Forging: a forging-tier pool, caught
+	// up, that produced a block (header issuer key hash equal to the pool's
+	// cold key hash) within min(ceil(ln(1000)/(share*f)), epochLength) slots,
+	// where share is the pool's fraction of genesis stake; a healthy pool misses
+	// that window with probability at most 0.1% until the epochLength cap
+	// applies. Following: a validating pool that is Ready and caught up; it
+	// never forges. Dark: spec.dark is set.
+	//
 	// +optional
 	Phase PoolPhase `json:"phase,omitempty"`
 
@@ -75,6 +87,13 @@ type ContinuumPoolStatus struct {
 	//
 	// +optional
 	Tip TipStatus `json:"tip,omitempty"`
+
+	// LastBlock is the newest block the pool's own issuer key produced that
+	// the operator saw, kept across operator restarts. It is empty until one
+	// is seen and for pools that never forge.
+	//
+	// +optional
+	LastBlock TipStatus `json:"lastBlock,omitempty"`
 
 	// Workload names the StatefulSet the operator rendered for this pool.
 	//
