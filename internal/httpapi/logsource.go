@@ -60,8 +60,14 @@ func NewLogSource(cfg LogSourceConfig) *LogSource {
 }
 
 // Snapshot implements Source.
-func (s *LogSource) Snapshot(context.Context) (Snapshot, error) {
-	return s.cfg.Projection.Snapshot(s.cfg.Slots), nil
+func (s *LogSource) Snapshot(ctx context.Context) (Snapshot, error) {
+	n, err := s.names(ctx)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	snap := s.cfg.Projection.Snapshot(s.cfg.Slots)
+	snap.Population.ByProfile = s.cfg.Projection.ProfileCounts(func(id uint64) string { return n[id].Profile })
+	return snap, nil
 }
 
 // ActorTimeline implements Source.
@@ -72,6 +78,9 @@ func (s *LogSource) ActorTimeline(ctx context.Context, id uint64) (Timeline, err
 	}
 	if n, err := s.names(ctx); err == nil {
 		t.Role = n[id].Role
+		if t.Profile == "" {
+			t.Profile = n[id].Profile
+		}
 	}
 	return t, nil
 }
@@ -118,6 +127,9 @@ func (s *LogSource) Actors(ctx context.Context, q ActorQuery) (ActorPage, error)
 	}
 	for i := range rows {
 		rows[i].Name, rows[i].Role = n[rows[i].ID].Name, n[rows[i].ID].Role
+		if rows[i].Profile == "" {
+			rows[i].Profile = n[rows[i].ID].Profile
+		}
 	}
 	return pageActors(rows, q), nil
 }

@@ -88,7 +88,7 @@ func TestTailBuildsProjection(t *testing.T) {
 	if s.Tip == nil || s.Tip.Slot != 77 || s.Blocks != 1 {
 		t.Fatalf("tip %+v blocks %d", s.Tip, s.Blocks)
 	}
-	if s.Population.Total != 2 || s.Population.ByProfile["hodl"] != 1 || s.Population.ByState["active"] != 1 {
+	if s.Population.Total != 2 || p.ProfileCounts(nil)["hodl"] != 1 || s.Population.ByState["active"] != 1 {
 		t.Fatalf("population %+v", s.Population)
 	}
 	if s.Ada.SubmittedLovelace != 10_000_000 || s.Ada.ConfirmedLovelace != 5_000_000 || s.Ada.FeesLovelace != 180000 {

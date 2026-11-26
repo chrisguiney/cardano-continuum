@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chrisguiney/cardano-continuum/internal/engine"
+	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/store"
 )
@@ -86,5 +88,43 @@ func TestLogSourceSnapshotEpochAndPoolsWithoutKube(t *testing.T) {
 	f, err := src.Findings(context.Background(), Page{Limit: 10})
 	if err != nil || f.Total != 0 || f.Rows == nil {
 		t.Fatalf("findings %+v %v", f, err)
+	}
+}
+
+// A genesis actor enters the log through its first transition, never a
+// Spawned record, so only the store knows its profile. Every actor must
+// still be counted under some profile.
+func TestLogSourceProfileCountsSumToActors(t *testing.T) {
+	recs := fixture(t)
+	for id := uint64(3); id <= 5; id++ {
+		recs = append(recs, eventlog.Record{At: 100, Class: eventlog.Decision, Kind: engine.KindTransition, Actor: eventlog.ActorID(id), Body: enc(t, engine.Transition{From: "new", To: "active"})})
+	}
+	tl, p, h := newTail(t, writeLog(t, recs))
+	if _, err := tl.Poll(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	names := fakeNames{rows: []store.ActorRow{
+		{ID: 1, Name: "hodl-1", Role: "active", Profile: "hodl"}, {ID: 2, Name: "yield-2", Role: "new", Profile: "yield"},
+		{ID: 3, Name: "yield-3", Role: "active", Profile: "yield"}, {ID: 4, Name: "yield-4", Role: "active", Profile: "yield"},
+		{ID: 5, Name: "hodl-5", Role: "active", Profile: "hodl"},
+	}}
+	src := NewLogSource(LogSourceConfig{Projection: p, Hub: h, Names: names, Now: time.Now})
+	s, err := src.Snapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := 0
+	for _, n := range s.Population.ByProfile {
+		sum += n
+	}
+	if s.Population.Total != 5 || sum != s.Population.Total {
+		t.Fatalf("total %d, by profile %v sums to %d", s.Population.Total, s.Population.ByProfile, sum)
+	}
+	if s.Population.ByProfile["yield"] != 3 || s.Population.ByProfile["hodl"] != 2 {
+		t.Fatalf("by profile %v", s.Population.ByProfile)
+	}
+	pg, err := src.Actors(context.Background(), ActorQuery{Sort: "id", Limit: 10, Filter: ActorFilter{Profile: "yield"}})
+	if err != nil || pg.Total != 3 || pg.Rows[2].ID != 4 || pg.Rows[2].Profile != "yield" {
+		t.Fatalf("profile filter over genesis actors: %+v %v", pg, err)
 	}
 }

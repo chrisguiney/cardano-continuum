@@ -48,7 +48,6 @@ type Projection struct {
 	txs        TxCounts
 	actors     map[uint64]*actorInfo
 	intents    map[uint64]*intentInfo
-	byProfile  map[string]int
 	byState    map[string]int
 	bodyErrors int
 }
@@ -57,7 +56,7 @@ type Projection struct {
 func NewProjection() *Projection {
 	return &Projection{
 		actors: map[uint64]*actorInfo{}, intents: map[uint64]*intentInfo{},
-		byProfile: map[string]int{}, byState: map[string]int{},
+		byState: map[string]int{},
 	}
 }
 
@@ -188,7 +187,6 @@ func (p *Projection) applyDecision(r eventlog.Record) error {
 		}
 		a := p.actor(id)
 		a.profile, a.born = s.Profile, int64(r.At)
-		p.byProfile[s.Profile]++
 		p.note(id, r, s.Profile, nil)
 	case engine.KindTransition:
 		var t engine.Transition
@@ -294,14 +292,40 @@ func (p *Projection) applyOutcome(id uint64, r eventlog.Record) error {
 	return nil
 }
 
-// Snapshot builds the Overview. A nil slots leaves Epoch unset.
+// UnknownProfile counts an actor no source names a profile for.
+const UnknownProfile = "unknown"
+
+// ProfileCounts counts every actor by profile, so the counts sum to the
+// actor total. An actor the log spawned carries its profile; any other
+// (genesis) actor takes profileOf's answer, and an empty answer counts as
+// UnknownProfile. profileOf must not do I/O: it runs under the lock.
+func (p *Projection) ProfileCounts(profileOf func(uint64) string) map[string]int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	out := map[string]int{}
+	for id, a := range p.actors {
+		prof := a.profile
+		if prof == "" && profileOf != nil {
+			prof = profileOf(id)
+		}
+		if prof == "" {
+			prof = UnknownProfile
+		}
+		out[prof]++
+	}
+	return out
+}
+
+// Snapshot builds the Overview. ByProfile is left for ProfileCounts, which
+// needs the store.
+// A nil slots leaves Epoch unset.
 func (p *Projection) Snapshot(slots *sched.Slots) Snapshot {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	s := Snapshot{
 		LastSeq: p.lastSeq, SimTimeMs: p.now, Blocks: p.blocks, Rollbacks: p.rollbacks,
 		Ada: p.ada, Txs: p.txs,
-		Population: Population{Total: len(p.actors), ByProfile: maps(p.byProfile), ByState: maps(p.byState)},
+		Population: Population{Total: len(p.actors), ByState: maps(p.byState)},
 		Invariants: []Invariant{{Name: "log_gapless", OK: true}, {Name: "bodies_decode", OK: p.bodyErrors == 0}},
 	}
 	if p.bodyErrors > 0 {
