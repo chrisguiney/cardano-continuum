@@ -1,6 +1,12 @@
 // Package tla turns TLA+ model-checker output into inputs for adversaries.
 //
-// It has three parts. The decoder reads TLC's JSON value encoding into [Value]
+// It has four parts. The wrapped exports ([ExportUtxo], [ExportWitnesses],
+// [Walk]) rerun a model under a module that EXTENDS it and writes out what
+// the model keeps under quantifiers: the transaction each ledger step applied
+// (a history variable), the cells that make a table invariant false (written
+// by an invariant listed just before it), and a simulation walk's offered
+// transactions. They are what internal/scenario concretizes. The other three
+// parts: The decoder reads TLC's JSON value encoding into [Value]
 // and counterexample traces into [Trace]. The harvester ([Harvest]) fetches a
 // model repository at a pinned commit, runs TLC on every *Bug.cfg and writes
 // one scenario-seed file per cfg. The vector exporter ([ExportVectors]) dumps

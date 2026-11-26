@@ -46,6 +46,12 @@ type Run struct {
 // counterexample if there is one. Only a failure to run TLC at all is an
 // error; a parse or evaluation failure in the model is reported as Broken.
 func RunTLC(ctx context.Context, tools Tools, dir, spec, cfg string, timeout time.Duration) (Run, error) {
+	return runTLC(ctx, tools, dir, spec, cfg, timeout)
+}
+
+// runTLC is RunTLC with extra TLC options (the simulation flags) placed
+// before -config.
+func runTLC(ctx context.Context, tools Tools, dir, spec, cfg string, timeout time.Duration, extra ...string) (Run, error) {
 	if err := os.MkdirAll(tools.Tmp, 0o755); err != nil {
 		return Run{}, fmt.Errorf("create tmp %s: %w", tools.Tmp, err)
 	}
@@ -57,13 +63,14 @@ func RunTLC(ctx context.Context, tools Tools, dir, spec, cfg string, timeout tim
 	dump := filepath.Join(work, "trace.json")
 	workers := max(tools.Workers, 1)
 
-	out, exit, timedOut, err := runCmd(ctx, timeout, dir, tools, work, []string{
+	args := []string{
 		"-noGenerateSpecTE",
 		"-workers", strconv.Itoa(workers),
 		"-metadir", filepath.Join(work, "states"),
 		"-dumpTrace", "json", dump,
-		"-config", cfg, spec,
-	})
+	}
+	args = append(args, extra...)
+	out, exit, timedOut, err := runCmd(ctx, timeout, dir, tools, work, append(args, "-config", cfg, spec))
 	if err != nil {
 		return Run{}, fmt.Errorf("run tlc %s %s: %w", spec, cfg, err)
 	}
