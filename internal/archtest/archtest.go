@@ -29,7 +29,9 @@ var leaves = map[string]bool{
 
 // violations returns one message per broken rule, sorted by package. The rules:
 //   - a leaf package imports no module-internal package;
-//   - no package imports anything under cmd/, which holds binaries only.
+//   - no package imports anything under cmd/, which holds binaries only;
+//   - an engine component imports neither a sibling component (except wire,
+//     the shared value types) nor internal/engine, which assembles it.
 func violations(g graph) []string {
 	pkgs := make([]string, 0, len(g))
 	for p := range g {
@@ -46,9 +48,46 @@ func violations(g graph) []string {
 			if strings.HasPrefix(imp, "cmd/") {
 				out = append(out, fmt.Sprintf("%s imports binary package %s", pkg, imp))
 			}
+			if msg := componentImport(pkg, imp); msg != "" {
+				out = append(out, msg)
+			}
 		}
 	}
 	return out
+}
+
+const (
+	engineDir     = "internal/engine"
+	componentRoot = engineDir + "/internal/"
+	sharedValues  = "wire"
+)
+
+// componentOf returns the component a package belongs to, the first path
+// element under internal/engine/internal, or "" for any other package.
+func componentOf(pkg string) string {
+	rest, ok := strings.CutPrefix(pkg, componentRoot)
+	if !ok {
+		return ""
+	}
+	name, _, _ := strings.Cut(rest, "/")
+	return name
+}
+
+// componentImport reports a component importing the package that assembles
+// it or another component's package. The shared value package is allowed.
+func componentImport(pkg, imp string) string {
+	from := componentOf(pkg)
+	if from == "" {
+		return ""
+	}
+	if imp == engineDir {
+		return fmt.Sprintf("%s is an engine component and imports its assembler %s", pkg, imp)
+	}
+	to := componentOf(imp)
+	if to == "" || to == from || to == sharedValues {
+		return ""
+	}
+	return fmt.Sprintf("%s is an engine component and imports component %s", pkg, imp)
 }
 
 // skipDir reports whether the walk should not descend into the directory.
