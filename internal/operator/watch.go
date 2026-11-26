@@ -202,7 +202,7 @@ func (w *Watch) Observe(ctx context.Context, p *v1alpha1.ContinuumPool, net *v1a
 	}
 	tips := w.tr.Tips()
 	o := Observation{Facts: facts, Last: p.Status.LastBlock}
-	o.Seen = seenOf(tips[key], issuer, netTip(tips, p.Namespace+"/"+p.Spec.NetworkRef+"/"))
+	o.Seen = withPriorTip(seenOf(tips[key], issuer, netTip(tips, p.Namespace+"/"+p.Spec.NetworkRef+"/")), p.Status.Tip)
 	if o.Seen.HaveOwn && int64(o.Seen.Own.Slot) >= o.Last.Slot {
 		o.Last = tipStatus(o.Seen.Own)
 	} else if o.Last.Slot > 0 {
@@ -298,6 +298,17 @@ func seenOf(marks []chain.Mark, issuer *common.Blake2b224, net uint64) Seen {
 			s.Own, s.HaveOwn = marks[i], true
 			break
 		}
+	}
+	return s
+}
+
+// withPriorTip gives a Seen with no tip the tip already in status. A
+// window is emptied by a rollback to a point older than it holds, and a pool
+// that was caught up a moment ago must not read as Syncing for that; the lag
+// check still turns a tip that stops advancing into Syncing.
+func withPriorTip(s Seen, prior v1alpha1.TipStatus) Seen {
+	if !s.HaveTip && prior.Slot > 0 {
+		s.Tip, s.HaveTip = chain.Mark{Height: uint64(prior.Height), Point: chain.Point{Slot: uint64(prior.Slot)}}, true
 	}
 	return s
 }

@@ -3,6 +3,9 @@ package operator
 import (
 	"testing"
 	"time"
+
+	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
+	"github.com/chrisguiney/cardano-continuum/internal/chain"
 )
 
 const shelleyJSON = `{"activeSlotsCoeff":0.05,"epochLength":432,"securityParam":12,"slotLength":0.2,
@@ -32,5 +35,19 @@ func TestFactsOfRejects(t *testing.T) {
 		if _, err := FactsOf([]byte(doc)); err == nil {
 			t.Errorf("%s: no error", name)
 		}
+	}
+}
+
+func TestWithPriorTip(t *testing.T) {
+	prior := v1alpha1.TipStatus{Slot: 74, Height: 6}
+	if got := withPriorTip(Seen{}, prior); !got.HaveTip || got.Tip.Slot != 74 || got.Tip.Height != 6 {
+		t.Errorf("empty window: %+v", got)
+	}
+	seen := Seen{HaveTip: true, Tip: chain.Mark{Point: chain.Point{Slot: 90}}}
+	if got := withPriorTip(seen, prior); got.Tip.Slot != 90 {
+		t.Errorf("a seen tip is replaced: %+v", got)
+	}
+	if got := withPriorTip(Seen{}, v1alpha1.TipStatus{}); got.HaveTip {
+		t.Errorf("no prior tip invented one: %+v", got)
 	}
 }
