@@ -278,6 +278,6 @@ func Kinds() []Kind {
 	return []Kind{
 		UnexpectedAccept, UnexpectedReject, WrongClass, Unclassified, VerdictSplit,
 		ValueNotConserved, PaidTwice, ReservationLeaked, ReservationDouble, Unreserved,
-		SettledBack, ViewMismatch, Frozen, DeepFork, FloorBreached, RogueAdopted,
+		SettledBack, ViewMismatch, Frozen, DeepFork, FloorBreached, RogueAdopted, BlockOverBudget,
 	}
 }

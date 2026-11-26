@@ -7,6 +7,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
+	"github.com/chrisguiney/cardano-continuum/internal/mistake"
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
@@ -33,12 +34,24 @@ type Enums struct {
 	// and proposal types.
 	VoterClass []string `json:"voter_class"`
 	ActionType []string `json:"action_type"`
+	// MistakeKind is internal/mistake's catalog, the kinds a Submitted
+	// decision's mistakes name.
+	MistakeKind []string `json:"mistake_kind"`
 }
 
 func strs[T ~string](xs []T) []string {
 	out := make([]string, len(xs))
 	for i, x := range xs {
 		out[i] = string(x)
+	}
+	return out
+}
+
+func mistakeKinds() []string {
+	ks := mistake.Kinds()
+	out := make([]string, len(ks))
+	for i, k := range ks {
+		out[i] = k.String()
 	}
 	return out
 }
@@ -58,5 +71,6 @@ func BuildEnums() Enums {
 		Impl: strs(v1alpha1.Implementations()), Tier: strs(v1alpha1.Tiers()), Phase: strs(v1alpha1.Phases()),
 		Attack: strs(adversary.Names()), DecisionKind: engine.DecisionKinds(),
 		VoterClass: []string{classCommittee, classDRep, classSPO}, ActionType: chain.ActionTypes(),
+		MistakeKind: mistakeKinds(),
 	}
 }

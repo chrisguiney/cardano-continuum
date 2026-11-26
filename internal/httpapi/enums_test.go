@@ -103,3 +103,23 @@ func TestFiltersByEnumValue(t *testing.T) {
 		t.Error("bogus intent accepted")
 	}
 }
+
+// TestEnumsNameExUnitsKinds: the ExUnits attack, its finding and the two
+// ExUnits mistakes are offered.
+func TestEnumsNameExUnitsKinds(t *testing.T) {
+	e := getEnums(t)
+	for list, want := range map[string]struct {
+		got  []string
+		vals []string
+	}{
+		"attack":       {e.Attack, []string{"exunits-block-gap"}},
+		"finding_kind": {e.FindingKind, []string{"block_exunits_over_limit"}},
+		"mistake_kind": {e.MistakeKind, []string{"exunits_over_declared", "exunits_under_declared", "fee_too_small"}},
+	} {
+		for _, v := range want.vals {
+			if !slices.Contains(want.got, v) {
+				t.Errorf("%s lacks %q: %v", list, v, want.got)
+			}
+		}
+	}
+}
