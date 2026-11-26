@@ -354,3 +354,16 @@ def test_fallback_activity_keeps_the_payment_rate():
     want = ofp["activity"]["base_per_sec"] * ofp["activity"]["send_probability"]
     assert fp["activity"]["send_probability"] != ofp["activity"]["send_probability"]
     assert abs(payments / want - 1.0) < 1e-12
+
+
+def test_active_days_count_days_not_slots():
+    """active_days buckets slots into days by the slot length. With one-day
+    slots every distinct slot is its own day, so no unit can have fewer active
+    days than with one-second slots, and a unit spread over several slots of
+    one day has more."""
+    last = common.last_slot(CHAIN)
+    con = common.prepare(CHAIN, 0, last, units.unit_of(True))
+    seconds = units.features(con, last + 1, 1.0)
+    days = units.features(con, last + 1, 86400.0)
+    assert (days["active_days"] >= seconds["active_days"]).all()
+    assert (days["active_days"] > seconds["active_days"]).any()

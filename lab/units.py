@@ -62,13 +62,14 @@ def unit_of(stake: bool = True):
 
 # One row per unit that sent at least one transaction in the window. Gaps and
 # dormancy are in slots; a unit with a single transaction has no gap, so its
-# median gap is the window and its longest dormancy is zero.
+# median gap is the window and its longest dormancy is zero. Active days are
+# days of slot time, so the slot length converts slots to seconds first.
 FEATURE_SQL = """
 WITH f AS (SELECT unit, hash, slot, block_index, n_in, n_out, kind
            FROM c_base WHERE unit IS NOT NULL),
 g AS (SELECT unit, slot - lag(slot) OVER (PARTITION BY unit ORDER BY slot, block_index) AS gap FROM f),
 gs AS (SELECT unit, median(gap) AS med_gap, max(gap) AS max_gap FROM g WHERE gap IS NOT NULL GROUP BY unit),
-b AS (SELECT unit, count(*) AS n_tx, count(DISTINCT slot // 86400) AS active_days,
+b AS (SELECT unit, count(*) AS n_tx, count(DISTINCT floor(slot * {slot_seconds} / 86400)) AS active_days,
              avg(n_in) AS in_per_tx, avg(n_out) AS out_per_tx,
              avg((kind = 'script')::int) AS script_share, avg((kind = 'stake')::int) AS stake_share
       FROM f GROUP BY unit),
@@ -90,7 +91,7 @@ def features(con: duckdb.DuckDBPyConnection, window_slots: int, slot_seconds: fl
     Columns: unit, n_tx, tx_per_day, med_gap_s, med_value, script_share,
     stake_share, in_per_tx, out_per_tx, reuse, active_days, max_dormancy_s.
     """
-    df = con.execute(FEATURE_SQL.format(window_slots=int(window_slots))).fetchdf()
+    df = con.execute(FEATURE_SQL.format(window_slots=int(window_slots), slot_seconds=float(slot_seconds))).fetchdf()
     days = window_slots * slot_seconds / 86400.0
     df["tx_per_day"] = df["n_tx"] / days
     df["med_gap_s"] = df["med_gap"].astype(float) * slot_seconds
