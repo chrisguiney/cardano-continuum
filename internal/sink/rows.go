@@ -37,6 +37,15 @@ func (t *table) flag(c int, v bool)   { t.b.Field(c).(*array.BooleanBuilder).App
 func (t *table) hash(c int, v []byte) { t.b.Field(c).(*array.FixedSizeBinaryBuilder).Append(v) }
 func (t *table) null(c int)           { t.b.Field(c).AppendNull() }
 
+// optStr appends v, or null when it is empty.
+func (t *table) optStr(c int, v string) {
+	if v == "" {
+		t.null(c)
+		return
+	}
+	t.str(c, v)
+}
+
 // done closes a row; every column must have been appended once.
 func (t *table) done() { t.rows++ }
 
@@ -256,6 +265,13 @@ func (b *builder) submitted(r eventlog.Record, s engine.Submitted, emit bool) {
 	t.u64(7, s.Amount)
 	t.u64(8, s.Fee)
 	t.u64(9, s.TTL)
+	t.optStr(10, s.Kind)
+	t.optStr(11, s.Action)
+	if s.Contract != 0 {
+		t.u64(12, s.Contract)
+	} else {
+		t.null(12)
+	}
 	t.done()
 }
 

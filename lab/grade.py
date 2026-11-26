@@ -40,7 +40,7 @@ import chain_stats
 import engine_stats
 import report
 from compare import (FRACTION_PASS_DISTANCE, KS_PASS_DISTANCE, SHARE_PASS_DISTANCE, Bounds, Skipped,
-                     any_failed, compare_population)
+                     any_failed, compare_actors, compare_population)
 from population_stats import with_chain_tables
 
 INDEX_FILE = "index.json"
@@ -126,24 +126,29 @@ def main(argv: list[str] | None = None) -> int:
 
     target_path = args.target or find_target(args.export_dir, args.profiles_dir)
     with open(target_path) as f:
-        overall_target, cluster_targets = target_views(json.load(f))
+        target = json.load(f)
+    overall_target, cluster_targets = target_views(target)
 
     run = engine_stats.engine_stats(args.export_dir)
     if args.chain_dir:
         run = with_chain_tables(run, chain_stats.chain_stats(args.chain_dir, args.slot_seconds))
 
     overall = compare_population(run, overall_target, bounds)
+    store = args.store or os.path.join(os.path.dirname(os.path.abspath(args.export_dir)), STORE_FILE)
     clusters = {}
     if cluster_targets:
-        store = args.store or os.path.join(os.path.dirname(os.path.abspath(args.export_dir)), STORE_FILE)
         clusters = grade_clusters(args.export_dir, store, cluster_targets, bounds)
+    actors = []
+    if target.get("actors"):
+        counts = engine_stats.actor_counts(args.export_dir, store, target["actors"])
+        actors = compare_actors(counts, target["actors"], bounds.fraction)
 
     text = report.render(args.export_dir, target_path, bounds, overall,
-                         run.info.get("idle_fraction_of_records"), clusters)
+                         run.info.get("idle_fraction_of_records"), clusters, actors)
     with open(args.out, "w") as f:
         f.write(text)
     print(text)
-    every_row = overall + [row for grade in clusters.values() for row in grade.rows]
+    every_row = overall + actors + [row for grade in clusters.values() for row in grade.rows]
     return 1 if any_failed(every_row) else 0
 
 

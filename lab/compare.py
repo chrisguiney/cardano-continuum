@@ -122,7 +122,80 @@ class FractionRow:
         return f"diff={self.diff:.3f}; got {self.got:.3f}, want {self.want:.3f}"
 
 
-Row = Skipped | KsRow | ShareRow | FractionRow
+@dataclass(frozen=True)
+class CountRow:
+    """A count of events against what the target's rate predicts.
+
+    The run is short and its populations small, so a fitted rate predicts
+    a handful of events: the count passes when it is inside the central
+    99% of a Poisson (a rate) or binomial (a share of members) with the
+    predicted mean. A KS-style distance would fail on noise alone.
+    """
+
+    name: str
+    status: str
+    count: int
+    expected: float
+    low: int
+    high: int
+
+    def detail(self) -> str:
+        return f"{self.count} in the run, target predicts {self.expected:.3g} (99% range {self.low}..{self.high})"
+
+
+Row = Skipped | KsRow | ShareRow | FractionRow | CountRow
+
+
+def _within(name: str, count: int, expected: float, dist) -> Row:
+    low, high = int(dist.ppf(0.005)), int(dist.isf(0.005))
+    return CountRow(name, "pass" if low <= count <= high else "fail", count, expected, low, high)
+
+
+def compare_actors(counts, target_actors: dict | None, fraction_bound: float = FRACTION_PASS_DISTANCE) -> list[Row]:
+    """Rows for the target's actors block: each population's head count,
+    per-member rates and voting share, the contract deployment rate and
+    usage concentration, and each proposal rate.
+
+    counts is engine_stats.ActorCounts; None (an export that cannot say)
+    skips every row, and a target without the block grades nothing.
+    """
+    if not target_actors:
+        return []
+    rows: list[Row] = []
+    if counts is None:
+        return [Skipped("actors", "export has no submission kinds; re-export the run")]
+    for name in ("pools", "dreps"):
+        pop = target_actors.get(name)
+        if not pop:
+            continue
+        members = counts.members.get(name, 0)
+        rows.append(CountRow(f"{name}.count", "pass" if members == pop["count"] else "fail",
+                             members, pop["count"], pop["count"], pop["count"]))
+        for rate in sorted(k for k in pop if k.endswith("_rate")):
+            key = f"{name}.{rate}"
+            if members == 0:
+                rows.append(Skipped(key, f"no {name} in the run"))
+                continue
+            expected = pop[rate] * members * counts.days
+            rows.append(_within(key, counts.events.get(key, 0), expected, sps.poisson(expected)))
+        if "voting_share" in pop and members:
+            rows.append(_within(f"{name}.voting_share", counts.voted.get(name, 0), pop["voting_share"] * members,
+                                sps.binom(members, pop["voting_share"])))
+    contracts = target_actors.get("contracts")
+    if contracts:
+        expected = contracts["new_rate"] * counts.wallets * counts.days
+        rows.append(_within("contracts.new_rate", counts.events.get("contracts.new_rate", 0), expected, sps.poisson(expected)))
+        if counts.top_share is None:
+            rows.append(Skipped("contracts.top_share", "no script calls in the run"))
+        else:
+            diff = abs(counts.top_share - contracts["top_share"])
+            rows.append(FractionRow("contracts.top_share", verdict(diff, fraction_bound), diff,
+                                    counts.top_share, contracts["top_share"]))
+    for kind, rate in sorted(target_actors.get("proposal_rate", {}).items()):
+        key = f"proposal_rate.{kind}"
+        expected = rate * counts.days
+        rows.append(_within(key, counts.events.get(key, 0), expected, sps.poisson(expected)))
+    return rows
 
 
 def _shares_text(shares: dict[str, float]) -> str:

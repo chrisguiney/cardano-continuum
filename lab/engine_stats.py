@@ -27,7 +27,9 @@ Guide: section 6 of guide.ipynb ("Calibration: fit, run, grade").
 
 from __future__ import annotations
 
+import math
 import os
+from dataclasses import dataclass, field
 import sqlite3
 
 import duckdb
@@ -55,8 +57,8 @@ INTENT_TX_KIND = {
     "send": "plain", "withdraw_rewards": "plain",
     "script_call": "script", "mint": "script", "burn": "script",
     "delegate": "stake", "undelegate": "stake", "register_stake": "stake",
-    "register_pool": "pool", "retire_pool": "pool",
-    "vote": "gov", "register_drep": "gov", "delegate_drep": "gov", "propose": "gov",
+    "register_pool": "pool", "retire_pool": "pool", "update_pool": "pool",
+    "vote": "gov", "retire_drep": "gov", "register_drep": "gov", "delegate_drep": "gov", "propose": "gov",
 }
 
 # Intents submitted, by kind. A Submitted record names its intent but not the
@@ -222,3 +224,98 @@ def engine_stats(root: str, actors: set[int] | None = None) -> Stats:
     stats.info["idle_fraction_of_records"] = idle_fraction(*con.execute(IDLE_SQL).fetchall()[0])
     stats.info["payments"] = float(len(amounts))
     return stats
+
+
+# The network proposer's profile name (internal/engine, proposerName).
+PROPOSER_PROFILE = "network"
+
+# Each graded per-member rate of the actors block and the intent whose
+# first attempts count its events. Registrations are births.
+MEMBER_EVENTS = {
+    "pools": {"update_rate": "update_pool", "retire_rate": "retire_pool"},
+    "dreps": {"vote_rate": "vote", "retire_rate": "retire_drep"},
+}
+
+FIRST_ATTEMPTS_SQL = """
+SELECT actor, kind, action, contract FROM submission WHERE attempt = 1
+"""
+
+SPAN_DAYS_SQL = 'SELECT max("at") FROM decision'
+
+DEPLOYED_SQL = "SELECT count(*) FROM decision WHERE kind = 'Deployed'"
+
+
+@dataclass
+class ActorCounts:
+    """What a run's non-wallet actors did, for the target's actors block.
+
+    events maps "<population>.<rate>" (and "contracts.new_rate",
+    "proposal_rate.<type>") to how many such events the run had; members
+    is how many actors each population had, wallets the wallets the
+    contract rate is per, voted the members of a population that voted at
+    least once, top_share the share of script calls to the busiest 1% of
+    contracts (None without script calls).
+    """
+
+    days: float
+    members: dict[str, int] = field(default_factory=dict)
+    wallets: int = 0
+    events: dict[str, int] = field(default_factory=dict)
+    voted: dict[str, int] = field(default_factory=dict)
+    top_share: float | None = None
+
+
+def _has_column(con: duckdb.DuckDBPyConnection, table: str, column: str) -> bool:
+    return column in [row[0] for row in con.execute(f"DESCRIBE {table}").fetchall()]
+
+
+def actor_counts(root: str, store: str | None, target_actors: dict) -> ActorCounts | None:
+    """Count a run's pool, DRep, contract and proposal events.
+
+    Populations are the run's actors whose profile is named like a
+    population of the target (internal/engine names them so). An export
+    from before the submission table had its kind column has nothing to
+    count and gives None.
+    """
+    con = _open_export(root, None)
+    if not _has_column(con, "submission", "kind"):
+        return None
+    profiles = actor_profiles(root, store)
+    pops = [name for name in MEMBER_EVENTS if name in target_actors]
+    counts = ActorCounts(days=(_first_value(con, SPAN_DAYS_SQL) or 0) / MS_PER_DAY)
+    for name in pops:
+        counts.members[name] = sum(1 for p in profiles.values() if p == name)
+        counts.events[f"{name}.register_rate"] = _births(root, name)
+    counts.wallets = sum(1 for p in profiles.values() if p not in pops and p != PROPOSER_PROFILE)
+
+    by_kind: dict[tuple[str, str], set[int]] = {}
+    calls: dict[int, int] = {}
+    for actor, kind, action, contract in con.execute(FIRST_ATTEMPTS_SQL).fetchall():
+        population = profiles.get(int(actor))
+        for name in pops:
+            for rate, intent in MEMBER_EVENTS[name].items():
+                if population == name and kind == intent:
+                    counts.events[f"{name}.{rate}"] = counts.events.get(f"{name}.{rate}", 0) + 1
+                    by_kind.setdefault((name, intent), set()).add(int(actor))
+        if kind == "propose":
+            key = f"proposal_rate.{action or 'info'}"
+            counts.events[key] = counts.events.get(key, 0) + 1
+        if kind in ("lock", "unlock"):
+            calls[int(contract or 0)] = calls.get(int(contract or 0), 0) + 1
+    for name in pops:
+        if "vote_rate" in MEMBER_EVENTS[name]:
+            counts.voted[name] = len(by_kind.get((name, "vote"), set()))
+        for rate in MEMBER_EVENTS[name]:
+            counts.events.setdefault(f"{name}.{rate}", 0)
+    counts.events["contracts.new_rate"] = int(_first_value(con, DEPLOYED_SQL) or 0)
+    if calls:
+        busiest = sorted(calls.values(), reverse=True)[:max(1, math.ceil(0.01 * len(calls)))]
+        counts.top_share = sum(busiest) / sum(calls.values())
+    return counts
+
+
+def _births(root: str, profile: str) -> int:
+    """Actors of a profile spawned during the run."""
+    if not has_table(root, "actor_transition"):
+        return 0
+    return sum(1 for p in _born_actor_profiles(root).values() if p == profile)

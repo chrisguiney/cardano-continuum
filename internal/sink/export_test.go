@@ -56,7 +56,7 @@ func fixture(t testing.TB) []eventlog.Record {
 		{At: 6, Class: eventlog.Decision, Kind: engine.KindSubmitted, Actor: 1, Body: enc(t, engine.Submitted{Intent: 9, ID: tx(0xa1), To: 2, Amount: 5_000_000, Fee: 170000, TTL: 100})},
 		{At: 7, Class: eventlog.Input, Kind: eventlog.KindSubmitResult, Body: enc(t, engine.SubmitResult{Intent: 9, Verdict: engine.VerdictRejected, Reason: "bad", Failures: []string{"FeeTooSmall", "BadInputs"}})},
 		{At: 8, Class: eventlog.Decision, Kind: engine.KindRefused, Actor: 1, Body: enc(t, engine.Refused{Intent: 9, ID: tx(0xa1), Why: "bad"})},
-		{At: 9, Class: eventlog.Decision, Kind: engine.KindSubmitted, Actor: 1, Body: enc(t, engine.Submitted{Intent: 9, ID: tx(0xa2), To: 2, Amount: 5_000_000, Fee: 180000, TTL: 120})},
+		{At: 9, Class: eventlog.Decision, Kind: engine.KindSubmitted, Actor: 1, Body: enc(t, engine.Submitted{Intent: 9, ID: tx(0xa2), To: 2, Amount: 5_000_000, Fee: 180000, TTL: 120, Kind: "lock", Contract: 3})},
 		{At: 9, Class: eventlog.Input, Kind: eventlog.KindSubmitResult, Body: enc(t, engine.SubmitResult{Intent: 9, Verdict: engine.VerdictAccepted})},
 		{At: 10, Class: eventlog.Input, Kind: eventlog.KindBlockApplied, Body: enc(t, eventlog.BlockApplied{Point: pt(10)})},
 		{At: 11, Class: eventlog.Input, Kind: eventlog.KindBlockApplied, Body: enc(t, eventlog.BlockApplied{Point: pt(11)})},
@@ -169,7 +169,7 @@ func TestExportRows(t *testing.T) {
 			t.Errorf("%s: %d rows, want %d", tbl, got, n)
 		}
 	}
-	if got := dump(t, out, tSubmission); got[1] != "9|9|1|9|2|"+hex32(0xa2)+"|2|5000000|180000|120|" {
+	if got := dump(t, out, tSubmission); got[1] != "9|9|1|9|2|"+hex32(0xa2)+"|2|5000000|180000|120|lock|null|3|" {
 		t.Errorf("submission row = %q", got[1])
 	}
 	if got := dump(t, out, tResult); got[1] != "10|9|9|2|"+hex32(0xa2)+"|accepted|null|false|" {

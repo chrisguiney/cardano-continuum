@@ -40,6 +40,7 @@ def render(
     overall: list[Row],
     idle_fraction: float | None = None,
     clusters: dict[str, ClusterGrade] | None = None,
+    actors: list[Row] | None = None,
 ) -> str:
     """The whole report: the run as one population, then each cluster.
 
@@ -56,6 +57,9 @@ def render(
     if idle_fraction is not None:
         lines += ["", f"Idle wake-ups (IntentChosen=idle plus Tick) are "
                   f"{idle_fraction:.1%} of decision records."]
+    if actors:
+        lines += ["", "## Actors", "", "Pools, DReps, contracts and proposals against the target's actors block.", ""]
+        lines += table(actors)
     for name, grade in (clusters or {}).items():
         lines += _cluster_section(name, grade)
     return "\n".join(lines) + "\n"

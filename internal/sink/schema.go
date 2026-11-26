@@ -14,7 +14,7 @@ import "github.com/apache/arrow-go/v18/arrow"
 // SchemaVersion is bumped whenever a table or column changes. Notebook
 // queries are written against one version; an export into a directory of
 // another version is refused.
-const SchemaVersion = 2
+const SchemaVersion = 3
 
 // Table names.
 const (
@@ -81,6 +81,12 @@ var schemas = map[string]*arrow.Schema{
 		col("amount", arrow.PrimitiveTypes.Uint64, false),
 		col("fee", arrow.PrimitiveTypes.Uint64, false),
 		col("ttl", arrow.PrimitiveTypes.Uint64, false),
+		// kind is the intent's builder, null for a payment; action a
+		// proposal's governance action type; contract the contract a lock
+		// or unlock calls, null for contract 0 and every other kind.
+		col("kind", arrow.BinaryTypes.String, true),
+		col("action", arrow.BinaryTypes.String, true),
+		col("contract", arrow.PrimitiveTypes.Uint64, true),
 	),
 	tResult: mk(
 		col("seq", arrow.PrimitiveTypes.Uint64, false),
