@@ -86,14 +86,26 @@ func TestHonestM3(t *testing.T) {
 	for _, s := range []string{"info_proposal", "hot_keys", "go_dark"} {
 		postControl(t, api, fmt.Sprintf(`{"request_id":"%s","op":"inject","scenario":"%s"}`, s, s))
 	}
+	// The engine refuses an info proposal while no registered staker holds
+	// the deposit, and a refusal is not retried, so ask again until one
+	// settles; the DReps cannot vote before then.
+	reproposed, polls := 0, 0
 
 	var final progress
 	poll(t, time.Until(start.Add(3*epoch+6*time.Minute)), 15*time.Second, "the engine past epoch 3", func(ctx context.Context) (bool, error) {
 		p, ok := lastProgress(ctx, ns)
 		t.Logf("progress: %+v", p)
 		final = p
+		polls++
+		if ok && p.Settled["propose"] == 0 && p.Epoch < 3 && polls%4 == 0 {
+			reproposed++
+			postControl(t, api, fmt.Sprintf(`{"request_id":"info_proposal_%d","op":"inject","scenario":"info_proposal"}`, reproposed))
+		}
 		return ok && p.Epoch >= 3 && p.TipEpoch >= 3, nil
 	})
+	if t.Failed() || final.Settled["propose"] == 0 {
+		logFindings(t, api)
+	}
 	for _, k := range []string{"delegate", "register_drep", "vote", "propose", "lock", "unlock", "mint"} {
 		if final.Settled[k] == 0 {
 			t.Errorf("no %s settled: %v", k, final.Settled)
@@ -198,8 +210,46 @@ func postControl(t *testing.T, base, body string) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	reply, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	_ = resp.Body.Close()
+	t.Logf("control %s: HTTP %d %s", body, resp.StatusCode, reply)
 	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK {
 		t.Fatalf("control %s: HTTP %d", body, resp.StatusCode)
 	}
+}
+
+// logFindings prints what the engine's oracle filed, which names why a
+// transaction the engine built was refused or never confirmed.
+func logFindings(t *testing.T, base string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/api/findings?limit=50", nil)
+	if err != nil {
+		t.Logf("findings: %v", err)
+		return
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Logf("findings: %v", err)
+		return
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	t.Logf("findings: HTTP %d %s", resp.StatusCode, body)
+
+	sctx, scancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer scancel()
+	sreq, err := http.NewRequestWithContext(sctx, http.MethodGet, base+"/api/decisions?kind=Controlled&last_event_id=0", nil)
+	if err != nil {
+		return
+	}
+	sresp, err := http.DefaultClient.Do(sreq)
+	if err != nil {
+		t.Logf("controlled decisions: %v", err)
+		return
+	}
+	defer func() { _ = sresp.Body.Close() }()
+	sb, _ := io.ReadAll(io.LimitReader(sresp.Body, 64<<10))
+	t.Logf("controlled decisions: %s", sb)
 }
