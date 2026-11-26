@@ -41,7 +41,10 @@ spec:
             description: ContinuumNetworkSpec describes a simulated Cardano network.
             properties:
               budget:
-                default: {}
+                default:
+                  cpuMillis: 4000
+                  maxPools: 16
+                  memoryMiB: 16384
                 description: |-
                   Budget caps the total resources the network's pools may request. Left
                   out, it is the single-machine default (see DefaultMaxPools).

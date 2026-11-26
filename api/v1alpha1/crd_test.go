@@ -184,10 +184,18 @@ func TestStatusSubresourceAndPrinterColumns(t *testing.T) {
 func TestBudgetDefaults(t *testing.T) {
 	spec := schemaOf(t, loadCRD(t, "ContinuumNetwork"), "spec")
 	b := at(t, spec, "properties", "budget").(map[string]any)
-	if d, ok := b["default"].(map[string]any); !ok || len(d) != 0 {
-		t.Errorf("budget default = %v, want {}", b["default"])
-	}
 	want := map[string]int{"maxPools": DefaultMaxPools, "cpuMillis": DefaultCPUMillis, "memoryMiB": DefaultMemoryMiB}
+	// The object's default must itself satisfy the required fields, or the
+	// API server rejects the CRD.
+	whole, ok := b["default"].(map[string]any)
+	if !ok {
+		t.Fatalf("budget default = %v, want an object", b["default"])
+	}
+	for field, n := range want {
+		if whole[field] != n {
+			t.Errorf("budget default.%s = %v, want %d", field, whole[field], n)
+		}
+	}
 	for field, n := range want {
 		got := at(t, b, "properties", field, "default")
 		if got != n {

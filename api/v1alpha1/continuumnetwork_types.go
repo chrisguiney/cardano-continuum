@@ -27,7 +27,7 @@ type ContinuumNetworkSpec struct {
 	// Budget caps the total resources the network's pools may request. Left
 	// out, it is the single-machine default (see DefaultMaxPools).
 	//
-	// +kubebuilder:default={}
+	// +kubebuilder:default={maxPools:16,cpuMillis:4000,memoryMiB:16384}
 	Budget BudgetSpec `json:"budget"`
 
 	// Images sets the default image per implementation. A ContinuumPool's
