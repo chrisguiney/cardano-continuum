@@ -11,6 +11,7 @@ import (
 	ouroboros "github.com/blinklabs-io/gouroboros"
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 	"github.com/blinklabs-io/gouroboros/ledger/shelley"
+	ocommon "github.com/blinklabs-io/gouroboros/protocol/common"
 	"github.com/blinklabs-io/gouroboros/protocol/localstatequery"
 )
 
@@ -37,6 +38,19 @@ type Genesis struct {
 	EpochLength   uint64
 	SecurityParam uint64
 	SlotLength    time.Duration
+	// ActiveSlots is the active slot coefficient f; zero when unknown.
+	// Guard does not compare it: the query does not return it.
+	ActiveSlots float64
+}
+
+// StabilityWindow is 3k/f slots: how far past its tip a node can translate
+// slots to time, so the latest validity bound a script transaction may
+// carry without the node answering PastHorizon. Zero when f is unknown.
+func (g Genesis) StabilityWindow() uint64 {
+	if g.ActiveSlots <= 0 || g.ActiveSlots > 1 {
+		return 0
+	}
+	return uint64(3 * float64(g.SecurityParam) / g.ActiveSlots)
 }
 
 // Guard refuses a public network, then any node whose genesis differs
@@ -106,6 +120,29 @@ func (q *Querier) UtxosAt(ctx context.Context, addrs []common.Address) ([]common
 	if err != nil {
 		return nil, err
 	}
+	return utxosOf(r), nil
+}
+
+// UtxosAtPoint is UtxosAt in the ledger state at point at, acquired with
+// local-state-query's MsgAcquire, so the answer is comparable with a view
+// taken at the same point. A node holds the states of its last k blocks
+// only: an older point, or one off its chain, is an acquire failure
+// (localstatequery.ErrAcquireFailurePointTooOld, ...PointNotOnChain).
+func (q *Querier) UtxosAtPoint(ctx context.Context, at Point, addrs []common.Address) ([]common.Utxo, error) {
+	r, err := query(ctx, q, "utxo by address at a point", func(c *localstatequery.Client) (*localstatequery.UTxOsResult, error) {
+		p := ocommon.NewPoint(at.Slot, at.Hash[:])
+		if err := c.Acquire(&p); err != nil {
+			return nil, err
+		}
+		return c.GetUTxOByAddress(addrs)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return utxosOf(r), nil
+}
+
+func utxosOf(r *localstatequery.UTxOsResult) []common.Utxo {
 	var out []common.Utxo
 	for id, o := range r.Results {
 		out = append(out, common.Utxo{
@@ -114,7 +151,7 @@ func (q *Querier) UtxosAt(ctx context.Context, addrs []common.Address) ([]common
 		})
 	}
 	slices.SortFunc(out, func(a, b common.Utxo) int { return RefOf(a.Id).compare(RefOf(b.Id)) })
-	return out, nil
+	return out
 }
 
 // query runs one blocking gouroboros call on a fresh connection, so that

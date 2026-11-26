@@ -25,6 +25,7 @@ func ParseShelleyGenesis(raw []byte) (Genesis, error) {
 		EpochLength   uint64      `json:"epochLength"`
 		SecurityParam uint64      `json:"securityParam"`
 		SlotLength    json.Number `json:"slotLength"`
+		ActiveSlots   float64     `json:"activeSlotsCoeff"`
 	}
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return Genesis{}, fmt.Errorf("chain: shelley genesis: %w", err)
@@ -43,6 +44,6 @@ func ParseShelleyGenesis(raw []byte) (Genesis, error) {
 	}
 	return Genesis{
 		Magic: doc.NetworkMagic, Start: doc.SystemStart.UTC(), EpochLength: doc.EpochLength,
-		SecurityParam: doc.SecurityParam, SlotLength: time.Duration(ns.Num().Int64()),
+		SecurityParam: doc.SecurityParam, SlotLength: time.Duration(ns.Num().Int64()), ActiveSlots: doc.ActiveSlots,
 	}, nil
 }
