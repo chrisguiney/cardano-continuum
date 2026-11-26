@@ -111,7 +111,7 @@ func (b *Builder) mintSpec(m Mint, budget *common.ExUnits) (spec, error) {
 	h := m.Policy.Hash()
 	unit := apollo.Unit{PolicyId: hex.EncodeToString(h[:]), Name: hex.EncodeToString(m.Name), Quantity: m.Quantity}
 	return spec{
-		sp: m.Spend,
+		sp: m.Spend, minted: &unit,
 		add: func(a *apollo.Apollo) (*apollo.Apollo, error) {
 			if budget != nil {
 				a = a.DisableExecutionUnitsEstimation()

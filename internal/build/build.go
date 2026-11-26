@@ -26,11 +26,15 @@
 package build
 
 import (
+	"cmp"
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Salvionied/apollo/v2"
@@ -148,6 +152,9 @@ type spec struct {
 	known []common.Utxo
 	certs []common.Certificate
 	add   func(a *apollo.Apollo) (*apollo.Apollo, error)
+	// minted is what the transaction mints (negative: burns), so the
+	// tokens the wallet keeps can be paid back apart from the change.
+	minted *apollo.Unit
 }
 
 // protocolParams renders Params as Apollo's protocol parameters.
@@ -222,6 +229,12 @@ func (b *Builder) apollo(w keys.Wallet, s spec, fee int64) (*apollo.Apollo, erro
 		if a, err = s.add(a); err != nil {
 			return nil, fmt.Errorf("build: %w", err)
 		}
+	}
+	if units := keptTokens(s.sp.Inputs, s.minted); len(units) > 0 {
+		// Apollo would put the tokens in the change. Paid apart at their
+		// min-UTxO, they leave the change pure ADA, which is what script
+		// transactions take collateral from (collateral).
+		a = a.PayToAddress(w.Address(), 0, units...)
 	}
 	if fee > 0 {
 		a = a.ForceFee(fee)
@@ -363,4 +376,37 @@ func describe(raw []byte, tx *conway.ConwayTransaction, id common.Blake2b256, wh
 		})
 	}
 	return built
+}
+
+// keptTokens are the tokens of the inputs plus what the transaction
+// mints, by policy and name in sorted order; zero quantities drop out.
+func keptTokens(inputs []common.Utxo, minted *apollo.Unit) []apollo.Unit {
+	type key struct{ policy, name string }
+	held := map[key]int64{}
+	for _, u := range inputs {
+		as := u.Output.Assets()
+		if as == nil {
+			continue
+		}
+		for _, p := range as.Policies() {
+			for _, n := range as.Assets(p) {
+				if q := as.Asset(p, n); q != nil {
+					held[key{hex.EncodeToString(p[:]), hex.EncodeToString(n)}] += q.Int64()
+				}
+			}
+		}
+	}
+	if minted != nil {
+		held[key{minted.PolicyId, minted.Name}] += minted.Quantity
+	}
+	var out []apollo.Unit
+	for k, q := range held {
+		if q > 0 {
+			out = append(out, apollo.Unit{PolicyId: k.policy, Name: k.name, Quantity: q})
+		}
+	}
+	slices.SortFunc(out, func(a, b apollo.Unit) int {
+		return cmp.Or(strings.Compare(a.PolicyId, b.PolicyId), strings.Compare(a.Name, b.Name))
+	})
+	return out
 }

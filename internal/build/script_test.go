@@ -216,3 +216,43 @@ func TestContractsHaveTheirOwnAddresses(t *testing.T) {
 	h.checkExUnits(got, all)
 	h.commit(got)
 }
+
+// Tokens go back to the wallet in an output of their own at min-UTxO, so
+// the ADA change stays pure: a script transaction takes its collateral
+// from a pure-ADA input, and a wallet whose every coin carried tokens
+// could never call a script again.
+func TestTokensLeaveTheChangePure(t *testing.T) {
+	h := newHarness(t)
+	mint := func() Built {
+		t.Helper()
+		got, err := h.b.Mint(ctx, h.alice, Mint{Spend: h.spend(), Policy: FreeMint, Name: []byte("continuum"), Quantity: 1000, Redeemer: unitDatum()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		h.commit(got)
+		return got
+	}
+	mint()
+	got := mint()
+	tx, err := conway.NewConwayTransactionFromCbor(got.Tx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tokenOuts, pure int
+	for _, o := range tx.Outputs() {
+		if a := o.Assets(); a != nil {
+			tokenOuts++
+			if q := a.Asset(FreeMint.Hash(), []byte("continuum")); q == nil || q.Int64() != 2000 {
+				t.Fatalf("token output holds %v, want both mints' 2000", q)
+			}
+			if o.Amount().Uint64() > 2_000_000 {
+				t.Fatalf("token output holds %d lovelace, want about its min-UTxO", o.Amount().Uint64())
+			}
+		} else {
+			pure++
+		}
+	}
+	if tokenOuts != 1 || pure != 1 {
+		t.Fatalf("%d token outputs and %d pure outputs, want one of each", tokenOuts, pure)
+	}
+}
