@@ -1,4 +1,4 @@
-package operator
+package network
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -30,6 +31,10 @@ const (
 	NetworkPending = "Pending"
 	NetworkReady   = "Ready"
 )
+
+// refusalRetry is how long a network without its genesis ConfigMap waits
+// before looking again.
+const refusalRetry = 10 * time.Second
 
 // Networks reconciles ContinuumNetwork status: whether its genesis exists,
 // and the digest each implementation's pools run.

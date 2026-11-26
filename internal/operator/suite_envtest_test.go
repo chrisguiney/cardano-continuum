@@ -135,7 +135,7 @@ func newHarness(t *testing.T, edit func(*v1alpha1.ContinuumNetwork)) *harness {
 	h.node = h.ns + "-node"
 	h.must(h.c.Create(h.ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: h.ns}}))
 	h.must(h.c.Create(h.ctx, &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: "genesis", Namespace: h.ns}, Data: map[string]string{"config.json": "{}"}}))
-	n := network(h.ns)
+	n := testNetwork(h.ns)
 	if edit != nil {
 		edit(n)
 	}
@@ -380,7 +380,7 @@ func (h *harness) renderDirect(p *v1alpha1.ContinuumPool) *appsv1.StatefulSet {
 	d, err := render.Drivers().Driver(p.Spec.Implementation)
 	h.must(err)
 	img, _ := fakeResolver{}.Resolve(h.ctx, d.Image())
-	w, err := render.Render(d, render.Input{Network: network(h.ns), Pool: p, Image: render.Image{Name: pin(img.Ref, img.Digest)}})
+	w, err := render.Render(d, render.Input{Network: testNetwork(h.ns), Pool: p, Image: render.Image{Name: pin(img.Ref, img.Digest)}})
 	h.must(err)
 	h.must(h.c.Create(h.ctx, w.StatefulSet))
 	return w.StatefulSet

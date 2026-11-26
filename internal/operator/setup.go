@@ -21,6 +21,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/fence"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/image"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/network"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/phase"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 	"github.com/chrisguiney/cardano-continuum/internal/poolwatch"
@@ -74,7 +75,7 @@ func Setup(ctx context.Context, mgr manager.Manager, o Options) error {
 		mgr.Add(w),
 		NewPools(mgr.GetClient(), o.Drivers, o.Images, o.Exec, o.Log).WithWatch(w).SetupWithManager(mgr),
 		fence.NewRelease(mgr.GetClient(), mgr.GetAPIReader(), o.Log).SetupWithManager(mgr),
-		NewNetworks(mgr.GetClient(), mgr.GetAPIReader(), o.Log).SetupWithManager(mgr),
+		network.NewNetworks(mgr.GetClient(), mgr.GetAPIReader(), o.Log).SetupWithManager(mgr),
 	)
 }
 

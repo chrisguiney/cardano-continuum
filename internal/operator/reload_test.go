@@ -75,7 +75,7 @@ func newReloadRig(t *testing.T) *reloadRig {
 	exec := &fakeExec{files: map[string]string{}}
 	rig := &reloadRig{exec: exec, c: c, now: start, pod: pod}
 	rig.r = &reloader{client: c, exec: exec, log: slog.New(slog.NewTextHandler(io.Discard, nil)), now: func() time.Time { return rig.now }}
-	rig.w = renderOn(t, render.CardanoNode{}, network("ns"), pool("ns", "a", v1alpha1.CardanoNode, v1alpha1.TierForging))
+	rig.w = renderOn(t, render.CardanoNode{}, testNetwork("ns"), pool("ns", "a", v1alpha1.CardanoNode, v1alpha1.TierForging))
 	return rig
 }
 
@@ -104,7 +104,7 @@ func (g *reloadRig) project() {
 // start, so a pod started before its peers existed never dials them unless
 // it is told to reread it.
 func TestCardanoNodeRendersReload(t *testing.T) {
-	w := renderOn(t, render.CardanoNode{}, network("ns"), pool("ns", "a", v1alpha1.CardanoNode, v1alpha1.TierForging))
+	w := renderOn(t, render.CardanoNode{}, testNetwork("ns"), pool("ns", "a", v1alpha1.CardanoNode, v1alpha1.TierForging))
 	if !slices.Equal(w.Reload, []string{"kill", "-HUP", "1"}) {
 		t.Fatalf("Reload = %q, want kill -HUP 1", w.Reload)
 	}

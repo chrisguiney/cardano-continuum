@@ -9,7 +9,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 )
 
-func network(ns string) *v1alpha1.ContinuumNetwork {
+func testNetwork(ns string) *v1alpha1.ContinuumNetwork {
 	return &v1alpha1.ContinuumNetwork{
 		ObjectMeta: metav1.ObjectMeta{Name: "net", Namespace: ns},
 		Spec: v1alpha1.ContinuumNetworkSpec{

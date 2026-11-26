@@ -58,7 +58,7 @@ func renderOn(t *testing.T, d render.NodeDriver, n *v1alpha1.ContinuumNetwork, p
 func rendered(t *testing.T) render.Workload {
 	t.Helper()
 	p := pool("ns", "a", v1alpha1.Dingo, v1alpha1.TierValidating)
-	return renderOn(t, render.Drivers()[v1alpha1.Dingo], network("ns"), p)
+	return renderOn(t, render.Drivers()[v1alpha1.Dingo], testNetwork("ns"), p)
 }
 
 // defaulted adds what the API server fills into an object it stored.
