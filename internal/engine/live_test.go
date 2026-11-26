@@ -103,6 +103,8 @@ func next(t *testing.T, f Follower) ChainEvent {
 	return ChainEvent{}
 }
 
+// Not parallel: goleak sees every goroutine in the process, and serial tests
+// finish before any parallel test resumes, so the check stays exact.
 func TestLiveFollowsAndResumes(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	var seed rng.Seed
@@ -178,6 +180,8 @@ func TestLiveFollowsAndResumes(t *testing.T) {
 
 // A node without any of the engine's points is fatal: the follower never
 // falls back to the origin.
+// Not parallel: goleak sees every goroutine in the process, and serial tests
+// finish before any parallel test resumes, so the check stays exact.
 func TestLiveNoIntersection(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	d := &noIntersect{}

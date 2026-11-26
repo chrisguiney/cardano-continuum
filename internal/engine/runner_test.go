@@ -43,6 +43,7 @@ func sameBalances(a, b map[uint64]uint64) bool {
 // cursor while the engine is down. After restart the engine's cursor equals
 // the chain's tip and its actors equal Derive of the new chain.
 func TestRestartAfterOfflineRollback(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, testConfig(t, 5, 6))
 	p := cleanRun(t, w, 120_000)
 	oldTip := p.r.Engine().Tip()
@@ -85,6 +86,7 @@ func TestRestartAfterOfflineRollback(t *testing.T) {
 // TestIntersectionHandledAsRollback: when FindIntersect answers below the
 // tip, the engine logs the rollback and unwinds to it before any new block.
 func TestIntersectionHandledAsRollback(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, testConfig(t, 6, 4))
 	p := cleanRun(t, w, 60_000)
 	p.stop(t)
@@ -171,6 +173,7 @@ func (u upTo) Scan(ctx context.Context, from uint64, fn func(eventlog.Record) er
 }
 
 func TestCheckpointWaitsForLogFlush(t *testing.T) {
+	t.Parallel()
 	cfg := testConfig(t, 7, 4)
 	w := newWorld(t, cfg)
 	l := &eventlog.MemLog{}
@@ -191,6 +194,7 @@ func TestCheckpointWaitsForLogFlush(t *testing.T) {
 // and a bounded number of crashes, the engine ends at the chain's tip,
 // flushed and checkpointed.
 func TestCrashInjectionConverges(t *testing.T) {
+	t.Parallel()
 	for seed := uint64(1); seed <= 4; seed++ {
 		w := newWorld(t, testConfig(t, seed, 5))
 		r := rand.New(rand.NewPCG(seed, 99))
@@ -227,6 +231,7 @@ func TestCrashInjectionConverges(t *testing.T) {
 // TestShutdownOrder: cancelling the loop flushes the log and checkpoints
 // everything before Run returns.
 func TestShutdownOrder(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, testConfig(t, 8, 4))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -257,6 +262,7 @@ func TestShutdownOrder(t *testing.T) {
 }
 
 func TestHeaderMismatchRefused(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, testConfig(t, 9, 3))
 	cleanRun(t, w, 10_000).stop(t)
 	w.cfg.Seed = SeedFromInt(10)

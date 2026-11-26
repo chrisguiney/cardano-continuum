@@ -45,6 +45,7 @@ func submittedAmounts(t *testing.T, cfg Config) []float64 {
 
 // Payment sizes follow the profile's amount distribution when it has one.
 func TestPaymentSizesFollowAmount(t *testing.T) {
+	t.Parallel()
 	xs := submittedAmounts(t, amountConfig(t, amountProfileYAML, 5))
 	if len(xs) < 100 {
 		t.Fatalf("only %d payments", len(xs))
@@ -61,6 +62,7 @@ func TestPaymentSizesFollowAmount(t *testing.T) {
 // A profile without the field keeps the balance-fraction sizing: payments of
 // at least 5% of a 200 ADA balance.
 func TestPaymentSizesDefaultWithoutAmount(t *testing.T) {
+	t.Parallel()
 	xs := submittedAmounts(t, testConfig(t, 5, 40))
 	if len(xs) == 0 {
 		t.Fatal("no payments")
@@ -75,6 +77,7 @@ func TestPaymentSizesDefaultWithoutAmount(t *testing.T) {
 // is far above any balance: uncapped, each payment would be skipped as
 // unaffordable although the wallet could pay the minimum.
 func TestPaymentSizeCappedToBalance(t *testing.T) {
+	t.Parallel()
 	y := strings.Replace(amountProfileYAML, "lognormal(16.8, 0.4)", "lognormal(30, 0.1)", 1)
 	cfg := amountConfig(t, y, 6)
 	w := newWorld(t, cfg)

@@ -122,6 +122,7 @@ func forgingShare(s policy.Schedule, dead ...population.ActorID) uint64 {
 // engine recovers at once, in epoch 1: a repair and a move for every
 // staker (FloorRecoverLateBug).
 func TestRecoveryStartsOnProjectedBreach(t *testing.T) {
+	t.Parallel()
 	cfg := floorConfig(t)
 	e, err := New(cfg)
 	if err != nil {
@@ -154,6 +155,7 @@ func TestRecoveryStartsOnProjectedBreach(t *testing.T) {
 // live, repairs both pods and moves every staker off pool 3, all before
 // the epoch boundary (FloorRecoverNoRedelegateBug).
 func TestRecoveryIntentsInOneEpoch(t *testing.T) {
+	t.Parallel()
 	cfg := floorConfig(t)
 	e, err := New(cfg)
 	if err != nil {
@@ -188,6 +190,7 @@ func TestRecoveryIntentsInOneEpoch(t *testing.T) {
 // TestEmptyEpochIsFatal: a block in epoch 2 after none in epoch 1 is a
 // stall incident, and the engine is stalled (NoFreeze).
 func TestEmptyEpochIsFatal(t *testing.T) {
+	t.Parallel()
 	cfg := floorConfig(t)
 	e, err := New(cfg)
 	if err != nil {
@@ -273,6 +276,7 @@ func endangeredWithout(e *Engine, at sched.Time, dead []population.ActorID) bool
 // the epoch of the deaths; without, the stakers' moves off pool 1 bring it
 // back within 3 epochs (FloorRecoverRepair, FloorRecover).
 func TestRecoveryBound(t *testing.T) {
+	t.Parallel()
 	dead := []population.ActorID{1, 2}
 	for _, tt := range []struct {
 		name      string

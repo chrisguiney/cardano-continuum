@@ -43,6 +43,7 @@ func feedBlocks(t *testing.T, e *Engine, c *fakechain.Chain, n int) int {
 // reaches the agendas' view through the block digest, survives a snapshot
 // and leaves with a rollback.
 func TestViewFoldsCertificates(t *testing.T) {
+	t.Parallel()
 	cfg := testConfig(t, 1, 2)
 	cfg.Build = fullParams()
 	e, err := New(cfg)

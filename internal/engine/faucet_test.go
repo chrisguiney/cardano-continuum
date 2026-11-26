@@ -20,6 +20,7 @@ func faucetConfig(t testing.TB, seed uint64, wallets int) Config {
 }
 
 func TestFaucetGenesisIsTheFaucetOnly(t *testing.T) {
+	t.Parallel()
 	cfg := faucetConfig(t, 21, 5)
 	funds, err := cfg.Genesis()
 	if err != nil {
@@ -36,6 +37,7 @@ func TestFaucetGenesisIsTheFaucetOnly(t *testing.T) {
 }
 
 func TestFaucetNeedsARefillInterval(t *testing.T) {
+	t.Parallel()
 	cfg := faucetConfig(t, 21, 5)
 	cfg.RefillEvery = 0
 	if _, err := New(cfg); !errors.Is(err, ErrConfig) {
@@ -47,6 +49,7 @@ func TestFaucetNeedsARefillInterval(t *testing.T) {
 // are the only way they get money, so confirmed payments show the refills
 // confirmed, and the supply still adds up to the faucet's genesis output.
 func TestFaucetFundsPopulation(t *testing.T) {
+	t.Parallel()
 	cfg := faucetConfig(t, 22, 6)
 	w := newWorld(t, cfg)
 	w.run(cfg.Slots.EpochStart(2), 50, nil)
@@ -74,6 +77,7 @@ func TestFaucetFundsPopulation(t *testing.T) {
 // recovered run must write the uninterrupted run's log byte for byte, which
 // covers the refill schedule and a refill in flight across a restart.
 func TestFaucetCrashConverges(t *testing.T) {
+	t.Parallel()
 	const until sched.Time = 90_000
 	cfg := faucetConfig(t, 23, 4)
 	ref := newWorld(t, cfg)

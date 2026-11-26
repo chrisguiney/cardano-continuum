@@ -73,6 +73,7 @@ func moveTx(t *testing.T, cfg Config) TxDigest {
 }
 
 func TestActorsChangeOnlyAtDepthK(t *testing.T) {
+	t.Parallel()
 	cfg := testConfig(t, 1, 2)
 	cfg.K = 2
 	e, err := New(cfg)
@@ -105,6 +106,7 @@ func TestActorsChangeOnlyAtDepthK(t *testing.T) {
 }
 
 func TestRollbackBelowConfirmedIsError(t *testing.T) {
+	t.Parallel()
 	cfg := testConfig(t, 1, 2)
 	cfg.K = 2
 	e, err := New(cfg)
@@ -143,6 +145,7 @@ func tickInput(at sched.Time) eventlog.Record {
 // TestHandleIsPure: the same inputs give the same decisions and state, from a
 // fresh engine or from a restored snapshot.
 func TestHandleIsPure(t *testing.T) {
+	t.Parallel()
 	cfg := testConfig(t, 3, 8)
 	inputs := []eventlog.Record{tickInput(1), tickInput(5_000), blockInput(t, 1, moveTx(t, cfg)), tickInput(20_000),
 		blockInput(t, 2), blockInput(t, 3), tickInput(60_000), blockInput(t, 4), tickInput(90_000)}
@@ -205,6 +208,7 @@ func sameRecord(a, b eventlog.Record) bool {
 }
 
 func TestLargestFirst(t *testing.T) {
+	t.Parallel()
 	avail := []Coin{{Ref{Index: 0}, 5}, {Ref{Index: 1}, 9}, {Ref{Index: 2}, 9}, {Ref{Index: 3}, 1}}
 	got := LargestFirst{}.Select(avail, 15)
 	if len(got) != 2 || got[0].Ref.Index != 1 || got[1].Ref.Index != 2 {

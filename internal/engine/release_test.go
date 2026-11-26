@@ -112,6 +112,7 @@ func (p payments) paidOnce(t *testing.T, intent uint64) {
 // chain but the connection breaks before the answer. That is Unreached, not
 // a refusal: the reservation stays and the payment confirms once.
 func TestTransportErrorKeepsReservation(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, testConfig(t, 5, 6))
 	sn := &scriptedNode{FakeNode: w.node}
 	sn.answer = func(ctx context.Context, n int, tx []byte) error {
@@ -142,6 +143,7 @@ func TestTransportErrorKeepsReservation(t *testing.T) {
 // spent the inputs, which proves nothing: the reservation stays and the
 // payment confirms once.
 func TestResendOfIncludedTxKeepsReservation(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, testConfig(t, 5, 6))
 	w.mem = &memStore{log: w.log}
 	crashed := false
@@ -181,6 +183,7 @@ func TestResendOfIncludedTxKeepsReservation(t *testing.T) {
 // proof the attempt never reached a mempool, so the ledger writes it off and
 // the machine builds the next attempt, which confirms.
 func TestFirstSendRejectionRefuses(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, testConfig(t, 5, 6))
 	sn := &scriptedNode{FakeNode: w.node}
 	sn.answer = func(ctx context.Context, n int, tx []byte) error {
@@ -217,6 +220,7 @@ func TestFirstSendRejectionRefuses(t *testing.T) {
 // that reads the transaction alone proves the bytes never landed, even after
 // an unanswered send.
 func TestIntrinsicRejectionAfterUnreachedRefuses(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, testConfig(t, 5, 6))
 	sn := &scriptedNode{FakeNode: w.node}
 	sn.answer = func(ctx context.Context, n int, tx []byte) error {
@@ -247,6 +251,7 @@ func TestIntrinsicRejectionAfterUnreachedRefuses(t *testing.T) {
 // reservation stays until the ledger writes the attempt off at settled
 // expiry (RetryReleaseOnGiveUpBug).
 func TestGiveUpReleasesNothing(t *testing.T) {
+	t.Parallel()
 	cfg := testConfig(t, 5, 6)
 	// Ten sends fit well inside the 30-slot TTL.
 	cfg.Retry = submit.Policy{Base: 100 * time.Millisecond, Cap: 100 * time.Millisecond}
@@ -324,6 +329,7 @@ func released(t *testing.T, out []eventlog.Record, intent uint64) []string {
 // the settled block's slot reaches TTL, not one block later. Dead, its
 // machine builds the next attempt (submit-retry: Submit, dead -> Build).
 func TestExpiryAtSettledTTL(t *testing.T) {
+	t.Parallel()
 	cfg := testConfig(t, 3, 8)
 	cfg.K = 2
 	e, err := New(cfg)
@@ -362,6 +368,7 @@ func TestExpiryAtSettledTTL(t *testing.T) {
 // actor rebuilds until its patience runs out. The give-up happens inside
 // the diagnosis of the last refusal, and the payment is released once.
 func TestRefusedGiveUpReleasesOnce(t *testing.T) {
+	t.Parallel()
 	cfg := testConfig(t, 5, 6)
 	cfg.Retry = submit.Policy{Base: 100 * time.Millisecond, Cap: 100 * time.Millisecond}
 	w := newWorld(t, cfg)
@@ -399,6 +406,7 @@ func TestRefusedGiveUpReleasesOnce(t *testing.T) {
 // actor fixes it, the next attempt settles, and the actor's competence
 // rises (submit.Learn).
 func TestFixThatWorksTeaches(t *testing.T) {
+	t.Parallel()
 	cfg := testConfig(t, 9, 4)
 	w := newWorld(t, cfg)
 	sn := &scriptedNode{FakeNode: w.node}
@@ -450,6 +458,7 @@ func rebuilt(t *testing.T, out []eventlog.Record, sub Submitted) bool {
 // the next attempt through Reserve, which lands, and the payment confirms
 // once.
 func TestDropRebuilds(t *testing.T) {
+	t.Parallel()
 	cfg := testConfig(t, 7, 4)
 	w := newWorld(t, cfg)
 	sn := &scriptedNode{FakeNode: w.node}
@@ -527,6 +536,7 @@ func answer(t *testing.T, r SubmitResult) eventlog.Record {
 // and no new attempt built (submit-retry: Confirmed, left the view ->
 // Submit).
 func TestRolledBackAttemptIsSentAgain(t *testing.T) {
+	t.Parallel()
 	cfg := testConfig(t, 3, 8)
 	e, err := New(cfg)
 	if err != nil {

@@ -27,6 +27,7 @@ func decision(t *testing.T, kind string, body any) eventlog.Record {
 }
 
 func TestAuditCountsAndFindsDoublePayment(t *testing.T) {
+	t.Parallel()
 	recs := []eventlog.Record{
 		decision(t, KindSubmitted, Submitted{Intent: 1}),
 		decision(t, KindSubmitted, Submitted{Intent: 1}), // a rebuild is not a second payment

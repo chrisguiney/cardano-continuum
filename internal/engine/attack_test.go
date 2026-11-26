@@ -87,31 +87,41 @@ func attackConfig(t testing.TB, seed uint64, ceiling uint64, ns ...adversary.Nam
 
 // seven caches the seed-7 runs several tests read, by attack ("" is the
 // control run): a run under the race detector takes seconds.
+// seven caches the seed-7 runs. Each adversary has its own once, so the
+// runs of different adversaries proceed in parallel while a run needed by
+// several tests is made exactly once.
 var seven = struct {
 	sync.Mutex
-	runs map[adversary.Name]sevenRun
-}{runs: map[adversary.Name]sevenRun{}}
+	runs map[adversary.Name]*sevenRun
+}{runs: map[adversary.Name]*sevenRun{}}
 
 type sevenRun struct {
-	w *world
-	m adversary.Metrics
+	once sync.Once
+	w    *world
+	m    adversary.Metrics
 }
 
 // sevenOf is the seed-7 run of the traders and one n adversary, or none.
 func sevenOf(t *testing.T, n adversary.Name) (*world, adversary.Metrics) {
 	t.Helper()
 	seven.Lock()
-	defer seven.Unlock()
-	if r, ok := seven.runs[n]; ok {
-		return r.w, r.m
+	r, ok := seven.runs[n]
+	if !ok {
+		r = &sevenRun{}
+		seven.runs[n] = r
 	}
-	var ns []adversary.Name
-	if n != "" {
-		ns = append(ns, n)
+	seven.Unlock()
+	r.once.Do(func() {
+		var ns []adversary.Name
+		if n != "" {
+			ns = append(ns, n)
+		}
+		r.w, r.m = attackRun(t, attackConfig(t, 7, 0, ns...))
+	})
+	if r.w == nil {
+		t.Fatalf("the seed-7 run of %q failed in another test", n)
 	}
-	w, m := attackRun(t, attackConfig(t, 7, 0, ns...))
-	seven.runs[n] = sevenRun{w, m}
-	return w, m
+	return r.w, r.m
 }
 
 // attackRun runs cfg to attackUntil and returns the world and its metrics.
@@ -144,6 +154,7 @@ func attacks(t testing.TB, w *world) []Attack {
 }
 
 func TestGuardBlocksStart(t *testing.T) {
+	t.Parallel()
 	cfg := attackConfig(t, 1, 0, adversary.DustFlood)
 	cfg.Adversaries = adversary.Clearance{}
 	if _, err := New(cfg); !errors.Is(err, adversary.ErrNotDevnet) {
@@ -163,6 +174,7 @@ func TestGuardBlocksStart(t *testing.T) {
 // TestAttackImpact runs each adversary against a control run with the same
 // seed and no adversaries, and requires the impact it is there to cause.
 func TestAttackImpact(t *testing.T) {
+	t.Parallel()
 	_, control := sevenOf(t, "")
 	if control.HonestIntents == 0 || control.AttackSteps != 0 || control.Fatal != 0 {
 		t.Fatalf("control run: %+v", control)
@@ -183,6 +195,7 @@ func TestAttackImpact(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(string(tc.name), func(t *testing.T) {
+			t.Parallel()
 			w, m := sevenOf(t, tc.name)
 			if m.AttackSteps == 0 {
 				t.Fatalf("no attack made: %+v", m)
@@ -204,6 +217,7 @@ func TestAttackImpact(t *testing.T) {
 }
 
 func TestDeterminismAttacks(t *testing.T) {
+	t.Parallel()
 	cfg := attackConfig(t, 9, 0, adversary.Names()...)
 	var logs [][]byte
 	for range 2 {
@@ -224,6 +238,7 @@ func TestDeterminismAttacks(t *testing.T) {
 }
 
 func TestCostCeilingRespected(t *testing.T) {
+	t.Parallel()
 	const ceiling = 40_000_000
 	w, _ := attackRun(t, attackConfig(t, 7, ceiling, adversary.DustFlood, adversary.DoubleSpend))
 	spent := map[[2]uint64]uint64{}
@@ -282,6 +297,7 @@ func (l lyingNode) Submit(ctx context.Context, tx []byte) error {
 }
 
 func TestMalformedAcceptedIsFatal(t *testing.T) {
+	t.Parallel()
 	cfg := attackConfig(t, 7, 0, adversary.Malformed)
 	w := newWorld(t, cfg)
 	w.mem = &memStore{log: w.log}
@@ -306,6 +322,7 @@ func TestMalformedAcceptedIsFatal(t *testing.T) {
 }
 
 func TestDustOutputsAtMinUtxo(t *testing.T) {
+	t.Parallel()
 	w, _ := sevenOf(t, adversary.DustFlood)
 	cpb := w.cfg.Build.CoinsPerUtxoByte
 	checked := 0
@@ -342,6 +359,7 @@ func TestDustOutputsAtMinUtxo(t *testing.T) {
 }
 
 func TestFrontRunOutbidsAndGoesFirst(t *testing.T) {
+	t.Parallel()
 	w, _ := sevenOf(t, adversary.FrontRun)
 	fees := map[uint64]uint64{}
 	var first []uint64
@@ -387,6 +405,7 @@ func order(xs []uint64, x uint64) int {
 }
 
 func TestDoubleSpendExactlyOne(t *testing.T) {
+	t.Parallel()
 	w, _ := sevenOf(t, adversary.DoubleSpend)
 	races := map[uint64]bool{}
 	for _, a := range attacks(t, w) {

@@ -55,6 +55,7 @@ func tickSpan(t *testing.T, e *Engine, from, to sched.Time) []eventlog.Record {
 // them; a weights override reaches the decisions; the controls survive a
 // snapshot, and a restored engine decides as the original.
 func TestControlsSteerAndReplay(t *testing.T) {
+	t.Parallel()
 	cfg := testConfig(t, 4, 6)
 	e, err := New(cfg)
 	if err != nil {
@@ -92,6 +93,7 @@ func TestControlsSteerAndReplay(t *testing.T) {
 // TestInjectedGoDarkIsGuarded: with three equal genesis pools and a margin
 // of one, no pool may go dark; with five, one may.
 func TestInjectedGoDarkIsGuarded(t *testing.T) {
+	t.Parallel()
 	cfg := floorConfig(t)
 	e, err := New(cfg)
 	if err != nil {
@@ -119,6 +121,7 @@ func TestInjectedGoDarkIsGuarded(t *testing.T) {
 // the wave's epoch; each adoption is an ImageChange and lands in the pool
 // plan, and a wave interrupted by a snapshot finishes the same way.
 func TestUpgradeWave(t *testing.T) {
+	t.Parallel()
 	cfg := floorConfig(t)
 	e, err := New(cfg)
 	if err != nil {

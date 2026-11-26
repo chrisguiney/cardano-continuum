@@ -145,6 +145,7 @@ func cmpOr(s, def string) string {
 // them, and the DReps vote on the proposal; value is conserved, and pools
 // and DReps move along their lifecycle on confirmation.
 func TestHonestIntentsLand(t *testing.T) {
+	t.Parallel()
 	cfg := honestConfig(t, 3)
 	w := newWorld(t, cfg)
 	at := cfg.Slots.EpochStart(1)

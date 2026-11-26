@@ -3,6 +3,7 @@ package engine
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -68,6 +69,7 @@ func mistakeClasses() []submit.Class {
 // classes the catalog causes, makes several of them, files no finding on
 // the clean fake chain, and loses lovelace to wrong addresses.
 func TestMistakesFakeRun(t *testing.T) {
+	t.Parallel()
 	cfg := clumsyConfig(t, 5)
 	w := newWorld(t, cfg)
 	p := cleanRun(t, w, cfg.Slots.EpochStart(3))
@@ -100,6 +102,7 @@ func TestMistakesFakeRun(t *testing.T) {
 // invariant is what the oracle expects, minted tokens in the wallets
 // included.
 func TestHonestRunFilesNoFinding(t *testing.T) {
+	t.Parallel()
 	// Seed 30 spends minted tokens; seed 38 registers a stake key while
 	// another registration is in flight.
 	for _, seed := range []uint64{30, 38} {
@@ -114,6 +117,7 @@ func TestHonestRunFilesNoFinding(t *testing.T) {
 }
 
 func TestDeterminismMistakesSameSeedSameLog(t *testing.T) {
+	t.Parallel()
 	cfg := clumsyConfig(t, 6)
 	var logs [][]byte
 	for range 2 {
@@ -137,6 +141,7 @@ func TestDeterminismMistakesSameSeedSameLog(t *testing.T) {
 // are not byte-equal. Each recovered run must still replay its own log
 // exactly, pay no intent twice and file no finding.
 func TestDeterminismCrashWithMistakesRecovers(t *testing.T) {
+	t.Parallel()
 	cfg := clumsyConfig(t, 7)
 	until := cfg.Slots.EpochStart(1)
 	ref := newWorld(t, cfg)
@@ -149,19 +154,22 @@ func TestDeterminismCrashWithMistakesRecovers(t *testing.T) {
 	// 40 samples, fewer under the race detector.
 	stride := max(hooks*crashStride/40, 1)
 	for at := 1; at <= hooks; at += stride {
-		w := newWorld(t, cfg)
-		w.mem = &memStore{log: w.log}
-		if c := w.run(until, 15, func(n int) bool { return n == at }); c != 1 {
-			t.Fatalf("crash at %d: %d crashes", at, c)
-		}
-		w.finalSnapshot()
-		tally, err := AuditLog(context.Background(), w.log)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if tally.DoublePaid != 0 || tally.Findings != 0 {
-			t.Fatalf("crash at hook %d of %d: %d double paid, %d findings", at, hooks, tally.DoublePaid, tally.Findings)
-		}
+		t.Run(fmt.Sprintf("hook%d", at), func(t *testing.T) {
+			t.Parallel()
+			w := newWorld(t, cfg)
+			w.mem = &memStore{log: w.log}
+			if c := w.run(until, 15, func(n int) bool { return n == at }); c != 1 {
+				t.Fatalf("crash at %d: %d crashes", at, c)
+			}
+			w.finalSnapshot()
+			tally, err := AuditLog(context.Background(), w.log)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tally.DoublePaid != 0 || tally.Findings != 0 {
+				t.Fatalf("crash at hook %d of %d: %d double paid, %d findings", at, hooks, tally.DoublePaid, tally.Findings)
+			}
+		})
 	}
 }
 
@@ -204,6 +212,7 @@ func (lf *liarFollower) Next() (ChainEvent, bool, error) {
 // TestValueFaultIsFatalFinding: a node reporting a block that creates
 // lovelace makes the value monitor file one fatal finding, logged once.
 func TestValueFaultIsFatalFinding(t *testing.T) {
+	t.Parallel()
 	cfg := testConfig(t, 21, 8)
 	w := newWorld(t, cfg)
 	w.wrap = func(n *FakeNode) Node { return &liar{FakeNode: n, extra: 7} }
@@ -240,6 +249,7 @@ func (o offByOne) View(_ context.Context, at chain.Point, addrs []common.Address
 // TestViewMismatchFinding: a node whose balances differ from the engine's
 // at the settled point is a view_mismatch finding.
 func TestViewMismatchFinding(t *testing.T) {
+	t.Parallel()
 	cfg := testConfig(t, 22, 4)
 	w := newWorld(t, cfg)
 	var p *proc
@@ -268,6 +278,7 @@ func TestViewMismatchFinding(t *testing.T) {
 // diagnosis; the only difference is that Restart counts the resend as a new
 // send, where the engine counts the one SendTx the crash interrupted once.
 func TestResendMatchesRestart(t *testing.T) {
+	t.Parallel()
 	pol := submit.DefaultPolicy
 	a := population.Actor{Traits: population.Sampled{Patience: 10}}
 	tx := chain.TxID{1}
