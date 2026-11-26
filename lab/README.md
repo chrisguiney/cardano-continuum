@@ -41,6 +41,18 @@ spans 50 slots, so pass `--slot-seconds` to match the slot length.
 engine tables are a prefix of the seed-7 fake run, the chain tables are 100
 preview transactions.
 
+The [guide notebook](guide.ipynb) explains the ideas behind all of this with
+sliders, the real preview and preprod fits side by side, and a placeholder for
+mainnet that fills in when `profiles/mainnet.yaml` exists. `make lab-test`
+runs it top to bottom on the fixtures; to run it on real data too:
+
+```sh
+docker run --rm -v $PWD/lab:/work/lab -v $PWD/profiles:/work/profiles:ro \
+  -v /path/to/preprod-pq:/data/chain:ro -v /path/to/run/export:/data/export:ro \
+  -e GUIDE_REAL=1 --entrypoint python continuum-lab:local \
+  -m pytest -q -p no:cacheprovider /work/lab/tests/test_notebook.py --guide-real
+```
+
 ## Statistics
 
 | name | meaning | test |

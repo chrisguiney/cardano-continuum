@@ -8,7 +8,7 @@ USER root
 COPY lab/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt
 COPY lab/ /work/lab/
-COPY profiles/index.json profiles/*.target.json /work/profiles/
+COPY profiles/index.json profiles/*.target.json profiles/*.yaml /work/profiles/
 RUN rm -rf /work/lab/__pycache__ /work/lab/tests/__pycache__ && chown -R jupyter /work/lab
 WORKDIR /work
 USER jupyter

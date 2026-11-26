@@ -203,5 +203,5 @@ lab: lab-image ## Run JupyterLab on :8888 with LAB_DATA (chain and export subdir
 	docker run --rm -p 8888:8888 -v $(LAB_DATA):/data:ro -v $(CURDIR)/lab:/work/lab $(LAB_IMAGE)
 
 lab-test: lab-image ## Run the lab pytest suite in the image, then the Go test that parses the fitted profile
-	docker run --rm -v $(CURDIR)/lab:/work/lab -e PYTHONDONTWRITEBYTECODE=1 --entrypoint python $(LAB_IMAGE) -m pytest -q -p no:cacheprovider /work/lab/tests
+	docker run --rm -v $(CURDIR)/lab:/work/lab -v $(CURDIR)/profiles:/work/profiles:ro -e PYTHONDONTWRITEBYTECODE=1 --entrypoint python $(LAB_IMAGE) -m pytest -q -p no:cacheprovider /work/lab/tests
 	go test ./lab/
