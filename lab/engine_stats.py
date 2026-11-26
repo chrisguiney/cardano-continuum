@@ -42,9 +42,12 @@ from population_stats import TX_KINDS, Stats, sorted_sample
 MS_PER_SECOND = 1000.0
 MS_PER_DAY = SECONDS_PER_DAY * MS_PER_SECOND
 
-# The engine's clock resolves one millisecond, so that is the smallest gap
-# it can record and the floor before taking a logarithm.
-MIN_GAP_SECONDS = 1e-3
+# The floor before taking a logarithm of a gap: one slot, the chain's
+# resolution (chain_stats floors at slot_seconds), so two payments in the
+# same second compare with two transactions in the same slot. The engine's
+# own clock resolves a millisecond, finer than any chain it is graded
+# against; the fake chain and the fitted networks have one-second slots.
+MIN_GAP_SECONDS = 1.0
 
 # Keeps a rate defined for a run with a single payment (zero-length span).
 _MIN_SPAN_DAYS = 1e-9
@@ -284,8 +287,11 @@ def actor_counts(root: str, store: str | None, target_actors: dict) -> ActorCoun
     pops = [name for name in MEMBER_EVENTS if name in target_actors]
     counts = ActorCounts(days=(_first_value(con, SPAN_DAYS_SQL) or 0) / MS_PER_DAY)
     for name in pops:
-        counts.members[name] = sum(1 for p in profiles.values() if p == name)
-        counts.events[f"{name}.register_rate"] = _births(root, name)
+        born = _births(root, name)
+        # Members are those at genesis, the fitted count; the born are the
+        # registrations the register rate predicts.
+        counts.members[name] = sum(1 for p in profiles.values() if p == name) - born
+        counts.events[f"{name}.register_rate"] = born
     counts.wallets = sum(1 for p in profiles.values() if p not in pops and p != PROPOSER_PROFILE)
 
     by_kind: dict[tuple[str, str], set[int]] = {}

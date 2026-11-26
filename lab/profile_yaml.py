@@ -93,6 +93,10 @@ def profile_lines(name: str, fit: PopulationFit, weight: float | None = None) ->
         # it is keyed by the agenda's main intent for the reader.
         f"        {WEIGHTED[fit.agenda][0]}: {number(activity.base_per_sec)}",
         f"      activity_tail: {number(activity.tail)}",
+    ]
+    if fit.hawkes is not None:
+        lines.append(f"      hawkes: {{alpha: {number(fit.hawkes.alpha)}, beta: {number(fit.hawkes.beta)}}}")
+    lines += [
         "    weights:",
     ]
     lines += [f"      {intent}: {weight:.6f}" for intent, weight in fit.weights.items()]

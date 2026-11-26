@@ -82,3 +82,31 @@ def test_weights_name_only_what_the_agenda_chooses():
     assert fit.agenda == "yield" and fit.weights == {"delegate": 1.0}
     assert abs(fit.unreachable_share - 0.3) < 1e-12
     assert "agenda: yield" in "\n".join(profile_lines("s", fit))
+
+
+def test_hawkes_from_bursty_gaps():
+    """Three quarters of gaps under five minutes, half of all in the same
+    slot: the branching ratio is the burst share and the decay puts the
+    median follow-up at the median burst gap."""
+    rng = np.random.default_rng(3)
+    gaps = np.concatenate([np.zeros(500), rng.uniform(1, 300, 250), rng.lognormal(10, 1, 250)])
+    h = population_fit.fit_hawkes(gaps)
+    assert abs(h.alpha / h.beta - 0.75) < 0.01
+    assert abs(h.beta - np.log(2) / 1.0) < 1e-9
+
+
+def test_hawkes_off_without_bursts_and_capped_when_all_burst():
+    rng = np.random.default_rng(4)
+    assert population_fit.fit_hawkes(rng.lognormal(12, 1, 1000)) is None
+    h = population_fit.fit_hawkes(np.full(1000, 20.0))
+    assert h.alpha / h.beta == population_fit.MAX_BRANCHING
+    assert abs(h.beta - np.log(2) / 20.0) < 1e-12
+
+
+def test_profile_lines_write_hawkes():
+    fit = population_fit.fit_population(synthetic_stats(1, 0.0))
+    lines = "\n".join(profile_lines("x", fit))
+    if fit.hawkes is None:
+        assert "hawkes" not in lines
+    fit = population_fit.PopulationFit(**{**fit.__dict__, "hawkes": population_fit.HawkesFit(alpha=0.3, beta=0.5)})
+    assert "      hawkes: {alpha: 0.3, beta: 0.5}" in "\n".join(profile_lines("x", fit))

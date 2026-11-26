@@ -79,7 +79,7 @@ SAMPLES = (
     ),
     Quantity(
         "log10_gap_seconds", "log10 seconds",
-        "log10 of gap_seconds, floored at one slot (chain) or 1 ms (engine).",
+        "log10 of gap_seconds, floored at one slot (one second on the engine side).",
         "Gaps range from seconds to months; the log keeps both ends visible "
         "and the floor keeps log10(0) out.",
     ),

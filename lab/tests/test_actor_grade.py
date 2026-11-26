@@ -94,3 +94,25 @@ def test_actor_counts_read_an_export(tmp_path):
     assert m.voted == {"dreps": 1}
     # The busiest 1% of 2 contracts is one contract, with 2 of 3 calls.
     assert abs(m.top_share - 2 / 3) < 1e-9
+
+
+def test_overall_grades_wallets_only():
+    """Pools, DReps and the proposer are graded in the actors block; their
+    transactions are already in the clusters' fitted mixes, so the overall
+    wallet statistics leave them out."""
+    import grade
+    profiles = {1: "pools", 2: "dreps", 3: "network", 4: "holder", 5: "staker"}
+    assert grade.wallet_actors(profiles, TARGET_ACTORS) == {4, 5}
+    assert grade.wallet_actors({}, TARGET_ACTORS) is None
+    assert grade.wallet_actors(profiles, None) is None
+
+
+def test_births_are_not_members_at_start(tmp_path):
+    root = str(tmp_path / "run" / "export")
+    os.makedirs(os.path.dirname(root))
+    write_export(root, [(1000, 1, "update_pool", "NULL", "NULL")], deployed=[], actors={1: "pools", 2: "pools"})
+    con = duckdb.connect()
+    con.execute(f"""COPY (SELECT 2::UBIGINT AS actor, 'pools' AS profile)
+                    TO '{root}/actor_transition/part-0.parquet' (FORMAT parquet)""")
+    m = engine_stats.actor_counts(root, os.path.join(os.path.dirname(root), "store.db"), TARGET_ACTORS)
+    assert m.members["pools"] == 1 and m.events["pools.register_rate"] == 1

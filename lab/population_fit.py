@@ -86,6 +86,56 @@ class GapFit:
 
 
 @dataclass(frozen=True)
+class HawkesFit:
+    """Self-excitation of a unit's activity (internal/sched, NextExcited).
+
+    In the branching view of a Hawkes process each transaction begets
+    alpha/beta follow-ups on average, each coming an exponential wait of
+    rate beta (per second) after it. The engine makes those follow-ups act
+    rather than idle, so they are transactions.
+    """
+
+    alpha: float
+    beta: float
+
+
+# A gap of at most BURST_GAP_SECONDS is taken as a follow-up in a burst
+# (a wallet's few transactions in a row, a bot's batch); longer ones as
+# waits between bursts. The share of such gaps estimates the branching
+# ratio alpha/beta: the share of events that are follow-ups. Below
+# MIN_BRANCHING the unit is not bursty and gets no excitation; the ratio is
+# capped at MAX_BRANCHING so a burst stays finite (mean size 1/(1-ratio)).
+# A same-slot gap reads as one slot, the chain's resolution.
+BURST_GAP_SECONDS = 300.0
+MIN_BRANCHING = 0.05
+MAX_BRANCHING = 0.9
+SLOT_SECONDS = 1.0
+
+
+def fit_hawkes(gap_seconds: np.ndarray) -> HawkesFit | None:
+    """Hawkes parameters from the gaps between a unit's transactions, zeros
+    (same slot) included.
+
+    alpha/beta is the share of gaps that are bursts; beta puts the median
+    of an exponential wait, ln 2 / beta, at the median burst gap.
+
+    What could go wrong: a slow wallet's genuine waits under five minutes
+    count as bursts, and gaps between bursts are not exponential (dormancy
+    shapes them), so this is a moment match, not a likelihood fit.
+    """
+    gaps = np.asarray(gap_seconds, dtype=float)
+    if len(gaps) == 0:
+        return None
+    burst = gaps[gaps <= BURST_GAP_SECONDS]
+    ratio = len(burst) / len(gaps)
+    if ratio < MIN_BRANCHING:
+        return None
+    ratio = min(ratio, MAX_BRANCHING)
+    beta = float(np.log(2) / max(float(np.median(burst)), SLOT_SECONDS))
+    return HawkesFit(alpha=ratio * beta, beta=beta)
+
+
+@dataclass(frozen=True)
 class DormancyFit:
     """How long a dormant unit sleeps: ln(seconds) ~ Normal(mu, sigma)."""
 
@@ -134,6 +184,8 @@ class PopulationFit:
     # Share of the cluster's transactions whose intent the agenda cannot
     # choose: the fidelity the agenda gives up (0 when it covers the mix).
     unreachable_share: float
+    # Burstiness of the cluster's activity; None when it is not bursty.
+    hawkes: HawkesFit | None = None
 
     def as_json(self) -> dict:
         """The plain-dict form stored under "fit" in target.json."""
@@ -288,8 +340,12 @@ def fit_population(stats: Stats, fallback: PopulationFit | None = None) -> Popul
 
     # Two transactions in the same slot are zero seconds apart; a zero has
     # no logarithm and says nothing about waiting, so only positive gaps count.
-    gaps = stats.samples["gap_seconds"]
-    gaps = gaps[gaps > 0]
+    all_gaps = stats.samples["gap_seconds"]
+    if _enough(all_gaps, has_fallback):
+        hawkes = fit_hawkes(all_gaps)
+    else:
+        hawkes = _need(fallback, "gaps").hawkes
+    gaps = all_gaps[all_gaps > 0]
     if _enough(gaps, has_fallback):
         gap, dormancy = fit_gaps(gaps)
     else:
@@ -310,4 +366,5 @@ def fit_population(stats: Stats, fallback: PopulationFit | None = None) -> Popul
         agenda=agenda,
         weights=agendas.agenda_weights(agenda, shares),
         unreachable_share=max(0.0, 1.0 - agendas.reach(agenda, shares)),
+        hawkes=hawkes,
     )

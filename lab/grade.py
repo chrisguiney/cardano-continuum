@@ -105,6 +105,20 @@ def grade_clusters(export_dir: str, store: str | None, clusters: dict[str, dict]
     return grades
 
 
+def wallet_actors(profile_of_actor: dict[int, str], target_actors: dict | None) -> set[int] | None:
+    """The run's wallet actors: every actor but the pools, DReps and
+    network proposer the engine runs for the target's actors block. Their
+    transactions are already in the fitted clusters' mixes (a pool operator
+    is a unit like any other), so the overall statistics leave them out and
+    the actors block grades them. None means every actor: a target with no
+    actors block, or a run whose actors' profiles are unknown.
+    """
+    if not target_actors or not profile_of_actor:
+        return None
+    skip = {name for name in engine_stats.MEMBER_EVENTS if name in target_actors} | {engine_stats.PROPOSER_PROFILE}
+    return {actor for actor, profile in profile_of_actor.items() if profile not in skip}
+
+
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("export_dir")
@@ -129,12 +143,13 @@ def main(argv: list[str] | None = None) -> int:
         target = json.load(f)
     overall_target, cluster_targets = target_views(target)
 
-    run = engine_stats.engine_stats(args.export_dir)
+    store = args.store or os.path.join(os.path.dirname(os.path.abspath(args.export_dir)), STORE_FILE)
+    wallets = wallet_actors(engine_stats.actor_profiles(args.export_dir, store), target.get("actors"))
+    run = engine_stats.engine_stats(args.export_dir, wallets)
     if args.chain_dir:
         run = with_chain_tables(run, chain_stats.chain_stats(args.chain_dir, args.slot_seconds))
 
     overall = compare_population(run, overall_target, bounds)
-    store = args.store or os.path.join(os.path.dirname(os.path.abspath(args.export_dir)), STORE_FILE)
     clusters = {}
     if cluster_targets:
         clusters = grade_clusters(args.export_dir, store, cluster_targets, bounds)
