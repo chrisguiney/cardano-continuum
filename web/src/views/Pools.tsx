@@ -1,4 +1,7 @@
-import { useMemo } from "preact/hooks";
+import { useEffect, useMemo, useState } from "preact/hooks";
+import { VIEW_BLURB } from "../lib/help";
+import { useEnums } from "../lib/meta";
+import { buildQuery, parseQuery, writeQuery } from "../lib/query";
 import { implColors } from "../lib/colors";
 import { forkLine, forkedImpls, forkedPools } from "../lib/forks";
 import { count, short } from "../lib/format";
@@ -6,6 +9,8 @@ import { usePoll } from "../lib/hooks";
 import { layout } from "../lib/layout";
 import type { PoolsView } from "../lib/types";
 import { ErrorNote } from "./common";
+import { Blurb } from "./fields";
+import { PoolFilterBar, type PoolFilterState } from "./filterbars";
 
 const W = 640;
 const H = 420;
@@ -59,13 +64,23 @@ function Topology({ v, forked }: { v: PoolsView; forked: Set<string> }) {
   );
 }
 
+const POOL_DEFAULTS: PoolFilterState = { impl: "", tier: "", phase: "" };
+
 export function Pools() {
+  const [filt, setFilt] = useState<PoolFilterState>(() => parseQuery(location.search, POOL_DEFAULTS));
+  const enums = useEnums();
+  useEffect(() => writeQuery(buildQuery({ ...filt }, POOL_DEFAULTS)), [filt]);
   const { data: v, error } = usePoll<PoolsView>("/api/pools", 3000);
   const forked = useMemo(() => (v ? forkedPools(v) : new Set<string>()), [v]);
   const impls = v ? forkedImpls(v.tips) : [];
   return (
     <>
       <h1>Pools</h1>
+      <Blurb text={VIEW_BLURB.pools!} />
+      <form class="filters" aria-label="Filter the pool table" onSubmit={(e) => e.preventDefault()}>
+        <PoolFilterBar f={filt} enums={enums} onChange={(k, v) => setFilt((f) => ({ ...f, [k]: v }))} />
+        <span class="muted">Filters apply to the table below.</span>
+      </form>
       <ErrorNote error={error} />
       {!v && !error && <p class="muted">Loading…</p>}
       {v && (
@@ -96,7 +111,7 @@ export function Pools() {
                 <tr><th>Pool</th><th>Impl</th><th>Tier</th><th>Phase</th><th>Stake</th><th>Blocks (made / expected)</th><th>Tip</th><th>Fork</th></tr>
               </thead>
               <tbody>
-                {v.pools.map((p) => (
+                {v.pools.filter((p) => (!filt.impl || p.impl === filt.impl) && (!filt.tier || p.tier === filt.tier) && (!filt.phase || p.phase === filt.phase)).map((p) => (
                   <tr key={p.id} class={p.dark ? "dim" : undefined}>
                     <td>{p.id}</td>
                     <td>{p.impl}</td>

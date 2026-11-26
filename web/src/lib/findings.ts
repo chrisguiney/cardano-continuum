@@ -37,3 +37,17 @@ export function knownSummary(counts: Record<string, number> | undefined): string
     .map(([ref, n]) => `${ref}: ${n}`)
     .join(", ");
 }
+
+export interface FindingFilters {
+  /** "false" new only, "true" known only, "" both. */
+  known: string;
+  kind: string;
+  severity: string;
+}
+
+/** findingsPath is the API request for the selected filters. */
+export function findingsPath(f: FindingFilters): string {
+  const q = new URLSearchParams({ limit: "100" });
+  for (const k of ["known", "kind", "severity"] as const) if (f[k]) q.set(k, f[k]);
+  return `/api/findings?${q.toString()}`;
+}

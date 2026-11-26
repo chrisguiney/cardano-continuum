@@ -1,8 +1,8 @@
 export type Route =
-  | { name: "overview" | "actors" | "pools" | "decisions" | "findings" | "adversaries" | "controls" | "notfound" }
+  | { name: "overview" | "actors" | "pools" | "decisions" | "findings" | "adversaries" | "controls" | "help" | "notfound" }
   | { name: "actor"; id: number };
 
-const simple = new Set(["actors", "pools", "decisions", "findings", "adversaries", "controls"]);
+const simple = new Set(["actors", "pools", "decisions", "findings", "adversaries", "controls", "help"]);
 
 export function parseRoute(path: string): Route {
   const parts = path.split("/").filter(Boolean);

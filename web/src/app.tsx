@@ -7,6 +7,9 @@ import { Adversaries } from "./views/Adversaries";
 import { Controls } from "./views/Controls";
 import { Decisions } from "./views/Decisions";
 import { Findings } from "./views/Findings";
+import { Help } from "./views/Help";
+import { HelpTip } from "./views/fields";
+import { FIELD_HELP } from "./lib/help";
 import { Overview } from "./views/Overview";
 import { Pools } from "./views/Pools";
 
@@ -65,6 +68,7 @@ const NAV: [string, string][] = [
   ["/decisions", "Decisions"],
   ["/findings", "Findings"],
   ["/adversaries", "Adversaries"],
+  ["/help", "Help"],
 ];
 
 export function App() {
@@ -96,9 +100,12 @@ export function App() {
             </a>
           ))}
         </nav>
-        <button type="button" class="ghost" onClick={toggle} aria-label="Toggle light and dark theme">
-          {theme === "dark" ? "Light theme" : "Dark theme"}
-        </button>
+        <span class="theme">
+          <button type="button" class="ghost" onClick={toggle} aria-describedby="theme-help">
+            {theme === "dark" ? "Light theme" : "Dark theme"}
+          </button>
+          <HelpTip id="theme-help" label="Theme" text={FIELD_HELP.theme!.help} />
+        </span>
       </header>
       <main id="main">
         {route.name === "overview" && <Overview />}
@@ -108,6 +115,7 @@ export function App() {
         {route.name === "decisions" && <Decisions />}
         {route.name === "findings" && <Findings />}
         {route.name === "adversaries" && <Adversaries />}
+        {route.name === "help" && <Help />}
         {route.name === "controls" && (controls ? <Controls /> : <p class="empty">Controls are not enabled on this server (start it with --controls).</p>)}
         {route.name === "notfound" && <p class="empty">No such page.</p>}
       </main>

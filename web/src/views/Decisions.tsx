@@ -1,8 +1,14 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Feed, appendDecision, type EventSourceLike, type FeedFilter, type FeedState } from "../lib/feed";
 import { simTime } from "../lib/format";
-import type { Decision } from "../lib/types";
+import { VIEW_BLURB } from "../lib/help";
+import { useEnums } from "../lib/meta";
+import { usePoll } from "../lib/hooks";
+import { buildQuery, parseQuery, writeQuery } from "../lib/query";
+import type { Decision, Snapshot } from "../lib/types";
 import { Link } from "./common";
+import { Blurb } from "./fields";
+import { DecisionFilterBar, type DecisionFilterState } from "./filterbars";
 
 const CAP = 500;
 
@@ -31,22 +37,24 @@ function Why({ d }: { d: Decision }) {
   );
 }
 
-function parseFilter(actor: string, profile: string, kinds: string): FeedFilter {
-  const f: FeedFilter = {};
-  if (/^\d+$/.test(actor)) f.actor = Number(actor);
-  if (/^[a-z0-9_-]{1,64}$/.test(profile)) f.profile = profile;
-  const ks = kinds.split(",").map((k) => k.trim()).filter((k) => /^[A-Za-z]{1,32}$/.test(k));
-  if (ks.length) f.kinds = ks;
-  return f;
+const DEFAULTS: DecisionFilterState = { actor: "", profile: "", kind: "", intent: "" };
+
+function parseFilter(f: DecisionFilterState): FeedFilter {
+  const out: FeedFilter = {};
+  if (/^\d+$/.test(f.actor.trim())) out.actor = Number(f.actor.trim());
+  if (f.profile) out.profile = f.profile;
+  if (f.kind) out.kinds = [f.kind];
+  if (f.intent) out.intent = f.intent;
+  return out;
 }
 
 export function Decisions() {
   const [rows, setRows] = useState<Decision[]>([]);
   const [state, setState] = useState<FeedState>("connecting");
   const [gap, setGap] = useState(false);
-  const [actor, setActor] = useState("");
-  const [profile, setProfile] = useState("");
-  const [kinds, setKinds] = useState("");
+  const [filt, setFilt] = useState<DecisionFilterState>(() => parseQuery(location.search, DEFAULTS));
+  const enums = useEnums();
+  const { data: snap } = usePoll<Snapshot>("/api/overview", 10000);
   const feed = useRef<Feed | null>(null);
 
   useEffect(() => {
@@ -68,18 +76,18 @@ export function Decisions() {
   }, []);
 
   useEffect(() => {
-    feed.current?.setFilter(parseFilter(actor.trim(), profile.trim(), kinds));
-  }, [actor, profile, kinds]);
+    feed.current?.setFilter(parseFilter(filt));
+    writeQuery(buildQuery({ ...filt }, DEFAULTS));
+  }, [filt]);
 
   return (
     <>
       <h1>Decisions</h1>
-      <div class="filters">
-        <label>Actor id<input type="text" inputMode="numeric" value={actor} onInput={(e) => setActor(e.currentTarget.value)} placeholder="any" /></label>
-        <label>Profile<input type="text" value={profile} onInput={(e) => setProfile(e.currentTarget.value)} placeholder="any" /></label>
-        <label>Kinds<input type="text" value={kinds} onInput={(e) => setKinds(e.currentTarget.value)} placeholder="IntentChosen, …" /></label>
+      <Blurb text={VIEW_BLURB.decisions!} />
+      <form class="filters" aria-label="Filter decisions" onSubmit={(e) => e.preventDefault()}>
+        <DecisionFilterBar f={filt} enums={enums} profiles={snap?.population.by_profile ?? {}} onChange={(k, v) => setFilt((f) => ({ ...f, [k]: v }))} />
         <span class={`tag ${state === "live" ? "ok" : "warn"}`} role="status">{state}</span>
-      </div>
+      </form>
       {gap && <p class="banner warn">Some decisions were dropped before this connection could replay them.</p>}
       <p class="muted">Newest first, last {CAP} shown.</p>
       <ul class="feed">

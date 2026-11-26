@@ -1,7 +1,9 @@
 import { ada, count, short, simTime } from "../lib/format";
 import { usePoll } from "../lib/hooks";
 import type { Snapshot } from "../lib/types";
+import { VIEW_BLURB } from "../lib/help";
 import { ErrorNote, Stat } from "./common";
+import { Blurb } from "./fields";
 
 function AdaChart({ a }: { a: Snapshot["ada"] }) {
   const rows = [
@@ -53,16 +55,17 @@ export function Overview() {
   return (
     <>
       <h1>Overview</h1>
+      <Blurb text={VIEW_BLURB.overview!} />
       <ErrorNote error={error} />
       {!s && !error && <p class="muted">Loading…</p>}
       {s && (
         <>
           <div class="stats">
-            <Stat label="Tip slot" value={s.tip ? count(s.tip.slot) : "none"} sub={s.tip ? short(s.tip.hash, 12) : "no block yet"} />
-            <Stat label="Epoch" value={s.epoch === null ? "unknown" : String(s.epoch)} sub={`sim time ${simTime(s.sim_time_ms)}`} />
-            <Stat label="Tx per second" value={s.tx_per_sec.toFixed(2)} sub={`${s.submit_per_sec.toFixed(2)} submitted/s`} />
-            <Stat label="Blocks" value={count(s.blocks)} sub={`${count(s.rollbacks)} rollbacks`} />
-            <Stat label="Actors" value={count(s.population.total)} />
+            <Stat help="Slot number of the newest block. A slot is one tick of the chain clock." label="Tip slot" value={s.tip ? count(s.tip.slot) : "none"} sub={s.tip ? short(s.tip.hash, 12) : "no block yet"} />
+            <Stat help="A fixed run of slots; stake and rewards are recalculated at its end." label="Epoch" value={s.epoch === null ? "unknown" : String(s.epoch)} sub={`sim time ${simTime(s.sim_time_ms)}`} />
+            <Stat help="Transactions confirmed per second of simulated time." label="Tx per second" value={s.tx_per_sec.toFixed(2)} sub={`${s.submit_per_sec.toFixed(2)} submitted/s`} />
+            <Stat help="Blocks made so far; a rollback replaces recent blocks with a different branch." label="Blocks" value={count(s.blocks)} sub={`${count(s.rollbacks)} rollbacks`} />
+            <Stat help="Simulated participants alive in the run." label="Actors" value={count(s.population.total)} />
           </div>
           <section class="card">
             <h2>ADA accounting</h2>

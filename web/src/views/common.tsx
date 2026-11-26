@@ -2,6 +2,7 @@ import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
 import { browserEnv, copyText } from "../lib/clipboard";
 import { navigate } from "../lib/router";
+import { HelpTip } from "./fields";
 
 export function Link({ to, children }: { to: string; children: ComponentChildren }) {
   return (
@@ -26,10 +27,10 @@ export function ErrorNote({ error }: { error: string | null }) {
   ) : null;
 }
 
-export function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
+export function Stat({ label, value, sub, help }: { label: string; value: string; sub?: string; help?: string }) {
   return (
     <div class="stat">
-      <div class="stat-label">{label}</div>
+      <div class="stat-label">{label}{help && <HelpTip id={`stat-${label.replace(/\W+/g, "-")}`} label={label} text={help} />}</div>
       <div class="stat-value">{value}</div>
       {sub && <div class="stat-sub">{sub}</div>}
     </div>

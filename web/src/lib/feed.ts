@@ -4,6 +4,7 @@ export interface FeedFilter {
   actor?: number;
   profile?: string;
   kinds?: string[];
+  intent?: string;
 }
 
 export type FeedState = "connecting" | "live" | "reconnecting" | "stopped";
@@ -20,6 +21,7 @@ export function feedUrl(base: string, f: FeedFilter, lastId: number | null): str
   const q = new URLSearchParams();
   if (f.actor !== undefined) q.set("actor", String(f.actor));
   if (f.profile) q.set("profile", f.profile);
+  if (f.intent) q.set("intent", f.intent);
   if (f.kinds?.length) q.set("kind", f.kinds.join(","));
   if (lastId !== null) q.set("last_event_id", String(lastId));
   const s = q.toString();

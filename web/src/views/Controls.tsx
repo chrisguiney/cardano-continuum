@@ -1,4 +1,6 @@
 import { useState } from "preact/hooks";
+import { Blurb, HelpTip, TextField } from "./fields";
+import { FIELD_HELP, VIEW_BLURB } from "../lib/help";
 import { buildControl, postControl, type ControlBody, type ControlInput, type Op } from "../lib/controls";
 
 interface Pending {
@@ -50,22 +52,24 @@ export function Controls() {
   return (
     <>
       <h1>Controls</h1>
-      <p class="muted">Each action is appended to the event log, so the run stays replayable. Every action asks for confirmation.</p>
+      <Blurb text={VIEW_BLURB.controls!} />
       <section class="card controls">
         <div class="row">
-          <button type="button" onClick={() => ask("pause")}>Pause</button>
-          <button type="button" onClick={() => ask("resume")}>Resume</button>
+          <button type="button" aria-describedby="h-pause" onClick={() => ask("pause")}>Pause</button>
+          <button type="button" aria-describedby="h-resume" onClick={() => ask("resume")}>Resume</button>
+          <HelpTip id="h-pause" label="Pause and Resume" text="Pause stops actors from acting and the chain from advancing in simulated time. Resume continues from where it stopped." />
+          <span id="h-resume" class="sr">Resume continues a paused run.</span>
         </div>
         <div class="row">
-          <label>k (1–1000)<input type="text" inputMode="numeric" value={input.k} onInput={(e) => setInput({ ...input, k: e.currentTarget.value })} /></label>
+          <TextField id="c-k" help={FIELD_HELP.k!} value={input.k ?? ""} inputMode="numeric" onChange={(v) => setInput({ ...input, k: v })} />
           <button type="button" onClick={() => ask("set_k")}>Set k</button>
         </div>
         <div class="row">
-          <label>Weights (name=value, …)<input type="text" value={input.weights} placeholder="send=2, vote=0.5" onInput={(e) => setInput({ ...input, weights: e.currentTarget.value })} /></label>
+          <TextField id="c-weights" help={FIELD_HELP.weights!} value={input.weights ?? ""} placeholder="send=2, vote=0.5" onChange={(v) => setInput({ ...input, weights: v })} />
           <button type="button" onClick={() => ask("set_weights")}>Set weights</button>
         </div>
         <div class="row">
-          <label>Scenario<input type="text" value={input.scenario} placeholder="partition" onInput={(e) => setInput({ ...input, scenario: e.currentTarget.value })} /></label>
+          <TextField id="c-scenario" help={FIELD_HELP.scenario!} value={input.scenario ?? ""} placeholder="partition" onChange={(v) => setInput({ ...input, scenario: v })} />
           <button type="button" onClick={() => ask("inject")}>Inject</button>
         </div>
       </section>

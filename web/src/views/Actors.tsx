@@ -1,30 +1,24 @@
 import { useEffect, useState } from "preact/hooks";
+import { VIEW_BLURB } from "../lib/help";
+import { useEnums } from "../lib/meta";
+import { writeQuery } from "../lib/query";
 import { ACTOR_COLUMNS } from "../lib/actorcols";
 import { count } from "../lib/format";
 import { usePoll } from "../lib/hooks";
-import { clampOffset, initialPage, nextPage, pageInfo, prevPage, setFilter, setSort, toQuery, type FilterName, type PageState, type SortKey } from "../lib/paging";
+import { clampOffset, fromSearch, nextPage, pageInfo, prevPage, setFilter, setLimit, setOrder, setSort, toQuery, type FilterName, type PageState, type SortKey } from "../lib/paging";
 import type { ActorPage, Snapshot } from "../lib/types";
 import { ErrorNote, Link } from "./common";
-
-function Filter({ name, label, value, options, onChange }: { name: FilterName; label: string; value: string; options: string[]; onChange: (n: FilterName, v: string) => void }) {
-  return (
-    <label>
-      {label}
-      <select value={value} onChange={(e) => onChange(name, e.currentTarget.value)}>
-        <option value="">All</option>
-        {options.map((o) => (
-          <option key={o} value={o}>{o}</option>
-        ))}
-      </select>
-    </label>
-  );
-}
+import { Blurb } from "./fields";
+import { ActorFilters } from "./filterbars";
 
 export function Actors() {
-  const [page, setPage] = useState<PageState>(initialPage);
+  const [page, setPage] = useState<PageState>(() => fromSearch(location.search));
   const { data, error } = usePoll<ActorPage>(`/api/actors?${toQuery(page)}`, 5000);
   const { data: snap } = usePoll<Snapshot>("/api/overview", 10000);
+  const enums = useEnums();
   const total = data?.total ?? 0;
+
+  useEffect(() => writeQuery(toQuery(page)), [page]);
 
   useEffect(() => {
     if (data) setPage((p) => clampOffset(p, data.total));
@@ -37,19 +31,19 @@ export function Actors() {
   return (
     <>
       <h1>Actors</h1>
-      <div class="filters">
-        <Filter name="profile" label="Profile" value={page.profile} options={Object.keys(snap?.population.by_profile ?? {}).sort()} onChange={change} />
-        <Filter name="state" label="State" value={page.state} options={Object.keys(snap?.population.by_state ?? {}).sort()} onChange={change} />
-        <label>
-          Delegated
-          <select value={page.delegated} onChange={(e) => change("delegated", e.currentTarget.value)}>
-            <option value="">Any</option>
-            <option value="true">Delegated</option>
-            <option value="false">Not delegated</option>
-          </select>
-        </label>
-        <span class="muted">{count(total)} matching</span>
-      </div>
+      <Blurb text={VIEW_BLURB.actors!} />
+      <form class="filters" aria-label="Filter actors" onSubmit={(e) => e.preventDefault()}>
+        <ActorFilters
+          page={page}
+          enums={enums}
+          profiles={snap?.population.by_profile ?? {}}
+          states={snap?.population.by_state ?? {}}
+          onFilter={change}
+          onLimit={(n) => setPage((p) => setLimit(p, n))}
+          onSort={(k, d) => setPage((p) => setOrder(p, k, d))}
+        />
+        <span class="muted" role="status">{count(total)} matching</span>
+      </form>
       <ErrorNote error={error} />
       <div class="table-wrap">
         <table>

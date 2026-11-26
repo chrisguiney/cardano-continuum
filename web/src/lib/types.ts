@@ -120,6 +120,8 @@ export interface ImplVerdict {
 export interface Finding {
   id: string;
   seq: number;
+  kind: string;
+  severity: string;
   summary: string;
   tx_cbor_hex: string;
   verdicts: ImplVerdict[];

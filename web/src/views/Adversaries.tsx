@@ -1,16 +1,31 @@
+import { useEffect, useState } from "preact/hooks";
+import { VIEW_BLURB } from "../lib/help";
+import { useEnums } from "../lib/meta";
+import { buildQuery, parseQuery, writeQuery } from "../lib/query";
 import { costBar, EMPTY_STATE, honestImpact, outcomeCounts } from "../lib/adversaries";
 import { ada, count, simTime } from "../lib/format";
 import { usePoll } from "../lib/hooks";
 import type { AdversaryRow, AdversaryView } from "../lib/types";
 import { ErrorNote, Link } from "./common";
+import { Blurb } from "./fields";
+import { AdversaryFilterBar, type AdversaryFilterState } from "./filterbars";
 
 const num = (x: number | null) => (x === null ? "-" : Number.isInteger(x) ? count(x) : x.toFixed(3));
 
+const ADV_DEFAULTS: AdversaryFilterState = { attack: "", agenda: "" };
+
 export function Adversaries() {
+  const [filt, setFilt] = useState<AdversaryFilterState>(() => parseQuery(location.search, ADV_DEFAULTS));
+  const enums = useEnums();
+  useEffect(() => writeQuery(buildQuery({ ...filt }, ADV_DEFAULTS)), [filt]);
   const { data, error } = usePoll<AdversaryView>("/api/adversaries", 4000);
   return (
     <>
       <h1>Adversaries</h1>
+      <Blurb text={VIEW_BLURB.adversaries!} />
+      <form class="filters" aria-label="Filter adversaries" onSubmit={(e) => e.preventDefault()}>
+        <AdversaryFilterBar f={filt} enums={enums} onChange={(k, v) => setFilt((f) => ({ ...f, [k]: v }))} />
+      </form>
       <ErrorNote error={error} />
       {data && data.adversaries.length === 0 && (
         <section class="card empty-state" aria-labelledby="h-none">
@@ -18,7 +33,7 @@ export function Adversaries() {
           {EMPTY_STATE.slice(1).map((l) => <p key={l}>{l}</p>)}
         </section>
       )}
-      {data && data.adversaries.map((a) => <Adversary key={a.id} a={a} control={data.has_control} />)}
+      {data && data.adversaries.filter((a) => (!filt.attack || a.attack === filt.attack) && (!filt.agenda || a.agenda === filt.agenda)).map((a) => <Adversary key={a.id} a={a} control={data.has_control} />)}
       {data && data.adversaries.length > 0 && <Impact v={data} />}
     </>
   );

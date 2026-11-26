@@ -2,7 +2,9 @@ import { detailSections } from "../lib/actordetail";
 import { count, simTime } from "../lib/format";
 import { usePoll } from "../lib/hooks";
 import type { ActorDetail } from "../lib/types";
+import { VIEW_BLURB } from "../lib/help";
 import { CopyButton, ErrorNote, Link } from "./common";
+import { Blurb } from "./fields";
 
 export function Actor({ id }: { id: number }) {
   const { data: d, error } = usePoll<ActorDetail>(`/api/actors/${id}`, 3000);
@@ -10,6 +12,7 @@ export function Actor({ id }: { id: number }) {
     <>
       <p><Link to="/actors">← Actors</Link></p>
       <h1>Actor {id}{d?.name ? ` · ${d.name}` : ""}</h1>
+      <Blurb text={VIEW_BLURB.actor!} />
       <ErrorNote error={error} />
       {d && <Detail d={d} />}
     </>
@@ -91,13 +94,13 @@ function Detail({ d }: { d: ActorDetail }) {
 function Tokens({ d }: { d: ActorDetail }) {
   const ts = d.holdings.tokens;
   return (
-    <div class="table-wrap">
+    <div class="table-wrap tokens" tabIndex={0} role="region" aria-label="Native tokens, scrolls sideways">
       <table aria-label="Native tokens">
         <thead><tr><th>Policy</th><th>Asset</th><th class="num">Quantity</th></tr></thead>
         <tbody>
           {ts.map((t) => (
             <tr key={t.policy + t.name}>
-              <td class="mono">{t.policy.slice(0, 12)}… <CopyButton value={t.policy} label="policy id" /></td>
+              <td class="mono">{t.policy.slice(0, 8)}… <CopyButton value={t.policy} label="policy id" /></td>
               <td>{t.name_text || <span class="mono">{t.name || "(empty)"}</span>}</td>
               <td class="num">{count(t.quantity)}</td>
             </tr>
