@@ -11,6 +11,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
+	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 )
 
 // table accumulates rows for one Parquet table as an Arrow record builder.
@@ -140,6 +141,12 @@ func (b *builder) addKind(r eventlog.Record) error {
 	case eventlog.KindBlockApplied, eventlog.KindRolledBack:
 		if err := b.point(r, emit); err != nil {
 			return err
+		}
+	case oracle.KindFinding:
+		if emit {
+			if err := b.finding(r); err != nil {
+				return err
+			}
 		}
 	}
 	if emit {

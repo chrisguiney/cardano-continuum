@@ -14,7 +14,7 @@ import "github.com/apache/arrow-go/v18/arrow"
 // SchemaVersion is bumped whenever a table or column changes. Notebook
 // queries are written against one version; an export into a directory of
 // another version is refused.
-const SchemaVersion = 1
+const SchemaVersion = 2
 
 // Table names.
 const (
@@ -28,12 +28,13 @@ const (
 	tBlock      = "block"
 	tRollback   = "rollback"
 	tRun        = "run"
+	tFinding    = "finding"
 )
 
 // TableNames lists every table in write order.
 var TableNames = []string{
 	tDecision, tScore, tSubmission, tResult, tFailure,
-	tConfirm, tTransition, tBlock, tRollback, tRun,
+	tConfirm, tTransition, tBlock, tRollback, tRun, tFinding,
 }
 
 // hash32 is a transaction or block hash: FIXED_LEN_BYTE_ARRAY(32), as in
@@ -44,7 +45,7 @@ func col(name string, t arrow.DataType, null bool) arrow.Field {
 	return arrow.Field{Name: name, Type: t, Nullable: null}
 }
 
-var meta = arrow.NewMetadata([]string{"continuum.schema_version"}, []string{"1"})
+var meta = arrow.NewMetadata([]string{"continuum.schema_version"}, []string{"2"})
 
 func mk(fields ...arrow.Field) *arrow.Schema { return arrow.NewSchema(fields, &meta) }
 
@@ -120,6 +121,26 @@ var schemas = map[string]*arrow.Schema{
 		col("seq", arrow.PrimitiveTypes.Uint64, false),
 		col("slot", arrow.PrimitiveTypes.Uint64, false),
 		col("hash", hash32, true),
+	),
+	// finding is one oracle finding per row. source_seq is the input the
+	// finding was derived from; verdicts are "impl@pool=verdict classes"
+	// joined by ";", facts "name=value" joined by ";".
+	tFinding: mk(
+		col("seq", arrow.PrimitiveTypes.Uint64, false),
+		col("at", arrow.PrimitiveTypes.Int64, false),
+		col("id", arrow.BinaryTypes.String, false),
+		col("kind", arrow.BinaryTypes.String, false),
+		col("severity", arrow.BinaryTypes.String, false),
+		col("source_seq", arrow.PrimitiveTypes.Uint64, false),
+		col("summary", arrow.BinaryTypes.String, false),
+		col("tx_hash", hash32, true),
+		col("tx_cbor", arrow.BinaryTypes.Binary, true),
+		col("expected", arrow.BinaryTypes.String, true),
+		col("verdicts", arrow.BinaryTypes.String, true),
+		col("facts", arrow.BinaryTypes.String, false),
+		col("reproducible", arrow.FixedWidthTypes.Boolean, false),
+		col("seed", arrow.PrimitiveTypes.Uint64, false),
+		col("replay", arrow.BinaryTypes.String, true),
 	),
 	tRun: mk(
 		col("format_version", arrow.PrimitiveTypes.Uint32, false),
