@@ -328,3 +328,31 @@ func FuzzParse(f *testing.F) {
 		}
 	})
 }
+
+func TestParseEagerness(t *testing.T) {
+	const base = "version: 1\nprofiles:\n  - name: p\n    kind: pool\n    agenda: operator\n" +
+		"    traits: {competence: \"beta(8, 2)\", patience: \"const(5)\", learning_rate: \"const(0.05)\", care: \"beta(2, 2)\"}\n"
+	for _, tt := range []struct {
+		extra string
+		want  float64
+	}{{"", 1}, {"    eagerness: 2.5\n", 2.5}, {"    eagerness: 0\n", 0}} {
+		ps, err := Parse(strings.NewReader(base + tt.extra))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := ps[0].Eager(); got != tt.want {
+			t.Errorf("%q: eagerness %v, want %v", tt.extra, got, tt.want)
+		}
+		again, err := Marshal(ps)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rt, err := Parse(bytes.NewReader(again))
+		if err != nil || rt[0].Eager() != tt.want {
+			t.Errorf("%q: round trip %v, %v", tt.extra, rt, err)
+		}
+	}
+	if _, err := ParseNamed("x.yaml", strings.NewReader(base+"    eagerness: -1\n")); err == nil || !strings.Contains(err.Error(), `profile "p": eagerness`) {
+		t.Fatalf("negative eagerness: %v", err)
+	}
+}

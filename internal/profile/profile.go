@@ -160,4 +160,16 @@ type Profile struct {
 	// Weight is the profile's share of a population; zero means unset, and a
 	// population whose profiles all leave it unset splits evenly.
 	Weight float64
+	// Eagerness shifts when a pool operator adopts an upgrade wave's image
+	// (internal/upgrade): nil means 1, above 1 sooner, below 1 later, 0
+	// never.
+	Eagerness *float64
+}
+
+// Eager is the profile's eagerness, 1 when unset.
+func (p Profile) Eager() float64 {
+	if p.Eagerness == nil {
+		return 1
+	}
+	return *p.Eagerness
 }

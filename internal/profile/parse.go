@@ -41,6 +41,7 @@ type rawProfile struct {
 	Adversary *rawAdversary      `yaml:"adversary,omitempty"`
 	Amount    *rawAmount         `yaml:"amount,omitempty"`
 	Weight    float64            `yaml:"weight,omitempty"`
+	Eagerness *float64           `yaml:"eagerness,omitempty"`
 }
 
 type rawAmount struct {
@@ -211,6 +212,13 @@ func (rp rawProfile) validate() (Profile, error) {
 		}
 		p.Amount = a
 	}
+	if e := rp.Eagerness; e != nil {
+		if err := finiteNonNeg("eagerness", *e); err != nil {
+			return p, err
+		}
+		v := *e
+		p.Eagerness = &v
+	}
 	if rp.Adversary != nil {
 		a, err := rp.Adversary.validate()
 		if err != nil {
@@ -365,6 +373,10 @@ func Marshal(ps []Profile) ([]byte, error) {
 		}
 		if p.Hazards.Dormancy != nil {
 			rp.Hazards.Dormancy = p.Hazards.Dormancy.String()
+		}
+		if e := p.Eagerness; e != nil {
+			v := *e
+			rp.Eagerness = &v
 		}
 		if a := p.Adversary; a != nil {
 			rp.Adversary = &rawAdversary{Attacks: a.Attacks, CostCeiling: int64(a.CostCeiling), SuccessMetric: a.SuccessMetric}
