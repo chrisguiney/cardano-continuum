@@ -274,3 +274,19 @@ func spliceWitnesses(t *testing.T, tx, donor []byte) []byte {
 	}
 	return out
 }
+
+// A node reports a missing input as BadInputsUTxO alone. gouroboros'
+// required-redeemers rule resolves every input and returns the resolution
+// error, which must not surface as a second class.
+func TestMissingInputIsOnlyBadInputs(t *testing.T) {
+	f := newFixture(t, nil)
+	s := f.pay(f.alice, f.bob.Address(), 10_000_000)
+	s.ins = append(s.ins, Ref{TxID: TxID{0xee}, Index: 3})
+	cs := rejectClasses(t, f.submit(s.build(t)))
+	if !hasClass(cs, BadInputs) {
+		t.Fatalf("classes %v, want BadInputsUTxO", cs)
+	}
+	if hasClass(cs, MissingRedeemers) {
+		t.Fatalf("classes %v: MissingRedeemers must not accompany a missing input", cs)
+	}
+}

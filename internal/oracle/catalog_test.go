@@ -229,10 +229,10 @@ func rejectedFirst() []mistake.Kind {
 	return order
 }
 
-// TestCatalogOnFakeChain judges every catalog entry's answers. The only
-// findings allowed are the fake chain's own divergence: MissingRedeemers
-// beside BadInputs, which a node does not report. They must be reported, as
-// wrong-class findings against fakechain, not hidden.
+// TestCatalogOnFakeChain judges every catalog entry's answers. The fake chain
+// agrees with the expectations, so there are no findings; an extra class from
+// the fake (it once added MissingRedeemers beside BadInputs) would show here
+// as a wrong-class finding against fakechain.
 func TestCatalogOnFakeChain(t *testing.T) {
 	wd := newWorld(t)
 	wd.prepare(t)
@@ -261,12 +261,7 @@ func TestCatalogOnFakeChain(t *testing.T) {
 		}
 	}
 	for _, f := range all {
-		if f.Kind != WrongClass || !hasFact(f, "impl", "fakechain") || !hasFact(f, "unexpected", "MissingRedeemers") {
-			t.Errorf("catalog finding other than the fake's divergence: %s %+v", f.Kind, f.Facts)
-		}
-	}
-	if len(byKind[mistake.StaleInput]) != 1 {
-		t.Fatalf("stale input: %d findings, want the fake's MissingRedeemers", len(byKind[mistake.StaleInput]))
+		t.Errorf("catalog finding: %s %+v", f.Kind, f.Facts)
 	}
 }
 

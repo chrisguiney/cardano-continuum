@@ -20,27 +20,9 @@ import (
 
 type fake struct{ c *fakechain.Chain }
 
-// fakeOnly is a class the fake chain adds to every rejection naming
-// BadInputs, where cardano-node 11.1.3 names BadInputs alone for the same
-// transaction (TestDevnetCatalog). The fake runs every gouroboros rule, and
-// gouroboros' RequiredRedeemers re-reports an input that does not resolve,
-// which its own first-failure order only reaches behind BadInputs. It is a
-// divergence of internal/fakechain from the node, not an honest answer, so
-// the oracle never expects it: send strips it, and fails the test once the
-// fake chain stops adding it so this allowance goes with the divergence.
-const fakeOnly = submit.Class(fakechain.MissingRedeemers)
-
 func (f fake) send(t *testing.T, tx []byte) submit.Outcome {
 	t.Helper()
-	o := submit.Send(context.Background(), submit.NewFake(f.c), fakechain.EraConway, tx)
-	if !o.Has(submit.BadInputs) {
-		return o
-	}
-	if !o.Has(fakeOnly) {
-		t.Errorf("the fake chain no longer adds %s to %s: remove fakeOnly", fakeOnly, submit.BadInputs)
-	}
-	o.Failures = slices.DeleteFunc(slices.Clone(o.Failures), func(f submit.Failure) bool { return f.Class == fakeOnly })
-	return o
+	return submit.Send(context.Background(), submit.NewFake(f.c), fakechain.EraConway, tx)
 }
 
 func (f fake) land(t *testing.T, id common.Blake2b256) {

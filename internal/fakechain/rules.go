@@ -288,10 +288,20 @@ func validate(tx common.Transaction, slot uint64, ls common.LedgerState, pp comm
 	var out []Failure
 	for _, r := range rules {
 		if err := r.fn(tx, slot, ls, pp); err != nil {
+			if r.class != BadInputs && resolution(err) {
+				continue
+			}
 			out = append(out, Failure{Class: refine(r.class, err), Rule: r.id, Err: err})
 		}
 	}
 	return out
+}
+
+// resolution reports whether err is a spent or reference input that did not
+// resolve. gouroboros' later rules (required redeemers) re-report it, but the
+// ledger names it once, as BadInputsUTxO.
+func resolution(err error) bool {
+	return errors.Is(err, common.ErrInputResolution) || errors.Is(err, common.ErrReferenceInputResolution)
 }
 
 // unsupported names the first feature of tx the fake does not model, or "".
