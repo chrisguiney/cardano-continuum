@@ -65,6 +65,13 @@ type PodSource interface {
 	Changes(ctx context.Context, now sched.Time) ([]PoolStatus, error)
 }
 
+// ControlSource hands the loop the controls submitted since the last call,
+// each the CBOR body of a Control input (httpapi.Control). A live run's
+// HTTP API queues them; the loop logs and applies them in order.
+type ControlSource interface {
+	Controls(ctx context.Context) ([][]byte, error)
+}
+
 // Log is the event log as the loop uses it.
 type Log interface {
 	eventlog.Writer
@@ -98,6 +105,11 @@ type Deps struct {
 	Pacer Pacer
 	// Pods is optional: without it no pod is ever observed down.
 	Pods PodSource
+	// Controls is optional: the run's steering.
+	Controls ControlSource
+	// Pools is optional: it applies the engine's pool plan (go-dark and
+	// upgrade images) to the pools a live run's operator renders.
+	Pools PoolWriter
 	// CheckpointEvery is the number of inputs between checkpoints; zero
 	// checkpoints only when Run returns.
 	CheckpointEvery int
@@ -130,7 +142,10 @@ type Runner struct {
 	resumed map[uint64]bool
 	since   int
 	stats   Stats
-	log     *slog.Logger
+	// plan is the pool plan last synced.
+	plan   []PoolPlan
+	synced bool
+	log    *slog.Logger
 }
 
 // Start opens a run: a fresh one on an empty log, otherwise a recovery from
@@ -455,6 +470,49 @@ func (r *Runner) drops(ctx context.Context) error {
 	return r.effects(ctx)
 }
 
+// PoolWriter applies the pool plan. Sync is idempotent: the loop calls it
+// with the whole plan whenever the plan changed, and once after starting.
+type PoolWriter interface {
+	Sync(ctx context.Context, plan []PoolPlan) error
+}
+
+// controls logs and applies every submitted control.
+func (r *Runner) controls(ctx context.Context) error {
+	if r.d.Controls == nil {
+		return nil
+	}
+	bodies, err := r.d.Controls.Controls(ctx)
+	if err != nil {
+		return fmt.Errorf("engine: controls: %w", err)
+	}
+	for _, b := range bodies {
+		rec := eventlog.Record{At: r.eng.Now(), Kind: eventlog.KindControl, Body: b}
+		if err := r.step(ctx, func() error { return r.sess.Feed(ctx, rec) }); err != nil {
+			return err
+		}
+		if err := r.effects(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// syncPools hands the pool plan to the writer when it changed.
+func (r *Runner) syncPools(ctx context.Context) error {
+	if r.d.Pools == nil {
+		return nil
+	}
+	plan := r.eng.Pools()
+	if r.synced && slices.Equal(plan, r.plan) {
+		return nil
+	}
+	if err := r.d.Pools.Sync(ctx, plan); err != nil {
+		return fmt.Errorf("engine: sync pools: %w", err)
+	}
+	r.plan, r.synced = plan, true
+	return nil
+}
+
 // pollEvery bounds a wait when nothing tells the loop when to wake.
 const pollEvery sched.Time = 1000
 
@@ -474,6 +532,12 @@ func (r *Runner) Run(ctx context.Context, until sched.Time) error {
 			return err
 		}
 		if err := r.drops(ctx); err != nil {
+			return err
+		}
+		if err := r.controls(ctx); err != nil {
+			return err
+		}
+		if err := r.syncPools(ctx); err != nil {
 			return err
 		}
 		now := r.d.Clock.Now()

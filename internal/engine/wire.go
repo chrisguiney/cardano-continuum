@@ -24,7 +24,24 @@ const (
 	KindPoolTier     = "PoolTier"
 	KindRepair       = "Repair"
 	KindIncident     = "Incident"
+	KindControlled   = "Controlled"
+	KindImageChange  = "ImageChange"
 )
+
+// Controlled is the body of a Controlled decision: a Control input was
+// applied, or not when Why says why.
+type Controlled struct {
+	RequestID string `cbor:"1,keyasint"`
+	Op        string `cbor:"2,keyasint"`
+	Scenario  string `cbor:"3,keyasint,omitempty"`
+	Why       string `cbor:"4,keyasint,omitempty"`
+}
+
+// ImageChange is the body of an ImageChange decision: an upgrade wave gave
+// the pool actor image Ref.
+type ImageChange struct {
+	Ref string `cbor:"1,keyasint"`
+}
 
 // PoolStatus is the body of a PoolStatus input: a pool actor's pod was
 // observed running or not (operator status).
@@ -262,6 +279,14 @@ type snapshot struct {
 	Down    []uint64 `cbor:"17,keyasint,omitempty"`
 	Repairs []uint64 `cbor:"18,keyasint,omitempty"`
 	Stalled bool     `cbor:"19,keyasint,omitempty"`
+	// Controls and upgrade waves; Images is (pool actor, image) pairs,
+	// ascending.
+	Paused    bool        `cbor:"20,keyasint,omitempty"`
+	RateK     uint32      `cbor:"21,keyasint,omitempty"`
+	Weights   []weightRec `cbor:"22,keyasint,omitempty"`
+	Waves     uint64      `cbor:"23,keyasint,omitempty"`
+	Adoptions []adoption  `cbor:"24,keyasint,omitempty"`
+	Images    []imageRec  `cbor:"25,keyasint,omitempty"`
 	// View is the chain view at the confirmed point; the window is replayed
 	// onto it on restore.
 	View viewRec `cbor:"13,keyasint"`
@@ -341,4 +366,14 @@ type pendingRec struct {
 
 func samePoint(a, b eventlog.ChainPoint) bool {
 	return a.Slot == b.Slot && bytes.Equal(a.Hash, b.Hash)
+}
+
+type weightRec struct {
+	Kind   string  `cbor:"1,keyasint"`
+	Weight float64 `cbor:"2,keyasint"`
+}
+
+type imageRec struct {
+	Pool uint64 `cbor:"1,keyasint"`
+	Ref  string `cbor:"2,keyasint"`
 }

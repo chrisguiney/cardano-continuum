@@ -109,6 +109,9 @@ type Config struct {
 	// delegated to it. The first GenesisPools pool actors operate them.
 	GenesisPools     int
 	GenesisPoolStake uint64
+	// Committee is the number of genesis constitutional committee members,
+	// the run seed's keystore.Committee(0..Committee-1).
+	Committee int
 }
 
 // Fund is one genesis output.
@@ -255,7 +258,8 @@ func (c *Config) Header() (eventlog.HeaderBody, error) {
 		GPools     int           `cbor:"17,keyasint,omitempty"`
 		GStake     uint64        `cbor:"18,keyasint,omitempty"`
 		Scale      float64       `cbor:"19,keyasint,omitempty"`
-	}{GPools: c.GenesisPools, GStake: c.GenesisPoolStake, NOpt: c.NOpt, GovLife: c.GovLifetime, Floor: c.floor().Floor, Margin: c.floor().Margin, SimPods: c.SimulatedPods, Format: logFormat, K: c.K, BlockEvery: c.BlockEvery, NetworkID: c.NetworkID, SlotMs: c.Slots.SlotStart(1),
+		Committee  int           `cbor:"20,keyasint,omitempty"`
+	}{Committee: c.Committee, GPools: c.GenesisPools, GStake: c.GenesisPoolStake, NOpt: c.NOpt, GovLife: c.GovLifetime, Floor: c.floor().Floor, Margin: c.floor().Margin, SimPods: c.SimulatedPods, Format: logFormat, K: c.K, BlockEvery: c.BlockEvery, NetworkID: c.NetworkID, SlotMs: c.Slots.SlotStart(1),
 		EpochMs: c.Slots.EpochStart(1), TTL: c.TTL, Build: c.Build, Retry: c.retry(), Refill: c.RefillEvery}
 	if c.Scale != 0 && c.Scale != 1 {
 		g.Scale = c.Scale

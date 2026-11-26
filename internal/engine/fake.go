@@ -5,12 +5,14 @@ import (
 	"fmt"
 
 	"github.com/blinklabs-io/gouroboros/cbor"
+	"github.com/blinklabs-io/gouroboros/ledger/common"
 	"github.com/blinklabs-io/gouroboros/ledger/conway"
 	ocommon "github.com/blinklabs-io/gouroboros/protocol/common"
 
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
+	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 )
 
@@ -29,8 +31,18 @@ func NewFakeChain(cfg *Config, faults ...fakechain.Scheduled) (*fakechain.Chain,
 	if err != nil {
 		return nil, err
 	}
+	root, err := keys.New(cfg.Seed, cfg.NetworkID)
+	if err != nil {
+		return nil, fmt.Errorf("engine: root keystore: %w", err)
+	}
+	var seats []fakechain.CommitteeSeat
+	for i := range cfg.Committee {
+		cold, _ := root.Committee(uint32(i))
+		seats = append(seats, fakechain.CommitteeSeat{Cold: common.Blake2b224(cold), Expiry: 1 << 20})
+	}
 	return fakechain.New(fakechain.Config{
-		Slots: cfg.Slots, NetworkID: cfg.NetworkID, K: cfg.K, BlockEvery: cfg.BlockEvery, Genesis: append(gs, owners...),
+		Committee: seats,
+		Slots:     cfg.Slots, NetworkID: cfg.NetworkID, K: cfg.K, BlockEvery: cfg.BlockEvery, Genesis: append(gs, owners...),
 		Faults: faults, Staking: staking,
 	})
 }

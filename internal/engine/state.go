@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 
 	"github.com/blinklabs-io/gouroboros/ledger/babbage"
@@ -15,6 +16,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/plan"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
+	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/store"
 )
@@ -46,6 +48,13 @@ func (e *Engine) Snapshot() ([]byte, error) {
 	}
 	s.Ledger = ledgerBlob{Version: blob.Version, Data: blob.Data}
 	s.Dark, s.Down, s.Repairs, s.Stalled = idSet(e.dark), idSet(e.down), idSet(e.repairs), e.stalled
+	s.Paused, s.RateK, s.Waves, s.Adoptions = e.paused, e.rateK, e.waves, slices.Clone(e.adoptions)
+	for _, k := range slices.Sorted(maps.Keys(e.weights)) {
+		s.Weights = append(s.Weights, weightRec{Kind: string(k), Weight: e.weights[k]})
+	}
+	for _, id := range slices.Sorted(mapKeys(e.images)) {
+		s.Images = append(s.Images, imageRec{Pool: uint64(id), Ref: e.images[id]})
+	}
 	if s.View, err = encodeView(e.view.Base()); err != nil {
 		return nil, err
 	}
@@ -79,6 +88,21 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 	}
 	e.now, e.nextID, e.conf, e.fees, e.foreign, e.deposits = s.Now, s.NextIntent, s.Conf, s.Fees, s.Foreign, s.Deposits
 	e.market, e.stalled = s.Market, s.Stalled
+	e.paused, e.rateK, e.waves, e.adoptions = s.Paused, s.RateK, s.Waves, s.Adoptions
+	if len(s.Weights) > 0 {
+		e.weights = map[profile.IntentKind]float64{}
+		for _, w := range s.Weights {
+			e.weights[profile.IntentKind(w.Kind)] = w.Weight
+		}
+	}
+	for _, r := range s.Images {
+		e.images[population.ActorID(r.Pool)] = r.Ref
+	}
+	for i, a := range e.adoptions {
+		if !a.Done {
+			e.queue.Push(a.At, qev{kind: evAdopt, intent: uint64(i)})
+		}
+	}
 	for _, set := range []struct {
 		m   map[population.ActorID]bool
 		ids []uint64

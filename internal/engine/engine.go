@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"math/rand/v2"
 	"slices"
 	"strconv"
@@ -65,6 +66,9 @@ const (
 	evRetry
 	// evRefill is the faucet's round.
 	evRefill
+	// evAdopt is one pool's adoption in an upgrade wave; intent indexes
+	// the adoptions.
+	evAdopt
 )
 
 type qev struct {
@@ -147,6 +151,17 @@ type Engine struct {
 	// asked for since. stalled is set by a stall incident.
 	dark, down, repairs map[population.ActorID]bool
 	stalled             bool
+
+	// Controls: paused stops the agendas; rateK multiplies every actor's
+	// rate (zero is 1); weights override the profiles' intent weights.
+	paused  bool
+	rateK   uint32
+	weights map[profile.IntentKind]float64
+	// waves counts upgrade waves; adoptions are their queued image
+	// changes and images the plan they built, by pool actor.
+	waves     uint64
+	adoptions []adoption
+	images    map[population.ActorID]string
 	// rootKeys is the run seed's own keystore (genesis pools, faucet, committee);
 	// gpools are the genesis pools.
 	rootKeys *keys.Store
@@ -239,6 +254,7 @@ func newEmpty(cfg Config) (*Engine, error) {
 		pending: map[uint64]*pendingRec{}, byTx: map[TxID]uint64{}, book: chain.NewBook(),
 		pools: map[population.ActorID][28]byte{},
 		dark:  map[population.ActorID]bool{}, down: map[population.ActorID]bool{}, repairs: map[population.ActorID]bool{},
+		images: map[population.ActorID]string{},
 	}
 	if e.guard, err = policy.New(cfg.floor()); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrConfig, err)
@@ -301,6 +317,12 @@ func (e *Engine) Handle(ctx context.Context, in eventlog.Record) ([]eventlog.Rec
 			return nil, fmt.Errorf("engine: decode rollback: %w", err)
 		}
 		err = e.rollback(ctx, b.To)
+	case eventlog.KindControl:
+		var c control
+		if err = eventlog.Decode(in.Body, &c); err != nil {
+			return nil, fmt.Errorf("engine: decode control: %w", err)
+		}
+		err = e.controlInput(ctx, in.At, c)
 	case eventlog.KindPoolStatus:
 		var s PoolStatus
 		if err = eventlog.Decode(in.Body, &s); err != nil {
@@ -383,6 +405,8 @@ func (e *Engine) run(ctx context.Context, at sched.Time, ev qev) error {
 	case evRetry:
 	case evRefill:
 		return e.refill(ctx, at)
+	case evAdopt:
+		e.adopt(at, ev.intent)
 	}
 	return nil
 }
@@ -484,7 +508,7 @@ func (e *Engine) hazard(at sched.Time, id population.ActorID) error {
 }
 
 func (e *Engine) nextAct(a population.Actor, st *actor, now sched.Time) {
-	rate := st.rate * a.Traits.RateMult
+	rate := st.rate * a.Traits.RateMult * float64(max(e.rateK, 1))
 	if rate <= 0 || st.policy == nil {
 		st.actAt = population.Never
 		return
@@ -500,8 +524,12 @@ func (e *Engine) nextAct(a population.Actor, st *actor, now sched.Time) {
 func (e *Engine) act(ctx context.Context, at sched.Time, id population.ActorID) error {
 	a, _ := e.census.Get(id)
 	st := e.actors[id]
+	if e.paused {
+		e.nextAct(a, st, at)
+		return nil
+	}
 	r := e.draw(a, st, "act")
-	d := agenda.Decide(a, r, view{e: e}, st.policy, st.prof.Weights)
+	d := agenda.Decide(a, r, view{e: e}, st.policy, e.weightsOf(st.prof))
 	e.emit(at, KindIntentChosen, id, d)
 	switch {
 	case d.Intent.Kind == agenda.Idle:
@@ -774,4 +802,17 @@ func (e *Engine) walletOf(id population.ActorID) keys.Wallet {
 		return e.faucet
 	}
 	return e.actors[id].wallet
+}
+
+// weightsOf is a profile's intent weights with the controls' overrides.
+func (e *Engine) weightsOf(p profile.Profile) map[profile.IntentKind]float64 {
+	if len(e.weights) == 0 {
+		return p.Weights
+	}
+	w := maps.Clone(p.Weights)
+	if w == nil {
+		w = map[profile.IntentKind]float64{}
+	}
+	maps.Copy(w, e.weights)
+	return w
 }

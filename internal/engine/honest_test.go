@@ -26,6 +26,17 @@ profiles:
     budget: 1000000000
     rates: {base: {register_stake: 0.05, delegate: 0.05, send: 0.05}}
     hazards: {}
+  - name: whale
+    kind: wallet
+    agenda: yield
+    traits:
+      competence: "beta(8, 2)"
+      patience: "const(5)"
+      learning_rate: "const(0.05)"
+      care: "beta(2, 2)"
+    budget: 200000000000
+    rates: {base: {register_stake: 0.05}}
+    hazards: {}
   - name: trader
     kind: wallet
     agenda: opportunist
@@ -91,7 +102,8 @@ func honestConfig(t testing.TB, seed uint64) Config {
 		Seed: SeedFromInt(seed), Profiles: reg, Slots: slots, K: 3, BlockEvery: 4, Build: fullParams(), TTL: 30,
 		BinaryVersion: "test", SimulatedPods: true, NOpt: uint64(pp.NOpt), GovLifetime: pp.GovActionValidityPeriod,
 		GenesisPools: 3, GenesisPoolStake: 10_000_000_000,
-		Cohorts: []Cohort{{"operator", 4}, {"drep", 2}, {"staker", 6}, {"trader", 4}, {"citizen", 4}},
+		Committee: 3,
+		Cohorts:   []Cohort{{"whale", 1}, {"operator", 4}, {"drep", 2}, {"staker", 6}, {"trader", 4}, {"citizen", 4}},
 	}
 }
 
@@ -129,17 +141,22 @@ func cmpOr(s, def string) string {
 }
 
 // TestHonestIntentsLand: on the fake chain every honest intent kind with a
-// builder lands, value is conserved, and pools and DReps move along their
-// lifecycle on confirmation.
+// builder lands, an injected info proposal and committee hot keys among
+// them, and the DReps vote on the proposal; value is conserved, and pools
+// and DReps move along their lifecycle on confirmation.
 func TestHonestIntentsLand(t *testing.T) {
 	cfg := honestConfig(t, 3)
 	w := newWorld(t, cfg)
+	at := cfg.Slots.EpochStart(1)
+	w.controls = &scriptControls{clock: w.clock, at: []sched.Time{at, at}, cs: []control{
+		{RequestID: "p", Op: "inject", Scenario: scenarioPropose}, {RequestID: "h", Op: "inject", Scenario: scenarioHotKeys},
+	}}
 	p := cleanRun(t, w, cfg.Slots.EpochStart(3))
 	got := settledKinds(t, p.log)
 	t.Logf("settled: %v", got)
 
 	for _, k := range []string{"send", "register_stake", "delegate", "register_pool", "register_drep",
-		"delegate_drep", "mint", lockKind, unlockKind} {
+		"delegate_drep", "mint", lockKind, unlockKind, "propose", "vote", hotKind} {
 		if got[k] == 0 {
 			t.Errorf("no %s settled", k)
 		}

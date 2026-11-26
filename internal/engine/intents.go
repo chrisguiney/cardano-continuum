@@ -117,6 +117,7 @@ var specs = map[string]spec{
 		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
 			return e.builder.Lock(ctx, w, build.Lock{Spend: sp, Script: build.AlwaysSucceeds, Amount: p.Amount, Datum: actorDatum(population.ActorID(p.Actor))})
 		}},
+	hotKind:                            {need: none, headroom: feeHeadroom, deposit: noDeposit, build: buildHot},
 	unlockKind:                         {need: none, headroom: scriptHeadroom, deposit: noDeposit, build: buildUnlock},
 	string(profile.IntentRegisterPool): {need: poolNeed, headroom: feeHeadroom, deposit: poolDeposit, build: buildPool},
 	string(profile.IntentRetirePool): {need: none, headroom: feeHeadroom, guarded: true, deposit: noDeposit,
