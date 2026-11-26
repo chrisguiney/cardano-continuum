@@ -1,0 +1,43 @@
+{
+  "last_seq": 120,
+  "sim_time_ms": 61000,
+  "tip": {
+    "slot": 77,
+    "hash": "0707"
+  },
+  "blocks": 5,
+  "rollbacks": 0,
+  "epoch": 3,
+  "tx_per_sec": 0.5,
+  "submit_per_sec": 0.75,
+  "ada": {
+    "fees_lovelace": 350000,
+    "submitted_lovelace": 10000000,
+    "confirmed_lovelace": 5000000
+  },
+  "txs": {
+    "submitted": 2,
+    "confirmed": 1,
+    "retries": 1,
+    "refused": 0,
+    "released": 0,
+    "gave_up": 0,
+    "skipped": 0
+  },
+  "population": {
+    "total": 2,
+    "by_profile": {
+      "hodl": 1,
+      "yield": 1
+    },
+    "by_state": {
+      "active": 2
+    }
+  },
+  "invariants": [
+    {
+      "name": "log_gapless",
+      "ok": true
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "total": 2,
+  "offset": 0,
+  "limit": 2,
+  "rows": [
+    {
+      "id": 1,
+      "name": "alice",
+      "role": "wallet",
+      "profile": "hodl",
+      "state": "active",
+      "intents": 4,
+      "txs": 2,
+      "retries": 1,
+      "confirmed": 1,
+      "released": 0
+    },
+    {
+      "id": 2,
+      "name": "bob",
+      "role": "wallet",
+      "profile": "yield",
+      "state": "active",
+      "intents": 0,
+      "txs": 0,
+      "retries": 0,
+      "confirmed": 0,
+      "released": 0
+    }
+  ]
+}

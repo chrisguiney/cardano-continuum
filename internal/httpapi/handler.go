@@ -1,0 +1,187 @@
+package httpapi
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"strconv"
+	"time"
+)
+
+const (
+	defaultHeartbeat    = 15 * time.Second
+	defaultWriteTimeout = 10 * time.Second
+)
+
+// Config wires NewHandler. Controls may be nil, which turns POST
+// /api/control into 501.
+type Config struct {
+	Source   Source
+	Controls Controls
+	Logger   *slog.Logger
+	// Heartbeat is the SSE comment interval; zero means 15s.
+	Heartbeat time.Duration
+	// WriteTimeout bounds each SSE write, so a client that stops reading
+	// frees its goroutine; zero means 10s.
+	WriteTimeout time.Duration
+}
+
+type api struct {
+	Config
+}
+
+// NewHandler returns the API's routes:
+//
+//	GET  /healthz
+//	GET  /api/overview
+//	GET  /api/actors?limit&offset&sort&dir&profile&state&role
+//	GET  /api/actors/{id}/timeline
+//	GET  /api/pools
+//	GET  /api/findings?limit&offset
+//	GET  /api/findings/{id}
+//	GET  /api/decisions?actor&profile&kind&last_event_id   (SSE)
+//	POST /api/control
+func NewHandler(cfg Config) http.Handler {
+	if cfg.Logger == nil {
+		cfg.Logger = slog.New(slog.DiscardHandler)
+	}
+	cfg.Logger = cfg.Logger.With("component", "httpapi")
+	if cfg.Heartbeat <= 0 {
+		cfg.Heartbeat = defaultHeartbeat
+	}
+	if cfg.WriteTimeout <= 0 {
+		cfg.WriteTimeout = defaultWriteTimeout
+	}
+	a := &api{cfg}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+		a.json(w, http.StatusOK, map[string]string{"status": "ok"})
+	})
+	mux.HandleFunc("GET /api/overview", a.overview)
+	mux.HandleFunc("GET /api/actors", a.actors)
+	mux.HandleFunc("GET /api/actors/{id}/timeline", a.timeline)
+	mux.HandleFunc("GET /api/pools", a.pools)
+	mux.HandleFunc("GET /api/findings", a.findings)
+	mux.HandleFunc("GET /api/findings/{id}", func(w http.ResponseWriter, _ *http.Request) {
+		a.fail(w, fmt.Errorf("%w: finding", ErrNotFound))
+	})
+	mux.HandleFunc("GET /api/decisions", a.decisions)
+	mux.HandleFunc("POST /api/control", a.control)
+	return mux
+}
+
+func (a *api) json(w http.ResponseWriter, code int, v any) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		a.Logger.Error("encode response", "err", err)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(code)
+	_, _ = w.Write(append(b, '\n'))
+}
+
+// fail maps err to a status. Only the typed client errors reach the client
+// verbatim; anything else is logged and answered generically.
+func (a *api) fail(w http.ResponseWriter, err error) {
+	var mbe *http.MaxBytesError
+	switch {
+	case errors.As(err, &mbe):
+		a.json(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "request body too large"})
+	case errors.Is(err, ErrBadRequest):
+		a.json(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+	case errors.Is(err, ErrNotFound):
+		a.json(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+	case errors.Is(err, ErrTooManyClients):
+		a.json(w, http.StatusTooManyRequests, map[string]string{"error": err.Error()})
+	default:
+		a.Logger.Error("request failed", "err", err)
+		a.json(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+	}
+}
+
+func (a *api) overview(w http.ResponseWriter, r *http.Request) {
+	s, err := a.Source.Snapshot(r.Context())
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	a.json(w, http.StatusOK, s)
+}
+
+func (a *api) actors(w http.ResponseWriter, r *http.Request) {
+	q, err := parseActorQuery(r)
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	pg, err := a.Source.Actors(r.Context(), q)
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	a.json(w, http.StatusOK, pg)
+}
+
+func (a *api) timeline(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
+	if err != nil {
+		a.fail(w, badf("actor id must be an unsigned integer"))
+		return
+	}
+	t, err := a.Source.ActorTimeline(r.Context(), id)
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	a.json(w, http.StatusOK, t)
+}
+
+func (a *api) pools(w http.ResponseWriter, r *http.Request) {
+	v, err := a.Source.Pools(r.Context())
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	a.json(w, http.StatusOK, v)
+}
+
+func (a *api) findings(w http.ResponseWriter, r *http.Request) {
+	q, err := parseActorQuery(r)
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	f, err := a.Source.Findings(r.Context(), Page{Limit: q.Limit, Offset: q.Offset})
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	a.json(w, http.StatusOK, f)
+}
+
+func (a *api) control(w http.ResponseWriter, r *http.Request) {
+	if a.Controls == nil {
+		a.json(w, http.StatusNotImplemented, map[string]string{"error": "controls are not enabled"})
+		return
+	}
+	c, err := ParseControl(http.MaxBytesReader(w, r.Body, maxBodyBytes))
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	rc, err := a.Controls.Submit(r.Context(), c)
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	code := http.StatusAccepted
+	if rc.Duplicate {
+		code = http.StatusOK
+	}
+	a.json(w, code, rc)
+}

@@ -1,0 +1,23 @@
+{
+  "actor": 1,
+  "profile": "hodl",
+  "role": "wallet",
+  "state": "active",
+  "born_ms": 0,
+  "dropped": 0,
+  "entries": [
+    {
+      "seq": 2,
+      "at": 0,
+      "kind": "Spawned",
+      "detail": "hodl"
+    },
+    {
+      "seq": 6,
+      "at": 6000,
+      "kind": "Submitted",
+      "detail": "5000000 lovelace to 2",
+      "intent": 9
+    }
+  ]
+}
