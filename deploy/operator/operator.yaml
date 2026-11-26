@@ -1,0 +1,38 @@
+# The operator for `make up`: a ServiceAccount, the Deployment and a
+# ClusterRoleBinding to config/rbac/role.yaml. hack/up.sh replaces the image
+# and the binding's namespace. It runs one replica without leader election.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: continuum-operator
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: continuum-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: continuum-operator}
+  template:
+    metadata:
+      labels: {app: continuum-operator}
+    spec:
+      serviceAccountName: continuum-operator
+      containers:
+        - name: operator
+          image: continuum-operator
+          args: [--leader-elect=false]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: continuum-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: continuum-operator
+subjects:
+  - kind: ServiceAccount
+    name: continuum-operator
+    namespace: NAMESPACE

@@ -193,6 +193,32 @@ e2e: kind-up ## Run the kind e2e suite (about an hour; go test -short skips the 
 	CONTINUUM_KO="$(KO)" CONTINUUM_DINGO_SRC="$(DINGO_SRC)" CONTINUUM_GOUROBOROS_SRC="$(GOUROBOROS_SRC)" \
 	CONTINUUM_OVERLAY_MODE="$(MODE)" go test -tags e2e -count=1 -timeout $(E2E_TIMEOUT) -v ./test/e2e/...
 
+# make up / make down: the whole system on one developer machine. The
+# defaults target Docker Desktop's Kubernetes and its plain-HTTP registry on
+# localhost:5005. See docs/single-machine.md for sizing.
+CONTEXT ?= docker-desktop
+NAMESPACE ?= continuum
+PROFILES ?= preprod
+POOLS ?= 3
+DINGO_POOLS ?= 1
+WALLETS ?= 100
+SEED ?= 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+UP_REGISTRY ?= localhost:5005/continuum
+UI_PORT ?= 8088
+UI_ADDRESS ?= 127.0.0.1
+ENGINE_POOLS ?= 0
+UP_ENV = CONTEXT='$(CONTEXT)' NAMESPACE='$(NAMESPACE)' PROFILES='$(PROFILES)' POOLS='$(POOLS)' \
+	DINGO_POOLS='$(DINGO_POOLS)' WALLETS='$(WALLETS)' SEED='$(SEED)' UI_PORT='$(UI_PORT)' UI_ADDRESS='$(UI_ADDRESS)' ENGINE_POOLS='$(ENGINE_POOLS)' \
+	CONTINUUM_REGISTRY='$(or $(CONTINUUM_REGISTRY),$(UP_REGISTRY))' \
+	CONTINUUM_REGISTRY_INSECURE='$(or $(CONTINUUM_REGISTRY_INSECURE),true)' KO='$(KO)'
+
+.PHONY: up down
+up: ## Deploy operator, genesis, pools and the engine UI to CONTEXT (POOLS, DINGO_POOLS, WALLETS, PROFILES, SEED)
+	$(UP_ENV) hack/up.sh
+
+down: ## Delete the pools, the engine and the namespace (the operator stays until the pools are gone)
+	$(UP_ENV) hack/down.sh
+
 # continuum-lab: calibration notebooks. The image layers scipy and pytest over
 # the mithril2pq notebook image (LAB_BASE).
 LAB_IMAGE ?= continuum-lab:local
