@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/chrisguiney/cardano-continuum/internal/build"
+	evclock "github.com/chrisguiney/cardano-continuum/internal/engine/internal/clock"
 	"github.com/chrisguiney/cardano-continuum/internal/plan"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
@@ -25,7 +26,7 @@ const (
 // scheduleRefill queues the faucet's next round after now.
 func (e *Engine) scheduleRefill(now sched.Time) {
 	e.refillAt = e.cfg.Slots.SlotStart(e.cfg.Slots.SlotAt(now) + e.cfg.RefillEvery)
-	e.clk.Push(e.refillAt, qev{kind: evRefill})
+	e.clk.Push(e.refillAt, evclock.Event{Kind: evclock.Refill})
 }
 
 // refill runs one round at time at, then schedules the next.

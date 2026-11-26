@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	evclock "github.com/chrisguiney/cardano-continuum/internal/engine/internal/clock"
 	"github.com/chrisguiney/cardano-continuum/internal/plan"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
@@ -188,7 +189,7 @@ func (e *Engine) setAwaiting(p *pendingRec) {
 // wake schedules a tick at the end of the payment's backoff, so the loop
 // comes back to send it.
 func (e *Engine) wake(p *pendingRec) {
-	e.clk.Push(p.NotBefore, qev{kind: evRetry, intent: p.ID})
+	e.clk.Push(p.NotBefore, evclock.Event{Kind: evclock.Retry, Intent: p.ID})
 }
 
 // reasonOf joins the failure classes of a rejection for the Refused record.

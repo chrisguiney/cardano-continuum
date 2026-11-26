@@ -11,6 +11,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/build"
+	evclock "github.com/chrisguiney/cardano-continuum/internal/engine/internal/clock"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
@@ -431,7 +432,7 @@ func (e *Engine) scheduleDeploy(now sched.Time) {
 
 func (e *Engine) pushDeploy() {
 	if e.deployAt != population.Never && e.deployAt != 0 {
-		e.clk.Push(e.deployAt, qev{kind: evDeploy})
+		e.clk.Push(e.deployAt, evclock.Event{Kind: evclock.Deploy})
 	}
 }
 
@@ -498,6 +499,6 @@ func (e *Engine) nextClock(a population.Actor, st *actor, now sched.Time) {
 	st.booting = !e.ready(a.ID, st)
 	if at := sched.NextArrival(e.draw(a, st, "arrival"), e.clockRate(a.ID, st), nil, now); at != population.Never {
 		st.actAt = at
-		st.actH = e.clk.Push(at, qev{kind: evAct, actor: a.ID})
+		st.actH = e.clk.Push(at, evclock.Event{Kind: evclock.Act, Actor: a.ID})
 	}
 }

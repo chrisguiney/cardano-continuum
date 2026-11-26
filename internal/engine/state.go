@@ -12,6 +12,7 @@ import (
 	"github.com/blinklabs-io/gouroboros/ledger/shelley"
 
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	evclock "github.com/chrisguiney/cardano-continuum/internal/engine/internal/clock"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/mistake"
@@ -117,7 +118,7 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 	}
 	for i, a := range e.adoptions {
 		if !a.Done {
-			e.clk.Push(a.At, qev{kind: evAdopt, intent: uint64(i)})
+			e.clk.Push(a.At, evclock.Event{Kind: evclock.Adopt, Intent: uint64(i)})
 		}
 	}
 	for _, set := range []struct {
@@ -146,7 +147,7 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 	}
 	if cfg.Faucet > 0 {
 		e.refillAt = s.RefillAt
-		e.clk.Push(e.refillAt, qev{kind: evRefill})
+		e.clk.Push(e.refillAt, evclock.Event{Kind: evclock.Refill})
 	}
 	// After restoreActor: the actors' ceilings are set, the spends restored.
 	e.costs.Restore(s.Charges)
@@ -241,10 +242,10 @@ func (e *Engine) restoreActor(r actorRec) error {
 		st.paid = append(st.paid, population.ActorID(id))
 	}
 	if st.hazardAt != population.Never {
-		st.hazardH = e.clk.Push(st.hazardAt, qev{kind: evHazard, actor: a.ID})
+		st.hazardH = e.clk.Push(st.hazardAt, evclock.Event{Kind: evclock.Hazard, Actor: a.ID})
 	}
 	if st.actAt != population.Never {
-		st.actH = e.clk.Push(st.actAt, qev{kind: evAct, actor: a.ID})
+		st.actH = e.clk.Push(st.actAt, evclock.Event{Kind: evclock.Act, Actor: a.ID})
 	}
 	return nil
 }

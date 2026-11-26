@@ -13,6 +13,8 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	evclock "github.com/chrisguiney/cardano-continuum/internal/engine/internal/clock"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/journal"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
@@ -36,7 +38,7 @@ var (
 	// ErrUnknownPoint: a rollback names a point the engine never applied.
 	ErrUnknownPoint = errors.New("engine: rollback to an unknown point")
 	// ErrTimeBackwards: a Tick older than the engine's clock.
-	ErrTimeBackwards = errors.New("engine: tick moves time backwards")
+	ErrTimeBackwards = evclock.ErrBackwards
 	// ErrUnknownInput: an input kind the engine does not handle.
 	ErrUnknownInput = errors.New("engine: unknown input kind")
 	// ErrUnknownVerdict: a SubmitResult whose verdict is missing or unknown.
@@ -120,8 +122,8 @@ type Engine struct {
 	refillAt sched.Time
 
 	census population.Census
-	clk    evClock
-	jr     journal
+	clk    evclock.Clock
+	jr     journal.Journal
 	actors map[population.ActorID]*actor
 	order  []population.ActorID // ascending
 	births []*birth             // by profile name
@@ -217,7 +219,7 @@ func New(cfg Config) (*Engine, error) {
 	if cfg.Faucet > 0 {
 		owners = []population.ActorID{faucetActor}
 		e.refillAt = 0
-		e.clk.Push(0, qev{kind: evRefill})
+		e.clk.Push(0, evclock.Event{Kind: evclock.Refill})
 	}
 	var genesis []plan.Utxo
 	for i, f := range funds {
@@ -415,23 +417,23 @@ func (e *Engine) tick(ctx context.Context, t sched.Time) error {
 	}
 }
 
-func (e *Engine) run(ctx context.Context, at sched.Time, ev qev) error {
-	switch ev.kind {
-	case evBirth:
-		b := e.births[ev.birth]
+func (e *Engine) run(ctx context.Context, at sched.Time, ev evclock.Event) error {
+	switch ev.Kind {
+	case evclock.Birth:
+		b := e.births[ev.Birth]
 		a := e.spawn(b.prof, at)
 		e.jr.Emit(at, KindSpawned, a.ID, Spawned{Profile: b.prof.Name})
 		e.scheduleBirth(b, at)
-	case evHazard:
-		return e.hazard(at, ev.actor)
-	case evAct:
-		return e.act(ctx, at, ev.actor)
-	case evRetry:
-	case evRefill:
+	case evclock.Hazard:
+		return e.hazard(at, ev.Actor)
+	case evclock.Act:
+		return e.act(ctx, at, ev.Actor)
+	case evclock.Retry:
+	case evclock.Refill:
 		return e.refill(ctx, at)
-	case evAdopt:
-		e.adopt(at, ev.intent)
-	case evDeploy:
+	case evclock.Adopt:
+		e.adopt(at, ev.Intent)
+	case evclock.Deploy:
 		return e.deploy(at)
 	}
 	return nil
@@ -449,7 +451,7 @@ func (e *Engine) pushBirth(b *birth) {
 		return
 	}
 	idx := slices.Index(e.births, b)
-	b.h = e.clk.Push(b.at, qev{kind: evBirth, birth: idx})
+	b.h = e.clk.Push(b.at, evclock.Event{Kind: evclock.Birth, Birth: idx})
 }
 
 // spawn adds an actor and schedules its first hazard.
@@ -510,7 +512,7 @@ func (e *Engine) draw(a population.Actor, st *actor, purpose string) *rand.Rand 
 func (e *Engine) nextHazard(a population.Actor, st *actor, now sched.Time) {
 	st.hazardAt, st.hazardTo = population.NextHazard(a, st.prof, e.draw(a, st, "hazard"), now)
 	if st.hazardAt != population.Never {
-		st.hazardH = e.clk.Push(st.hazardAt, qev{kind: evHazard, actor: a.ID})
+		st.hazardH = e.clk.Push(st.hazardAt, evclock.Event{Kind: evclock.Hazard, Actor: a.ID})
 	}
 }
 
@@ -563,11 +565,11 @@ func (e *Engine) nextAct(a population.Actor, st *actor, now sched.Time) {
 				st.actAt, st.followUp = at, true
 			}
 		}
-		st.actH = e.clk.Push(st.actAt, qev{kind: evAct, actor: a.ID})
+		st.actH = e.clk.Push(st.actAt, evclock.Event{Kind: evclock.Act, Actor: a.ID})
 		return
 	}
 	st.actAt = sched.NextArrival(e.draw(a, st, "arrival"), rate, mod, now)
-	st.actH = e.clk.Push(st.actAt, qev{kind: evAct, actor: a.ID})
+	st.actH = e.clk.Push(st.actAt, evclock.Event{Kind: evclock.Act, Actor: a.ID})
 }
 
 func (e *Engine) act(ctx context.Context, at sched.Time, id population.ActorID) error {
@@ -605,7 +607,7 @@ func (e *Engine) act(ctx context.Context, at sched.Time, id population.ActorID) 
 		// be more than one transaction.
 		st.waits++
 		st.actAt = at + e.blockMs()
-		st.actH = e.clk.Push(st.actAt, qev{kind: evAct, actor: a.ID})
+		st.actH = e.clk.Push(st.actAt, evclock.Event{Kind: evclock.Act, Actor: a.ID})
 		return nil
 	}
 	st.waits = 0

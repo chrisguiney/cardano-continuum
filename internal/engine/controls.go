@@ -10,6 +10,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/build"
+	evclock "github.com/chrisguiney/cardano-continuum/internal/engine/internal/clock"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
@@ -222,7 +223,7 @@ func (e *Engine) startWave(at sched.Time, arg string) string {
 	src := e.cfg.Seed.Derive("upgrade", strconv.FormatUint(e.waves, 10)).Rand()
 	for _, in := range upgrade.Plan(c, image, pools, src) {
 		e.adoptions = append(e.adoptions, adoption{At: in.At, Pool: in.Pool, Ref: in.Ref})
-		e.clk.Push(in.At, qev{kind: evAdopt, intent: uint64(len(e.adoptions) - 1)})
+		e.clk.Push(in.At, evclock.Event{Kind: evclock.Adopt, Intent: uint64(len(e.adoptions) - 1)})
 	}
 	return ""
 }
