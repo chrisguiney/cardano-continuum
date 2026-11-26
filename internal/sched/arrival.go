@@ -195,67 +195,33 @@ func (h *Hawkes) Next(r *rand.Rand, now Time) Time {
 	return t
 }
 
-// Excitation is the self-excited part of a Hawkes intensity as a value:
-// Excess events per second above the base rate, as of time Since. It
-// decays at the process's beta and gains alpha per event. Two numbers are
-// the whole state of an exponential kernel, so it fits in a snapshot.
-type Excitation struct {
-	Excess float64
-	Since  Time
-}
+// Branching is a Hawkes process with an exponential kernel in its cluster
+// (branching) form: immigrants arrive at a base rate, and every event
+// begets a Poisson number of children with mean Ratio, each an exponential
+// wait of rate Beta (per second) after its parent. Intensity alpha and
+// decay beta give Ratio = alpha/beta; Ratio < 1 keeps clusters finite, of
+// mean size 1/(1-Ratio), so the long-run rate is the immigrant rate over
+// (1-Ratio). Unlike thinning the intensity, the form says which events are
+// children, which a caller that must delay a child (until its parent's
+// effects settle) can then keep instead of losing.
+// https://en.wikipedia.org/wiki/Hawkes_process#Branching_structure
+type Branching struct{ Ratio, Beta float64 }
 
-// At is the excess at t, decayed at beta per second; times before Since
-// read as Since.
-func (x Excitation) At(t Time, beta float64) float64 {
-	if x.Excess == 0 {
+// Children draws how many children an event begets.
+func (b Branching) Children(r *rand.Rand) int {
+	if b.Ratio <= 0 {
 		return 0
 	}
-	dt := max(0, float64(t-x.Since)/1000)
-	return x.Excess * math.Exp(-beta*dt)
+	// Knuth's product of uniforms; Ratio is below 1, so a handful of draws.
+	limit, n, p := math.Exp(-b.Ratio), 0, r.Float64()
+	for p > limit {
+		n++
+		p *= r.Float64()
+	}
+	return n
 }
 
-// Excite records an event at t.
-func (x Excitation) Excite(t Time, alpha, beta float64) Excitation {
-	return Excitation{Excess: x.At(t, beta) + alpha, Since: max(t, x.Since)}
-}
-
-// NextExcited samples the next arrival strictly after now of a modulated
-// Hawkes process: intensity mod(t) * (mu + x.At(t)), mod nil meaning 1.
-// It thins against mod.Max() times the intensity at the candidate's
-// origin, which bounds what follows because the excess only decays
-// between events (Ogata). The caller records the arrival with Excite. The
-// long-run rate is mu / (1 - alpha/beta) times the modulation's mean.
-//
-// offspring reports that the arrival came from the excitation rather than
-// the base rate (with probability excess / (mu + excess) at its time):
-// in the branching view of a Hawkes process it is a follow-up of an
-// earlier event, not an immigrant.
-func NextExcited(r *rand.Rand, mu, beta float64, x Excitation, mod Modulation, now Time) (at Time, offspring bool) {
-	peak := 1.0
-	if mod != nil {
-		peak = mod.Max()
-	}
-	t := float64(now)
-	for {
-		bound := peak * (mu + x.At(Time(t), beta))
-		if !(bound > 0) {
-			return never, false
-		}
-		t += r.ExpFloat64() / bound * 1000
-		if t >= float64(never) {
-			return never, false
-		}
-		f := 1.0
-		if mod != nil {
-			f = mod.Factor(Time(t))
-		}
-		if r.Float64()*bound < f*(mu+x.At(Time(t), beta)) {
-			break
-		}
-	}
-	at = max(now+1, Time(math.Ceil(t)))
-	if ex := x.At(Time(t), beta); ex > 0 {
-		offspring = r.Float64()*(mu+ex) >= mu
-	}
-	return at, offspring
+// Delay draws a child's wait after its parent, at least a millisecond.
+func (b Branching) Delay(r *rand.Rand) Time {
+	return max(1, Time(math.Ceil(r.ExpFloat64()/b.Beta*1000)))
 }

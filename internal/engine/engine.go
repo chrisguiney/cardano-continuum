@@ -102,12 +102,13 @@ type actor struct {
 	// it registers, and must not fire a fitted clock (a clock's first
 	// event would come at the boot rate, far too soon).
 	booting bool
-	// excite is the self-excitation of the actor's wake-ups when its
-	// profile has Hawkes parameters.
-	excite sched.Excitation
-	// followUp marks a pending wake that the excitation, not the base
-	// rate, caused: a follow-up acts rather than idling.
+	// owed is how many follow-ups the actor's transactions have begotten
+	// and not yet made, when its profile has Hawkes parameters; followUp
+	// marks the pending wake as one of them.
+	owed     uint32
 	followUp bool
+	// waits is how many blocks a follow-up has waited for coins to act on.
+	waits uint8
 	// paid are the actor's payees, most recent last, at most maxPaid.
 	paid []population.ActorID
 }
@@ -598,10 +599,19 @@ func (e *Engine) nextAct(a population.Actor, st *actor, now sched.Time) {
 		mod = sched.Daily{Amplitude: d}
 	}
 	if h := st.prof.Rates.Hawkes; h.Alpha > 0 {
-		// The base rate is cut so the excited process averages rate:
-		// mean = mu / (1 - alpha/beta).
-		mu := rate * (1 - h.Alpha/h.Beta)
-		st.actAt, st.followUp = sched.NextExcited(e.draw(a, st, "arrival"), mu, h.Beta, st.excite, mod, now)
+		// The Hawkes process in its branching form: owed follow-ups come
+		// one at a time, each a decay wait after the last act, racing the
+		// base-rate arrivals (immigrants), which Poisson's memorylessness
+		// lets the race redraw. The base rate is cut so the clusters
+		// average rate: mean = mu / (1 - alpha/beta).
+		b := sched.Branching{Ratio: h.Alpha / h.Beta, Beta: h.Beta}
+		r := e.draw(a, st, "arrival")
+		st.actAt, st.followUp = sched.NextArrival(r, rate*(1-b.Ratio), mod, now), false
+		if st.owed > 0 {
+			if at := now + b.Delay(r); at < st.actAt {
+				st.actAt, st.followUp = at, true
+			}
+		}
 		st.actH = e.queue.Push(st.actAt, qev{kind: evAct, actor: a.ID})
 		return
 	}
@@ -623,9 +633,9 @@ func (e *Engine) act(ctx context.Context, at sched.Time, id population.ActorID) 
 	case st.boot != "":
 		d, gov = e.decideClock(a, st, r)
 	case st.followUp:
-		// A burst is follow-up activity: the excited wake-up does
-		// something. Excitation counts acts, so a burst of idle wake-ups
-		// would leave transactions as spread out as without it.
+		// A burst is follow-up activity: a follow-up does something. A
+		// burst of idle wake-ups would leave transactions as spread out
+		// as without it.
 		w := maps.Clone(e.weightsOf(st.prof))
 		if w == nil {
 			w = map[profile.IntentKind]float64{}
@@ -635,10 +645,25 @@ func (e *Engine) act(ctx context.Context, at sched.Time, id population.ActorID) 
 	default:
 		d = agenda.Decide(a, r, view{e: e}, st.policy, e.weightsOf(st.prof))
 	}
-	if h := st.prof.Rates.Hawkes; h.Alpha > 0 && d.Intent.Kind != agenda.Idle {
-		st.excite = st.excite.Excite(at, h.Alpha, h.Beta)
-	}
 	e.emit(at, KindIntentChosen, id, d)
+	if st.followUp && d.Intent.Kind == agenda.Idle && st.waits < maxFollowWaits {
+		// Nothing to do yet, most often because the actor's coins are in
+		// the attempt this follows: the planner offers only settled
+		// outputs, so the change takes K blocks. The follow-up waits a
+		// block at a time instead of being lost, or a burst could never
+		// be more than one transaction.
+		st.waits++
+		st.actAt = at + e.blockMs()
+		st.actH = e.queue.Push(st.actAt, qev{kind: evAct, actor: a.ID})
+		return nil
+	}
+	st.waits = 0
+	if st.followUp {
+		st.owed--
+	}
+	if h := st.prof.Rates.Hawkes; h.Alpha > 0 && d.Intent.Kind != agenda.Idle {
+		st.owed += uint32(sched.Branching{Ratio: h.Alpha / h.Beta}.Children(r))
+	}
 	switch {
 	case d.Intent.Kind == agenda.Idle:
 	case !e.checkFloor(at, d.Intent):
@@ -655,6 +680,19 @@ func (e *Engine) act(ctx context.Context, at sched.Time, id population.ActorID) 
 	}
 	e.nextAct(a, st, at)
 	return nil
+}
+
+// maxFollowWaits bounds how many blocks a follow-up waits to act.
+const maxFollowWaits = 30
+
+// blockMs is the fake chain's block interval in milliseconds, or 20 slots
+// when the chain's interval is unknown (a live node).
+func (e *Engine) blockMs() sched.Time {
+	n := e.cfg.BlockEvery
+	if n == 0 {
+		n = 20
+	}
+	return max(e.cfg.Slots.SlotStart(n)-e.cfg.Slots.SlotStart(0), 1)
 }
 
 // paymentSize is the amount of a payment from an actor holding bal, never

@@ -7,6 +7,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
+	"github.com/chrisguiney/cardano-continuum/internal/sched"
 )
 
 // A profile's Hawkes parameters keep its actors' payment rate: the base
@@ -19,7 +20,7 @@ func TestHawkesKeepsThePaymentRate(t *testing.T) {
 	_, n0 := shortTxGaps(t, hodl)
 	_, n1 := shortTxGaps(t, burst)
 	if math.Abs(math.Log(float64(n1)/float64(n0))) > 0.35 {
-		t.Fatalf("%d payment gaps with excitation, %d without: the rate moved", n1, n0)
+		t.Fatalf("%d payments with excitation, %d without: the rate moved", n1, n0)
 	}
 }
 
@@ -68,10 +69,15 @@ func TestCarePrefersKnownPayees(t *testing.T) {
 }
 
 // shortTxGaps is the share of gaps between an actor's consecutive
-// payments that are under two seconds, with the number of gaps.
+// payments that are under two seconds, and the number of payments.
 func shortTxGaps(t *testing.T, yaml string) (float64, int) {
 	t.Helper()
-	cfg := testConfig(t, 9, 30)
+	return shortTxGapsOf(t, yaml, 30, 1_200_000)
+}
+
+func shortTxGapsOf(t *testing.T, yaml string, wallets int, until sched.Time) (float64, int) {
+	t.Helper()
+	cfg := testConfig(t, 9, wallets)
 	ps, err := profile.Parse(strings.NewReader(yaml))
 	if err != nil {
 		t.Fatal(err)
@@ -80,7 +86,7 @@ func shortTxGaps(t *testing.T, yaml string) (float64, int) {
 		t.Fatal(err)
 	}
 	w := newWorld(t, cfg)
-	w.run(1_200_000, 50, nil)
+	w.run(until, 50, nil)
 	last := map[uint64]int64{}
 	seen := map[uint64]bool{}
 	var n, short float64
@@ -104,7 +110,7 @@ func shortTxGaps(t *testing.T, yaml string) (float64, int) {
 		}
 		last[uint64(rec.Actor)] = int64(rec.At)
 	}
-	return short / n, int(n)
+	return short / n, len(seen)
 }
 
 // Excitation bursts transactions, not idle wake-ups: an excited wake-up is
@@ -115,8 +121,24 @@ func TestHawkesBurstsTransactions(t *testing.T) {
 	burst := strings.Replace(hodl, "        delegate: 0.1\n", "        delegate: 0.1\n      hawkes: {alpha: 0.6, beta: 1}\n", 1)
 	calm, n0 := shortTxGaps(t, hodl)
 	bursty, n1 := shortTxGaps(t, burst)
-	t.Logf("short gaps: calm %.2f of %d, bursty %.2f of %d", calm, n0, bursty, n1)
+	t.Logf("short gaps: calm %.2f (%d payments), bursty %.2f (%d payments)", calm, n0, bursty, n1)
 	if bursty < calm+0.3 {
 		t.Fatalf("short payment gaps %.2f with excitation, %.2f without", bursty, calm)
+	}
+}
+
+// A follow-up whose actor has no free coins (they are in the payment it
+// follows, whose change is K blocks from settling) waits for them rather
+// than being lost: with one coin per wallet and bursts of a second, the
+// payment rate holds.
+func TestFollowUpsWaitForChange(t *testing.T) {
+	slow := strings.NewReplacer("      diurnal: 0.3\n", "", "    weights:\n      send: 0.9\n      delegate: 0.1\n", "",
+		"        send: 0.4\n        delegate: 0.1\n", "        send: 0.05\n").Replace(testProfileYAML)
+	burst := strings.Replace(slow, "        send: 0.05\n", "        send: 0.05\n      hawkes: {alpha: 1.5, beta: 2}\n", 1)
+	_, n0 := shortTxGapsOf(t, slow, 100, 3_600_000)
+	_, n1 := shortTxGapsOf(t, burst, 100, 3_600_000)
+	t.Logf("payments: %d calm, %d bursty", n0, n1)
+	if float64(n1) < 0.7*float64(n0) {
+		t.Fatalf("%d payments with bursts, %d without: follow-ups were lost", n1, n0)
 	}
 }

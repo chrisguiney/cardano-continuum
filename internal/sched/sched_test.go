@@ -317,92 +317,34 @@ func BenchmarkQueuePushPop(b *testing.B) {
 	}
 }
 
-// excitedRun draws n arrivals of the modulated Hawkes process, exciting at
-// each, and returns their times.
-func excitedRun(seed uint64, n int, mu, alpha, beta float64, mod sched.Modulation) []sched.Time {
-	r := rand.New(rand.NewPCG(seed, seed))
-	var x sched.Excitation
-	var out []sched.Time
-	now := sched.Time(0)
-	for range n {
-		now, _ = sched.NextExcited(r, mu, beta, x, mod, now)
-		x = x.Excite(now, alpha, beta)
-		out = append(out, now)
-	}
-	return out
-}
-
-// Without excitation the process is the modulated Poisson process; with
-// branching ratio alpha/beta its long-run rate is mu/(1-alpha/beta), and
-// its gaps are overdispersed (coefficient of variation above 1), which is
-// what bursts are.
-func TestNextExcitedRateAndBursts(t *testing.T) {
-	const n = 20000
-	cv := func(ts []sched.Time) (rate, cv float64) {
-		var sum, sq float64
-		prev := sched.Time(0)
-		for _, x := range ts {
-			g := float64(x - prev)
-			sum, sq, prev = sum+g, sq+g*g, x
-		}
-		m := sum / float64(len(ts))
-		return 1000 / m, math.Sqrt(sq/float64(len(ts))-m*m) / m
-	}
-	r0, c0 := cv(excitedRun(1, n, 0.5, 0, 1, nil))
-	if math.Abs(r0-0.5) > 0.02 || math.Abs(c0-1) > 0.05 {
-		t.Fatalf("unexcited: rate %.3f cv %.2f, want 0.5 and 1", r0, c0)
-	}
-	r1, c1 := cv(excitedRun(2, n, 0.25, 0.5, 1, nil))
-	if math.Abs(r1-0.5) > 0.03 || c1 < 1.2 {
-		t.Fatalf("excited: rate %.3f cv %.2f, want 0.5 and bursty", r1, c1)
-	}
-}
-
-func TestNextExcitedFollowsModulation(t *testing.T) {
-	ts := excitedRun(3, 20000, 0.01, 0.005, 0.02, sched.Daily{Amplitude: 0.9})
-	var peak, trough int
-	for _, x := range ts {
-		if (x % (24 * 3600_000)) < 12*3600_000 {
-			peak++
-		} else {
-			trough++
-		}
-	}
-	if float64(peak) < 2*float64(trough) {
-		t.Fatalf("%d arrivals in the peak half-day, %d in the trough", peak, trough)
-	}
-}
-
-// The excitation decays at beta and adds alpha per event.
-func TestExcitationDecays(t *testing.T) {
-	x := sched.Excitation{}.Excite(1000, 0.4, 2)
-	if got := x.At(1000, 2); math.Abs(got-0.4) > 1e-12 {
-		t.Fatalf("at the event %v, want 0.4", got)
-	}
-	if got, want := x.At(2000, 2), 0.4*math.Exp(-2); math.Abs(got-want) > 1e-12 {
-		t.Fatalf("a second later %v, want %v", got, want)
-	}
-	if got := x.Excite(2000, 0.4, 2).At(2000, 2); math.Abs(got-(0.4*math.Exp(-2)+0.4)) > 1e-12 {
-		t.Fatalf("second excitation %v", got)
-	}
-}
-
-// The share of offspring among arrivals is the branching ratio
-// alpha/beta: each event begets that many on average.
-func TestNextExcitedOffspringShare(t *testing.T) {
+// A cluster's size is geometric in the branching view: one immigrant and
+// Ratio children per event on average, so 1/(1-Ratio) events, and each
+// child comes an exponential wait of mean 1/Beta seconds after its
+// parent.
+func TestBranchingClusters(t *testing.T) {
+	b := sched.Branching{Ratio: 0.6, Beta: 2}
 	r := rand.New(rand.NewPCG(5, 5))
-	var x sched.Excitation
-	now, kids := sched.Time(0), 0
 	const n = 20000
+	var events, delays, d float64
 	for range n {
-		var off bool
-		now, off = sched.NextExcited(r, 0.1, 1, x, nil, now)
-		x = x.Excite(now, 0.6, 1)
-		if off {
-			kids++
+		pending := 1
+		for pending > 0 {
+			pending--
+			events++
+			pending += b.Children(r)
 		}
 	}
-	if got := float64(kids) / n; math.Abs(got-0.6) > 0.03 {
-		t.Fatalf("offspring share %.3f, want 0.6", got)
+	for range n {
+		d += float64(b.Delay(r))
+		delays++
+	}
+	if got := events / n; math.Abs(got-2.5) > 0.1 {
+		t.Fatalf("mean cluster size %.2f, want 1/(1-0.6) = 2.5", got)
+	}
+	if got := d / delays; math.Abs(got-500) > 15 {
+		t.Fatalf("mean delay %.0f ms, want 500", got)
+	}
+	if (sched.Branching{}).Children(r) != 0 {
+		t.Fatal("no branching begets children")
 	}
 }

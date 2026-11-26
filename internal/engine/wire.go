@@ -368,13 +368,14 @@ type actorRec struct {
 	Competence  float64    `cbor:"11,keyasint"`
 	// Booting marks a population actor's wake drawn at the boot rate.
 	Booting bool `cbor:"12,keyasint,omitempty"`
-	// Excess and Since are the actor's Hawkes excitation.
-	Excess float64    `cbor:"13,keyasint,omitempty"`
-	Since  sched.Time `cbor:"14,keyasint,omitempty"`
+	// Owed is the follow-ups the actor owes (engine.go, nextAct).
+	Owed uint32 `cbor:"13,keyasint,omitempty"`
 	// Paid are the actor's known payees, most recent last.
 	Paid []uint64 `cbor:"15,keyasint,omitempty"`
 	// FollowUp marks the pending wake as excited (engine.go, act).
 	FollowUp bool `cbor:"16,keyasint,omitempty"`
+	// Waits is the blocks the pending follow-up has waited.
+	Waits uint8 `cbor:"17,keyasint,omitempty"`
 }
 
 type birthRec struct {
