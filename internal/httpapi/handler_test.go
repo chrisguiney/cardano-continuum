@@ -503,8 +503,8 @@ func TestCapabilitiesReportControls(t *testing.T) {
 		ctl  Controls
 		want string
 	}{
-		"without": {nil, `{"controls":false}`},
-		"with":    {&fakeControls{}, `{"controls":true}`},
+		"without": {nil, `{"controls":false,"explorer":false}`},
+		"with":    {&fakeControls{}, `{"controls":true,"explorer":false}`},
 	} {
 		srv, _ := newServer(t, tt.ctl)
 		code, body := get(t, srv.URL+"/api/capabilities")

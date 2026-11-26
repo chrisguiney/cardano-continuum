@@ -1,0 +1,16 @@
+{
+  "blocks": 5,
+  "epoch": 0,
+  "fees": 1683610,
+  "first_height": 1,
+  "last_height": 5,
+  "pools": [
+    {
+      "blocks": 5,
+      "expected": 5,
+      "pool": "f9dca21a6c826ec8acb4cf395cbc24351937bfe6560b2683ab8b415f"
+    }
+  ],
+  "size": 7201,
+  "txs": 10
+}

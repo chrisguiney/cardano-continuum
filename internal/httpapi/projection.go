@@ -65,6 +65,16 @@ type Projection struct {
 	// meter folds the attack steps and the metrics Measure reads.
 	meter *engine.Meter
 	gov   *govFold
+	// obs sees every record after it is folded.
+	obs func(eventlog.Record)
+}
+
+// Observe sets f to be called with every record after it is folded, under
+// the projection's lock: f must not call back into the projection.
+func (p *Projection) Observe(f func(eventlog.Record)) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.obs = f
 }
 
 // NewProjection returns an empty projection.
@@ -95,6 +105,9 @@ func (p *Projection) Apply(r eventlog.Record) {
 	}
 	if err != nil {
 		p.bodyErrors++
+	}
+	if p.obs != nil {
+		p.obs(r)
 	}
 }
 

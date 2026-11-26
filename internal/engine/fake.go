@@ -157,7 +157,7 @@ func Digest(blockCbor []byte) ([]byte, error) {
 // digestOf encodes a block as chain-sync delivered it. Consumed, Produced
 // and the fee already follow the isValid rule (chain.TxFrom).
 func digestOf(b chain.Block) ([]byte, error) {
-	c := BlockContent{Number: b.Number}
+	c := BlockContent{Number: b.Number, Raw: b.Raw}
 	for _, tx := range b.Txs {
 		d := TxDigest{ID: TxID(tx.Hash), Fee: tx.Fee, Proposals: uint32(len(tx.Proposals))}
 		for _, p := range tx.Proposals {

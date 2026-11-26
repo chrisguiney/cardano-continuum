@@ -21,6 +21,9 @@ const (
 type Config struct {
 	Source   Source
 	Controls Controls
+	// Explorer, when set, serves /api/explorer; without it those paths are
+	// 404 and the capabilities say so.
+	Explorer *Explorer
 	// UI serves every GET path outside /api and /healthz, normally the
 	// embedded single-page app; nil leaves those paths 404.
 	UI     http.Handler
@@ -69,7 +72,7 @@ func NewHandler(cfg Config) http.Handler {
 		a.json(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 	mux.HandleFunc("GET /api/capabilities", func(w http.ResponseWriter, _ *http.Request) {
-		a.json(w, http.StatusOK, map[string]bool{"controls": a.Controls != nil})
+		a.json(w, http.StatusOK, map[string]bool{"controls": a.Controls != nil, "explorer": a.Explorer != nil})
 	})
 	mux.HandleFunc("GET /api/meta/enums", func(w http.ResponseWriter, _ *http.Request) {
 		a.json(w, http.StatusOK, BuildEnums())
@@ -87,6 +90,9 @@ func NewHandler(cfg Config) http.Handler {
 	})
 	mux.HandleFunc("GET /api/decisions", a.decisions)
 	mux.HandleFunc("POST /api/control", a.control)
+	if a.Explorer != nil {
+		a.explorerRoutes(mux)
+	}
 	if cfg.UI == nil {
 		return mux
 	}

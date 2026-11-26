@@ -1,0 +1,54 @@
+{
+  "block": "2e8e37b07d9255f727155986d7ba04eecd4091c37ce2f8b0986a73726cc1b22a",
+  "cbor_hex": "84a500818258203c34d56c69aada793e3b0b29871b3a301f43e48cde7dae6c949eee4ca07b9305000182a200583900ec8974c6066221e2b73914ab2a6bdb21663daad6ff60e0ebf8924da0e01681afce6e25bd3b44a8d82143501ca66b0167309eccbc2ffbeab5011a0130f46ea200583900c077d53b9a79834f7665db186148d31e36f2dc22e83c12cb874b0bed303bad81ee93a4aed037305cc7bfa62b2e452d9c13f2af4d937dd57b011a0ab83be9021a000291a90318780f00a100d901028182582015d014f7b9a57ea944f144ec6e8acc1545ca9d714bd7d9041b669f365a056a3358403a3b4d46fa59938ef4d3d19a1bface6aeca46f4fbd10d5de06ff1483a30209a3fc7d2f052eac38511135b5b3e143b0879d2c3e2dd19eed9d3705f43cf22faf0df5f6",
+  "certificates": [],
+  "collateral": [],
+  "continuum": {
+    "actor": {
+      "id": 13,
+      "name": "",
+      "role": ""
+    },
+    "amount": 19985518,
+    "findings": [],
+    "intent": 1,
+    "verdict": "accepted"
+  },
+  "evicted": false,
+  "fee": 168361,
+  "hash": "df2849dd467d04892fa177e576e4453545b502ee92cf5ad6013552ae7f8b929c",
+  "height": 1,
+  "index": 0,
+  "inputs": [
+    {
+      "index": 0,
+      "tx": "3c34d56c69aada793e3b0b29871b3a301f43e48cde7dae6c949eee4ca07b9305"
+    }
+  ],
+  "mint": [],
+  "outputs": [
+    {
+      "address": "addr_test1qrkgjaxxqe3zrc4h8y22k2ntmvskv0d26mlkpc8tlzfymg8qz6q6lnnwyk7nk39gmqs5x5qu5e4szeesnmxtctlma26shzvsmv",
+      "index": 0,
+      "lovelace": 19985518,
+      "tx": "df2849dd467d04892fa177e576e4453545b502ee92cf5ad6013552ae7f8b929c"
+    },
+    {
+      "address": "addr_test1qrq804fmnfucxnmkvhd3sc2g6v0rdukuyt5rcyktsa9shmfs8wkcrm5n5jhdqdestnrmlf3t9ezjm8qn72h5myma64as6rjql0",
+      "index": 1,
+      "lovelace": 179846121,
+      "tx": "df2849dd467d04892fa177e576e4453545b502ee92cf5ad6013552ae7f8b929c"
+    }
+  ],
+  "proposals": [],
+  "redeemers": [],
+  "reference_inputs": [],
+  "required_signers": [],
+  "scripts": [],
+  "size": 296,
+  "slot": 10,
+  "ttl": 120,
+  "valid": true,
+  "votes": [],
+  "withdrawals": []
+}

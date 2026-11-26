@@ -1,0 +1,26 @@
+{
+  "address": "addr_test1qrkgjaxxqe3zrc4h8y22k2ntmvskv0d26mlkpc8tlzfymg8qz6q6lnnwyk7nk39gmqs5x5qu5e4szeesnmxtctlma26shzvsmv",
+  "assets": [],
+  "balance": 19985518,
+  "history": [
+    {
+      "block": "2e8e37b07d9255f727155986d7ba04eecd4091c37ce2f8b0986a73726cc1b22a",
+      "hash": "df2849dd467d04892fa177e576e4453545b502ee92cf5ad6013552ae7f8b929c",
+      "height": 1,
+      "slot": 10
+    }
+  ],
+  "limit": 25,
+  "offset": 0,
+  "stake": "stake_test1urspdqd0eehzt0fmgj5dsg2r2qw2v6cpvucfan9u9la74dgj3c4ay",
+  "tx_count": 1,
+  "utxo_total": 1,
+  "utxos": [
+    {
+      "address": "addr_test1qrkgjaxxqe3zrc4h8y22k2ntmvskv0d26mlkpc8tlzfymg8qz6q6lnnwyk7nk39gmqs5x5qu5e4szeesnmxtctlma26shzvsmv",
+      "index": 0,
+      "lovelace": 19985518,
+      "tx": "df2849dd467d04892fa177e576e4453545b502ee92cf5ad6013552ae7f8b929c"
+    }
+  ]
+}

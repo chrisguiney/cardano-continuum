@@ -1,0 +1,289 @@
+package httpapi
+
+import (
+	"bytes"
+	"context"
+	"encoding/hex"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/blinklabs-io/gouroboros/cbor"
+	"github.com/blinklabs-io/gouroboros/ledger/common"
+	"github.com/blinklabs-io/gouroboros/ledger/conway"
+	"github.com/blinklabs-io/ouroboros-mock/fixtures"
+
+	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/engine"
+	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
+	"github.com/chrisguiney/cardano-continuum/internal/explorer"
+	"github.com/chrisguiney/cardano-continuum/internal/sched"
+)
+
+// xchain builds real Conway blocks for the explorer.
+type xchain struct {
+	t      *testing.T
+	prev   common.Blake2b256
+	number uint64
+	slot   uint64
+}
+
+func simpleTx(t *testing.T) (raw []byte) {
+	body, err := cbor.Encode(map[uint]any{
+		0: []any{[]any{bytes.Repeat([]byte{1}, 32), uint32(0)}},
+		1: []any{map[uint]any{0: append([]byte{0x60}, bytes.Repeat([]byte{9}, 28)...), 1: uint64(2_000_000)}},
+		2: uint64(200_000),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err = cbor.Encode([]any{cbor.RawMessage(body), map[uint]any{}, true, nil})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
+func (c *xchain) next(prev *common.Blake2b256, issuer byte, txs ...[]byte) (cbor []byte, hash common.Blake2b256) {
+	var gtxs []common.Transaction
+	for _, raw := range txs {
+		tx, err := conway.NewConwayTransactionFromCbor(raw)
+		if err != nil {
+			c.t.Fatal(err)
+		}
+		gtxs = append(gtxs, tx)
+	}
+	if prev == nil {
+		prev = &c.prev
+	}
+	c.number++
+	c.slot += 5
+	b, err := fixtures.NewBlockBuilder(conway.EraConway).WithBlockNumber(c.number).WithSlot(c.slot).WithPreviousHash(*prev).
+		WithIssuerVkey(common.IssuerVkey(bytes.Repeat([]byte{issuer}, 32))).WithProtocolVersion(10, 0).WithTransactions(gtxs...).Build()
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	c.prev = b.Hash()
+	return b.Cbor(), b.Hash()
+}
+
+type exTips map[string][]chain.Mark
+
+func (f exTips) Tips() map[string][]chain.Mark { return f }
+
+func xmark(height uint64, h common.Blake2b256) chain.Mark {
+	return chain.Mark{Height: height, Point: chain.Point{Slot: height * 5, Hash: h}}
+}
+
+type explorerRig struct {
+	t      *testing.T
+	ex     *Explorer
+	srv    *httptest.Server
+	hashes []common.Blake2b256
+	tx     string
+}
+
+func newRig(t *testing.T, tips Tips) *explorerRig {
+	t.Helper()
+	slots := testSlots(t)
+	ex := NewExplorer(ExplorerOptions{Keep: 50, K: 2, Slots: &slots, Tips: tips, Limits: explorer.Limits{MaxMem: 1000, MaxSteps: 2000, MaxBytes: 90_112}})
+	r := &explorerRig{t: t, ex: ex}
+	c := &xchain{t: t}
+	tx := simpleTx(t)
+	gtx, _ := conway.NewConwayTransactionFromCbor(tx)
+	r.tx = gtx.Hash().String()
+	for i := range 3 {
+		var txs [][]byte
+		if i == 1 {
+			txs = [][]byte{tx}
+		}
+		raw, h := c.next(nil, 7, txs...)
+		r.hashes = append(r.hashes, h)
+		r.feed(raw)
+	}
+	r.srv = httptest.NewServer(NewHandler(Config{Source: &fakeSource{hub: NewHub(8, 4, 8)}, Explorer: ex}))
+	t.Cleanup(r.srv.Close)
+	return r
+}
+
+func (r *explorerRig) feed(raw []byte) {
+	r.t.Helper()
+	blk, _ := conway.NewConwayBlockFromCbor(raw)
+	content, err := eventlog.Encode(engine.BlockContent{Number: blk.BlockNumber(), Raw: raw})
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	body, err := eventlog.Encode(eventlog.BlockApplied{Point: eventlog.ChainPoint{Slot: blk.SlotNumber(), Hash: blk.Hash().Bytes()}, Content: content})
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	r.ex.Apply(eventlog.Record{Class: eventlog.Input, Kind: eventlog.KindBlockApplied, Body: body})
+}
+
+func (r *explorerRig) get(path string, v any) int {
+	r.t.Helper()
+	resp, err := http.Get(r.srv.URL + path) //nolint:noctx // loopback test server
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if v != nil {
+		_ = json.NewDecoder(resp.Body).Decode(v)
+	}
+	return resp.StatusCode
+}
+
+func TestExplorerBlocksAndParams(t *testing.T) {
+	r := newRig(t, nil)
+	var pg explorer.BlockPage
+	if code := r.get("/api/explorer/blocks?limit=2", &pg); code != 200 || pg.Total != 3 || len(pg.Rows) != 2 || pg.Rows[0].Height != 3 {
+		t.Fatalf("blocks %d %+v", code, pg)
+	}
+	for _, bad := range []string{"limit=0", "limit=101", "offset=-1", "bogus=1", "pool=zz", "limit=x"} {
+		if code := r.get("/api/explorer/blocks?"+bad, nil); code != 400 {
+			t.Errorf("?%s: %d, want 400", bad, code)
+		}
+	}
+	if code := r.get("/api/explorer/blocks/"+hex.EncodeToString(bytes.Repeat([]byte{5}, 32)), nil); code != 404 {
+		t.Errorf("unknown block: %d", code)
+	}
+	if code := r.get("/api/explorer/blocks/xyz", nil); code != 400 {
+		t.Errorf("bad block key: %d", code)
+	}
+	if code := r.get("/api/explorer/txs/"+r.tx, nil); code != 200 {
+		t.Errorf("tx: %d", code)
+	}
+	if code := r.get("/api/explorer/epochs/0", nil); code != 200 {
+		t.Errorf("epoch: %d", code)
+	}
+	if code := r.get("/api/explorer/epochs/abc", nil); code != 400 {
+		t.Errorf("bad epoch: %d", code)
+	}
+}
+
+func TestExplorerForkIsVisible(t *testing.T) {
+	var other common.Blake2b256
+	other[0] = 0xEE
+	tips := exTips{}
+	r := newRig(t, tips)
+	tips["p1"] = []chain.Mark{xmark(2, r.hashes[1]), xmark(3, r.hashes[2])}
+	tips["p2"] = []chain.Mark{xmark(2, r.hashes[1]), xmark(3, r.hashes[2])}
+	tips["p3"] = []chain.Mark{xmark(2, other), xmark(3, other)}
+	var b BlockDetail
+	if code := r.get("/api/explorer/blocks/2", &b); code != 200 {
+		t.Fatalf("block: %d", code)
+	}
+	states := map[string]string{}
+	for _, p := range b.Pools {
+		states[p.Pool] = p.State
+	}
+	if states["p1"] != "on" || states["p2"] != "on" || states["p3"] != "fork" || !b.Fork {
+		t.Fatalf("placement %+v fork=%v", b.Pools, b.Fork)
+	}
+	// The other pool's block is not in the index but resolves from its tip.
+	var stub BlockDetail
+	if code := r.get("/api/explorer/blocks/"+other.String(), &stub); code != 200 || !stub.Stub || stub.Height != 2 {
+		t.Fatalf("stub %d %+v", code, stub)
+	}
+}
+
+func TestExplorerSearchRouting(t *testing.T) {
+	r := newRig(t, nil)
+	tests := []struct {
+		q, kind, route string
+	}{
+		{r.hashes[1].String(), "block", "/explorer/blocks/" + r.hashes[1].String()},
+		{"2", "block", "/explorer/blocks/" + r.hashes[1].String()},
+		{"slot:15", "block", "/explorer/blocks/" + r.hashes[2].String()},
+		{r.tx, "tx", "/explorer/txs/" + r.tx},
+		{"actor:12", "actor", "/actors/12"},
+		{"@12", "actor", "/actors/12"},
+	}
+	for _, tt := range tests {
+		var s SearchResult
+		if code := r.get("/api/explorer/search?q="+tt.q, &s); code != 200 || string(s.Kind) != tt.kind || s.Route != tt.route {
+			t.Errorf("search %q: %d %+v, want %s %s", tt.q, code, s, tt.kind, tt.route)
+		}
+	}
+	for _, q := range []string{"", "nonsense", "99999", "addr_test1qqqqqqqq"} {
+		if code := r.get("/api/explorer/search?q="+q, nil); code != 404 && code != 400 {
+			t.Errorf("search %q: %d, want 404/400", q, code)
+		}
+	}
+}
+
+func TestExplorerFeedFollowsRollbackAndContext(t *testing.T) {
+	r := newRig(t, nil)
+	// A submitted decision names the transaction's actor and intent; the
+	// submit result gives the verdict.
+	sub, _ := eventlog.Encode(engine.Submitted{Intent: 9, ID: mustTxID(t, r.tx), Amount: 2_000_000, Kind: "pay"})
+	res, _ := eventlog.Encode(engine.SubmitResult{Intent: 9, Verdict: engine.VerdictAccepted})
+	r.ex.Apply(eventlog.Record{Seq: 10, Class: eventlog.Decision, Kind: engine.KindSubmitted, Actor: 4, Body: sub})
+	r.ex.Apply(eventlog.Record{Seq: 11, Class: eventlog.Input, Kind: eventlog.KindSubmitResult, Body: res})
+	var tx TxDetail
+	if code := r.get("/api/explorer/txs/"+r.tx, &tx); code != 200 || tx.Continuum == nil || tx.Continuum.Intent != 9 || tx.Continuum.Verdict != "accepted" || tx.Continuum.Actor == nil || tx.Continuum.Actor.ID != 4 {
+		t.Fatalf("tx context %d %+v", code, tx.Continuum)
+	}
+	// Roll back to block 1: the tx's block goes.
+	to, _ := eventlog.Encode(eventlog.RolledBack{To: eventlog.ChainPoint{Slot: 5, Hash: r.hashes[0].Bytes()}})
+	r.ex.Apply(eventlog.Record{Class: eventlog.Input, Kind: eventlog.KindRolledBack, Body: to})
+	if code := r.get("/api/explorer/txs/"+r.tx, nil); code != 404 {
+		t.Fatalf("rolled-back tx: %d", code)
+	}
+	var st ExplorerStatus
+	r.get("/api/explorer/status", &st)
+	if st.Blocks != 1 || st.Tip != 1 {
+		t.Fatalf("status %+v", st)
+	}
+	_ = context.Background
+}
+
+func TestExplorerOffWithoutIndex(t *testing.T) {
+	srv := httptest.NewServer(NewHandler(Config{Source: &fakeSource{hub: NewHub(8, 4, 8)}}))
+	defer srv.Close()
+	resp, err := http.Get(srv.URL + "/api/explorer/blocks") //nolint:noctx // loopback test server
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != 404 {
+		t.Fatalf("explorer route without an index: %d", resp.StatusCode)
+	}
+	var caps map[string]bool
+	resp, _ = http.Get(srv.URL + "/api/capabilities") //nolint:noctx // loopback test server
+	_ = json.NewDecoder(resp.Body).Decode(&caps)
+	_ = resp.Body.Close()
+	if caps["explorer"] {
+		t.Fatal("capabilities claim an explorer")
+	}
+}
+
+func testSlots(t *testing.T) sched.Slots {
+	t.Helper()
+	s, err := sched.NewSlots(1000, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+func mustTxID(t *testing.T, h string) engine.TxID {
+	t.Helper()
+	b, err := hex.DecodeString(h)
+	if err != nil || len(b) != 32 {
+		t.Fatalf("tx hash %q", h)
+	}
+	return engine.TxID(b)
+}
+
+func TestProjectionObserveSeesEveryRecord(t *testing.T) {
+	p := NewProjection()
+	var seqs []uint64
+	p.Observe(func(r eventlog.Record) { seqs = append(seqs, r.Seq) })
+	p.Apply(eventlog.Record{Seq: 1, Class: eventlog.Input, Kind: eventlog.KindTick})
+	p.Apply(eventlog.Record{Seq: 2, Class: eventlog.Decision, Kind: "Unknown"})
+	if len(seqs) != 2 || seqs[0] != 1 || seqs[1] != 2 {
+		t.Fatalf("observed %v", seqs)
+	}
+}

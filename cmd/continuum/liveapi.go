@@ -91,6 +91,7 @@ type liveServer struct {
 	controls *controlQueue
 	src      *httpapi.LogSource
 	hub      *httpapi.Hub
+	explorer *httpapi.Explorer
 }
 
 // newLiveServer feeds the records already in l, then wraps l so later ones
@@ -101,6 +102,12 @@ type liveServer struct {
 func newLiveServer(ctx context.Context, l engine.Log, db *store.DB, slots sched.Slots, govLife uint64, findings *oracle.Set, pv poolView) (*liveServer, error) {
 	proj, hub := httpapi.NewProjection(), httpapi.NewHub(4096, 64, 256)
 	feed := httpapi.NewFeed(proj, hub)
+	var names httpapi.Names
+	if db != nil {
+		names = db
+	}
+	ex := newExplorer(slots, pv.K, defaultExplorerBlocks, names, pv.Kube, pv.Tips, nil)
+	proj.Observe(ex.Apply)
 	if err := l.Scan(ctx, 1, func(r eventlog.Record) error { feed.Apply(r); return nil }); err != nil {
 		hub.Close()
 		return nil, fmt.Errorf("read event log: %w", err)
@@ -114,7 +121,7 @@ func newLiveServer(ctx context.Context, l engine.Log, db *store.DB, slots sched.
 		cfg.Names = db
 	}
 	src := httpapi.NewLogSource(cfg)
-	return &liveServer{log: feedLog{Log: l, feed: feed}, controls: newControlQueue(), src: src, hub: hub}, nil
+	return &liveServer{log: feedLog{Log: l, feed: feed}, controls: newControlQueue(), src: src, hub: hub, explorer: ex}, nil
 }
 
 // poolView is what the Pools API reads: the cluster's pool objects, the
@@ -132,7 +139,7 @@ func (s *liveServer) serve(ctx context.Context, addr string, log *slog.Logger) e
 	if err != nil {
 		return err
 	}
-	h := httpapi.NewHandler(httpapi.Config{Source: s.src, Controls: s.controls, UI: web.Handler(), Logger: log})
+	h := httpapi.NewHandler(httpapi.Config{Source: s.src, Controls: s.controls, Explorer: s.explorer, UI: web.Handler(), Logger: log})
 	if err := httpapi.Serve(ctx, ln, h, log); err != nil && !errors.Is(err, context.Canceled) {
 		return err
 	}

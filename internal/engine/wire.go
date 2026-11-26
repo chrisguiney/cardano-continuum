@@ -150,6 +150,9 @@ type ProposalDigest struct {
 type BlockContent struct {
 	Txs    []TxDigest `cbor:"1,keyasint"`
 	Number uint64     `cbor:"2,keyasint,omitempty"`
+	// Raw is the block's own CBOR. The engine ignores it; the explorer
+	// decodes it from the log.
+	Raw []byte `cbor:"3,keyasint,omitempty"`
 }
 
 // Verdict is what a submission established, as internal/submit classifies

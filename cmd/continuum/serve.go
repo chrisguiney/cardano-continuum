@@ -22,7 +22,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/web"
 )
 
-const serveUsage = "usage: continuum serve --log EVENTS.LOG [--store DB] [--addr HOST:PORT] [--controls] [--control LOG] [--network N [--namespace NS] [--kubeconfig PATH]]"
+const serveUsage = "usage: continuum serve --log EVENTS.LOG [--store DB] [--addr HOST:PORT] [--controls] [--control LOG] [--explorer-blocks N] [--network N [--namespace NS] [--kubeconfig PATH]]"
 
 // cmdServe serves the web UI and its API over an event log. It reads the log
 // without ever repairing it, so it can follow a run that is still writing;
@@ -39,6 +39,7 @@ func cmdServe(ctx context.Context, args []string, out io.Writer, open openCluste
 	network := fs.String("network", "", "ContinuumNetwork to read pool status from")
 	ns := fs.String("namespace", "default", "namespace of the network and its pools")
 	kubeconfig := fs.String("kubeconfig", "", "kubeconfig path (default: KUBECONFIG rules)")
+	keep := fs.Int("explorer-blocks", defaultExplorerBlocks, "newest blocks the explorer keeps in full; older ones keep a compact index entry")
 	slotMs := fs.Int64("slot-ms", 1000, "slot length in milliseconds, for the epoch")
 	epochSlots := fs.Uint64("epoch-slots", 600, "slots per epoch, for the epoch")
 	govLife := fs.Uint64("gov-lifetime", fakechain.DefaultParams().GovActionValidityPeriod, "governance action lifetime in epochs, for each proposal's last epoch")
@@ -79,13 +80,20 @@ func cmdServe(ctx context.Context, args []string, out io.Writer, open openCluste
 		}
 		cfg.Kube = kubeView{cl: cl, network: *network}
 	}
-	return serve(ctx, serveParams{log: *logPath, addr: *addr, controls: *controls, cfg: cfg}, out)
+	if *keep < 1 {
+		return errors.New("--explorer-blocks must be at least 1")
+	}
+	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	ex := newExplorer(slots, 0, *keep, cfg.Names, cfg.Kube, cfg.Tips, log)
+	cfg.Projection.Observe(ex.Apply)
+	return serve(ctx, serveParams{log: *logPath, addr: *addr, controls: *controls, cfg: cfg, explorer: ex}, out)
 }
 
 type serveParams struct {
 	log, addr string
 	controls  bool
 	cfg       httpapi.LogSourceConfig
+	explorer  *httpapi.Explorer
 }
 
 func serve(ctx context.Context, p serveParams, out io.Writer) error {
@@ -97,7 +105,7 @@ func serve(ctx context.Context, p serveParams, out io.Writer) error {
 	if _, err := tail.Poll(ctx); err != nil {
 		return err
 	}
-	hcfg := httpapi.Config{Source: httpapi.NewLogSource(p.cfg), UI: web.Handler(), Logger: slog.New(slog.NewTextHandler(os.Stderr, nil))}
+	hcfg := httpapi.Config{Source: httpapi.NewLogSource(p.cfg), Explorer: p.explorer, UI: web.Handler(), Logger: slog.New(slog.NewTextHandler(os.Stderr, nil))}
 	if p.controls {
 		fl, err := eventlog.Open(p.log)
 		if err != nil {

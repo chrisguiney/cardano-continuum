@@ -86,6 +86,9 @@ type Block struct {
 	Prev   common.Blake2b256
 	Number uint64
 	Txs    []Tx
+	// Raw is the block's CBOR as the node sent it; empty for a block built
+	// in a test.
+	Raw []byte
 }
 
 // Tx is the ledger effect of one transaction. A transaction that failed
@@ -156,6 +159,7 @@ func BlockFrom(b ledger.Block) Block {
 		Point:  Point{Slot: b.SlotNumber(), Hash: b.Hash()},
 		Prev:   b.PrevHash(),
 		Number: b.BlockNumber(),
+		Raw:    b.Cbor(),
 	}
 	for _, tx := range b.Transactions() {
 		out.Txs = append(out.Txs, TxFrom(tx))
