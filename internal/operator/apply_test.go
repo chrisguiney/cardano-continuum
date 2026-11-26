@@ -30,14 +30,14 @@ func (w *writes) Update(ctx context.Context, o client.Object, opts ...client.Upd
 	return w.Client.Update(ctx, o, opts...)
 }
 
-func applier(t *testing.T) (*Pools, *writes) {
+func newApplier(t *testing.T) (*applier, *writes) {
 	t.Helper()
 	s := runtime.NewScheme()
 	if err := scheme.AddToScheme(s); err != nil {
 		t.Fatal(err)
 	}
 	c := &writes{Client: fake.NewClientBuilder().WithScheme(s).Build()}
-	return NewPools(c, Drivers(), nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil))), c
+	return &applier{client: c, log: slog.New(slog.NewTextHandler(io.Discard, nil))}, c
 }
 
 func rendered(t *testing.T) Workload {
@@ -65,7 +65,7 @@ func defaulted(set *appsv1.StatefulSet) {
 	set.Spec.RevisionHistoryLimit = ptr.To(int32(10))
 }
 
-func stored(t *testing.T, r *Pools, set *appsv1.StatefulSet) *appsv1.StatefulSet {
+func stored(t *testing.T, r *applier, set *appsv1.StatefulSet) *appsv1.StatefulSet {
 	t.Helper()
 	ctx := context.Background()
 	stamp(set)
@@ -124,7 +124,7 @@ func TestUpdateRollsOnRemoval(t *testing.T) {
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			r, c := applier(t)
+			r, c := newApplier(t)
 			old := rendered(t).StatefulSet
 			tc.add(old)
 			cur := stored(t, r, old)
@@ -151,7 +151,7 @@ func TestUpdateRollsOnRemoval(t *testing.T) {
 // TestUpdateIgnoresServerDefaults: an object the server defaulted is not
 // rewritten when nothing the operator renders changed.
 func TestUpdateIgnoresServerDefaults(t *testing.T) {
-	r, c := applier(t)
+	r, c := newApplier(t)
 	cur := stored(t, r, rendered(t).StatefulSet)
 	if err := r.update(context.Background(), cur, rendered(t).StatefulSet); err != nil {
 		t.Fatal(err)
@@ -172,7 +172,7 @@ func svcWith(t *testing.T, ntc bool) *corev1.Service {
 
 func applyTwice(t *testing.T, first, second func() *corev1.Service) (*writes, corev1.Service) {
 	t.Helper()
-	r, c := applier(t)
+	r, c := newApplier(t)
 	ctx := context.Background()
 	p := pool("ns", "a", v1alpha1.Dingo, v1alpha1.TierValidating)
 	svc := first()

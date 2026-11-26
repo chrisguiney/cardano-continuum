@@ -17,7 +17,6 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
-	"github.com/chrisguiney/cardano-continuum/internal/genesis"
 	"github.com/chrisguiney/cardano-continuum/internal/poolwatch"
 )
 
@@ -65,33 +64,27 @@ type WatchOptions struct {
 //	```
 type Watch struct {
 	tr   *poolwatch.Tracker
-	live client.Reader
 	poll time.Duration
-	log  *slog.Logger
 	now  func() time.Time
+	// genesis and issuers are read through the live reader and cached.
+	genesis genesisFacts
+	issuers issuerCache
 
-	mu sync.Mutex // protects targets, magic, genesis, issuers
+	mu sync.Mutex // protects targets, magic
 	// targets are the pods being followed, by key.
 	targets map[string]poolwatch.Target
 	// magic is each target address's network magic.
-	magic   map[string]uint32
-	genesis map[genesisKey]Facts
-	// issuers caches a pod's cold-key hash by pod UID: the keys do not
-	// change while the pod runs.
-	issuers map[types.UID]common.Blake2b224
-}
-
-type genesisKey struct {
-	net types.UID
-	ref string
+	magic map[string]uint32
 }
 
 // NewWatch returns a Watch. Add it to the manager, which Starts it.
 func NewWatch(o WatchOptions) *Watch {
+	log := o.Log.With("component", "watch")
 	w := &Watch{
-		live: o.Live, poll: o.Poll, log: o.Log.With("component", "watch"), now: o.Now,
+		poll: o.Poll, now: o.Now,
+		genesis: genesisFacts{live: o.Live, log: log, byKey: map[genesisKey]Facts{}},
+		issuers: issuerCache{live: o.Live, log: log, byPod: map[types.UID]common.Blake2b224{}},
 		targets: map[string]poolwatch.Target{}, magic: map[string]uint32{},
-		genesis: map[genesisKey]Facts{}, issuers: map[types.UID]common.Blake2b224{},
 	}
 	if w.poll <= 0 {
 		w.poll = watchPoll
@@ -193,10 +186,10 @@ func (w *Watch) Observe(ctx context.Context, p *v1alpha1.ContinuumPool, net *v1a
 	w.track(key, p, net)
 	ctx, cancel := context.WithTimeout(ctx, keysTimeout)
 	defer cancel()
-	facts := w.facts(ctx, net)
+	facts := w.genesis.of(ctx, net)
 	var issuer *common.Blake2b224
 	if RoleOf(p).Keyed() {
-		if h, ok := w.issuer(ctx, p, pod); ok {
+		if h, ok := w.issuers.of(ctx, p, pod); ok {
 			issuer = &h
 		}
 	}
@@ -226,60 +219,6 @@ func (w *Watch) track(key string, p *v1alpha1.ContinuumPool, net *v1alpha1.Conti
 	}
 	w.targets[key] = poolwatch.Target{Name: key, Addr: addr}
 	w.magic[addr] = net.Spec.Magic
-}
-
-// facts reads the network's genesis once per network and genesis
-// reference. A failed read is not cached, so the next reconcile retries and
-// meanwhile the phase uses the best tip as the clock.
-func (w *Watch) facts(ctx context.Context, net *v1alpha1.ContinuumNetwork) Facts {
-	k := genesisKey{net: net.UID, ref: net.Spec.GenesisRef}
-	w.mu.Lock()
-	f, ok := w.genesis[k]
-	w.mu.Unlock()
-	if ok {
-		return f
-	}
-	var cm corev1.ConfigMap
-	err := w.live.Get(ctx, types.NamespacedName{Namespace: net.Namespace, Name: net.Spec.GenesisRef}, &cm)
-	if err == nil {
-		f, err = FactsOf([]byte(cm.Data[genesis.ShelleyFile]))
-	}
-	if err != nil {
-		w.log.Warn("network facts unavailable, using the best tip as the clock", "network", net.Name, "err", err)
-		return Facts{Epoch: uint64(max(net.Spec.EpochLength, 0)), K: uint64(max(net.Spec.SecurityParam, 0))}
-	}
-	f.Epoch, f.K = uint64(max(net.Spec.EpochLength, 0)), uint64(max(net.Spec.SecurityParam, 0))
-	w.mu.Lock()
-	w.genesis[k] = f
-	w.mu.Unlock()
-	return f
-}
-
-// issuer is the cold-key hash of the pool in pod, read once per pod.
-func (w *Watch) issuer(ctx context.Context, p *v1alpha1.ContinuumPool, pod *corev1.Pod) (common.Blake2b224, bool) {
-	w.mu.Lock()
-	h, ok := w.issuers[pod.UID]
-	w.mu.Unlock()
-	if ok {
-		return h, true
-	}
-	h, err := IssuerOf(p.Spec.PoolID, nil)
-	if err != nil {
-		var s corev1.Secret
-		if err := w.live.Get(ctx, types.NamespacedName{Namespace: p.Namespace, Name: p.Spec.KeysSecret}, &s); err != nil {
-			w.log.Warn("read keys secret", "pool", p.Name, "err", err)
-			return h, false
-		}
-		h, err = IssuerOf(p.Spec.PoolID, s.Data)
-	}
-	if err != nil {
-		w.log.Warn("pool issuer unknown", "pool", p.Name, "err", err)
-		return h, false
-	}
-	w.mu.Lock()
-	w.issuers[pod.UID] = h
-	w.mu.Unlock()
-	return h, true
 }
 
 // seenOf folds one pool's window into a Seen. issuer is nil when the pool's

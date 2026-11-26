@@ -1,10 +1,21 @@
 package operator
 
 import (
+	"context"
+	"log/slog"
+	"sync"
+
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
 	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
+	"github.com/chrisguiney/cardano-continuum/internal/genesis"
 )
 
 // FactsOf reads the network parameters a phase is judged against from a
@@ -39,4 +50,46 @@ func FactsOf(shelley []byte) (Facts, error) {
 		f.Share = 1 / float64(n)
 	}
 	return f, nil
+}
+
+type genesisKey struct {
+	net types.UID
+	ref string
+}
+
+// genesisFacts caches each network's Facts by network and genesis
+// reference, read through live.
+type genesisFacts struct {
+	live client.Reader
+	log  *slog.Logger
+
+	mu    sync.Mutex // protects byKey
+	byKey map[genesisKey]Facts
+}
+
+// of reads the network's genesis once per network and genesis
+// reference. A failed read is not cached, so the next reconcile retries and
+// meanwhile the phase uses the best tip as the clock.
+func (c *genesisFacts) of(ctx context.Context, net *v1alpha1.ContinuumNetwork) Facts {
+	k := genesisKey{net: net.UID, ref: net.Spec.GenesisRef}
+	c.mu.Lock()
+	f, ok := c.byKey[k]
+	c.mu.Unlock()
+	if ok {
+		return f
+	}
+	var cm corev1.ConfigMap
+	err := c.live.Get(ctx, types.NamespacedName{Namespace: net.Namespace, Name: net.Spec.GenesisRef}, &cm)
+	if err == nil {
+		f, err = FactsOf([]byte(cm.Data[genesis.ShelleyFile]))
+	}
+	if err != nil {
+		c.log.Warn("network facts unavailable, using the best tip as the clock", "network", net.Name, "err", err)
+		return Facts{Epoch: uint64(max(net.Spec.EpochLength, 0)), K: uint64(max(net.Spec.SecurityParam, 0))}
+	}
+	f.Epoch, f.K = uint64(max(net.Spec.EpochLength, 0)), uint64(max(net.Spec.SecurityParam, 0))
+	c.mu.Lock()
+	c.byKey[k] = f
+	c.mu.Unlock()
+	return f
 }

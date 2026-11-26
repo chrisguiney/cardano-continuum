@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"maps"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -21,6 +22,13 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/ident"
 )
 
+// applier writes a pool's workload, Service and ConfigMap and reports its
+// pods, through the cache-backed client.
+type applier struct {
+	client client.Client
+	log    *slog.Logger
+}
+
 // apply writes w. It deletes every StatefulSet p owns that is not w's (a
 // different name after a tier change, or a different implementation under
 // the same name), then updates w's in place or creates it. holder names
@@ -32,7 +40,7 @@ import (
 // until that moment, which is the intended outcome (rule 10). A roll is an
 // in-place update; the StatefulSet controller deletes the pod and creates
 // its replacement only once the old object is gone (rule 9).
-func (r *Pools) apply(ctx context.Context, p *v1alpha1.ContinuumPool, w Workload) (string, reconcile.Result, error) {
+func (r *applier) apply(ctx context.Context, p *v1alpha1.ContinuumPool, w Workload) (string, reconcile.Result, error) {
 	owned, err := r.owned(ctx, p)
 	if err != nil {
 		return "", reconcile.Result{}, err
@@ -65,7 +73,7 @@ func (r *Pools) apply(ctx context.Context, p *v1alpha1.ContinuumPool, w Workload
 	return "", reconcile.Result{}, r.update(ctx, cur, want)
 }
 
-func (r *Pools) owned(ctx context.Context, p *v1alpha1.ContinuumPool) ([]appsv1.StatefulSet, error) {
+func (r *applier) owned(ctx context.Context, p *v1alpha1.ContinuumPool) ([]appsv1.StatefulSet, error) {
 	var list appsv1.StatefulSetList
 	err := r.client.List(ctx, &list, client.InNamespace(p.Namespace), client.MatchingLabels{LabelOwner: string(p.UID)})
 	if err != nil {
@@ -75,7 +83,7 @@ func (r *Pools) owned(ctx context.Context, p *v1alpha1.ContinuumPool) ([]appsv1.
 }
 
 // create is the acquire. Nothing read before it decides whether it runs.
-func (r *Pools) create(ctx context.Context, p *v1alpha1.ContinuumPool, want *appsv1.StatefulSet) (string, reconcile.Result, error) {
+func (r *applier) create(ctx context.Context, p *v1alpha1.ContinuumPool, want *appsv1.StatefulSet) (string, reconcile.Result, error) {
 	err := r.client.Create(ctx, want)
 	if err == nil {
 		r.log.Info("workload created", "pool", p.Name, "workload", want.Name, "impl", want.Labels[LabelImpl])
@@ -89,7 +97,7 @@ func (r *Pools) create(ctx context.Context, p *v1alpha1.ContinuumPool, want *app
 	return r.holder(ctx, p, want), reconcile.Result{RequeueAfter: fenceRetry}, nil
 }
 
-func (r *Pools) holder(ctx context.Context, p *v1alpha1.ContinuumPool, want *appsv1.StatefulSet) string {
+func (r *applier) holder(ctx context.Context, p *v1alpha1.ContinuumPool, want *appsv1.StatefulSet) string {
 	var held appsv1.StatefulSet
 	if err := r.client.Get(ctx, client.ObjectKeyFromObject(want), &held); err != nil {
 		return ""
@@ -109,7 +117,7 @@ func (r *Pools) holder(ctx context.Context, p *v1alpha1.ContinuumPool, want *app
 // operator never renders, and DeepDerivative, the usual way to ignore them,
 // also ignores a removed list element, a removed map key and a field set back
 // to its zero value.
-func (r *Pools) update(ctx context.Context, cur, want *appsv1.StatefulSet) error {
+func (r *applier) update(ctx context.Context, cur, want *appsv1.StatefulSet) error {
 	stamp(want)
 	if *cur.Spec.Replicas == *want.Spec.Replicas &&
 		cur.Annotations[AnnotationSpecHash] == want.Annotations[AnnotationSpecHash] &&
@@ -191,7 +199,7 @@ func targetOf(p corev1.ServicePort) intstr.IntOrString {
 
 // drop deletes a StatefulSet in the foreground, preconditioned on the UID
 // and resourceVersion that were read.
-func (r *Pools) drop(ctx context.Context, set *appsv1.StatefulSet) error {
+func (r *applier) drop(ctx context.Context, set *appsv1.StatefulSet) error {
 	if set.DeletionTimestamp != nil {
 		return nil
 	}
@@ -205,7 +213,7 @@ func (r *Pools) drop(ctx context.Context, set *appsv1.StatefulSet) error {
 	return nil
 }
 
-func (r *Pools) dropAll(ctx context.Context, p *v1alpha1.ContinuumPool) error {
+func (r *applier) dropAll(ctx context.Context, p *v1alpha1.ContinuumPool) error {
 	owned, err := r.owned(ctx, p)
 	if err != nil {
 		return err
@@ -223,7 +231,7 @@ func controlledBy(obj metav1.Object, uid types.UID) bool {
 	return ref != nil && ref.UID == uid
 }
 
-func (r *Pools) applyService(ctx context.Context, p *v1alpha1.ContinuumPool, want *corev1.Service) error {
+func (r *applier) applyService(ctx context.Context, p *v1alpha1.ContinuumPool, want *corev1.Service) error {
 	var cur corev1.Service
 	err := r.client.Get(ctx, client.ObjectKeyFromObject(want), &cur)
 	if apierrors.IsNotFound(err) {
@@ -239,7 +247,7 @@ func (r *Pools) applyService(ctx context.Context, p *v1alpha1.ContinuumPool, wan
 	return ignoreConflict(r.client.Update(ctx, &cur), "service", want.Name)
 }
 
-func (r *Pools) applyConfig(ctx context.Context, p *v1alpha1.ContinuumPool, want *corev1.ConfigMap) error {
+func (r *applier) applyConfig(ctx context.Context, p *v1alpha1.ContinuumPool, want *corev1.ConfigMap) error {
 	var cur corev1.ConfigMap
 	err := r.client.Get(ctx, client.ObjectKeyFromObject(want), &cur)
 	if apierrors.IsNotFound(err) {
@@ -272,7 +280,7 @@ func ignoreConflict(err error, kind, name string) error {
 
 // observe sets the phase and the fence condition from the pool's pods, and
 // returns the workload's live pod, or nil.
-func (r *Pools) observe(ctx context.Context, p *v1alpha1.ContinuumPool, workload string) (*corev1.Pod, error) {
+func (r *applier) observe(ctx context.Context, p *v1alpha1.ContinuumPool, workload string) (*corev1.Pod, error) {
 	var pods corev1.PodList
 	if err := r.client.List(ctx, &pods, client.InNamespace(p.Namespace), client.MatchingLabels{LabelOwner: string(p.UID)}); err != nil {
 		return nil, fmt.Errorf("list pods of pool %s: %w", p.Name, err)
@@ -297,16 +305,16 @@ func (r *Pools) observe(ctx context.Context, p *v1alpha1.ContinuumPool, workload
 	}
 	p.Status.Phase = PhaseOf(p, live)
 	if len(held) == 0 {
-		r.condition(p, CondFence, metav1.ConditionFalse, ReasonNoneHeld, "no keyed pod is held on an unreachable node")
+		setCondition(p, CondFence, metav1.ConditionFalse, ReasonNoneHeld, "no keyed pod is held on an unreachable node")
 		return live, nil
 	}
-	r.condition(p, CondFence, metav1.ConditionTrue, ReasonNodeUnreachable,
+	setCondition(p, CondFence, metav1.ConditionTrue, ReasonNodeUnreachable,
 		fmt.Sprintf("%v: the node is not Ready, so the pod may still be forging; resolve the node, the operator will not", held))
 	return live, nil
 }
 
 // nodeState reads a Node. It is a report only here; Release reads live.
-func (r *Pools) nodeState(ctx context.Context, name string) (NodeState, error) {
+func (r *applier) nodeState(ctx context.Context, name string) (NodeState, error) {
 	return readNode(ctx, r.client, name)
 }
 

@@ -1,10 +1,20 @@
 package operator
 
 import (
+	"context"
+	"log/slog"
+	"sync"
+
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+
+	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 
 	"github.com/blinklabs-io/gouroboros/cbor"
 	"github.com/blinklabs-io/gouroboros/ledger/common"
@@ -50,4 +60,41 @@ func IssuerOf(poolID string, files map[string][]byte) (common.Blake2b224, error)
 		return out, fmt.Errorf("operational certificate has a %d-byte cold key", len(doc.ColdVKey))
 	}
 	return common.Blake2b224Hash(doc.ColdVKey), nil
+}
+
+// issuerCache caches a pod's cold-key hash by pod UID: the keys do not
+// change while the pod runs.
+type issuerCache struct {
+	live client.Reader
+	log  *slog.Logger
+
+	mu    sync.Mutex // protects byPod
+	byPod map[types.UID]common.Blake2b224
+}
+
+// of is the cold-key hash of the pool in pod, read once per pod.
+func (c *issuerCache) of(ctx context.Context, p *v1alpha1.ContinuumPool, pod *corev1.Pod) (common.Blake2b224, bool) {
+	c.mu.Lock()
+	h, ok := c.byPod[pod.UID]
+	c.mu.Unlock()
+	if ok {
+		return h, true
+	}
+	h, err := IssuerOf(p.Spec.PoolID, nil)
+	if err != nil {
+		var s corev1.Secret
+		if err := c.live.Get(ctx, types.NamespacedName{Namespace: p.Namespace, Name: p.Spec.KeysSecret}, &s); err != nil {
+			c.log.Warn("read keys secret", "pool", p.Name, "err", err)
+			return h, false
+		}
+		h, err = IssuerOf(p.Spec.PoolID, s.Data)
+	}
+	if err != nil {
+		c.log.Warn("pool issuer unknown", "pool", p.Name, "err", err)
+		return h, false
+	}
+	c.mu.Lock()
+	c.byPod[pod.UID] = h
+	c.mu.Unlock()
+	return h, true
 }

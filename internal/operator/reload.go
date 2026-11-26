@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"maps"
 	"slices"
 	"time"
@@ -35,6 +36,15 @@ const (
 	reloadRetry = 5 * time.Second
 )
 
+// reloader tells running nodes to reread their Config.
+type reloader struct {
+	client client.Client
+	// exec is nil when running nodes are never told to reread.
+	exec Exec
+	log  *slog.Logger
+	now  func() time.Time
+}
+
 // reload makes pod's node reread w.Config once the kubelet has projected
 // it, at most once per Config per container instance, and returns how soon
 // to look again.
@@ -44,7 +54,7 @@ const (
 // pod starts with a topology that lacks the pools created after it; peers
 // then dial it, but it never dials them, takes none of their blocks and
 // forges its own fork.
-func (r *Pools) reload(ctx context.Context, pod *corev1.Pod, w Workload) (time.Duration, error) {
+func (r *reloader) reload(ctx context.Context, pod *corev1.Pod, w Workload) (time.Duration, error) {
 	if r.exec == nil || len(w.Reload) == 0 || pod == nil || w.Config == nil {
 		return 0, nil
 	}

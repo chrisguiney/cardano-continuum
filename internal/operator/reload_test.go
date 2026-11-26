@@ -48,7 +48,7 @@ func (e *fakeExec) reloads() int {
 }
 
 type reloadRig struct {
-	r    *Pools
+	r    *reloader
 	exec *fakeExec
 	c    client.Client
 	now  time.Time
@@ -73,8 +73,7 @@ func newReloadRig(t *testing.T) *reloadRig {
 	c := fake.NewClientBuilder().WithScheme(s).WithObjects(pod).Build()
 	exec := &fakeExec{files: map[string]string{}}
 	rig := &reloadRig{exec: exec, c: c, now: start, pod: pod}
-	rig.r = NewPools(c, Drivers(), nil, exec, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	rig.r.now = func() time.Time { return rig.now }
+	rig.r = &reloader{client: c, exec: exec, log: slog.New(slog.NewTextHandler(io.Discard, nil)), now: func() time.Time { return rig.now }}
 	rig.w = render(t, CardanoNode{}, pool("ns", "a", v1alpha1.CardanoNode, v1alpha1.TierForging), "r@sha256:aaaa")
 	return rig
 }
