@@ -7,6 +7,8 @@
 //	continuum serve --log EVENTS.LOG [--store DB] [--addr 127.0.0.1:8088] [--controls]
 //	continuum image set <impl>=<ref> --network N [--pools N% | --pool ID] [--tier T] [--dry-run]
 //	continuum build --dingo DIR [--with MODULE=PATH|SHA ...] [flags]
+//	continuum harvest --repo URL|PATH --ref SHA --out DIR [--family F ...]
+//	continuum vectors --repo URL|PATH --ref SHA --out DIR [--era E ...]
 //
 // replay takes the same population and chain flags as run; the log header's
 // fingerprints refuse a log recorded under different ones.
@@ -51,7 +53,7 @@ func main() {
 	}
 }
 
-var errUsage = errors.New("usage: continuum run|replay|export|image|build|serve [flags]")
+var errUsage = errors.New("usage: continuum run|replay|export|image|build|serve|harvest|vectors [flags]")
 
 func run(ctx context.Context, args []string, out io.Writer) error {
 	if len(args) == 0 {
@@ -70,6 +72,10 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 		return cmdBuild(ctx, args[1:], out)
 	case "serve":
 		return cmdServe(ctx, args[1:], out, openKube)
+	case "harvest":
+		return cmdHarvest(ctx, args[1:], out)
+	case "vectors":
+		return cmdVectors(ctx, args[1:], out)
 	}
 	return fmt.Errorf("%w: unknown command %q", errUsage, args[0])
 }

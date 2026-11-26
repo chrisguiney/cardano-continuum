@@ -15,6 +15,13 @@ TLA_VERSION="1.7.4"
 TLA_URL="https://github.com/tlaplus/tlaplus/releases/download/v${TLA_VERSION}/tla2tools.jar"
 TLA_SHA256="936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88"
 
+# TLC 2.19 (tla2tools 1.7.4) has no -dumpTrace. The harvester (internal/tla)
+# needs it, so it runs this second jar through TLA2TOOLS_JAR. The models keep
+# running on the version above.
+TLA_DUMP_VERSION="1.8.0"
+TLA_DUMP_URL="https://github.com/tlaplus/tlaplus/releases/download/v${TLA_DUMP_VERSION}/tla2tools.jar"
+TLA_DUMP_SHA256="fdffef247f563ef6edbfd44958d2a82db79e7564e07cb673262d896353fa6713"
+
 # Eclipse Temurin JDK 21 (long-term support). TLA+ needs Java 11 or newer.
 JDK_VERSION="21.0.13.1+2"
 JDK_URL=""
@@ -84,6 +91,14 @@ if [[ -f "$TOOLS/tla2tools.jar" && "$(sha256 "$TOOLS/tla2tools.jar")" == "$TLA_S
 else
   say "Downloading TLA+ tools v$TLA_VERSION"
   fetch "$TLA_URL" "$TLA_SHA256" "$TOOLS/tla2tools.jar"
+fi
+
+DUMP_JAR="$TOOLS/tla2tools-$TLA_DUMP_VERSION.jar"
+if [[ -f "$DUMP_JAR" && "$(sha256 "$DUMP_JAR")" == "$TLA_DUMP_SHA256" ]]; then
+  say "TLA+ tools v$TLA_DUMP_VERSION already installed"
+else
+  say "Downloading TLA+ tools v$TLA_DUMP_VERSION (trace dumping, used by the harvester)"
+  fetch "$TLA_DUMP_URL" "$TLA_DUMP_SHA256" "$DUMP_JAR"
 fi
 
 say "Installed. Next: make hello"

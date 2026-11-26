@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -78,6 +79,15 @@ func TestFakeRunStoresActorProfiles(t *testing.T) {
 	for _, r := range rows {
 		if r.Profile == "" {
 			t.Fatalf("actor %d has no profile in the store", r.ID)
+		}
+	}
+}
+
+func TestHarvestRequiresFlags(t *testing.T) {
+	for _, cmd := range []string{"harvest", "vectors"} {
+		err := run(context.Background(), []string{cmd}, io.Discard)
+		if err == nil || !strings.Contains(err.Error(), "--repo") {
+			t.Errorf("%s with no flags: err = %v", cmd, err)
 		}
 	}
 }

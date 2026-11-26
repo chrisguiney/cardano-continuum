@@ -3,7 +3,7 @@
 # Java that `make install` downloaded, falling back to the java on PATH.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-JAR="$ROOT/.tools/tla2tools.jar"
+JAR="${TLA2TOOLS_JAR:-$ROOT/.tools/tla2tools.jar}"
 JAVA="$ROOT/.tools/jdk/bin/java"
 [[ -x "$JAVA" ]] || JAVA="$(command -v java || true)"
 if [[ ! -f "$JAR" || -z "$JAVA" ]]; then
