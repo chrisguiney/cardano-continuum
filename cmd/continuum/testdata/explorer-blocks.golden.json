@@ -2,8 +2,8 @@
   "limit": 3,
   "limits": {
     "max_bytes": 90112,
-    "max_mem": 62000000,
-    "max_steps": 40000000000
+    "max_mem": 72000000,
+    "max_steps": 20000000000
   },
   "offset": 0,
   "rows": [
