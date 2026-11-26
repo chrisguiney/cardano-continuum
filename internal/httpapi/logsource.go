@@ -53,6 +53,9 @@ type LogSourceConfig struct {
 	// Control, when set, is the metrics of a control run (no adversaries)
 	// on the same seed; the Adversaries page reports deltas against it.
 	Control *adversary.Metrics
+	// GovLifetime is the governance action lifetime in epochs, which dates
+	// each proposal's last epoch.
+	GovLifetime uint64
 }
 
 // Tips is what follows the pools' chains: each pool's newest blocks by
@@ -117,6 +120,16 @@ func (s *LogSource) Findings(_ context.Context, p Page) (FindingPage, error) {
 // Subscribe implements Source.
 func (s *LogSource) Subscribe(f Filter, after *uint64) (*Subscription, error) {
 	return s.cfg.Hub.Subscribe(f, after)
+}
+
+// Governance implements Source. Genesis actors, which the log never
+// spawns, take their profile from the store.
+func (s *LogSource) Governance(ctx context.Context) (GovernanceView, error) {
+	n, err := s.names(ctx)
+	if err != nil {
+		return GovernanceView{}, err
+	}
+	return s.cfg.Projection.Governance(s.cfg.Slots, s.cfg.GovLifetime, func(id uint64) string { return n[id].Profile }), nil
 }
 
 // Pools implements Source.

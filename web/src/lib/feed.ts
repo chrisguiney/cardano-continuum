@@ -5,6 +5,8 @@ export interface FeedFilter {
   profile?: string;
   kinds?: string[];
   intent?: string;
+  /** vote keeps only the decisions about votes. */
+  vote?: boolean;
 }
 
 export type FeedState = "connecting" | "live" | "reconnecting" | "stopped";
@@ -23,6 +25,7 @@ export function feedUrl(base: string, f: FeedFilter, lastId: number | null): str
   if (f.profile) q.set("profile", f.profile);
   if (f.intent) q.set("intent", f.intent);
   if (f.kinds?.length) q.set("kind", f.kinds.join(","));
+  if (f.vote) q.set("vote", "true");
   if (lastId !== null) q.set("last_event_id", String(lastId));
   const s = q.toString();
   return s ? `${base}?${s}` : base;

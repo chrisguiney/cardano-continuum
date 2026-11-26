@@ -123,6 +123,16 @@ func (f *fakeSource) Pools(context.Context) (PoolsView, error) {
 	}, nil
 }
 
+func (f *fakeSource) Governance(context.Context) (GovernanceView, error) {
+	epoch, exp, actor := uint64(1), uint64(3), uint64(7)
+	vote := VoteRow{Slot: 30, At: 30000, Tx: "20", Proposal: "10#0", Type: "info", Voter: "spo", Actor: &actor, Profile: "pools", Choice: "yes", Power: 5000}
+	return GovernanceView{Epoch: &epoch, Lifetime: 2,
+		Proposals: []ProposalRow{{ID: "10#0", Type: "info", Deposit: 100_000, Slot: 10, Epoch: &epoch, Expires: &exp, Status: "open", PoolsMayVote: true,
+			Tally: map[string]Tally{"drep": {}, "spo": {Yes: 1, YesPower: 5000}, "committee": {}}}},
+		Votes: []VoteRow{vote}, Pools: []PoolVotes{{Actor: 7, Profile: "pools", Votes: []VoteRow{vote}}},
+	}, nil
+}
+
 func (f *fakeSource) Findings(context.Context, Page) (FindingPage, error) {
 	return FindingPage{Rows: []Finding{}}, nil
 }

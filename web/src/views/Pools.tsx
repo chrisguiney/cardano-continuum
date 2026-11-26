@@ -7,10 +7,11 @@ import { forkLine, forkedImpls, forkedPools } from "../lib/forks";
 import { count, short } from "../lib/format";
 import { usePoll } from "../lib/hooks";
 import { layout } from "../lib/layout";
-import type { PoolsView } from "../lib/types";
-import { ErrorNote } from "./common";
 import { Blurb } from "./fields";
 import { PoolFilterBar, type PoolFilterState } from "./filterbars";
+import type { GovernanceView, PoolsView } from "../lib/types";
+import { ErrorNote, Link } from "./common";
+import { VoteTable } from "./Governance";
 
 const W = 640;
 const H = 420;
@@ -65,6 +66,23 @@ function Topology({ v, forked }: { v: PoolsView; forked: Set<string> }) {
 }
 
 const POOL_DEFAULTS: PoolFilterState = { impl: "", tier: "", phase: "" };
+/** SPOVotes lists each pool actor's recent votes, from the engine's chain view. */
+function SPOVotes() {
+  const { data: g, error } = usePoll<GovernanceView>("/api/governance", 5000);
+  return (
+    <section class="card">
+      <h2>Recent SPO votes</h2>
+      <ErrorNote error={error} />
+      {g && g.pools.length === 0 && <p class="empty">No pool has voted yet.</p>}
+      {g?.pools.map((p) => (
+        <div key={p.actor}>
+          <h3><Link to={`/actors/${p.actor}`}>pool actor {p.actor}</Link>{p.profile && <span class="muted"> {p.profile}</span>}</h3>
+          <VoteTable votes={p.votes} empty="No votes." />
+        </div>
+      ))}
+    </section>
+  );
+}
 
 export function Pools() {
   const [filt, setFilt] = useState<PoolFilterState>(() => parseQuery(location.search, POOL_DEFAULTS));
@@ -129,6 +147,7 @@ export function Pools() {
               </tbody>
             </table>
           </div>
+          <SPOVotes />
         </>
       )}
     </>

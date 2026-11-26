@@ -25,6 +25,13 @@ func toDecision(r eventlog.Record, profile string) (Decision, error) {
 		d.Intent, d.Scores = string(dec.Intent.Kind), dec.Scores
 		return d, nil
 	}
+	if r.Kind == engine.KindSubmitted {
+		var s engine.Submitted
+		if err := eventlog.Decode(r.Body, &s); err != nil {
+			return d, fmt.Errorf("decision seq %d: %w", r.Seq, err)
+		}
+		d.Intent = s.Kind
+	}
 	var v any
 	if err := eventlog.Decode(r.Body, &v); err != nil {
 		return d, fmt.Errorf("decision seq %d: %w", r.Seq, err)

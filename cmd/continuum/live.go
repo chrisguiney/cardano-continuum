@@ -392,7 +392,7 @@ func liveServe(ctx context.Context, d *engine.Deps, db *store.DB, cfg engine.Con
 	if err := checkAddr(lf.serve, false); err != nil {
 		return nil, err
 	}
-	s, err := newLiveServer(ctx, d.Log, db, cfg.Slots, d.Findings, lt.poolView(cfg.K))
+	s, err := newLiveServer(ctx, d.Log, db, cfg.Slots, cfg.GovLifetime, d.Findings, lt.poolView(cfg.K))
 	if err != nil {
 		return nil, err
 	}

@@ -328,6 +328,9 @@ type Filter struct {
 	Kinds   []string
 	// Intent keeps decisions that chose this intent kind.
 	Intent string
+	// Vote keeps only the decisions about votes: the vote intents chosen
+	// and the votes submitted.
+	Vote bool
 }
 
 // Match reports whether d passes the filter.
@@ -339,6 +342,9 @@ func (f Filter) Match(d Decision) bool {
 		return false
 	}
 	if f.Intent != "" && f.Intent != d.Intent {
+		return false
+	}
+	if f.Vote && d.Intent != "vote" {
 		return false
 	}
 	if len(f.Kinds) == 0 {

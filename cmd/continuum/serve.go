@@ -15,6 +15,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
+	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
 	"github.com/chrisguiney/cardano-continuum/internal/httpapi"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/store"
@@ -40,6 +41,7 @@ func cmdServe(ctx context.Context, args []string, out io.Writer, open openCluste
 	kubeconfig := fs.String("kubeconfig", "", "kubeconfig path (default: KUBECONFIG rules)")
 	slotMs := fs.Int64("slot-ms", 1000, "slot length in milliseconds, for the epoch")
 	epochSlots := fs.Uint64("epoch-slots", 600, "slots per epoch, for the epoch")
+	govLife := fs.Uint64("gov-lifetime", fakechain.DefaultParams().GovActionValidityPeriod, "governance action lifetime in epochs, for each proposal's last epoch")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -53,7 +55,7 @@ func cmdServe(ctx context.Context, args []string, out io.Writer, open openCluste
 	if err != nil {
 		return err
 	}
-	cfg := httpapi.LogSourceConfig{Projection: httpapi.NewProjection(), Hub: httpapi.NewHub(4096, 64, 256), Slots: &slots}
+	cfg := httpapi.LogSourceConfig{Projection: httpapi.NewProjection(), Hub: httpapi.NewHub(4096, 64, 256), Slots: &slots, GovLifetime: *govLife}
 	defer cfg.Hub.Close()
 	if *dbPath != "" {
 		db, err := openExistingStore(ctx, *dbPath)

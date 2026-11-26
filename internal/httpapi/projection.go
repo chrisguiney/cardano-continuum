@@ -64,13 +64,14 @@ type Projection struct {
 	txOwner map[[32]byte]uint64
 	// meter folds the attack steps and the metrics Measure reads.
 	meter *engine.Meter
+	gov   *govFold
 }
 
 // NewProjection returns an empty projection.
 func NewProjection() *Projection {
 	return &Projection{
 		actors: map[uint64]*actorInfo{}, intents: map[uint64]*intentInfo{},
-		byState: map[string]int{}, findings: oracle.NewSet(), txOwner: map[[32]byte]uint64{}, meter: engine.NewMeter(),
+		byState: map[string]int{}, findings: oracle.NewSet(), txOwner: map[[32]byte]uint64{}, meter: engine.NewMeter(), gov: newGovFold(),
 	}
 }
 
@@ -133,6 +134,7 @@ func (p *Projection) applyInput(r eventlog.Record) error {
 		for _, tx := range c.Txs {
 			p.ada.FeesLovelace += tx.Fee
 		}
+		p.gov.block(int64(r.At), b.Point.Slot, c)
 	case eventlog.KindRolledBack:
 		var b eventlog.RolledBack
 		if err := eventlog.Decode(r.Body, &b); err != nil {
@@ -140,6 +142,7 @@ func (p *Projection) applyInput(r eventlog.Record) error {
 		}
 		p.tip = &Point{Slot: b.To.Slot, Hash: hex.EncodeToString(b.To.Hash)}
 		p.rollbacks++
+		p.gov.rollback(b.To.Slot)
 	case eventlog.KindSubmitResult:
 		var s engine.SubmitResult
 		if err := eventlog.Decode(r.Body, &s); err != nil {
@@ -248,6 +251,7 @@ func (p *Projection) leave(state string) {
 }
 
 func (p *Projection) submitted(id uint64, r eventlog.Record, s engine.Submitted) {
+	p.gov.submitted(id, s)
 	a := p.actor(id)
 	a.txs++
 	p.txOwner[[32]byte(s.ID)] = id
@@ -378,6 +382,28 @@ func maps(m map[string]int) map[string]int {
 		out[k] = v
 	}
 	return out
+}
+
+// Governance builds the Governance view: life is the governance action
+// lifetime in epochs, and slots, when set, dates proposals and gives their
+// status. An actor the log did not spawn takes profileOf's answer, which
+// may be nil and must not do I/O: it runs under the lock.
+func (p *Projection) Governance(slots *sched.Slots, life uint64, profileOf ...func(uint64) string) GovernanceView {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	var tip uint64
+	if p.tip != nil {
+		tip = p.tip.Slot
+	}
+	return p.gov.view(slots, tip, life, func(id uint64) string {
+		if a := p.actors[id]; a != nil && a.profile != "" {
+			return a.profile
+		}
+		for _, f := range profileOf {
+			return f(id)
+		}
+		return ""
+	})
 }
 
 // Rows returns every actor's row, unsorted.

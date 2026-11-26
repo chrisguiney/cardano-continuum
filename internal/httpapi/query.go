@@ -109,6 +109,13 @@ func parseFilter(v url.Values) (Filter, error) {
 	if len(f.Kinds) > maxKinds {
 		return f, badf("at most %d kinds", maxKinds)
 	}
+	if s := v.Get("vote"); s != "" {
+		b, err := strconv.ParseBool(s)
+		if err != nil {
+			return f, badf("vote must be true or false")
+		}
+		f.Vote = b
+	}
 	return f, nil
 }
 

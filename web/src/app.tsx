@@ -10,6 +10,7 @@ import { Findings } from "./views/Findings";
 import { Help } from "./views/Help";
 import { HelpTip } from "./views/fields";
 import { FIELD_HELP } from "./lib/help";
+import { Governance } from "./views/Governance";
 import { Overview } from "./views/Overview";
 import { Pools } from "./views/Pools";
 
@@ -65,6 +66,7 @@ const NAV: [string, string][] = [
   ["/", "Overview"],
   ["/actors", "Actors"],
   ["/pools", "Pools"],
+  ["/governance", "Governance"],
   ["/decisions", "Decisions"],
   ["/findings", "Findings"],
   ["/adversaries", "Adversaries"],
@@ -112,6 +114,7 @@ export function App() {
         {route.name === "actors" && <Actors />}
         {route.name === "actor" && <Actor id={route.id} />}
         {route.name === "pools" && <Pools />}
+        {route.name === "governance" && <Governance />}
         {route.name === "decisions" && <Decisions />}
         {route.name === "findings" && <Findings />}
         {route.name === "adversaries" && <Adversaries />}

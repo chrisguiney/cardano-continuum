@@ -1,0 +1,76 @@
+{
+  "epoch": 1,
+  "lifetime_epochs": 2,
+  "proposals": [
+    {
+      "id": "10#0",
+      "type": "info",
+      "deposit_lovelace": 100000,
+      "slot": 10,
+      "epoch": 1,
+      "expires_epoch": 3,
+      "status": "open",
+      "spo_may_vote": true,
+      "tally": {
+        "committee": {
+          "yes": 0,
+          "no": 0,
+          "abstain": 0,
+          "yes_power": 0,
+          "no_power": 0,
+          "abstain_power": 0
+        },
+        "drep": {
+          "yes": 0,
+          "no": 0,
+          "abstain": 0,
+          "yes_power": 0,
+          "no_power": 0,
+          "abstain_power": 0
+        },
+        "spo": {
+          "yes": 1,
+          "no": 0,
+          "abstain": 0,
+          "yes_power": 5000,
+          "no_power": 0,
+          "abstain_power": 0
+        }
+      }
+    }
+  ],
+  "votes": [
+    {
+      "slot": 30,
+      "at": 30000,
+      "tx": "20",
+      "proposal": "10#0",
+      "type": "info",
+      "voter": "spo",
+      "actor": 7,
+      "profile": "pools",
+      "choice": "yes",
+      "power": 5000
+    }
+  ],
+  "pools": [
+    {
+      "actor": 7,
+      "profile": "pools",
+      "votes": [
+        {
+          "slot": 30,
+          "at": 30000,
+          "tx": "20",
+          "proposal": "10#0",
+          "type": "info",
+          "voter": "spo",
+          "actor": 7,
+          "profile": "pools",
+          "choice": "yes",
+          "power": 5000
+        }
+      ]
+    }
+  ]
+}

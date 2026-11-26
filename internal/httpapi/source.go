@@ -21,6 +21,9 @@ type Source interface {
 	Adversaries(ctx context.Context) (AdversaryView, error)
 	// Pools is the Pools view with its topology graph.
 	Pools(ctx context.Context) (PoolsView, error)
+	// Governance is the Governance view: proposals, their votes by voter
+	// class, the vote feed and each pool's recent SPO votes.
+	Governance(ctx context.Context) (GovernanceView, error)
 	// Findings pages oracle findings; none exist before the oracle lands.
 	Findings(ctx context.Context, p Page) (FindingPage, error)
 	// Subscribe joins the decision feed. after is the client's

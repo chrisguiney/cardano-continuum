@@ -47,9 +47,10 @@ type api struct {
 //	GET  /api/adversaries
 //	GET  /api/actors/{id}/timeline
 //	GET  /api/pools
+//	GET  /api/governance
 //	GET  /api/findings?limit&offset&known=true|false&kind&severity
 //	GET  /api/findings/{id}
-//	GET  /api/decisions?actor&profile&kind&intent&last_event_id   (SSE)
+//	GET  /api/decisions?actor&profile&kind&intent&vote&last_event_id   (SSE)
 //	POST /api/control
 func NewHandler(cfg Config) http.Handler {
 	if cfg.Logger == nil {
@@ -79,6 +80,7 @@ func NewHandler(cfg Config) http.Handler {
 	mux.HandleFunc("GET /api/actors/{id}", a.actorDetail)
 	mux.HandleFunc("GET /api/adversaries", a.adversaries)
 	mux.HandleFunc("GET /api/pools", a.pools)
+	mux.HandleFunc("GET /api/governance", a.governance)
 	mux.HandleFunc("GET /api/findings", a.findings)
 	mux.HandleFunc("GET /api/findings/{id}", func(w http.ResponseWriter, _ *http.Request) {
 		a.fail(w, fmt.Errorf("%w: finding", ErrNotFound))
@@ -204,6 +206,15 @@ func (a *api) pools(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.json(w, http.StatusOK, v)
+}
+
+func (a *api) governance(w http.ResponseWriter, r *http.Request) {
+	g, err := a.Source.Governance(r.Context())
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	a.json(w, http.StatusOK, g)
 }
 
 func (a *api) findings(w http.ResponseWriter, r *http.Request) {

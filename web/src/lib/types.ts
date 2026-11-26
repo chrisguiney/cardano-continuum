@@ -228,3 +228,48 @@ export interface AdversaryView {
   adversaries: AdversaryRow[];
   impact: ImpactRow[];
 }
+export interface Tally {
+  yes: number;
+  no: number;
+  abstain: number;
+  yes_power: number;
+  no_power: number;
+  abstain_power: number;
+}
+export interface ProposalRow {
+  id: string;
+  type: string;
+  proposer?: number;
+  profile?: string;
+  deposit_lovelace: number;
+  slot: number;
+  epoch?: number;
+  expires_epoch?: number;
+  status: string;
+  spo_may_vote: boolean;
+  tally: Record<string, Tally>;
+}
+export interface VoteRow {
+  slot: number;
+  at: number;
+  tx: string;
+  proposal: string;
+  type: string;
+  voter: string;
+  actor?: number;
+  profile?: string;
+  choice: string;
+  power: number;
+}
+export interface PoolVotes {
+  actor: number;
+  profile?: string;
+  votes: VoteRow[];
+}
+export interface GovernanceView {
+  epoch?: number;
+  lifetime_epochs: number;
+  proposals: ProposalRow[];
+  votes: VoteRow[];
+  pools: PoolVotes[];
+}
