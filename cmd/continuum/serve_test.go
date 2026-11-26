@@ -15,9 +15,19 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 )
 
-// startServe runs `continuum serve` on port 0 and returns its base URL and
-// a stop function that waits for it to exit.
-func startServe(t *testing.T, args ...string) (string, func()) {
+// served is a running `continuum serve`: its base URL and the client every
+// request to it goes through.
+type served struct {
+	base string
+	c    *http.Client
+}
+
+// startServe runs `continuum serve` on port 0 and returns it with a stop
+// function that waits for it to exit. Stop closes the client's connections
+// first: a kept-alive connection, or a spare one the transport dialled for a
+// request another connection then served, is one the server's Shutdown
+// waits on until its grace runs out.
+func startServe(t *testing.T, args ...string) (served, func()) {
 	t.Helper()
 	pr, pw := io.Pipe()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -34,7 +44,10 @@ func startServe(t *testing.T, args ...string) (string, func()) {
 	}
 	go func() { _, _ = io.Copy(io.Discard, pr) }()
 	addr := strings.TrimSpace(strings.TrimPrefix(line, "listening on "))
-	return "http://" + addr, func() {
+	tr := &http.Transport{}
+	srv := served{base: "http://" + addr, c: &http.Client{Transport: tr}}
+	return srv, func() {
+		tr.CloseIdleConnections()
 		cancel()
 		select {
 		case err := <-done:
@@ -58,9 +71,22 @@ func fakeRunLog(t *testing.T) string {
 	return filepath.Join(dir, "events.log")
 }
 
-func getJSON(t *testing.T, url string, v any) int {
+func (s served) post(t *testing.T, path, body string) int {
 	t.Helper()
-	resp, err := http.Get(url) //nolint:gosec,noctx // loopback test server
+	resp, err := s.c.Post(s.base+path, "application/json", strings.NewReader(body)) //nolint:noctx // loopback test server
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Reading to EOF lets the transport keep the connection idle, where
+	// CloseIdleConnections reaches it.
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+	return resp.StatusCode
+}
+
+func (s served) getJSON(t *testing.T, path string, v any) int {
+	t.Helper()
+	resp, err := s.c.Get(s.base + path) //nolint:noctx // loopback test server
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,47 +99,37 @@ func getJSON(t *testing.T, url string, v any) int {
 
 func TestServeOverFinishedRun(t *testing.T) {
 	log := fakeRunLog(t)
-	base, stop := startServe(t, "--log", log, "--epoch-slots", "60")
+	srv, stop := startServe(t, "--log", log, "--epoch-slots", "60")
 	defer stop()
 
 	var snap struct {
 		LastSeq    uint64 `json:"last_seq"`
 		Population struct{ Total int }
 	}
-	if code := getJSON(t, base+"/api/overview", &snap); code != 200 || snap.LastSeq == 0 || snap.Population.Total != 20 {
+	if code := srv.getJSON(t, "/api/overview", &snap); code != 200 || snap.LastSeq == 0 || snap.Population.Total != 20 {
 		t.Fatalf("overview %d %+v", code, snap)
 	}
 	var page struct{ Total int }
-	if code := getJSON(t, base+"/api/actors?limit=5&sort=txs&dir=desc", &page); code != 200 || page.Total != 20 {
+	if code := srv.getJSON(t, "/api/actors?limit=5&sort=txs&dir=desc", &page); code != 200 || page.Total != 20 {
 		t.Fatalf("actors %d %+v", code, page)
 	}
 	var e struct{ Error string }
-	if code := getJSON(t, base+"/api/actors?sort=bogus", &e); code != 400 {
+	if code := srv.getJSON(t, "/api/actors?sort=bogus", &e); code != 400 {
 		t.Fatalf("bad sort %d", code)
 	}
-	resp, err := http.Post(base+"/api/control", "application/json", strings.NewReader(`{"request_id":"r1","op":"pause"}`)) //nolint:gosec,noctx // loopback test server
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusNotImplemented {
-		t.Fatalf("control without --controls: %d", resp.StatusCode)
+	if code := srv.post(t, "/api/control", `{"request_id":"r1","op":"pause"}`); code != http.StatusNotImplemented {
+		t.Fatalf("control without --controls: %d", code)
 	}
 }
 
 func TestServeControlsAppendToTheLog(t *testing.T) {
 	log := fakeRunLog(t)
 	before := controlCount(t, log, eventlog.KindControl)
-	base, stop := startServe(t, "--log", log, "--controls", "--epoch-slots", "60")
+	srv, stop := startServe(t, "--log", log, "--controls", "--epoch-slots", "60")
 	body := `{"request_id":"r1","op":"set_k","k":2}`
 	for i, want := range []int{http.StatusAccepted, http.StatusOK} {
-		resp, err := http.Post(base+"/api/control", "application/json", strings.NewReader(body)) //nolint:gosec,noctx // loopback test server
-		if err != nil {
-			t.Fatal(err)
-		}
-		_ = resp.Body.Close()
-		if resp.StatusCode != want {
-			t.Fatalf("post %d: %d", i, resp.StatusCode)
+		if code := srv.post(t, "/api/control", body); code != want {
+			t.Fatalf("post %d: %d", i, code)
 		}
 	}
 	stop()
@@ -158,11 +174,11 @@ func TestServeUsageErrors(t *testing.T) {
 
 func TestServeServesTheWebUI(t *testing.T) {
 	log := fakeRunLog(t)
-	base, stop := startServe(t, "--log", log, "--epoch-slots", "60")
+	srv, stop := startServe(t, "--log", log, "--epoch-slots", "60")
 	defer stop()
 
 	fetch := func(path string) (*http.Response, string) {
-		resp, err := http.Get(base + path) //nolint:gosec,noctx // loopback test server
+		resp, err := srv.c.Get(srv.base + path) //nolint:noctx // loopback test server
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -194,7 +210,7 @@ func TestServeServesTheWebUI(t *testing.T) {
 		t.Errorf("missing asset: %d", r.StatusCode)
 	}
 	var caps struct{ Controls bool }
-	if code := getJSON(t, base+"/api/capabilities", &caps); code != 200 || caps.Controls {
+	if code := srv.getJSON(t, "/api/capabilities", &caps); code != 200 || caps.Controls {
 		t.Errorf("capabilities: %d %+v", code, caps)
 	}
 }
