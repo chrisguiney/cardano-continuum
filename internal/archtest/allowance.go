@@ -49,3 +49,33 @@ func compare(found []finding, allowed map[string]int) (fresh, stale []string) {
 	sort.Strings(stale)
 	return fresh, stale
 }
+
+// tighten rewrites the allowance text so each entry holds the current
+// measurement and entries with no finding are dropped. It never raises a
+// size or adds an entry. Comments and blank lines stay.
+func tighten(src string, found []finding) string {
+	now := map[string]int{}
+	for _, f := range found {
+		now[f.key] = f.n
+	}
+	var out []string
+	for _, line := range strings.Split(strings.TrimSuffix(src, "\n"), "\n") {
+		t := strings.TrimSpace(line)
+		cut := strings.LastIndexByte(t, ' ')
+		if t == "" || strings.HasPrefix(t, "#") || cut < 0 {
+			out = append(out, line)
+			continue
+		}
+		key := t[:cut]
+		n, ok := now[key]
+		if !ok {
+			continue
+		}
+		old, err := strconv.Atoi(t[cut+1:])
+		if err == nil && n < old {
+			line = fmt.Sprintf("%s %d", key, n)
+		}
+		out = append(out, line)
+	}
+	return strings.Join(out, "\n") + "\n"
+}

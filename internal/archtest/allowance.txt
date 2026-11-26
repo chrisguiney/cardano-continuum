@@ -5,7 +5,7 @@
 # stray-methods (methods outside the type's file), files (> 25 per package, tests counted).
 files cmd/continuum 35
 files internal/chain 27
-files internal/engine 52
+files internal/engine 50
 files internal/httpapi 38
 func-length cmd/continuum runLive 85
 func-length internal/engine Restore 90
@@ -15,7 +15,7 @@ members internal/build Builder 33
 members internal/chain View 67
 members internal/chain par 23
 members internal/engine Config 44
-members internal/engine Engine 227
+members internal/engine Engine 221
 members internal/engine Runner 37
 members internal/engine pendingRec 32
 members internal/engine snapshot 31
@@ -55,7 +55,7 @@ stray-methods internal/chain Querier 5
 stray-methods internal/chain View 35
 stray-methods internal/devbuild Builder 3
 stray-methods internal/engine Config 7
-stray-methods internal/engine Engine 142
+stray-methods internal/engine Engine 141
 stray-methods internal/engine Runner 2
 stray-methods internal/engine actor 1
 stray-methods internal/engine pendingRec 2

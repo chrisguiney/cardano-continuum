@@ -164,7 +164,9 @@ func TestComponentImports(t *testing.T) {
 
 // TestRepositoryLimits fails on a limit break the allowance does not cover,
 // and on an allowance entry whose violation is gone. The allowance only
-// shrinks: delete a line when this reports it stale.
+// shrinks: delete a line when this reports it stale, or run with
+// ARCHTEST_TIGHTEN=1 to lower every entry to its current size and drop the
+// stale ones.
 func TestRepositoryLimits(t *testing.T) {
 	m, err := scan("../..")
 	if err != nil {
@@ -178,11 +180,28 @@ func TestRepositoryLimits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fresh, stale := compare(limits(m), allowed)
+	found := limits(m)
+	if os.Getenv("ARCHTEST_TIGHTEN") != "" {
+		if err := os.WriteFile("allowance.txt", []byte(tighten(string(src), found)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	fresh, stale := compare(found, allowed)
 	if len(fresh) > 0 {
 		t.Errorf("new limit violations (fix them; the allowance takes no additions):\n%s", strings.Join(fresh, "\n"))
 	}
 	if len(stale) > 0 {
 		t.Errorf("allowance entries no longer needed (delete them):\n%s", strings.Join(stale, "\n"))
+	}
+}
+
+func TestTighten(t *testing.T) {
+	src := "# keep\nfunc-length p a 90\nmembers p gone 30\nnesting p b 4\n"
+	found := []finding{{key: "func-length p a", n: 85}, {key: "nesting p b", n: 9}}
+	got := tighten(src, found)
+	want := "# keep\nfunc-length p a 85\nnesting p b 4\n"
+	if got != want {
+		t.Fatalf("tighten =\n%s\nwant\n%s", got, want)
 	}
 }
