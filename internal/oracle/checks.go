@@ -312,3 +312,34 @@ func pointText(p chain.Point) string {
 	}
 	return uitoa(p.Slot) + "/" + hex.EncodeToString(p.Hash[:])
 }
+
+// checkRogue reports every rogue block found on a node's chain. Each node
+// that holds one is its own finding: the block is invalid for all of them,
+// and each implementation's acceptance is a separate fault.
+func checkRogue(s Snapshot) []Finding {
+	if len(s.Rogue) == 0 {
+		return nil
+	}
+	bad := make(map[chain.Point]RogueBlock, len(s.Rogue))
+	for _, r := range s.Rogue {
+		bad[r.Point] = r
+	}
+	var out []Finding
+	for _, b := range s.Tips {
+		for _, p := range b.Points {
+			r, ok := bad[p]
+			if !ok {
+				continue
+			}
+			out = append(out, Finding{
+				Kind: RogueAdopted, Severity: Fatal,
+				Summary: fmt.Sprintf("%s (%s) adopted the %s block %s, which breaks %s",
+					b.Node.Pool, b.Node.Impl, r.Kind, pointText(p), r.Rule),
+				Facts: []Fact{key("block", pointText(p)), key("pool", b.Node.Pool),
+					note("impl", b.Node.Impl), note("kind", r.Kind), note("rule", r.Rule)},
+				Nodes: []Node{b.Node}, Block: r.CBOR,
+			})
+		}
+	}
+	return out
+}

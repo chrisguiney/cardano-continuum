@@ -109,6 +109,9 @@ const (
 	Frozen            Kind = "chain_frozen"
 	DeepFork          Kind = "fork_deeper_than_k"
 	FloorBreached     Kind = "stake_floor_breached"
+	// RogueAdopted: an honest node selected a block the rogue pool built
+	// to break a consensus rule.
+	RogueAdopted Kind = "invalid_block_adopted"
 )
 
 // Node is one node involved in a finding: its implementation, the pool it
@@ -186,6 +189,8 @@ type Finding struct {
 	Reproducible bool `cbor:"13,keyasint,omitempty"`
 	// TxHash is the transaction's ID, for verdict findings.
 	TxHash []byte `cbor:"14,keyasint,omitempty"`
+	// Block is the block's CBOR, for a RogueAdopted finding.
+	Block []byte `cbor:"15,keyasint,omitempty"`
 }
 
 // Run identifies the run findings come from, for their replay command.

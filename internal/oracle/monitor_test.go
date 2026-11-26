@@ -65,7 +65,7 @@ func TestMonitorNames(t *testing.T) {
 	for _, m := range Monitors(k, guard(t)) {
 		names = append(names, m.Name())
 	}
-	want := []string{"value", "paid_once", "reservations", "settled", "view", "liveness", "tips", "stake_floor"}
+	want := []string{"value", "paid_once", "reservations", "settled", "view", "liveness", "tips", "stake_floor", "rogue"}
 	if !slices.Equal(names, want) {
 		t.Fatalf("monitors = %v, want %v", names, want)
 	}
@@ -260,4 +260,30 @@ func TestTipsAgree(t *testing.T) {
 	fires(t, "tips", Snapshot{Tips: []Branch{branch("p1", "cardano-node", a[2:]...), branch("p2", "dingo", other...)}}, DeepFork, Fatal)
 	// Windows too short to tell are not evaluable.
 	quiet(t, "tips", Snapshot{Tips: []Branch{branch("p1", "cardano-node", pt(6, 6)), branch("p2", "dingo", pt(6, 0x26))}})
+}
+
+// TestRogueBlockAdopted: a block the forger built to break a rule must be
+// on no honest node's chain. On one, it is a fatal finding carrying the
+// block and the node's build.
+func TestRogueBlockAdopted(t *testing.T) {
+	a := []chain.Point{pt(1, 1), pt(2, 2), pt(3, 3)}
+	bad := RogueBlock{Point: pt(4, 0x44), Kind: "body-hash", Rule: "InvalidBodyHashBBODY", CBOR: []byte{0x85, 1, 2}}
+	quiet(t, "rogue", Snapshot{
+		Rogue: []RogueBlock{bad},
+		Tips:  []Branch{branch("p1", "cardano-node", a...), branch("p2", "dingo", a...)},
+	})
+	n := node("dingo", "p2")
+	n.Digest, n.Revisions = "sha256:beef", map[string]string{"dingo": "abc123"}
+	with := Branch{Node: n, Points: append(slices.Clone(a), bad.Point)}
+	f := fires(t, "rogue", Snapshot{
+		Rogue: []RogueBlock{bad},
+		Tips:  []Branch{branch("p1", "cardano-node", a...), with},
+	}, RogueAdopted, Fatal)
+	if !hasFact(f, "kind", "body-hash") || !hasFact(f, "rule", "InvalidBodyHashBBODY") || !hasFact(f, "pool", "p2") {
+		t.Fatalf("facts = %+v", f.Facts)
+	}
+	if !slices.Equal(f.Block, bad.CBOR) || len(f.Nodes) != 1 || f.Nodes[0].Digest != "sha256:beef" ||
+		f.Nodes[0].Revisions["dingo"] != "abc123" {
+		t.Fatalf("finding lacks the block or the node's build: block %x nodes %+v", f.Block, f.Nodes)
+	}
 }

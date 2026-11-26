@@ -185,7 +185,7 @@ func golden(t *testing.T, name string, w Workload) {
 
 func TestDriverRegistry(t *testing.T) {
 	r := Drivers()
-	for _, impl := range []v1alpha1.Implementation{v1alpha1.CardanoNode, v1alpha1.Dingo} {
+	for _, impl := range []v1alpha1.Implementation{v1alpha1.CardanoNode, v1alpha1.Dingo, v1alpha1.Rogue} {
 		d, err := r.Driver(impl)
 		if err != nil {
 			t.Fatalf("%s: %v", impl, err)
@@ -195,11 +195,43 @@ func TestDriverRegistry(t *testing.T) {
 		}
 	}
 	r[v1alpha1.Amaru] = stubDriver{impl: v1alpha1.Amaru}
-	for _, impl := range []v1alpha1.Implementation{v1alpha1.Amaru, v1alpha1.Rogue} {
-		_, err := r.Driver(impl)
-		if err == nil || !strings.Contains(err.Error(), string(impl)) {
-			t.Errorf("%s: err %v, want ErrUnsupported naming it", impl, err)
+	if _, err := r.Driver(v1alpha1.Amaru); err == nil || !strings.Contains(err.Error(), string(v1alpha1.Amaru)) {
+		t.Errorf("amaru: err %v, want ErrUnsupported naming it", err)
+	}
+}
+
+// TestRenderRogueForging: the rogue pool is fenced like any other. It has
+// the pool's one workload name, the finalizer and a keys gate, mounts only
+// its own keys Secret, and reads its misbehaviours from that Secret, so a
+// scenario's schedule ends with the scenario's Secret.
+func TestRenderRogueForging(t *testing.T) {
+	p := pool("ns", "a", v1alpha1.Rogue, v1alpha1.TierForging)
+	w := render(t, Rogue{}, p, "localhost:5005/continuum/continuum-forger@sha256:aaaa")
+	if other := render(t, CardanoNode{}, pool("ns", "a", v1alpha1.CardanoNode, v1alpha1.TierForging), "r@sha256:aaaa"); other.StatefulSet.Name != w.StatefulSet.Name {
+		t.Errorf("rogue workload %q, cardano-node workload %q: one name per pool", w.StatefulSet.Name, other.StatefulSet.Name)
+	}
+	tmpl := w.StatefulSet.Spec.Template
+	if !slices.Contains(tmpl.Finalizers, Finalizer) {
+		t.Error("rogue forging template has no finalizer")
+	}
+	if len(tmpl.Spec.InitContainers) != 1 || !slices.Equal(tmpl.Spec.InitContainers[0].Command,
+		[]string{rogueBinary, "gate", "--keys", KeysDir}) {
+		t.Errorf("keys gate = %+v", tmpl.Spec.InitContainers)
+	}
+	c := tmpl.Spec.Containers[0]
+	want := []string{"run", "--genesis", GenesisDir, "--listen", ":3001", "--evidence", DataMount + "/evidence",
+		"--peer", "pool-b.ns.svc.cluster.local:3001", "--keys", KeysDir}
+	if !slices.Equal(c.Command, []string{rogueBinary}) || !slices.Equal(c.Args, want) {
+		t.Errorf("command %v args %v, want %v", c.Command, c.Args, want)
+	}
+	for _, v := range tmpl.Spec.Volumes {
+		if v.Secret != nil && v.Secret.SecretName != p.Spec.KeysSecret {
+			t.Errorf("mounts Secret %q, not the pool's own", v.Secret.SecretName)
 		}
+	}
+	relay := render(t, Rogue{}, pool("ns", "a", v1alpha1.Rogue, v1alpha1.TierValidating), "r@sha256:aaaa")
+	if args := relay.StatefulSet.Spec.Template.Spec.Containers[0].Args; slices.Contains(args, "--keys") {
+		t.Errorf("an unkeyed rogue was given keys: %v", args)
 	}
 }
 

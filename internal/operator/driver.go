@@ -106,7 +106,7 @@ type Registry map[v1alpha1.Implementation]NodeDriver
 
 // Drivers is the registry of the drivers this build supports.
 func Drivers() Registry {
-	return Registry{v1alpha1.CardanoNode: CardanoNode{}, v1alpha1.Dingo: Dingo{}}
+	return Registry{v1alpha1.CardanoNode: CardanoNode{}, v1alpha1.Dingo: Dingo{}, v1alpha1.Rogue: Rogue{}}
 }
 
 // Driver returns the driver for impl. Amaru is refused even if registered:

@@ -26,6 +26,18 @@ type Snapshot struct {
 	// Policy is the stake-floor guard's input (chain.View.PolicyState).
 	Policy *policy.State
 	Tips   []Branch
+	// Rogue is every block the rogue pool forged to be rejected
+	// (internal/forger logs each as a "forged" decision expecting reject).
+	Rogue []RogueBlock
+}
+
+// RogueBlock is a block built to break one consensus rule. No honest node
+// may have it on its chain.
+type RogueBlock struct {
+	Point chain.Point
+	// Kind is the misbehaviour (forger.Kind) and Rule the rule it breaks.
+	Kind, Rule string
+	CBOR       []byte
 }
 
 // Value is the lovelace accounting at one point. Every lovelace of the
@@ -142,6 +154,7 @@ func Monitors(k uint64, g policy.Guard) []Monitor {
 		monitor{"liveness", checkLiveness},
 		monitor{"tips", func(s Snapshot) []Finding { return checkTips(s, k) }},
 		monitor{"stake_floor", func(s Snapshot) []Finding { return checkFloor(s, g) }},
+		monitor{"rogue", checkRogue},
 	}
 }
 
