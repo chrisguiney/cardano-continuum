@@ -29,5 +29,6 @@ export const EMPTY_STATE = [
   "No adversaries in this run.",
   "Start a run with attacks: continuum run --fake --attack dust-flood,utxo-contention,malformed-cbor,front-run,double-spend (devnet only; one adversary actor per attack).",
   "For a delta against a control, run the same seed without --attack and serve the attack run with continuum serve --control CONTROL/events.log.",
-  "make up does not pass --attack, so a cluster deployed with it has no adversaries.",
+  "make up runs every tier-1 attack by default; this run was deployed with ATTACKS=none or a list without them. Redeploy (make down, then make up) to change it.",
+  "exunits-block-gap is opt-in: make up ATTACKS=dust-flood,exunits-block-gap also renders the genesis it needs (per-transaction ExUnits above per-block).",
 ];

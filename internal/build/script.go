@@ -1,12 +1,15 @@
 package build
 
 import (
+	"cmp"
 	"context"
 	"encoding/hex"
 	"errors"
+	"fmt"
 
 	"github.com/Salvionied/apollo/v2"
 	"github.com/blinklabs-io/gouroboros/ledger/common"
+	"github.com/blinklabs-io/gouroboros/ledger/conway"
 
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 )
@@ -36,6 +39,10 @@ type Mint struct {
 	Name     []byte
 	Quantity int64
 	Redeemer common.Datum
+	// Collateral is the total collateral to declare; zero declares
+	// collateralAmount. A policy whose declared units cost more than
+	// collateralAmount/1.5 in fees needs more.
+	Collateral uint64
 }
 
 // ErrNoCollateral reports that no offered input can serve as collateral.
@@ -46,10 +53,6 @@ var ErrNoCollateral = errors.New("build: no pure-ada input large enough for coll
 // failure forfeits only this much. A script fee of a few ADA at the usual
 // 150% needs well under it.
 const collateralAmount = 5_000_000
-
-// minCollateral is the smallest input taken as collateral: the declared
-// amount plus room for a collateral return above min-UTxO.
-const minCollateral = 2 * collateralAmount
 
 // Lock builds the locking payment.
 func (b *Builder) Lock(ctx context.Context, w keys.Wallet, l Lock) (Built, error) {
@@ -76,7 +79,7 @@ func (b *Builder) Unlock(ctx context.Context, w keys.Wallet, u Unlock) (Built, e
 // instead of evaluating, which only tests use, to build an under-budgeted
 // transaction.
 func (b *Builder) unlockSpec(u Unlock, budget *common.ExUnits) (spec, error) {
-	col, err := collateral(u.Inputs)
+	col, err := collateral(u.Inputs, collateralAmount)
 	if err != nil {
 		return spec{}, err
 	}
@@ -104,7 +107,8 @@ func (b *Builder) Mint(ctx context.Context, w keys.Wallet, m Mint) (Built, error
 
 // mintSpec builds the spec for m; budget is as for unlockSpec.
 func (b *Builder) mintSpec(m Mint, budget *common.ExUnits) (spec, error) {
-	col, err := collateral(m.Inputs)
+	amount := cmp.Or(m.Collateral, collateralAmount)
+	col, err := collateral(m.Inputs, amount)
 	if err != nil {
 		return spec{}, err
 	}
@@ -116,19 +120,36 @@ func (b *Builder) mintSpec(m Mint, budget *common.ExUnits) (spec, error) {
 			if budget != nil {
 				a = a.DisableExecutionUnitsEstimation()
 			}
-			return a.AttachScript(m.Policy.V3).Mint(unit, &m.Redeemer, budget).AddCollateral(col).SetCollateralAmount(collateralAmount), nil
+			return a.AttachScript(m.Policy.V3).Mint(unit, &m.Redeemer, budget).AddCollateral(col).SetCollateralAmount(int64(amount)), nil
 		},
 	}, nil
 }
 
 // collateral picks the first offered input holding only ADA and at least
-// minCollateral. Offered inputs are in the planner's order, so the choice is
-// deterministic.
-func collateral(ins []common.Utxo) (common.Utxo, error) {
+// twice amount: the declared collateral plus room for a collateral return
+// above min-UTxO. Offered inputs are in the planner's order, so the choice
+// is deterministic.
+func collateral(ins []common.Utxo, amount uint64) (common.Utxo, error) {
 	for _, u := range ins {
-		if u.Output.Assets() == nil && u.Output.Amount().Uint64() >= minCollateral && u.Output.ScriptRef() == nil {
+		if u.Output.Assets() == nil && u.Output.Amount().Uint64() >= 2*amount && u.Output.ScriptRef() == nil {
 			return u, nil
 		}
 	}
 	return common.Utxo{}, ErrNoCollateral
+}
+
+// Declared returns the execution units tx's redeemers declare in total.
+func Declared(tx []byte) (common.ExUnits, error) {
+	t, err := conway.NewConwayTransactionFromCbor(tx)
+	if err != nil {
+		return common.ExUnits{}, fmt.Errorf("build: declared units: %w", err)
+	}
+	var u common.ExUnits
+	if w := t.Witnesses(); w != nil && w.Redeemers() != nil {
+		for _, r := range w.Redeemers().Iter() {
+			u.Memory += r.ExUnits.Memory
+			u.Steps += r.ExUnits.Steps
+		}
+	}
+	return u, nil
 }

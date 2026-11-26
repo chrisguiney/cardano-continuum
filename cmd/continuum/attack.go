@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+
+	"github.com/blinklabs-io/gouroboros/ledger/conway"
+
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +14,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
+	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
 	"github.com/chrisguiney/cardano-continuum/internal/genesis"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 )
@@ -32,6 +36,28 @@ func (s *simFlags) attackNames() ([]adversary.Name, error) {
 		}
 	}
 	return out, nil
+}
+
+// chainParams are the fake chain's parameters: the devnet genesis with
+// every override the --attack attacks need (adversary.GenesisOverrides),
+// which a devnet allows only on purpose.
+func (s *simFlags) chainParams() (conway.ConwayProtocolParameters, error) {
+	ns, err := s.attackNames()
+	if err != nil {
+		return conway.ConwayProtocolParameters{}, err
+	}
+	spec := genesis.Default()
+	for _, n := range ns {
+		for _, o := range adversary.GenesisOverrides(n) {
+			ov, err := genesis.ParseOverride(o)
+			if err != nil {
+				return conway.ConwayProtocolParameters{}, fmt.Errorf("--attack %s: %w", n, err)
+			}
+			ov.Apply(&spec)
+			spec.Allow.InconsistentExUnits = true
+		}
+	}
+	return fakechain.ParamsFor(spec)
 }
 
 // withAdversaries adds the built-in profile of every --attack to ps and

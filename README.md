@@ -47,8 +47,12 @@ determinism tests under the race detector at `GOMAXPROCS=1` and `8`.
 
 `--attack` adds one adversary actor per named tier-1 attack (`dust-flood`,
 `utxo-contention`, `malformed-cbor`, `front-run`, `double-spend`), each with
-its own budget and a per-epoch cost ceiling. Adversaries run only on a devnet:
-the engine refuses them unless the node's genesis passes the network guard.
+its own budget and a per-epoch cost ceiling. `exunits-block-gap` is opt-in:
+on a fake run it switches the chain to a genesis whose per-transaction
+ExUnits exceed the per-block ones, and on a devnet it needs that genesis
+(see [docs/single-machine.md](docs/single-machine.md#adversaries)).
+Adversaries run only on a devnet: the engine refuses them unless the node's
+genesis passes the network guard.
 Compare an attack run with a control run on the same seed:
 
 ```sh

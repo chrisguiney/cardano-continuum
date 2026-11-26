@@ -50,3 +50,21 @@ func TestAttackFlagRefusesUnknown(t *testing.T) {
 		t.Fatalf("unknown attack: %v", err)
 	}
 }
+
+// TestGapAttackRun: --attack exunits-block-gap runs the fake chain on the
+// attack's inconsistent genesis, so the adversary attacks; the summary
+// names the step and the run files no fatal finding.
+func TestGapAttackRun(t *testing.T) {
+	var out bytes.Buffer
+	args := []string{"run", "--fake", "--epochs", "1", "--out", t.TempDir(), "--seed", "7", "--wallets", "12",
+		"--epoch-slots", "120", "--profiles", "m3", "--attack", "exunits-block-gap"}
+	if err := run(context.Background(), args, &out); err != nil {
+		t.Fatalf("run: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "attacks: steps ") {
+		t.Fatalf("the gap adversary made no step: %s", out.String())
+	}
+	if !strings.Contains(out.String(), "(fatal 0)") {
+		t.Fatalf("fatal findings: %s", out.String())
+	}
+}

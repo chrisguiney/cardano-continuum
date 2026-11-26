@@ -208,13 +208,16 @@ UP_REGISTRY ?= localhost:5005/continuum
 UI_PORT ?= 8088
 UI_ADDRESS ?= 127.0.0.1
 ENGINE_POOLS ?= 0
+# ATTACKS: empty runs every tier-1 attack a stock genesis supports, "none"
+# runs none (hack/up.sh).
+ATTACKS ?=
 UP_ENV = CONTEXT='$(CONTEXT)' NAMESPACE='$(NAMESPACE)' PROFILES='$(PROFILES)' POOLS='$(POOLS)' \
-	DINGO_POOLS='$(DINGO_POOLS)' WALLETS='$(WALLETS)' SCALE='$(SCALE)' SEED='$(SEED)' UI_PORT='$(UI_PORT)' UI_ADDRESS='$(UI_ADDRESS)' ENGINE_POOLS='$(ENGINE_POOLS)' \
+	DINGO_POOLS='$(DINGO_POOLS)' WALLETS='$(WALLETS)' SCALE='$(SCALE)' SEED='$(SEED)' UI_PORT='$(UI_PORT)' UI_ADDRESS='$(UI_ADDRESS)' ENGINE_POOLS='$(ENGINE_POOLS)' ATTACKS='$(ATTACKS)' \
 	CONTINUUM_REGISTRY='$(or $(CONTINUUM_REGISTRY),$(UP_REGISTRY))' \
 	CONTINUUM_REGISTRY_INSECURE='$(or $(CONTINUUM_REGISTRY_INSECURE),true)' KO='$(KO)'
 
 .PHONY: up down
-up: ## Deploy operator, genesis, pools and the engine UI to CONTEXT (POOLS, DINGO_POOLS, WALLETS, SCALE, PROFILES, SEED)
+up: ## Deploy operator, genesis, pools and the engine UI to CONTEXT (POOLS, DINGO_POOLS, WALLETS, SCALE, PROFILES, SEED, ATTACKS)
 	$(UP_ENV) hack/up.sh
 
 down: ## Delete the pools, the engine and the namespace (the operator stays until the pools are gone)

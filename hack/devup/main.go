@@ -1,5 +1,5 @@
-// Command devup is the Go half of hack/up.sh: it checks memory and renders
-// the network manifests. It prints to stdout and reads no stdin.
+// Command devup is the Go half of hack/up.sh: it checks memory, renders the
+// network manifests and resolves ATTACKS. It prints to stdout and reads no stdin.
 package main
 
 import (
@@ -31,6 +31,21 @@ func run(args []string) error {
 	case "images":
 		fmt.Println(operator.CardanoNode{}.Image())
 		fmt.Println(operator.Dingo{}.Image())
+		return nil
+	case "attacks":
+		// Line 1 is the engine's --attack value (empty for none); every
+		// further line is one continuum-genesis argument.
+		if len(args) != 2 {
+			return fmt.Errorf("usage: devup attacks <ATTACKS>")
+		}
+		p, err := devup.Attacks(args[1])
+		if err != nil {
+			return err
+		}
+		fmt.Println(p.Engine)
+		for _, a := range p.Genesis {
+			fmt.Println(a)
+		}
 		return nil
 	case "node":
 		if len(args) != 2 {

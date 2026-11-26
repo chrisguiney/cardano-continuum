@@ -30,6 +30,7 @@ type Payee struct {
 //	front-run        Spend and Tip, the lovelace bid above the minimum fee
 //	malformed-cbor   Mutation, and Victim for a Steal
 //	double-spend     Payees: one transaction each, all on the same inputs
+//	exunits-block-gap Memory, the memory units its script spends and declares
 type Step struct {
 	Attack   Name
 	Payees   []Payee
@@ -37,6 +38,7 @@ type Step struct {
 	Tip      uint64
 	Mutation Mutation
 	Victim   *Coin
+	Memory   int64
 }
 
 // Plan draws attack n's next step from r. A non-empty why says there is
@@ -51,6 +53,8 @@ func Plan(n Name, s Sight, r *rand.Rand) (Step, string) {
 		return planMalformed(s, r), ""
 	case DoubleSpend:
 		return planRace(s, r)
+	case ExUnitsGap:
+		return planGap(s)
 	}
 	return Step{}, "attack " + string(n) + " has no plan of its own"
 }

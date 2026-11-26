@@ -1,6 +1,8 @@
 package oracle
 
 import (
+	"github.com/blinklabs-io/gouroboros/ledger/common"
+
 	"bytes"
 	"slices"
 	"testing"
@@ -65,7 +67,7 @@ func TestMonitorNames(t *testing.T) {
 	for _, m := range Monitors(k, guard(t)) {
 		names = append(names, m.Name())
 	}
-	want := []string{"value", "paid_once", "reservations", "settled", "view", "liveness", "tips", "stake_floor", "rogue"}
+	want := []string{"value", "paid_once", "reservations", "settled", "view", "liveness", "tips", "stake_floor", "rogue", "block_budget"}
 	if !slices.Equal(names, want) {
 		t.Fatalf("monitors = %v, want %v", names, want)
 	}
@@ -286,4 +288,18 @@ func TestRogueBlockAdopted(t *testing.T) {
 		f.Nodes[0].Revisions["dingo"] != "abc123" {
 		t.Fatalf("finding lacks the block or the node's build: block %x nodes %+v", f.Block, f.Nodes)
 	}
+}
+
+// TestBlockOverBudget: a block whose transactions declare more than
+// maxBlockExUnits is fatal on either dimension; one at the limit is fine.
+func TestBlockOverBudget(t *testing.T) {
+	max := common.ExUnits{Memory: 72_000_000, Steps: 20_000_000_000}
+	at := pt(9, 9)
+	quiet(t, "block_budget", Snapshot{Budget: &BlockBudget{At: at, Used: max, Max: max}})
+	quiet(t, "block_budget", Snapshot{})
+	f := fires(t, "block_budget", Snapshot{Budget: &BlockBudget{At: at, Used: common.ExUnits{Memory: max.Memory + 1, Steps: 1}, Max: max, Txs: 1}}, BlockOverBudget, Fatal)
+	if !hasFact(f, "block", pointText(at)) {
+		t.Fatalf("facts = %+v", f.Facts)
+	}
+	fires(t, "block_budget", Snapshot{Budget: &BlockBudget{At: at, Used: common.ExUnits{Memory: 1, Steps: max.Steps + 1}, Max: max}}, BlockOverBudget, Fatal)
 }

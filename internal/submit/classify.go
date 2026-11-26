@@ -144,6 +144,8 @@ func leafClass(err error) (Class, bool) {
 		return EraMismatch, true
 	case *ledger.InsufficientCollateral:
 		return InsufficientCollateral, true
+	case *ledger.ExUnitsTooBigUtxo:
+		return ExUnitsTooBig, true
 	case *ledger.UtxosFailure:
 		return utxosClass(e)
 	}

@@ -279,6 +279,8 @@ func (e *Engine) build(ctx context.Context, at sched.Time, id population.ActorID
 		s, why, err = e.malformed(ctx, at, id, intent, step)
 	case adversary.DoubleSpend:
 		s, why, err = e.race(ctx, at, id, intent, step)
+	case adversary.ExUnitsGap:
+		s, why, err = e.gap(ctx, at, id, intent, step)
 	default:
 		return shot{}, "no builder for " + string(step.Attack), nil
 	}
@@ -473,6 +475,37 @@ func (e *Engine) race(ctx context.Context, at sched.Time, id population.ActorID,
 		s.cost = max(s.cost, b.Fee+minPayment)
 	}
 	s.inputs = refs(coins)
+	return s, "", nil
+}
+
+// gapToken is what a gap transaction mints under its burn policy.
+var gapToken = []byte("gap")
+
+// gap mints under a burn loop sized to spend the step's memory, declaring
+// what the builder measured it spend, which must land between the block
+// and transaction limits.
+func (e *Engine) gap(ctx context.Context, at sched.Time, id population.ActorID, intent uint64, step adversary.Step) (shot, string, error) {
+	s := shot{rec: pendingRec{To: uint64(id)}, want: adversary.GapExpect(), ttl: e.ttl(at, false, false)}
+	coins, why := e.fund(id, intent, 2*adversary.GapCollateral+scriptHeadroom)
+	if why != "" {
+		return shot{}, why, nil
+	}
+	w := e.walletOf(id)
+	b, err := e.builder.Mint(ctx, w, build.Mint{
+		Spend: build.Spend{Inputs: e.ledgerUtxos(w, coins), TTL: s.ttl}, Policy: build.Burn(build.BurnSize(step.Memory)),
+		Name: gapToken, Quantity: 1, Redeemer: unitDatum(), Collateral: adversary.GapCollateral,
+	})
+	if err != nil {
+		return shot{}, "", err
+	}
+	u, err := build.Declared(b.Tx)
+	if err != nil {
+		return shot{}, "", err
+	}
+	if blk := e.cfg.Build.MaxBlockExUnits; u.Memory <= blk.Memory && u.Steps <= blk.Steps {
+		return shot{}, fmt.Sprintf("burn declares %d memory, within the block's %d", u.Memory, blk.Memory), nil
+	}
+	s.txs, s.inputs, s.cost = []build.Built{b}, refs(coins), b.Fee
 	return s, "", nil
 }
 

@@ -215,6 +215,9 @@ type Engine struct {
 	lost     uint64
 	seq      uint64
 	ends     []oracle.End
+	// budget is the block the current input applied, for the block-budget
+	// monitor.
+	budget *oracle.BlockBudget
 
 	// advs are the adversaries' attack policies and costs their cost
 	// account; contested are the shared outputs an adversary tried to
@@ -365,7 +368,7 @@ func newEmpty(cfg Config) (*Engine, error) {
 // Handle implements eventlog.Engine: it applies one input and returns the
 // decisions it caused, in order.
 func (e *Engine) Handle(ctx context.Context, in eventlog.Record) ([]eventlog.Record, error) {
-	e.out, e.ends, e.seq = nil, nil, in.Seq
+	e.out, e.ends, e.seq, e.budget = nil, nil, in.Seq, nil
 	from := e.conf
 	var err error
 	switch in.Kind {
@@ -383,6 +386,7 @@ func (e *Engine) Handle(ctx context.Context, in eventlog.Record) ([]eventlog.Rec
 			}
 		}
 		if err = e.applyBlock(ctx, in.At, blockRec{Point: b.Point, Txs: c.Txs, Number: c.Number}); err == nil {
+			e.budget = e.blockBudget(b.Point, c.Txs)
 			err = e.watch(in.At, from, nil, nil)
 		}
 	case eventlog.KindRolledBack:

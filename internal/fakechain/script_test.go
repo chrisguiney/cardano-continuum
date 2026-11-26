@@ -198,18 +198,18 @@ func TestBlockBudgetPacksPrefix(t *testing.T) {
 	}
 }
 
-// TestOverfullInclude: the Overfull fault forges a block past its
-// execution budget, as a faulty forger would, for the oracle to catch.
-func TestOverfullInclude(t *testing.T) {
+// TestOverfill: the Overfill fault forges a block past its execution
+// budget, as a faulty forger would, for the oracle to catch.
+func TestOverfill(t *testing.T) {
 	f := newFixture(t, gapParams(t))
 	p := compilePolicy(t, alwaysV3, genesis.PlutusV3)
 	gap := f.mustSubmit(f.mintTx(p, f.alice, common.ExUnits{Memory: 100_000_000, Steps: 1_000_000_000}, 0))
-	if err := f.chain.Inject(Include{Txs: []TxID{gap}, Overfull: true}); err != nil {
+	if err := f.chain.Inject(Overfill{}); err != nil {
 		t.Fatal(err)
 	}
 	f.advance(2)
 	if !f.forged(gap) {
-		t.Fatal("Overfull did not forge the over-budget transaction")
+		t.Fatal("Overfill did not forge the over-budget transaction")
 	}
 }
 

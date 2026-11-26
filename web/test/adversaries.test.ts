@@ -45,9 +45,13 @@ describe("adversary outcomes and impact", () => {
 });
 
 describe("empty state", () => {
-  it("explains how to enable adversaries and that make up cannot", () => {
-    expect(EMPTY_STATE.join(" ")).toMatch(/continuum run --fake --attack/);
-    expect(EMPTY_STATE.join(" ")).toMatch(/make up.*not/i);
+  it("explains how to enable adversaries, on a fake run and with make up", () => {
+    const text = EMPTY_STATE.join(" ");
+    expect(text).toMatch(/continuum run --fake --attack/);
+    expect(text).toMatch(/make up/);
+    expect(text).toMatch(/ATTACKS=none/);
+    expect(text).toMatch(/exunits-block-gap/);
+    expect(text).not.toMatch(/make up does not/);
   });
   it("routes /adversaries", () => {
     expect(parseRoute("/adversaries")).toEqual({ name: "adversaries" });

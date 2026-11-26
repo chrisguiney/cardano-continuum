@@ -86,6 +86,7 @@ type fakeView struct {
 	payees    []population.ActorID
 	victims   []Coin
 	remaining uint64
+	budgets   Budgets
 }
 
 func (v fakeView) Balance(population.ActorID) profile.Lovelace             { return v.bal }
@@ -98,6 +99,7 @@ func (v fakeView) Shared() []Locked                                        { ret
 func (v fakeView) Payees() []population.ActorID                            { return v.payees }
 func (v fakeView) Victims() []Coin                                         { return v.victims }
 func (v fakeView) Remaining(population.ActorID) uint64                     { return v.remaining }
+func (v fakeView) Budgets() Budgets                                        { return v.budgets }
 
 func scores(t *testing.T, attacks []string, v agenda.View) map[profile.IntentKind]agenda.Score {
 	t.Helper()

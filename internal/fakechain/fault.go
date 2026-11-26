@@ -36,13 +36,14 @@ type Delay struct{ Slots uint64 }
 
 // Include makes the next block contain exactly Txs, in that order (each still
 // subject to validation). Every one must be in the mempool now. Use it to
-// decide which of two conflicting transactions wins. Overfull forges them
-// past the block's execution budget, as a faulty forger would: no honest
-// node adopts such a block (cardano-ledger Alonzo BBODY, TooManyExUnits).
-type Include struct {
-	Txs      []TxID
-	Overfull bool
-}
+// decide which of two conflicting transactions wins.
+type Include struct{ Txs []TxID }
+
+// Overfill makes the next block take the mempool past its execution
+// budget, as a faulty forger would: no honest node adopts such a block
+// (cardano-ledger Alonzo BBODY, TooManyExUnits). It exists for the
+// oracle's block-budget monitor to catch.
+type Overfill struct{}
 
 // Inject applies f now, at the current slot.
 func (c *Chain) Inject(f Fault) error {
@@ -75,7 +76,11 @@ func (in Include) apply(c *Chain) error {
 		}
 	}
 	c.include = append([]TxID{}, in.Txs...)
-	c.overfull = in.Overfull
+	return nil
+}
+
+func (Overfill) apply(c *Chain) error {
+	c.overfull = true
 	return nil
 }
 

@@ -112,6 +112,10 @@ const (
 	// RogueAdopted: an honest node selected a block the rogue pool built
 	// to break a consensus rule.
 	RogueAdopted Kind = "invalid_block_adopted"
+	// BlockOverBudget: a block on the chain whose transactions declare
+	// more execution units than maxBlockExUnits, which the BBODY rule
+	// forbids (cardano-ledger Alonzo/Rules/Bbody.hs TooManyExUnits).
+	BlockOverBudget Kind = "block_exunits_over_limit"
 )
 
 // Node is one node involved in a finding: its implementation, the pool it

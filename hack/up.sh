@@ -3,13 +3,22 @@
 # a ContinuumNetwork with POOLS cardano-node pools and DINGO_POOLS dingo
 # pools, and the engine serving the live UI. Idempotent: every step skips
 # work already done, so a second run only repairs what is missing. To change
-# the pool count or the seed, run `make down` first: the genesis fixes both.
+# the pool count, the seed or ATTACKS, run `make down` first: the genesis
+# fixes them.
+#
+# ATTACKS selects the engine's tier-1 adversaries, one actor each with the
+# built-in budget and per-epoch cost ceiling: empty (the default) is every
+# attack a stock genesis supports (dust-flood, utxo-contention,
+# malformed-cbor, front-run, double-spend), "none" runs none, and a
+# comma-separated list runs those. exunits-block-gap is opt-in: naming it
+# also renders the genesis with per-transaction ExUnits above the per-block
+# ones (devup attacks prints the overrides).
 #
 # Every wait is bounded and nothing reads stdin. kubectl always names
 # $CONTEXT, so the current context is never changed.
 #
 # Environment (the Makefile passes these): CONTEXT, NAMESPACE, PROFILES,
-# POOLS, DINGO_POOLS, WALLETS, SCALE, SEED (64 hex), CONTINUUM_REGISTRY,
+# POOLS, DINGO_POOLS, WALLETS, SCALE, SEED (64 hex), ATTACKS, CONTINUUM_REGISTRY,
 # CONTINUUM_REGISTRY_INSECURE, KO, MIN_MEM_GIB, UI_PORT, UI_ADDRESS.
 set -euo pipefail
 exec </dev/null
@@ -23,6 +32,7 @@ WALLETS=${WALLETS:-100}
 # SCALE multiplies every profile's activity rates (the engine's --scale).
 SCALE=${SCALE:-200}
 SEED=${SEED:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+ATTACKS=${ATTACKS:-}
 REGISTRY=${CONTINUUM_REGISTRY:-localhost:5005/continuum}
 INSECURE=${CONTINUUM_REGISTRY_INSECURE:-true}
 KO=${KO:-go run github.com/google/ko@v0.19.1}
@@ -75,6 +85,18 @@ preflight() {
   devup render -pools "$POOLS" -dingo "$DINGO_POOLS" >/dev/null || die "pool plan refused"
   [[ $SCALE =~ ^[0-9]+([.][0-9]+)?$ && $SCALE =~ [1-9] ]] || die "SCALE must be a positive number"
   [[ $SEED =~ ^[0-9a-f]{64}$ ]] || die "SEED must be 64 lowercase hex characters"
+  resolve_attacks
+}
+
+# resolve_attacks sets ENGINE_ATTACKS, the engine's --attack value, and
+# GENESIS_ARGS, the continuum-genesis arguments those attacks need, one
+# per line.
+resolve_attacks() {
+  local plan
+  plan=$(devup attacks "$ATTACKS") || die "ATTACKS=$ATTACKS refused"
+  ENGINE_ATTACKS=$(printf '%s\n' "$plan" | sed -n 1p)
+  GENESIS_ARGS=$(printf '%s\n' "$plan" | sed -n '2,$p')
+  log "attacks: ${ENGINE_ATTACKS:-none}${GENESIS_ARGS:+ (genesis: ${GENESIS_ARGS//$'\n'/ })}"
 }
 
 # load_node SRC NAME: make the node's containerd hold the dev-registry image
@@ -166,12 +188,17 @@ EOF
   fi
   local img
   img=$(build continuum-genesis)
-  # -start-delay leaves time for the nodes to start; -pools is the pool count.
-  awk -v img="$img" -v delay="${START_DELAY:-120s}" -v pools="$total" '
+  # -start-delay leaves time for the nodes to start; -pools is the pool count;
+  # GENESIS_ARGS are the overrides ATTACKS needs.
+  GENESIS_ARGS="$GENESIS_ARGS" awk -v img="$img" -v delay="${START_DELAY:-120s}" -v pools="$total" '
     /^          image: continuum-genesis$/ { print "          image: " img; next }
     /^            - -start-delay=60s$/ { print "            - -start-delay=" delay; next }
     { print }
-    /^            - -out=\/genesis$/ { print "            - -pools=" pools }' \
+    /^            - -out=\/genesis$/ {
+      print "            - -pools=" pools
+      n = split(ENVIRON["GENESIS_ARGS"], extra, "\n")
+      for (i = 1; i <= n; i++) if (extra[i] != "") print "            - " extra[i]
+    }' \
     "$root/deploy/genesis/job.yaml" | k -n "$NAMESPACE" apply -f - >/dev/null
   k -n "$NAMESPACE" wait --for=condition=Complete --timeout=4m job/continuum-genesis >/dev/null || die "genesis job did not complete"
 }
@@ -289,7 +316,8 @@ deploy_engine() {
   local img args
   img=$(build continuum)
   args=$(printf '            - %s\n' "--profiles=$PROFILES" "--wallets=$WALLETS" "--scale=$SCALE" "--pools=$ENGINE_POOLS" \
-    "--genesis-pools=$total" "--network=devnet" "--namespace=$NAMESPACE" "--serve=127.0.0.1:$UI_PORT")
+    "--genesis-pools=$total" "--network=devnet" "--namespace=$NAMESPACE" "--serve=127.0.0.1:$UI_PORT" \
+    ${ENGINE_ATTACKS:+"--attack=$ENGINE_ATTACKS"})
   ARGS="$args" awk -v img="$img" '
     /^          image: continuum$/ { print "          image: " img; next }
     /^            - --wallets=20$/ { print ENVIRON["ARGS"]; next }

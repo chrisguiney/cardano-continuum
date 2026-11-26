@@ -20,6 +20,8 @@
 //	                  same output, a higher fee         ahead of it
 //	double-spend      2-3 payees                        one payment per payee, all on
 //	                                                    the same inputs
+//	exunits-block-gap declared memory between the       a mint under build.Burn that
+//	                  block and transaction limits      spends it (gap.go); opt-in
 //
 // No adversary runs outside a devnet: the engine refuses an adversary
 // actor unless the run holds a Clearance, which only Clear makes, from
@@ -55,9 +57,13 @@ const (
 	Malformed   Name = "malformed-cbor"
 	FrontRun    Name = "front-run"
 	DoubleSpend Name = "double-spend"
+	// ExUnitsGap needs a devnet whose genesis allows a per-transaction
+	// budget above the per-block one (GenesisOverrides); on any other it
+	// never scores.
+	ExUnitsGap Name = "exunits-block-gap"
 )
 
-var names = []Name{DustFlood, Contention, Malformed, FrontRun, DoubleSpend}
+var names = []Name{DustFlood, Contention, Malformed, FrontRun, DoubleSpend, ExUnitsGap}
 
 // Names returns every attack.
 func Names() []Name { return slices.Clone(names) }

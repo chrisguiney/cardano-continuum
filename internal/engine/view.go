@@ -8,6 +8,7 @@ import (
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 	"github.com/blinklabs-io/gouroboros/ledger/shelley"
 
+	"github.com/chrisguiney/cardano-continuum/internal/adversary"
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
@@ -196,6 +197,11 @@ func (v view) DelegatedTo(id population.ActorID) (population.ActorID, bool) {
 	return v.e.view.DelegatedTo(id)
 }
 func (v view) PoolRegistered(id population.ActorID) bool { return v.e.view.PoolRegistered(id) }
+
+// Budgets implements adversary.Sight: the run's execution limits.
+func (v view) Budgets() adversary.Budgets {
+	return adversary.Budgets{Tx: v.e.cfg.Build.MaxTxExUnits, Block: v.e.cfg.Build.MaxBlockExUnits}
+}
 
 // OpenProposals implements agenda.Governance.
 func (v view) OpenProposals() []agenda.ProposalInfo { return v.e.view.OpenProposals() }

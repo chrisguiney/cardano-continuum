@@ -413,11 +413,11 @@ func (c *Chain) produce() error {
 // per-transaction budget but over the per-block one is never forged and
 // holds back every later one until it leaves the mempool.
 func (c *Chain) assemble() []*conway.ConwayTransaction {
-	cands := c.pool.txs
-	overfull := false
+	cands, overfull := c.pool.txs, c.overfull
+	c.overfull = false
 	if c.include != nil {
-		cands, overfull = c.pool.pick(c.include), c.overfull
-		c.include, c.overfull = nil, false
+		cands = c.pool.pick(c.include)
+		c.include = nil
 	}
 	view := newOverlay(c.utxo, c.certs)
 	r := c.effects()

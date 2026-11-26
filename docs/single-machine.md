@@ -12,7 +12,39 @@ make down
 Variables: `CONTEXT`, `NAMESPACE`, `PROFILES`, `POOLS` (cardano-node),
 `DINGO_POOLS`, `WALLETS`, `SCALE`, `SEED` (64 hex), `ENGINE_POOLS` (pool operators the
 engine simulates; keep 0 with `preprod` and `preview`, which have no pool
-profile), `UI_PORT`, `UI_ADDRESS`.
+profile), `ATTACKS`, `UI_PORT`, `UI_ADDRESS`.
+
+## Adversaries
+
+`make up` runs the engine's tier-1 adversaries by default: one actor per
+attack, each with the built-in 5,000 ADA budget and 300 ADA per-epoch cost
+ceiling (`internal/adversary/profiles.go`). The default is every attack a
+stock genesis supports: `dust-flood`, `utxo-contention`, `malformed-cbor`,
+`front-run` and `double-spend`. A correctly behaving network rejects every
+malformed and double-spend transaction; those rejections are the verdicts the
+oracle expects, not findings.
+
+```sh
+make up                                     # the default attacks
+make up ATTACKS=none                        # an honest network only
+make up ATTACKS=dust-flood,exunits-block-gap
+```
+
+`exunits-block-gap` is opt-in. It needs a genesis whose per-transaction
+execution budget exceeds the per-block one, which `continuum-genesis` refuses
+unless told it is deliberate. Naming the attack makes `make up` pass
+`-override=maxTxExUnits.memory=140000000 -override=maxTxExUnits.steps=20000000000
+-allow-inconsistent-exunits` to the genesis Job (`go run ./hack/devup attacks
+<ATTACKS>` prints them). The adversary then submits transactions that fit the
+transaction budget but no block; the oracle requires that none is ever
+forged and files a fatal `block_exunits_over_limit` for any block over
+`maxBlockExUnits`. The genesis fixes the attacks' genesis needs, so change
+`ATTACKS` only after `make down`.
+
+The tier-2 economic models in `internal/adversary` (proposal spam, mempool
+flood, pledge splitting) are standalone calculations with no engine step,
+and the tier-2 rogue peer (`internal/rogue`) is a node-to-node client the
+engine does not run, so `make up` cannot enable either.
 
 `SCALE` (default 200, passed to the engine's `--scale`) multiplies every
 profile's activity rates and keeps their shapes. The preprod profile gives

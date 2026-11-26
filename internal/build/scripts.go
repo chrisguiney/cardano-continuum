@@ -3,7 +3,9 @@ package build
 import (
 	"encoding/hex"
 	"fmt"
+	"math"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/blinklabs-io/gouroboros/cbor"
@@ -34,6 +36,53 @@ var (
 	// FreeMint is a minting policy anyone can mint or burn under.
 	FreeMint = mustCompile("free-mint", "(program 1.1.0 [(lam salt (lam ctx (con unit ()))) (con integer 1)])")
 )
+
+// burns caches Burn's compiled policies by loop size.
+var burns sync.Map // int -> Script
+
+// Burn returns a minting policy that accepts after a builtin-free loop of
+// about n*n applications, so it spends most of the execution units its
+// redeemer declares (BurnSize) instead of merely claiming them. Every CEK step costs 16000 CPU
+// and 100 memory units in the PV10 cost model (cek*Cost'exBudget*), so the
+// loop's memory is close to steps/160: a budget the steps limit allows is a
+// memory budget it can actually spend. The loop applies the Church numeral
+// n to the Church numeral n's application to the identity, then to unit.
+func Burn(n int) Script {
+	if s, ok := burns.Load(n); ok {
+		return s.(Script)
+	}
+	num := numeral(max(n, 1))
+	s := mustCompile("burn-"+strconv.Itoa(n),
+		"(program 1.1.0 (lam ctx [["+num+" ["+num+" (lam y y)]] (con unit ())]))")
+	burns.Store(n, s)
+	return s
+}
+
+// burnMemory is the memory a built Burn(n) declares per n*n: it spends
+// about 300*n*n on plutigo with the PV10 cost model (3,031,400 at n = 100),
+// and Apollo declares 20% above what it measures (apollo.go
+// ExMemoryBuffer, ExStepBuffer), so the script spends 5/6 of what it
+// declares.
+const burnMemory = 360
+
+// BurnSize returns the loop size whose Burn, built by the Builder,
+// declares about mem memory units.
+func BurnSize(mem int64) int {
+	return int(math.Sqrt(float64(max(mem, 0)) / burnMemory))
+}
+
+// numeral is the Church numeral n: (lam f (lam x [f [f ... x]])).
+func numeral(n int) string {
+	var b strings.Builder
+	b.WriteString("(lam f (lam x ")
+	for range n {
+		b.WriteString("[f ")
+	}
+	b.WriteString("x")
+	b.WriteString(strings.Repeat("]", n))
+	b.WriteString("))")
+	return b.String()
+}
 
 // contracts caches Contract's compiled scripts by index: compiling parses
 // and flat-encodes, and the engine asks for a contract's address often.

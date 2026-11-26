@@ -108,6 +108,9 @@ type Tx struct {
 	// Fee is the lovelace the transaction moves to the fee pot: the body
 	// fee, or for an invalid transaction its forfeited total collateral.
 	Fee uint64
+	// Units are the execution units its redeemers declare, which count
+	// against the block's budget whether or not its scripts passed.
+	Units common.ExUnits
 }
 
 // TxFrom converts a ledger transaction through gouroboros' Consumed and
@@ -128,6 +131,12 @@ func TxFrom(tx common.Transaction) Tx {
 		}
 	} else if c := tx.TotalCollateral(); c != nil {
 		out.Fee = c.Uint64()
+	}
+	if w := tx.Witnesses(); w != nil && w.Redeemers() != nil {
+		for _, r := range w.Redeemers().Iter() {
+			out.Units.Memory += r.ExUnits.Memory
+			out.Units.Steps += r.ExUnits.Steps
+		}
 	}
 	return out
 }

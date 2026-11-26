@@ -201,6 +201,7 @@ func (e *Engine) watch(at sched.Time, from eventlog.ChainPoint, views []oracle.V
 		Settled:      &oracle.SettledMove{From: before, To: conf},
 		Views:        views,
 		Tips:         tips,
+		Budget:       e.budget,
 	}
 	// Without pools there is no forging stake to hold a floor: the fake
 	// chain forges anyway, so the floor and liveness are not evaluable.
@@ -208,6 +209,24 @@ func (e *Engine) watch(at sched.Time, from eventlog.ChainPoint, views []oracle.V
 		s.Policy = &pol
 	}
 	return e.report(at, oracle.Check(s, e.monitors))
+}
+
+// blockBudget sums the execution units a block's transactions declare, for
+// the block-budget monitor; nil when the run has no block budget.
+func (e *Engine) blockBudget(at eventlog.ChainPoint, txs []TxDigest) *oracle.BlockBudget {
+	max := e.cfg.Build.MaxBlockExUnits
+	if max.Memory == 0 && max.Steps == 0 {
+		return nil
+	}
+	p, _ := chain.PointFromLog(at)
+	b := &oracle.BlockBudget{At: p, Max: max, Txs: len(txs)}
+	for _, tx := range txs {
+		if tx.Units != nil {
+			b.Used.Memory += tx.Units.Memory
+			b.Used.Steps += tx.Units.Steps
+		}
+	}
+	return b
 }
 
 // monitorSnapshot fills in the engine's side of each view the runner

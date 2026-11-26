@@ -45,7 +45,7 @@ func NewFakeChain(cfg *Config, faults ...fakechain.Scheduled) (*fakechain.Chain,
 	return fakechain.New(fakechain.Config{
 		Committee: seats,
 		Slots:     cfg.Slots, NetworkID: cfg.NetworkID, K: cfg.K, BlockEvery: cfg.BlockEvery, Genesis: append(gs, owners...),
-		Faults: faults, Staking: staking,
+		Faults: faults, Staking: staking, Params: cfg.ChainParams,
 	})
 }
 
@@ -162,6 +162,9 @@ func digestOf(b chain.Block) ([]byte, error) {
 		d := TxDigest{ID: TxID(tx.Hash), Fee: tx.Fee, Proposals: uint32(len(tx.Proposals))}
 		for _, p := range tx.Proposals {
 			d.Gov = append(d.Gov, ProposalDigest{Type: p.Type, Pools: p.Pools, Deposit: p.Deposit})
+		}
+		if u := tx.Units; u.Memory != 0 || u.Steps != 0 {
+			d.Units = &u
 		}
 		for _, in := range tx.Spends {
 			d.Inputs = append(d.Inputs, Ref{Tx: TxID(in.Tx), Index: in.Index})

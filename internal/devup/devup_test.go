@@ -2,6 +2,7 @@ package devup
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 
@@ -97,5 +98,29 @@ func TestEngineNode(t *testing.T) {
 	got := EngineNode("continuum")
 	if !strings.HasPrefix(got, "pool-") || !strings.HasSuffix(got, ".continuum.svc.cluster.local:3002") {
 		t.Errorf("EngineNode = %q", got)
+	}
+}
+
+func TestAttacks(t *testing.T) {
+	def, err := Attacks("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if def.Engine != "dust-flood,utxo-contention,malformed-cbor,front-run,double-spend" || len(def.Genesis) != 0 {
+		t.Fatalf("default = %+v, want every tier-1 attack a stock genesis supports", def)
+	}
+	if none, err := Attacks("none"); err != nil || none.Engine != "" || len(none.Genesis) != 0 {
+		t.Fatalf("none = %+v, %v", none, err)
+	}
+	gap, err := Attacks("dust-flood, exunits-block-gap")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"-override=maxTxExUnits.memory=140000000", "-override=maxTxExUnits.steps=20000000000", "-allow-inconsistent-exunits"}
+	if gap.Engine != "dust-flood,exunits-block-gap" || !slices.Equal(gap.Genesis, want) {
+		t.Fatalf("gap = %+v", gap)
+	}
+	if _, err := Attacks("teleport"); err == nil {
+		t.Fatal("an unknown attack parsed")
 	}
 }

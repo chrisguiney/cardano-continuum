@@ -25,6 +25,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/blinklabs-io/gouroboros/ledger/conway"
 	"slices"
 	"strings"
 
@@ -71,6 +72,10 @@ type Config struct {
 	BlockEvery uint64
 	NetworkID  uint8
 	Build      build.Params
+	// ChainParams are a fake chain's protocol parameters (NewFakeChain);
+	// nil is fakechain.DefaultParams. Build must be taken from the same
+	// ones.
+	ChainParams *conway.ConwayProtocolParameters
 	// TTL is how many slots after its decision a payment stays valid.
 	TTL uint64
 	// Selector chooses payment inputs; nil means LargestFirst.

@@ -29,6 +29,9 @@ type Snapshot struct {
 	// Rogue is every block the rogue pool forged to be rejected
 	// (internal/forger logs each as a "forged" decision expecting reject).
 	Rogue []RogueBlock
+	// Budget is the block an input applied, with its declared execution
+	// units, when it applied one.
+	Budget *BlockBudget
 }
 
 // RogueBlock is a block built to break one consensus rule. No honest node
@@ -155,6 +158,7 @@ func Monitors(k uint64, g policy.Guard) []Monitor {
 		monitor{"tips", func(s Snapshot) []Finding { return checkTips(s, k) }},
 		monitor{"stake_floor", func(s Snapshot) []Finding { return checkFloor(s, g) }},
 		monitor{"rogue", checkRogue},
+		monitor{"block_budget", checkBudget},
 	}
 }
 

@@ -40,6 +40,8 @@ type Sight interface {
 	Payees() []population.ActorID
 	// Victims lists honest key-locked outputs, by Ref.
 	Victims() []Coin
+	// Budgets are the network's execution limits.
+	Budgets() Budgets
 }
 
 // View is the agenda view with the adversary's side: what it sees and
@@ -67,6 +69,9 @@ var costs = map[Name]cost{
 	Malformed:   {spend: StealFee, need: 4_000_000},
 	FrontRun:    {spend: 1_000_000, need: 6_000_000},
 	DoubleSpend: {spend: 2_000_000, need: 4_000_000},
+	// The script fee of the gap's units, and an input twice the
+	// collateral that fee needs.
+	ExUnitsGap: {spend: 10_000_000, need: 2*GapCollateral + 10_000_000},
 }
 
 // Policy scores an adversary's attacks. It is the agenda.Policy that
@@ -124,6 +129,10 @@ func score(n Name, id population.ActorID, v View) agenda.Score {
 		return off(n, "no shared output to contend for")
 	case n == DoubleSpend && len(v.Payees()) < 2:
 		return off(n, "fewer than two payees")
+	case n == ExUnitsGap:
+		if _, why := v.Budgets().GapTarget(); why != "" {
+			return off(n, why)
+		}
 	}
 	return agenda.Score{Kind: n.Kind(), Value: attackValue, Why: "attack"}
 }

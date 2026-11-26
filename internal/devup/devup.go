@@ -1,16 +1,20 @@
-// Package devup holds the pure parts of `make up`: the memory preflight and
-// the manifests for a network and its pools. hack/up.sh does the I/O.
+// Package devup holds the pure parts of `make up`: the memory preflight,
+// the manifests for a network and its pools, and the attacks ATTACKS
+// selects. hack/up.sh does the I/O.
 package devup
 
 import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
+	"github.com/chrisguiney/cardano-continuum/internal/adversary"
 	"github.com/chrisguiney/cardano-continuum/internal/operator"
 )
 
@@ -104,4 +108,53 @@ func EngineNode(ns string) string {
 		Spec:       v1alpha1.ContinuumPoolSpec{PoolID: "continuum-pool-0", Implementation: v1alpha1.CardanoNode, Tier: v1alpha1.TierForging},
 	}
 	return fmt.Sprintf("%s.%s.svc.cluster.local:%d", operator.Name(&p), ns, operator.NtCPort)
+}
+
+// AttackPlan is what `make up` passes for its ATTACKS: the engine's
+// --attack value, empty for none, and the continuum-genesis arguments the
+// attacks need.
+type AttackPlan struct {
+	Engine  string
+	Genesis []string
+}
+
+// Attacks parses ATTACKS: a comma-separated list of tier-1 attacks, "none",
+// or empty for every attack a stock genesis supports. An attack that needs
+// a genesis override (adversary.GenesisOverrides) is opt-in, and naming it
+// adds the overrides and the flag that allows them.
+func Attacks(s string) (AttackPlan, error) {
+	var ns []adversary.Name
+	switch s = strings.TrimSpace(s); s {
+	case "none":
+		return AttackPlan{}, nil
+	case "":
+		for _, n := range adversary.Names() {
+			if adversary.GenesisOverrides(n) == nil {
+				ns = append(ns, n)
+			}
+		}
+	default:
+		for _, part := range strings.Split(s, ",") {
+			n, err := adversary.Parse(strings.TrimSpace(part))
+			if err != nil {
+				return AttackPlan{}, fmt.Errorf("ATTACKS: %w", err)
+			}
+			if !slices.Contains(ns, n) {
+				ns = append(ns, n)
+			}
+		}
+	}
+	var p AttackPlan
+	names := make([]string, len(ns))
+	for i, n := range ns {
+		names[i] = string(n)
+		for _, o := range adversary.GenesisOverrides(n) {
+			p.Genesis = append(p.Genesis, "-override="+o)
+		}
+	}
+	if len(p.Genesis) > 0 {
+		p.Genesis = append(p.Genesis, "-allow-inconsistent-exunits")
+	}
+	p.Engine = strings.Join(names, ",")
+	return p, nil
 }

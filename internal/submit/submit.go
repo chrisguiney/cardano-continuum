@@ -52,6 +52,8 @@ const (
 	ScriptWitnessNotValid   Class = "ScriptWitnessNotValidatingUTXOW"
 	NonDisjointRefInputs    Class = "BabbageNonDisjointRefInputs"
 	InsufficientCollateral  Class = "InsufficientCollateral"
+	// ExUnitsTooBig: the redeemers declare more than maxTxExUnits.
+	ExUnitsTooBig Class = "ExUnitsTooBigUTxO"
 	// ValidationTagMismatch: a script failed while the transaction declared
 	// its scripts pass (or the reverse); a node refuses it from its mempool.
 	ValidationTagMismatch Class = "ValidationTagMismatch"

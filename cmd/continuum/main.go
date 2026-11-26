@@ -154,13 +154,16 @@ func (s *simFlags) config() (engine.Config, error) {
 	if err != nil {
 		return engine.Config{}, err
 	}
-	pp := fakechain.DefaultParams()
+	pp, err := s.chainParams()
+	if err != nil {
+		return engine.Config{}, err
+	}
 	bp := build.ParamsFromConway(&pp, 0)
 	// The fake chain's slot 0 is the Unix epoch.
 	bp.SystemStart, bp.SlotLength = time.UnixMilli(0).UTC(), time.Duration(s.slotMs)*time.Millisecond
 	cfg := engine.Config{
 		Seed: engine.SeedFromInt(s.seed), Profiles: reg, Fitted: fitted, Scale: s.scale, Cohorts: cohorts, Slots: slots,
-		K: s.k, BlockEvery: s.blockEvery, TTL: s.ttl, BinaryVersion: version, Build: bp,
+		K: s.k, BlockEvery: s.blockEvery, TTL: s.ttl, BinaryVersion: version, Build: bp, ChainParams: &pp,
 		NOpt: uint64(pp.NOpt), GovLifetime: pp.GovActionValidityPeriod, SimulatedPods: true,
 		Floor: policy.Config{Floor: s.floor, Margin: 1},
 		// The fake chain's genesis registers a pool for every operator and

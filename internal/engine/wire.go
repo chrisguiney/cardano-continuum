@@ -3,6 +3,8 @@ package engine
 import (
 	"bytes"
 
+	"github.com/blinklabs-io/gouroboros/ledger/common"
+
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
 
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
@@ -135,6 +137,9 @@ type TxDigest struct {
 	// Gov describes each of the Proposals in order. A log written before
 	// it existed has the count alone; those proposals have no known type.
 	Gov []ProposalDigest `cbor:"8,keyasint,omitempty"`
+	// Units are the execution units the redeemers declare, nil without
+	// any.
+	Units *common.ExUnits `json:"units,omitempty"`
 }
 
 // ProposalDigest is what a block says of one proposal: its action type as

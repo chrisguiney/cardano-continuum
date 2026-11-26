@@ -47,6 +47,7 @@ var success = map[Name]string{
 	Malformed:   "fatal_findings",
 	FrontRun:    "honest_failure_rate",
 	DoubleSpend: "attack_landed",
+	ExUnitsGap:  "honest_latency_p99_s",
 }
 
 // SuccessMetric is the metric attack n's built-in profile declares.
