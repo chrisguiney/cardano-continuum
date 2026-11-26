@@ -1,0 +1,211 @@
+# Fitted by lab/fit.py --clusters; see lab/README.md. Do not edit by hand.
+# network: preprod
+# window: 90.0 days, slots 132148767..139924767
+# seed: 1
+# k: 8
+# bic: 2=400195.6, 3=142993.3, 4=-5688.6, 5=-128200.8, 6=-171219.9, 7=-263752.9, 8=-420258.0
+# unit: stake credential (address when none)
+# weighting: addresses
+# sampled_units: 37188
+# units: 37188
+# mithril2pq_version: 3b40e6e
+# mithril2pq_last_chunk: 6477
+version: 1
+profiles:
+  - name: high-freq-mid-value-script-dormant-reuser-fanout
+    kind: wallet
+    agenda: hodl
+    weight: 0.371168
+    traits:
+      competence: beta(1, 1)
+      patience: pareto(xm=341, alpha=0.22104)
+      learning_rate: const(0)
+      care: beta(1, 1)
+    budget: 900499963328
+    amount:
+      body: lognormal(15.4351, 3.19252)
+      tail: pareto(xm=4.5025e+10, alpha=3.11049)
+      tail_share: 0.100001
+    rates:
+      base:
+        send: 0.00353505
+      activity_tail: 4.78554
+    weights:
+      send: 0.433531
+      script_call: 0.566469
+    hazards:
+      dormancy: lognormal(12.4218, 1.03157)
+      dormancy_onset: 2.19518e-05
+  - name: high-freq-mid-value-script-dormant-reuser-fanout-2
+    kind: wallet
+    agenda: hodl
+    weight: 0.077014
+    traits:
+      competence: beta(1, 1)
+      patience: pareto(xm=4017, alpha=0.782126)
+      learning_rate: const(0)
+      care: beta(286.978, 0.000670895)
+    budget: 19117471084
+    amount:
+      body: lognormal(15.4915, 2.39565)
+      tail: pareto(xm=9.55874e+08, alpha=0.493997)
+      tail_share: 0.100004
+    rates:
+      base:
+        send: 0.0144481
+      activity_tail: 1.469
+    weights:
+      send: 0.144443
+      script_call: 0.855557
+    hazards:
+      dormancy: lognormal(13.2584, 1.31655)
+      dormancy_onset: 4.42855e-06
+  - name: low-freq-large-value
+    kind: wallet
+    agenda: hodl
+    weight: 0.108126
+    traits:
+      competence: beta(1, 1)
+      patience: pareto(xm=48601, alpha=1.67819)
+      learning_rate: const(0)
+      care: beta(43.263, 12.7381)
+    budget: 100000000
+    amount:
+      body: lognormal(14.5087, 0.0233016)
+      tail: pareto(xm=2e+06, alpha=0.33309)
+      tail_share: 0.00511345
+    rates:
+      base:
+        send: 0.000654273
+      activity_tail: 2.06914
+    weights:
+      send: 0.781801
+      script_call: 0.218199
+    hazards:
+      dormancy: lognormal(11.6189, 0.196471)
+      dormancy_onset: 0.000221526
+  - name: low-freq-large-value-script
+    kind: wallet
+    agenda: hodl
+    weight: 0.089868
+    traits:
+      competence: beta(1, 1)
+      patience: pareto(xm=669, alpha=0.307725)
+      learning_rate: const(0)
+      care: beta(0.746537, 0.0675227)
+    budget: 5996672380
+    amount:
+      body: lognormal(15.3181, 1.43756)
+      tail: pareto(xm=2.99834e+08, alpha=0.526962)
+      tail_share: 0.0973983
+    rates:
+      base:
+        send: 0.000860204
+      activity_tail: 2
+    weights:
+      send: 0.681927
+      script_call: 0.315679
+      register_pool: 0.002394
+    hazards:
+      dormancy: lognormal(12.57, 1.07233)
+      dormancy_onset: 0.000174018
+  - name: low-freq-mid-value-script
+    kind: wallet
+    agenda: hodl
+    weight: 0.083764
+    traits:
+      competence: beta(0.68426, 0.0483605)
+      patience: pareto(xm=116, alpha=0.661033)
+      learning_rate: const(0)
+      care: beta(2.66955, 0.402913)
+    budget: 800000000
+    amount:
+      body: lognormal(15.2097, 0.940512)
+      tail: pareto(xm=4e+07, alpha=0.643616)
+      tail_share: 0.0998402
+    rates:
+      base:
+        send: 0.00173553
+      activity_tail: 1.05
+    weights:
+      send: 0.675904
+      script_call: 0.323531
+      register_pool: 0.000565
+    hazards:
+      dormancy: lognormal(6.26637, 1.31938)
+      dormancy_onset: 0.0707845
+  - name: mid-freq-large-value
+    kind: wallet
+    agenda: hodl
+    weight: 0.012665
+    traits:
+      competence: beta(1.26387, 0.0370502)
+      patience: pareto(xm=73, alpha=0.664931)
+      learning_rate: const(0)
+      care: beta(1.71377, 0.253795)
+    budget: 8655851520
+    amount:
+      body: lognormal(15.4722, 1.56122)
+      tail: pareto(xm=4.32793e+08, alpha=0.706052)
+      tail_share: 0.0999975
+    rates:
+      base:
+        send: 0.000293491
+      activity_tail: 1.05
+    weights:
+      send: 0.652451
+      script_call: 0.328921
+      delegate: 0.018091
+      register_pool: 0.000537
+    hazards:
+      dormancy: lognormal(12.6855, 1.00864)
+      dormancy_onset: 2.54976e-05
+  - name: mid-freq-mid-value
+    kind: wallet
+    agenda: hodl
+    weight: 0.125390
+    traits:
+      competence: beta(4.67728, 0.000343933)
+      patience: pareto(xm=76694.5, alpha=0.766417)
+      learning_rate: const(0)
+      care: beta(38.8783, 4.17556)
+    budget: 100000000
+    amount:
+      body: lognormal(14.5087, 0.0114347)
+      tail: pareto(xm=2e+06, alpha=0.408913)
+      tail_share: 0.000441458
+    rates:
+      base:
+        send: 0.000416047
+      activity_tail: 1.38602
+    weights:
+      send: 1.000000
+    hazards:
+      dormancy: lognormal(12.756, 0.817425)
+      dormancy_onset: 3.06923e-05
+  - name: mid-freq-mid-value-script
+    kind: wallet
+    agenda: hodl
+    weight: 0.132005
+    traits:
+      competence: beta(0.288666, 0.0420603)
+      patience: pareto(xm=306, alpha=0.350973)
+      learning_rate: const(0)
+      care: beta(3.14106, 0.312084)
+    budget: 3843554760
+    amount:
+      body: lognormal(15.4673, 1.29849)
+      tail: pareto(xm=1.92178e+08, alpha=0.44388)
+      tail_share: 0.0999972
+    rates:
+      base:
+        send: 0.000416899
+      activity_tail: 1.05
+    weights:
+      send: 0.400280
+      script_call: 0.599590
+      delegate: 0.000090
+      register_pool: 0.000040
+    hazards:
+      dormancy: lognormal(12.7339, 1.06127)
+      dormancy_onset: 1.99407e-05

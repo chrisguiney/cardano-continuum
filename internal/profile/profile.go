@@ -154,4 +154,10 @@ type Profile struct {
 	Weights   map[IntentKind]float64
 	Hazards   Hazards
 	Adversary *AdversarySpec
+	// Amount is the payment-size distribution; nil keeps the engine's
+	// balance-fraction default.
+	Amount *Amount
+	// Weight is the profile's share of a population; zero means unset, and a
+	// population whose profiles all leave it unset splits evenly.
+	Weight float64
 }

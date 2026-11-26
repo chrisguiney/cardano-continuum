@@ -63,7 +63,11 @@ func (l *liveFlags) register(fs *flag.FlagSet) {
 // internal/genesis funded.
 func liveConfig(sf simFlags, lf liveFlags, g chain.Genesis, np nodeParams, seed rng.Seed) (engine.Config, error) {
 	bp := np.build
-	reg, cohorts, err := sf.population()
+	fitted, cohorts, err := sf.population()
+	if err != nil {
+		return engine.Config{}, err
+	}
+	reg, err := sf.scaled(fitted)
 	if err != nil {
 		return engine.Config{}, err
 	}
@@ -85,7 +89,7 @@ func liveConfig(sf simFlags, lf liveFlags, g chain.Genesis, np nodeParams, seed 
 		gpools = lf.gpools
 	}
 	return engine.Config{
-		Seed: seed, Profiles: reg, Cohorts: cohorts, Slots: slots, K: g.SecurityParam, TTL: sf.ttl,
+		Seed: seed, Profiles: reg, Fitted: fitted, Scale: sf.scale, Cohorts: cohorts, Slots: slots, K: g.SecurityParam, TTL: sf.ttl,
 		Build: bp, BinaryVersion: version, Faucet: lf.faucet, RefillEvery: lf.refillEvery,
 		NOpt: np.nOpt, GovLifetime: np.govLifetime, GenesisPoolStake: lf.poolStake, GenesisPools: gpools,
 	}, nil

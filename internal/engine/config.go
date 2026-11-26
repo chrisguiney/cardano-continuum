@@ -51,8 +51,14 @@ type Cohort struct {
 type Config struct {
 	Seed     rng.Seed
 	Profiles *profile.Registry
-	Cohorts  []Cohort
-	Slots    sched.Slots
+	// Fitted, when set, is Profiles before a rate scale: the header's profile
+	// hash covers it instead of Profiles, so the hash names the profile file
+	// whatever the scale, and Scale carries the factor into the genesis
+	// fingerprint. Zero Scale means 1.
+	Fitted  *profile.Registry
+	Scale   float64
+	Cohorts []Cohort
+	Slots   sched.Slots
 	// K is the security parameter: a block is durable once K blocks follow it.
 	K uint64
 	// BlockEvery is the fake chain's block interval in slots. It is part of
@@ -194,6 +200,21 @@ func (c *Config) Genesis() ([]Fund, error) {
 	return out, nil
 }
 
+// ProfileHash is the fingerprint of a profile set: SHA-256 of its canonical
+// marshalled form, profiles in name order.
+func ProfileHash(reg *profile.Registry) ([32]byte, error) {
+	var ps []profile.Profile
+	for _, n := range reg.Names() {
+		p, _ := reg.Get(n)
+		ps = append(ps, p)
+	}
+	raw, err := profile.Marshal(ps)
+	if err != nil {
+		return [32]byte{}, fmt.Errorf("engine: marshal profiles: %w", err)
+	}
+	return sha256.Sum256(raw), nil
+}
+
 // Header returns the log header for this config: fingerprints of the seed,
 // the profile set and the genesis, never the seed itself.
 func (c *Config) Header() (eventlog.HeaderBody, error) {
@@ -201,14 +222,13 @@ func (c *Config) Header() (eventlog.HeaderBody, error) {
 	if err != nil {
 		return eventlog.HeaderBody{}, err
 	}
-	var ps []profile.Profile
-	for _, n := range c.Profiles.Names() {
-		p, _ := c.Profiles.Get(n)
-		ps = append(ps, p)
+	reg := c.Profiles
+	if c.Fitted != nil {
+		reg = c.Fitted
 	}
-	praw, err := profile.Marshal(ps)
+	ph, err := ProfileHash(reg)
 	if err != nil {
-		return eventlog.HeaderBody{}, fmt.Errorf("engine: marshal profiles: %w", err)
+		return eventlog.HeaderBody{}, err
 	}
 	type fund struct {
 		Actor    uint64 `cbor:"1,keyasint"`
@@ -234,8 +254,12 @@ func (c *Config) Header() (eventlog.HeaderBody, error) {
 		SimPods    bool          `cbor:"16,keyasint,omitempty"`
 		GPools     int           `cbor:"17,keyasint,omitempty"`
 		GStake     uint64        `cbor:"18,keyasint,omitempty"`
+		Scale      float64       `cbor:"19,keyasint,omitempty"`
 	}{GPools: c.GenesisPools, GStake: c.GenesisPoolStake, NOpt: c.NOpt, GovLife: c.GovLifetime, Floor: c.floor().Floor, Margin: c.floor().Margin, SimPods: c.SimulatedPods, Format: logFormat, K: c.K, BlockEvery: c.BlockEvery, NetworkID: c.NetworkID, SlotMs: c.Slots.SlotStart(1),
 		EpochMs: c.Slots.EpochStart(1), TTL: c.TTL, Build: c.Build, Retry: c.retry(), Refill: c.RefillEvery}
+	if c.Scale != 0 && c.Scale != 1 {
+		g.Scale = c.Scale
+	}
 	for _, f := range funds {
 		a, err := f.Address.Bytes()
 		if err != nil {
@@ -248,7 +272,7 @@ func (c *Config) Header() (eventlog.HeaderBody, error) {
 		return eventlog.HeaderBody{}, err
 	}
 	fp := c.Seed.Derive("fingerprint")
-	ph, gh, sh := sha256.Sum256(praw), sha256.Sum256(graw), sha256.Sum256(fp[:])
+	gh, sh := sha256.Sum256(graw), sha256.Sum256(fp[:])
 	return eventlog.HeaderBody{
 		SeedFingerprint: sh[:],
 		ProfileHash:     ph[:],

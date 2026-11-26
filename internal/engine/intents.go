@@ -294,7 +294,7 @@ func (e *Engine) prepareSend(a population.Actor, p *pendingRec, r *rand.Rand) (*
 	}
 	p.Kind, p.To = "", uint64(targets[r.IntN(len(targets))])
 	bal := e.Spendable(uint64(a.ID))
-	p.Amount = max(uint64(float64(bal)*(minFraction+fracSpread*r.Float64())), minPayment)
+	p.Amount = paymentSize(e.actors[a.ID].prof.Amount, bal, r)
 	return p, ""
 }
 

@@ -46,9 +46,9 @@ preview transactions.
 | name | meaning | test |
 |---|---|---|
 | outputs_per_tx, inputs_per_tx | spend inputs and non-collateral outputs of each valid tx | KS |
-| log10_output_value | log10 lovelace per output; fit is a log-normal body below the 90th percentile and a Pareto tail above (MLE) | KS |
-| activity_per_day | txs per day per sending address, over addresses with at least one tx | KS |
-| log10_gap_seconds | log10 seconds between consecutive txs of one address | KS |
+| log10_output_value | log10 lovelace per payment (an output that leaves the sender's unit, so change is excluded) | KS |
+| activity_per_day | txs per day per sending unit, over units with at least one tx | KS |
+| log10_gap_seconds | log10 seconds between consecutive txs of one unit | KS |
 | tx_type_mix | share of plain, script (has script data hash), stake (stake certificates), pool (pool certificates) txs | total variation |
 | address_reuse | share of outputs whose address already appeared on an earlier output | difference |
 | change_to_sender | share of txs paying an output back to the sender address | difference |
@@ -66,47 +66,100 @@ milliseconds. The engine only submits payments, so without devnet chain tables
 `outputs_per_tx`, `inputs_per_tx` and `change_to_sender` are skipped, the type
 mix is all plain and output value is the payment amount.
 
+## Clusters and named profiles
+
+`fit.py --clusters` turns one chain into a set of profiles:
+
+```sh
+python fit.py /data/chain --out /work/out --clusters --network preprod \
+    [--window-days 90] [--seed 1] [--unit stake|address] [--weighting addresses|transactions] \
+    [--kmin 2 --kmax 8] [--max-units 100000] [--m2pq-version V]
+```
+
+1. The window is the last `--window-days` before the newest block with a
+   transaction (or `--window-end-slot`), pinned in the output.
+2. A unit is the stake credential of the sending address where it has one and
+   the address otherwise (`--unit address` skips the credential).
+3. Per unit, ten features (`units.py`, `cluster.py`): tx/day, median gap,
+   median payment value, script share, stake-cert share, inputs and outputs
+   per tx, address reuse, active days, longest dormancy. Heavy-tailed ones are
+   log10-transformed; all are standardised.
+4. A diagonal Gaussian mixture with k in `--kmin..--kmax` chosen by BIC,
+   `n_init=3`, seeded. At most `--max-units` units (a seeded sample) are used
+   to fit; every unit is then assigned. The BIC curve goes in the header.
+5. Each cluster is fitted like a one-profile run, from its units' statistics,
+   and named from its centroid (`high-freq-small-value`, then `-script`,
+   `-staking`, and tie-breakers).
+
+Output is `NETWORK.yaml` and `NETWORK.target.json`. The YAML header records
+network, window, seed, k, BIC curve, unit, weighting, unit counts, and the
+mithril2pq version and last chunk. `weight` is the cluster's share of units
+(`--weighting addresses`) or of transactions (`--weighting transactions`).
+`continuum run --profiles NAME` splits wallets by weight. The target holds the
+overall statistics and each cluster's, so `grade.py` grades both.
+
+Shipped files live in `../profiles/`. After refitting run `make
+profiles-index`: it writes `profiles/index.json`, which maps each file's
+profile hash (the one in a run's event-log header and export `run` table) to
+its target, and `grade.py` uses it to pick the target when `--target` is
+absent. `--scale k` changes rates but not the hash, so scaled runs grade
+against the same target. `grade.py` reads each actor's profile from the run's
+`store.db` (genesis actors have no Spawned record in the log); pass
+`--store` when it is not beside the export directory.
+
+Payment value is the output that leaves the sender's unit; change back to it
+is not a payment.
+
 ## Mapping to the profile
 
 | profile field | fitted from |
 |---|---|
-| `traits.competence` beta | per-address share of txs with change back to the sender (method of moments, addresses with 3+ txs) |
-| `traits.care` beta | per-address share of outputs to previously seen addresses |
+| `traits.competence` beta | per-unit share of txs with change back to the unit (method of moments, units with 3+ txs) |
+| `traits.care` beta | per-unit share of outputs to previously seen addresses |
 | `traits.patience` pareto | inter-tx gaps above their median (seconds) |
-| `rates.base.send` | mean activity_per_day / 86400 |
-| `rates.activity_tail` | Pareto index of per-address tx counts above the median, at least 1.05 |
-| `weights` | tx type mix: send, script_call, delegate, register_pool |
+| `amount` | payment values: log-normal body up to the 90th percentile (truncated-likelihood fit) and a Pareto tail above it; `tail_share` is the share of payments above it, and the tail is left out when none is |
+| `budget` | 20 times the tail scale, between 100 ADA and 1M ADA |
+| `rates.base.send` | the 10th percentile of per-unit tx counts, as a rate over the active share of the window, divided by the chance a hodl wake-up is a payment (see `HODL_SEND_SCORE` in `fit.py`) |
+| `rates.activity_tail` | Pareto index of per-unit tx counts above that percentile, at least 1.05 |
+| `weights` | tx type mix: send, script_call, delegate, register_pool (the engine runs only send) |
 | `hazards.dormancy` lognormal | gaps over one day (seconds) |
+| `hazards.dormancy_onset` | the rate that leaves a unit active for its measured share of days, given the dormancy mean |
 
-The profile schema has no field for output values, so the value fit is a
-comment at the top of `profile.yaml` and lives in `target.json`.
+The engine's payments are floored at 2 ADA (`minPayment`), so chain outputs
+below that are out of reach of the amount fit.
 
 ## Current results
 
-Fit: Preview, immutable chunks 0 to 1500 (278k blocks, 1.08M txs, 75 days;
-390 MB downloaded, 609 MB of Parquet). Preview is a test network, so its shape
-(31% script txs, heavy-tailed values) is not mainnet's. Refit on mainnet or
-preprod before drawing conclusions about mainnet.
+Fit: Preprod, immutable chunks 0 to 6477 (7.79M txs), a 90-day window ending
+at slot 139924767 (1.11M txs, 37,188 sending units), seed 1, stake-credential
+units, weighting by units. BIC kept falling to the top of the 2 to 8 range
+(the features include shares that sit at 0 or 1), so k = 8. `profiles/preview.yaml`
+is the same fit on Preview (8,529 units, k = 8).
 
-Grade: seed-7 fake run (100 wallets, 2 epochs) against that fit:
+Grade: seed-7 fake run (`--profiles preprod`, 100 wallets, 2 epochs of
+3,888,000 slots, 90 simulated days, 2,413 payments), overall:
 
 | statistic | verdict | detail |
 |---|---|---|
 | outputs_per_tx, inputs_per_tx | skipped | no devnet chain tables |
-| log10_output_value | FAIL | D=0.393, median 7.29 vs 7.07 |
-| activity_per_day | FAIL | D=0.999, median 649 vs 0.013 per address per day |
-| log10_gap_seconds | FAIL | D=0.327, median 1.43 vs 1.94 |
-| tx_type_mix | FAIL | TV=0.313; run is all plain, preview 69% plain and 31% script |
-| address_reuse | PASS | 0.933 vs 0.906 |
+| log10_output_value | FAIL | D=0.398, median 6.71 vs 6.30 |
+| activity_per_day | FAIL | D=0.170, median 0.172 vs 0.200 per unit per day |
+| log10_gap_seconds | FAIL | D=0.465, median 4.19 vs 2.72 |
+| tx_type_mix | FAIL | TV=0.588; run is all plain, preprod 41% plain and 59% script |
+| address_reuse | PASS | 0.959 vs 0.976 |
 | change_to_sender | skipped | no devnet chain tables |
 
-97.6% of the run's decision records are idle wake-ups (`IntentChosen=idle`
-plus `Tick`). That count is of records, not of simulated time. Measured in
-simulated time the KS test says the opposite of "too sleepy": active actors
-submit about 650 txs per simulated day against 0.013 on Preview, and gaps are
-shorter (median 27 s against 87 s). The fake run covers about 20 simulated
-minutes, so per-day rates are extrapolated from a short span; and a devnet
-with 100 wallets is not meant to match a public network's per-address rate
-unless rates are scaled down. The idle share and the KS result are therefore
-not in conflict: the engine wakes actors often and most wake-ups choose idle,
-while the actors that do act, act far more often than real addresses.
+The first fit (Preview chunks 0 to 1500, one profile, a 20-minute run) failed
+activity by three orders of magnitude (median 649 against 0.013 per day),
+which was a short span and a rate fit that ignored dormancy and the hodl
+agenda's 2% send score. Activity now lands within 15% of the chain's median;
+the cluster grades show the same. What is left:
+
+- Payment value: the engine floors payments at 2 ADA, and the chain has many
+  smaller outputs, so the low end cannot match. Clusters whose payments are
+  exactly 2 ADA pass.
+- Gaps: arrivals inside an active spell are exponential, the chain's are
+  bursty, so engine gaps are longer.
+- Type mix: the engine only sends payments.
+- Clusters with a handful of actors (one actor in `mid-freq-large-value`)
+  have too few samples for KS to mean much.

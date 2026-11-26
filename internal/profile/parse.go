@@ -39,6 +39,14 @@ type rawProfile struct {
 	Weights   map[string]float64 `yaml:"weights,omitempty"`
 	Hazards   rawHazards         `yaml:"hazards,omitempty"`
 	Adversary *rawAdversary      `yaml:"adversary,omitempty"`
+	Amount    *rawAmount         `yaml:"amount,omitempty"`
+	Weight    float64            `yaml:"weight,omitempty"`
+}
+
+type rawAmount struct {
+	Body      string  `yaml:"body"`
+	Tail      string  `yaml:"tail,omitempty"`
+	TailShare float64 `yaml:"tail_share,omitempty"`
 }
 
 type rawTraits struct {
@@ -192,6 +200,17 @@ func (rp rawProfile) validate() (Profile, error) {
 	if err := rp.Hazards.validate(&p.Hazards); err != nil {
 		return p, err
 	}
+	if err := finiteNonNeg("weight", rp.Weight); err != nil {
+		return p, err
+	}
+	p.Weight = rp.Weight
+	if rp.Amount != nil {
+		a, err := rp.Amount.validate()
+		if err != nil {
+			return p, err
+		}
+		p.Amount = a
+	}
 	if rp.Adversary != nil {
 		a, err := rp.Adversary.validate()
 		if err != nil {
@@ -336,6 +355,13 @@ func Marshal(ps []Profile) ([]byte, error) {
 			},
 			Weights: toRaw(p.Weights),
 			Hazards: rawHazards{Birth: p.Hazards.Birth, Abandon: p.Hazards.Abandon, Onset: p.Hazards.Onset},
+			Weight:  p.Weight,
+		}
+		if a := p.Amount; a != nil {
+			rp.Amount = &rawAmount{Body: a.Body.String(), TailShare: a.TailShare}
+			if a.Tail != nil {
+				rp.Amount.Tail = a.Tail.String()
+			}
 		}
 		if p.Hazards.Dormancy != nil {
 			rp.Hazards.Dormancy = p.Hazards.Dormancy.String()

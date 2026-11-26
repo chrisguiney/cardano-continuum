@@ -6,6 +6,7 @@
 //	continuum export EVENTS.LOG --out DIR
 //	continuum serve --log EVENTS.LOG [--store DB] [--addr 127.0.0.1:8088] [--controls]
 //	continuum image set <impl>=<ref> --network N [--pools N% | --pool ID] [--tier T] [--dry-run]
+//	continuum profiles index [--out FILE]
 //	continuum build --dingo DIR [--with MODULE=PATH|SHA ...] [flags]
 //	continuum harvest --repo URL|PATH --ref SHA --out DIR [--family F ...]
 //	continuum vectors --repo URL|PATH --ref SHA --out DIR [--era E ...]
@@ -34,7 +35,6 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/store"
-	"github.com/chrisguiney/cardano-continuum/profiles"
 )
 
 // version goes into the log header; a log replays only under the binary
@@ -53,7 +53,7 @@ func main() {
 	}
 }
 
-var errUsage = errors.New("usage: continuum run|replay|export|image|build|serve|harvest|vectors [flags]")
+var errUsage = errors.New("usage: continuum run|replay|export|image|build|serve|harvest|vectors|profiles [flags]")
 
 func run(ctx context.Context, args []string, out io.Writer) error {
 	if len(args) == 0 {
@@ -68,6 +68,8 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 		return cmdExport(ctx, args[1:], out)
 	case "image":
 		return cmdImage(ctx, args[1:], out, openKube)
+	case "profiles":
+		return cmdProfiles(args[1:], out)
 	case "build":
 		return cmdBuild(ctx, args[1:], out)
 	case "serve":
@@ -86,6 +88,7 @@ type simFlags struct {
 	seed       uint64
 	wallets    int
 	profiles   string
+	scale      float64
 	slotMs     int64
 	epochSlots uint64
 	k          uint64
@@ -97,7 +100,8 @@ type simFlags struct {
 func (s *simFlags) register(fs *flag.FlagSet) {
 	fs.Uint64Var(&s.seed, "seed", 1, "root seed of the run")
 	fs.IntVar(&s.wallets, "wallets", 100, "wallets at genesis, spread evenly over the profiles")
-	fs.StringVar(&s.profiles, "profiles", "", "profile file (default: the shipped M1 population)")
+	fs.StringVar(&s.profiles, "profiles", "", "shipped profile set (m1, preview, preprod) or a profile file (default: m1)")
+	fs.Float64Var(&s.scale, "scale", 1, "multiply every profile's base rates by this factor")
 	fs.Int64Var(&s.slotMs, "slot-ms", 1000, "slot length in milliseconds")
 	fs.Uint64Var(&s.epochSlots, "epoch-slots", 600, "slots per epoch")
 	fs.Uint64Var(&s.k, "k", 5, "security parameter: blocks until a block is durable")
@@ -107,7 +111,11 @@ func (s *simFlags) register(fs *flag.FlagSet) {
 }
 
 func (s *simFlags) config() (engine.Config, error) {
-	reg, cohorts, err := s.population()
+	fitted, cohorts, err := s.population()
+	if err != nil {
+		return engine.Config{}, err
+	}
+	reg, err := s.scaled(fitted)
 	if err != nil {
 		return engine.Config{}, err
 	}
@@ -120,10 +128,18 @@ func (s *simFlags) config() (engine.Config, error) {
 	// The fake chain's slot 0 is the Unix epoch.
 	bp.SystemStart, bp.SlotLength = time.UnixMilli(0).UTC(), time.Duration(s.slotMs)*time.Millisecond
 	return engine.Config{
-		Seed: engine.SeedFromInt(s.seed), Profiles: reg, Cohorts: cohorts, Slots: slots,
+		Seed: engine.SeedFromInt(s.seed), Profiles: reg, Fitted: fitted, Scale: s.scale, Cohorts: cohorts, Slots: slots,
 		K: s.k, BlockEvery: s.blockEvery, TTL: s.ttl, BinaryVersion: version, Build: bp,
 		NOpt: uint64(pp.NOpt), GovLifetime: pp.GovActionValidityPeriod, SimulatedPods: true,
 	}, nil
+}
+
+// scaled applies --scale to the population's base rates.
+func (s *simFlags) scaled(reg *profile.Registry) (*profile.Registry, error) {
+	if s.scale == 1 {
+		return reg, nil
+	}
+	return reg.Scale(s.scale)
 }
 
 // spread divides n actors evenly over the profiles names.
@@ -142,17 +158,12 @@ func spread(names []string, n int) []engine.Cohort {
 	return out
 }
 
-// population reads the profile set and spreads the pools and the wallets
-// evenly over it.
+// population reads the profile set, spreads the pools evenly over it and the
+// wallets by profile weight.
 func (s *simFlags) population() (*profile.Registry, []engine.Cohort, error) {
-	raw := profiles.M1
-	name := "m1.yaml"
-	if s.profiles != "" {
-		var err error
-		if raw, err = os.ReadFile(s.profiles); err != nil {
-			return nil, nil, err
-		}
-		name = s.profiles
+	raw, name, err := resolveProfiles(s.profiles)
+	if err != nil {
+		return nil, nil, err
 	}
 	ps, err := profile.ParseNamed(name, bytes.NewReader(raw))
 	if err != nil {
@@ -183,8 +194,11 @@ func (s *simFlags) population() (*profile.Registry, []engine.Cohort, error) {
 		return nil, nil, fmt.Errorf("--pools %d: the profile set has no pool profile", s.pools)
 	}
 	cohorts := spread(pools, s.pools)
-	cohorts = append(cohorts, spread(others, s.wallets)...)
-	return reg, cohorts, nil
+	wallets, err := cohortsOf(reg, others, s.wallets)
+	if err != nil {
+		return nil, nil, err
+	}
+	return reg, append(cohorts, wallets...), nil
 }
 
 func cmdRun(ctx context.Context, args []string, out io.Writer) error {

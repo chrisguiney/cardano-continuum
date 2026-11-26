@@ -9,8 +9,9 @@ import (
 )
 
 // TestFittedProfilesParse guards the contract between fit.py and
-// internal/profile: every YAML fragment under example/ and tests/fixtures
-// must parse and validate. Regenerate with `make lab-fit` when it fails.
+// internal/profile: every YAML file under example/ must parse and validate,
+// including the clustered fit with amount distributions and weights. Regenerate with
+// `UPDATE_EXAMPLE=1 make lab-test` when it fails.
 func TestFittedProfilesParse(t *testing.T) {
 	files, err := filepath.Glob("example/*.yaml")
 	if err != nil || len(files) == 0 {
@@ -27,7 +28,7 @@ func TestFittedProfilesParse(t *testing.T) {
 			if err != nil {
 				t.Fatalf("parse: %v", err)
 			}
-			if len(ps) != 1 || ps[0].Name == "" {
+			if len(ps) == 0 || ps[0].Name == "" {
 				t.Fatalf("got %d profiles", len(ps))
 			}
 		})

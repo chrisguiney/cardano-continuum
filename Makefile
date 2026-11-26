@@ -15,7 +15,7 @@ GOLANGCI_LINT_VERSION := v2.15.0
 CONTROLLER_GEN_VERSION := v0.23.0
 CONTROLLER_GEN := go run sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_GEN_VERSION)
 
-.PHONY: web web-test lab lab-image lab-test help build test test-race vet fmt-check lint check check-manifests manifests generate determinism models models-install harvest vectors
+.PHONY: web web-test lab lab-image lab-test profiles-index help build test test-race vet fmt-check lint check check-manifests manifests generate determinism models models-install harvest vectors
 
 help: ## Show this list
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-16s %s\n", $$1, $$2}'
@@ -207,6 +207,9 @@ LAB_DATA ?= $(CURDIR)/lab/tests/fixtures
 
 lab-image: ## Build the lab image on top of the mithril2pq notebook image
 	docker build -f lab/Dockerfile --build-arg BASE=$(LAB_BASE) -t $(LAB_IMAGE) .
+
+profiles-index: ## Rewrite profiles/index.json (profile hash to target) after refitting
+	go run ./cmd/continuum profiles index --out profiles/index.json
 
 lab: lab-image ## Run JupyterLab on :8888 with LAB_DATA (chain and export subdirs) mounted read-only
 	docker run --rm -p 8888:8888 -v $(LAB_DATA):/data:ro -v $(CURDIR)/lab:/work/lab $(LAB_IMAGE)

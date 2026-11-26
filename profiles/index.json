@@ -1,0 +1,10 @@
+{
+  "7a4924cdf3aa2237ef810c33aa6ffab2832e0a8f58b3cca860afdb377799ded4": {
+    "profile": "preview",
+    "target": "preview.target.json"
+  },
+  "8f8ae9d64ce551508286eda05721dbd035d81c9f7c13731c701ef08c231503fa": {
+    "profile": "preprod",
+    "target": "preprod.target.json"
+  }
+}

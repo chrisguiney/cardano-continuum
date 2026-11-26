@@ -1,0 +1,60 @@
+# Fitted by lab/fit.py --clusters; see lab/README.md. Do not edit by hand.
+# network: synthetic
+# window: 90 days
+# seed: 1
+# k: 2
+# bic: 2=1.0, 3=2.0
+# unit: stake credential
+# weighting: addresses
+# mithril2pq_version: t
+# mithril2pq_last_chunk: 1
+version: 1
+profiles:
+  - name: high-freq-small-value
+    kind: wallet
+    agenda: hodl
+    weight: 0.700000
+    traits:
+      competence: beta(3.38946, 2.05466)
+      patience: pareto(xm=2859.61, alpha=0.625518)
+      learning_rate: const(0)
+      care: beta(1.58348, 3.78684)
+    budget: 635774463
+    amount:
+      body: lognormal(15.9742, 0.993759)
+      tail: pareto(xm=3.17887e+07, alpha=2.00453)
+      tail_share: 0.1
+    rates:
+      base:
+        send: 1.28601e-06
+      activity_tail: 1.21685
+    weights:
+      send: 0.900000
+      script_call: 0.100000
+    hazards:
+      dormancy: lognormal(12.335, 0.838422)
+      dormancy_onset: 1.23712e-05
+  - name: low-freq-large-value
+    kind: wallet
+    agenda: hodl
+    weight: 0.300000
+    traits:
+      competence: beta(3.42366, 2.44437)
+      patience: pareto(xm=3251.98, alpha=0.624526)
+      learning_rate: const(0)
+      care: beta(1.95767, 4.35362)
+    budget: 100000000
+    amount:
+      body: lognormal(12.955, 1.00461)
+      tail: pareto(xm=1.4846e+06, alpha=2.09901)
+      tail_share: 0.1
+    rates:
+      base:
+        send: 1.28601e-06
+      activity_tail: 1.21314
+    weights:
+      send: 0.900000
+      script_call: 0.100000
+    hazards:
+      dormancy: lognormal(12.1953, 0.69169)
+      dormancy_onset: 1.59157e-05
