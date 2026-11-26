@@ -55,7 +55,8 @@ func (e *Engine) refill(ctx context.Context, at sched.Time) error {
 	for i, c := range coins {
 		inputs[i] = c.Ref
 	}
-	ttl := e.cfg.Slots.SlotAt(at) + e.cfg.TTL
+	// An overdue round still goes to the node at the Tick's slot.
+	ttl := e.ttl(at, false, false)
 	built, err := e.builder.FanOut(ctx, e.faucet, build.Spend{Inputs: e.ledgerUtxos(e.faucet, coins), TTL: ttl}, outs)
 	if err != nil {
 		if ctx.Err() != nil {

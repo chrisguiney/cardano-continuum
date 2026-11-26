@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 )
@@ -95,5 +96,37 @@ func TestFaucetCrashConverges(t *testing.T) {
 		if !bytes.Equal(w.logBytes(), want) {
 			t.Fatalf("crash at hook %d of %d: log differs from the uninterrupted run", at, hooks)
 		}
+	}
+}
+
+// A live engine started after its devnet runs the faucet's round due at
+// time 0 on its first Tick, but sends the transaction to a node already at
+// the Tick's slot: a TTL counted from time 0 is past there, and the node
+// refuses the round with OutsideValidityIntervalUTxO, leaving every wallet
+// unfunded until the next round.
+func TestOverdueRefillGetsCurrentTTL(t *testing.T) {
+	t.Parallel()
+	cfg := faucetConfig(t, 3, 10)
+	e, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const late = 3_600_000
+	n := 0
+	for _, r := range mustHandle(t, e, tickInput(late)) {
+		if r.Kind != KindRefill {
+			continue
+		}
+		var f Refill
+		if err := eventlog.Decode(r.Body, &f); err != nil {
+			t.Fatal(err)
+		}
+		n++
+		if now := cfg.Slots.SlotAt(late); f.TTL <= now {
+			t.Fatalf("a refill sent at the tick of slot %d has TTL %d", now, f.TTL)
+		}
+	}
+	if n == 0 {
+		t.Fatal("no overdue refill was made")
 	}
 }
