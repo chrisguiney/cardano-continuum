@@ -51,7 +51,7 @@ const (
 	PhasePending PoolPhase = "Pending"
 
 	// PhaseSyncing means the pod is Ready but not caught up: its tip slot
-	// trails the network's current slot by more than ceil(6/f) slots, or
+	// trails the network's current slot by more than ceil(10/f) slots, or
 	// the operator has not read its tip yet. A forging pool that is caught
 	// up but has not been seen to produce a block within its window stays
 	// Syncing too.

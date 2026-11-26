@@ -41,7 +41,7 @@ func mark(slot uint64) chain.Mark {
 func TestJudge(t *testing.T) {
 	start := time.Unix(1_700_000_000, 0)
 	// f=0.05 makes a block every 20 slots on average: the lag threshold is
-	// ceil(6/0.05)=120 slots. With a 1/4 stake share the forging window is
+	// ceil(10/0.05)=200 slots. With a 1/4 stake share the forging window is
 	// ceil(ln(1000)/(0.25*0.05))=553 slots, under the 1000-slot epoch.
 	f := Facts{Start: start, SlotLen: time.Second, F: 0.05, Share: 0.25, Epoch: 1000, K: 100}
 	now := start.Add(2000 * time.Second)
@@ -58,9 +58,9 @@ func TestJudge(t *testing.T) {
 		{"not ready", v1alpha1.PhasePending, RoleForger, f, own(tip(2000), 1990), v1alpha1.PhasePending},
 		{"dark", v1alpha1.PhaseDark, RoleForger, f, own(tip(2000), 1990), v1alpha1.PhaseDark},
 		{"no tip yet", v1alpha1.PhaseSyncing, RoleForger, f, Seen{}, v1alpha1.PhaseSyncing},
-		{"lagging", v1alpha1.PhaseSyncing, RoleForger, f, own(tip(1800), 1790), v1alpha1.PhaseSyncing},
-		{"just inside the lag", v1alpha1.PhaseSyncing, RoleForger, f, own(tip(1880), 1880), v1alpha1.PhaseForging},
-		{"just outside the lag", v1alpha1.PhaseSyncing, RoleForger, f, own(tip(1879), 1879), v1alpha1.PhaseSyncing},
+		{"lagging", v1alpha1.PhaseSyncing, RoleForger, f, own(tip(1500), 1490), v1alpha1.PhaseSyncing},
+		{"just inside the lag", v1alpha1.PhaseSyncing, RoleForger, f, own(tip(1800), 1800), v1alpha1.PhaseForging},
+		{"just outside the lag", v1alpha1.PhaseSyncing, RoleForger, f, own(tip(1799), 1799), v1alpha1.PhaseSyncing},
 		{"caught up, no block seen", v1alpha1.PhaseSyncing, RoleForger, f, tip(1990), v1alpha1.PhaseSyncing},
 		{"caught up, block in the window", v1alpha1.PhaseSyncing, RoleForger, f, own(tip(1990), 1500), v1alpha1.PhaseForging},
 		{"caught up, block before the window", v1alpha1.PhaseSyncing, RoleForger, f, own(tip(1990), 1446), v1alpha1.PhaseSyncing},
@@ -86,8 +86,8 @@ func TestJudge(t *testing.T) {
 
 func TestFactsWindows(t *testing.T) {
 	f := Facts{F: 0.05, Share: 0.25, Epoch: 1000, K: 100}
-	if got := f.LagSlots(); got != 120 {
-		t.Errorf("lag %d, want 120", got)
+	if got := f.LagSlots(); got != 200 {
+		t.Errorf("lag %d, want 200", got)
 	}
 	if got := f.ForgeWindow(); got != 553 {
 		t.Errorf("window %d, want 553", got)

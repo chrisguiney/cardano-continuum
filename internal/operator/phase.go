@@ -44,9 +44,10 @@ const defaultF = 0.05
 
 // lagBlocks is how many expected block intervals (1/f slots each) a pool's
 // tip may trail the clock. A healthy chain has no block for n slots with
-// probability (1-f)^n, about e^-6 = 0.25% at 6/f slots, so a pool further
-// behind than that is not at the tip.
-const lagBlocks = 6
+// probability (1-f)^n, about e^-10 = 0.005% at 10/f slots, so a pool further
+// behind than that is not at the tip. A smaller multiple makes every pool
+// flap to Syncing on an ordinary long gap between blocks.
+const lagBlocks = 10
 
 // missChance is the probability a healthy forging pool shows no block in its
 // window; ln(1/missChance) = ln(1000) expected blocks are awaited.
@@ -71,7 +72,7 @@ func (f Facts) SlotAt(t time.Time) uint64 {
 }
 
 // LagSlots is how far a caught-up pool's tip may trail the current slot:
-// 6/f slots, never more than k/f, the span in which blocks are still
+// 10/f slots, never more than k/f, the span in which blocks are still
 // expected to arrive within a rollback.
 func (f Facts) LagSlots() uint64 {
 	n := ceil(lagBlocks / f.f())
@@ -98,7 +99,7 @@ func (f Facts) ForgeWindow() uint64 {
 }
 
 // ceil rounds up, forgiving the float error of a quotient that is an
-// integer on paper (6/0.05).
+// integer on paper (10/0.05).
 func ceil(x float64) uint64 { return uint64(math.Ceil(x - 1e-9)) }
 
 // Seen is what the operator observed of one pool's chain.
