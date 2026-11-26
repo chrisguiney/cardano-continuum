@@ -15,3 +15,7 @@ coverage.txt
 
 # Web UI dependencies; web/dist is committed on purpose.
 web/node_modules/
+
+# Python bytecode and caches from lab/.
+__pycache__/
+.pytest_cache/

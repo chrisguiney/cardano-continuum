@@ -1,0 +1,88 @@
+# continuum-lab: JupyterLab with DuckDB and pandas over the run's exported
+# Parquet tables and chain tables. The data volume is mounted read-only; the
+# notebook writes only to emptyDirs. The image is built from lab/Dockerfile
+# and pushed to CONTINUUM_REGISTRY. JUPYTER_TOKEN comes from the optional
+# continuum-lab Secret (key "token"); without it Jupyter generates one and
+# prints it in the pod log.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: continuum-lab
+  labels:
+    app.kubernetes.io/name: continuum-lab
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: continuum-lab
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: continuum-lab
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: lab
+          image: continuum-lab
+          ports:
+            - name: http
+              containerPort: 8888
+          env:
+            - name: JUPYTER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: continuum-lab
+                  key: token
+                  optional: true
+          readinessProbe:
+            httpGet:
+              path: /api
+              port: http
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 250m
+              memory: 1Gi
+            limits:
+              memory: 4Gi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+              readOnly: true
+            - name: scratch
+              mountPath: /work/scratch
+            - name: home
+              mountPath: /home/jupyter/.local
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: continuum-lab-data
+            readOnly: true
+        - name: scratch
+          emptyDir: {}
+        - name: home
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: continuum-lab
+  labels:
+    app.kubernetes.io/name: continuum-lab
+spec:
+  selector:
+    app.kubernetes.io/name: continuum-lab
+  ports:
+    - name: http
+      port: 8888
+      targetPort: http

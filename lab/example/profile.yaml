@@ -1,0 +1,23 @@
+# Fitted by lab/fit.py from chain data; see lab/README.md for the mapping.
+# output value (lovelace): lognormal body below 2.89374e+10 lognormal(17.7358, 3.42133), tail pareto(xm=2.89374e+10, alpha=0.265616)
+version: 1
+profiles:
+  - name: preview-fit
+    kind: wallet
+    agenda: hodl
+    traits:
+      competence: beta(0.437886, 0.0266222)
+      patience: pareto(xm=126, alpha=0.66074)
+      learning_rate: const(0)
+      care: beta(1.87955, 0.344191)
+    rates:
+      base:
+        send: 2.08147e-06
+      activity_tail: 1.05
+    weights:
+      send: 0.686555
+      script_call: 0.311320
+      delegate: 0.001898
+      register_pool: 0.000227
+    hazards:
+      dormancy: lognormal(12.8361, 0.880132)

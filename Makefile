@@ -15,7 +15,7 @@ GOLANGCI_LINT_VERSION := v2.15.0
 CONTROLLER_GEN_VERSION := v0.23.0
 CONTROLLER_GEN := go run sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_GEN_VERSION)
 
-.PHONY: web web-test help build test test-race vet fmt-check lint check check-manifests manifests generate determinism models models-install
+.PHONY: web web-test lab lab-image lab-test help build test test-race vet fmt-check lint check check-manifests manifests generate determinism models models-install
 
 help: ## Show this list
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-16s %s\n", $$1, $$2}'
@@ -159,3 +159,19 @@ e2e: kind-up ## Run the kind e2e suite (about 25 minutes; go test -short skips t
 	CONTINUUM_REGISTRY=localhost:$(E2E_PORT)/continuum CONTINUUM_REGISTRY_INSECURE=true \
 	CONTINUUM_KO="$(KO)" CONTINUUM_DINGO_SRC="$(DINGO_SRC)" CONTINUUM_GOUROBOROS_SRC="$(GOUROBOROS_SRC)" \
 	CONTINUUM_OVERLAY_MODE="$(MODE)" go test -tags e2e -count=1 -timeout $(E2E_TIMEOUT) -v ./test/e2e/...
+
+# continuum-lab: calibration notebooks. The image layers scipy and pytest over
+# the mithril2pq notebook image (LAB_BASE).
+LAB_IMAGE ?= continuum-lab:local
+LAB_BASE ?= mithril2pq-notebook:local
+LAB_DATA ?= $(CURDIR)/lab/tests/fixtures
+
+lab-image: ## Build the lab image on top of the mithril2pq notebook image
+	docker build -f lab/Dockerfile --build-arg BASE=$(LAB_BASE) -t $(LAB_IMAGE) .
+
+lab: lab-image ## Run JupyterLab on :8888 with LAB_DATA (chain and export subdirs) mounted read-only
+	docker run --rm -p 8888:8888 -v $(LAB_DATA):/data:ro -v $(CURDIR)/lab:/work/lab $(LAB_IMAGE)
+
+lab-test: lab-image ## Run the lab pytest suite in the image, then the Go test that parses the fitted profile
+	docker run --rm -v $(CURDIR)/lab:/work/lab -e PYTHONDONTWRITEBYTECODE=1 --entrypoint python $(LAB_IMAGE) -m pytest -q -p no:cacheprovider /work/lab/tests
+	go test ./lab/
