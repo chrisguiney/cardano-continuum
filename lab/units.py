@@ -1,102 +1,103 @@
-"""Units and per-unit features.
+"""Units: which addresses belong to one user.
 
-A unit is what an actor stands for: the stake credential of an address where
-it has one (a wallet spreads its funds over many payment addresses that share
-one), and the address itself otherwise. `unit_of` maps addresses to units;
-`features` reads one row per unit from a connection built by common.prepare.
+A Cardano wallet does not have one address. It derives a fresh payment
+address for most transactions, and its funds are spread over all of them.
+Counted per address, one busy wallet looks like hundreds of users who each
+transact once, which would make every behavioural statistic wrong.
+
+What the addresses of one wallet share is the *stake credential*: the key
+(or script) that delegates the wallet's ADA to a stake pool. A Shelley
+"base" address is the pair (payment credential, stake credential), so two
+addresses with the same stake credential are, for practical purposes, the
+same owner.
+
+A **unit** is therefore the stake credential of an address when it has one,
+and the address itself otherwise. One unit is one simulated actor.
+
+What could go wrong: an exchange or custodian holds many customers behind
+one stake credential (one unit, many people), and a user with several
+wallets is several units. Enterprise addresses (no stake part, common for
+scripts and exchanges) and Byron addresses stay one unit per address.
+
+Guide: section 7 of guide.ipynb ("What is one user?").
+Address format: CIP-19, https://cips.cardano.org/cip/CIP-19
 """
 
 from __future__ import annotations
 
-import duckdb
-import pandas as pd
+from typing import Callable
 
-_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
-_REV = {c: i for i, c in enumerate(_CHARSET)}
+# bech32 writes 5 bits per character with this alphabet (BIP-173).
+# https://github.com/bitcoin/bips/blob/master/bip-0173.mediawiki
+_BECH32_ALPHABET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
+_BECH32_VALUE = {char: value for value, char in enumerate(_BECH32_ALPHABET)}
+_BECH32_CHECKSUM_CHARS = 6
+
+# CIP-19 layout of a Shelley base address: one header byte, a 28-byte payment
+# credential, then a 28-byte stake credential.
+_CREDENTIAL_BYTES = 28
+_STAKE_START = 1 + _CREDENTIAL_BYTES
+_STAKE_END = _STAKE_START + _CREDENTIAL_BYTES
+# The header's high four bits are the address type. Types 0-3 are the base
+# addresses, the only ones that carry a stake credential inline.
+_LAST_BASE_ADDRESS_TYPE = 3
+# In a base address this header bit says the stake credential is a script
+# hash (types 2 and 3) instead of a key hash (types 0 and 1).
+_STAKE_IS_SCRIPT_BIT = 0x20
 
 
-def bech32_payload(addr: str) -> bytes | None:
+def bech32_payload(address: str) -> bytes | None:
     """Decoded data bytes of a bech32 string, or None when it is not bech32.
 
     The checksum is not verified: addresses come from a chain that already
-    validated them, and a Byron base58 address simply fails the charset test.
+    validated them, and a Byron base58 address simply fails the alphabet test.
     """
-    sep = addr.rfind("1")
-    if sep < 1 or addr != addr.lower():
+    separator = address.rfind("1")
+    if separator < 1 or address != address.lower():
         return None
-    data = addr[sep + 1 :]
-    if len(data) < 7 or any(c not in _REV for c in data):
+    data = address[separator + 1 :]
+    if len(data) <= _BECH32_CHECKSUM_CHARS or any(char not in _BECH32_VALUE for char in data):
         return None
-    acc = bits = 0
+    return _pack_5bit_groups(data[:-_BECH32_CHECKSUM_CHARS])
+
+
+def _pack_5bit_groups(chars: str) -> bytes:
+    """Regroup 5-bit bech32 characters into bytes, dropping leftover pad bits."""
+    buffer = bits_in_buffer = 0
     out = bytearray()
-    for c in data[:-6]:
-        acc = (acc << 5) | _REV[c]
-        bits += 5
-        while bits >= 8:
-            bits -= 8
-            out.append((acc >> bits) & 0xFF)
+    for char in chars:
+        buffer = (buffer << 5) | _BECH32_VALUE[char]
+        bits_in_buffer += 5
+        while bits_in_buffer >= 8:
+            bits_in_buffer -= 8
+            out.append((buffer >> bits_in_buffer) & 0xFF)
     return bytes(out)
 
 
-def unit_key(addr: str, stake: bool = True) -> str:
+def unit_key(address: str, stake: bool = True) -> str:
     """The unit of one address.
 
-    Shelley base addresses (header types 0-3: payment credential then stake
-    credential) take the stake credential, prefixed by its kind so a key hash
-    and a script hash never collide. Everything else (enterprise, pointer,
-    Byron, or stake=False) is its own unit.
+    A Shelley base address takes its stake credential, written as
+    `k:<hex>` for a key hash and `s:<hex>` for a script hash so the two
+    kinds never collide. Everything else (enterprise, pointer, Byron, or
+    stake=False) is its own unit and returns the address unchanged.
     """
     if not stake:
-        return addr
-    raw = bech32_payload(addr)
-    if raw is None or len(raw) < 57 or raw[0] >> 4 > 3:
-        return addr
-    kind = "s" if raw[0] & 0x20 else "k"
-    return f"{kind}:{raw[29:57].hex()}"
+        return address
+    raw = bech32_payload(address)
+    if raw is None or len(raw) < _STAKE_END:
+        return address
+    header = raw[0]
+    if header >> 4 > _LAST_BASE_ADDRESS_TYPE:
+        return address
+    kind = "s" if header & _STAKE_IS_SCRIPT_BIT else "k"
+    return f"{kind}:{raw[_STAKE_START:_STAKE_END].hex()}"
 
 
-def unit_of(stake: bool = True):
-    """A function mapping addresses to units, for common.prepare."""
-    return lambda addrs: [unit_key(a, stake) for a in addrs]
+def unit_of(stake: bool = True) -> Callable[[list[str]], list[str]]:
+    """A function mapping a list of addresses to their units.
 
-
-# One row per unit that sent at least one transaction in the window. Gaps and
-# dormancy are in slots; a unit with a single transaction has no gap, so its
-# median gap is the window and its longest dormancy is zero. Active days are
-# days of slot time, so the slot length converts slots to seconds first.
-FEATURE_SQL = """
-WITH f AS (SELECT unit, hash, slot, block_index, n_in, n_out, kind
-           FROM c_base WHERE unit IS NOT NULL),
-g AS (SELECT unit, slot - lag(slot) OVER (PARTITION BY unit ORDER BY slot, block_index) AS gap FROM f),
-gs AS (SELECT unit, median(gap) AS med_gap, max(gap) AS max_gap FROM g WHERE gap IS NOT NULL GROUP BY unit),
-b AS (SELECT unit, count(*) AS n_tx, count(DISTINCT floor(slot * {slot_seconds} / 86400)) AS active_days,
-             avg(n_in) AS in_per_tx, avg(n_out) AS out_per_tx,
-             avg((kind = 'script')::int) AS script_share, avg((kind = 'stake')::int) AS stake_share
-      FROM f GROUP BY unit),
-v AS (SELECT f.unit, median(o.lovelace) FILTER (WHERE o.ounit <> f.unit) AS med_pay,
-             median(o.lovelace) AS med_all
-      FROM f JOIN c_outs o ON o.hash = f.hash WHERE o.lovelace > 0 GROUP BY f.unit),
-r AS (SELECT f.unit, avg(o.reuse::int) AS reuse FROM f JOIN c_outs o ON o.hash = f.hash GROUP BY f.unit)
-SELECT b.unit, b.n_tx, b.active_days, b.in_per_tx, b.out_per_tx, b.script_share, b.stake_share,
-       coalesce(gs.med_gap, {window_slots}) AS med_gap, coalesce(gs.max_gap, 0) AS max_gap,
-       coalesce(v.med_pay, v.med_all, 1) AS med_value, coalesce(r.reuse, 0) AS reuse
-FROM b LEFT JOIN gs USING (unit) LEFT JOIN v USING (unit) LEFT JOIN r USING (unit)
-ORDER BY b.unit
-"""
-
-
-def features(con: duckdb.DuckDBPyConnection, window_slots: int, slot_seconds: float = 1.0) -> pd.DataFrame:
-    """One row per unit: the raw (untransformed) clustering features.
-
-    Columns: unit, n_tx, tx_per_day, med_gap_s, med_value, script_share,
-    stake_share, in_per_tx, out_per_tx, reuse, active_days, max_dormancy_s.
+    chain_stats.load_window takes it, so the choice between "one unit per
+    stake credential" (stake=True) and "one unit per address" is made once.
     """
-    df = con.execute(FEATURE_SQL.format(window_slots=int(window_slots), slot_seconds=float(slot_seconds))).fetchdf()
-    days = window_slots * slot_seconds / 86400.0
-    df["tx_per_day"] = df["n_tx"] / days
-    df["med_gap_s"] = df["med_gap"].astype(float) * slot_seconds
-    df["max_dormancy_s"] = df["max_gap"].astype(float) * slot_seconds
-    df["med_value"] = df["med_value"].astype(float)
-    cols = ["unit", "n_tx", "tx_per_day", "med_gap_s", "med_value", "script_share", "stake_share",
-            "in_per_tx", "out_per_tx", "reuse", "active_days", "max_dormancy_s"]
-    return df[cols]
+    return lambda addresses: [unit_key(address, stake) for address in addresses]

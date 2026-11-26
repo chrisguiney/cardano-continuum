@@ -13,6 +13,21 @@ run's store.db (default: ../store.db beside the export). KS statistics pass when
 two-sample KS distance D is at most --dmax (an effect-size bound: with
 millions of samples the p-value rejects every real difference). The p-value
 is reported alongside.
+
+This is the last step of the calibration loop (guide.ipynb, section 6):
+
+    fit    measure a real chain, fit a profile             (fit.py)
+    run    continuum run --profiles ... ; continuum export
+    grade  measure the run the same way, compare           (this file)
+
+and grading reads top to bottom as
+
+    load the target      what the chain looked like (target.json)
+    measure the run      engine_stats, the same named statistics
+    compare              compare.py: KS distance, total variation, difference
+    report               report.py: one Markdown table per population
+
+The exit code is 1 when any statistic fails, so a script can gate on it.
 """
 
 from __future__ import annotations
@@ -20,72 +35,44 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import sys
 
-import numpy as np
-from scipy import stats as sps
+import chain_stats
+import engine_stats
+import report
+from compare import (FRACTION_PASS_DISTANCE, KS_PASS_DISTANCE, SHARE_PASS_DISTANCE, Bounds, Skipped,
+                     any_failed, compare_population)
+from population_stats import with_chain_tables
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import common  # noqa: E402
-
-
-def ks(sample: np.ndarray, target_quantiles: list[float], dmax: float) -> dict:
-    """Two-sample KS of a sample against a target's quantile points."""
-    if len(sample) == 0:
-        return {"status": "skipped", "reason": "no samples"}
-    r = sps.ks_2samp(sample, np.asarray(target_quantiles))
-    return {
-        "status": "pass" if r.statistic <= dmax else "fail",
-        "D": float(r.statistic),
-        "p": float(r.pvalue),
-        "n": int(len(sample)),
-        "median": float(np.median(sample)),
-    }
+INDEX_FILE = "index.json"
+STORE_FILE = "store.db"
 
 
-def tv(a: dict, b: dict) -> float:
-    return 0.5 * sum(abs(a.get(k, 0.0) - b.get(k, 0.0)) for k in set(a) | set(b))
-
-
-def grade(st: common.Stats, target: dict, dmax: float, tvmax: float, fmax: float) -> list[dict]:
-    rows = []
-    for name in common.KS_STATS:
-        if name not in target["quantiles"]:
-            rows.append({"name": name, "status": "skipped", "reason": "target has no samples"})
-            continue
-        r = ks(st.samples.get(name, np.array([])), target["quantiles"][name], dmax)
-        r["name"] = name
-        r["target_median"] = float(np.median(target["quantiles"][name]))
-        rows.append(r)
-    for name in common.SHARE_STATS:
-        d = tv(st.shares[name], target["shares"][name])
-        rows.append({"name": name, "status": "pass" if d <= tvmax else "fail", "TV": d,
-                     "got": st.shares[name], "want": target["shares"][name]})
-    for name in common.FRACTION_STATS:
-        if name not in st.fractions:
-            rows.append({"name": name, "status": "skipped", "reason": "needs chain tables"})
-            continue
-        d = abs(st.fractions[name] - target["fractions"][name])
-        rows.append({"name": name, "status": "pass" if d <= fmax else "fail", "diff": d,
-                     "got": st.fractions[name], "want": target["fractions"][name]})
-    return rows
+def default_profiles_dir() -> str:
+    """The shipped profiles: CONTINUUM_PROFILES, else ../profiles of this file."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    return os.environ.get("CONTINUUM_PROFILES", os.path.join(here, "..", "profiles"))
 
 
 def find_target(export_dir: str, profiles_dir: str) -> str:
-    """Path of the target file for a run, by the profile hash in its header."""
-    h = common.run_profile_hash(export_dir)
-    index = os.path.join(profiles_dir, "index.json")
+    """Path of the target file for a run, by the profile hash in its header.
+
+    A run records the hash of the profile file it used. index.json maps
+    each shipped profile's hash to its target, so a run is always graded
+    against the fit it was actually given, never against a stale one.
+    """
+    profile_hash = engine_stats.run_profile_hash(export_dir)
+    index_path = os.path.join(profiles_dir, INDEX_FILE)
     try:
-        with open(index) as f:
-            idx = json.load(f)
+        with open(index_path) as f:
+            index = json.load(f)
     except OSError as e:
-        raise SystemExit(f"grade: cannot read {index} ({e}); pass --target") from e
-    if h not in idx:
+        raise SystemExit(f"grade: cannot read {index_path} ({e}); pass --target") from e
+    if profile_hash not in index:
         raise SystemExit(
-            f"grade: run profile hash {h[:16]} is not in {index}; the run used profiles with no shipped "
-            "target (or an edited copy): pass --target"
+            f"grade: run profile hash {profile_hash[:16]} is not in {index_path}; the run used profiles with no "
+            "shipped target (or an edited copy): pass --target"
         )
-    return os.path.join(profiles_dir, idx[h]["target"])
+    return os.path.join(profiles_dir, index[profile_hash]["target"])
 
 
 def target_views(target: dict) -> tuple[dict, dict[str, dict]]:
@@ -98,92 +85,66 @@ def target_views(target: dict) -> tuple[dict, dict[str, dict]]:
     return target, {}
 
 
-def grade_clusters(export_dir: str, store: str | None, clusters: dict[str, dict], args: argparse.Namespace) -> dict:
-    """Rows per cluster, from the run's actors of that profile."""
-    owners = common.actor_profiles(export_dir, store)
-    out = {}
-    for name, t in clusters.items():
-        ids = {a for a, p in owners.items() if p == name}
-        st = common.engine_stats(export_dir, ids)
-        if not ids or len(st.samples["output_value_lovelace"]) == 0:
-            out[name] = ([{"name": "(cluster)", "status": "skipped",
-                           "reason": f"{len(ids)} actors, no payments in the run"}], st, t.get("share"), len(ids))
-            continue
-        out[name] = (grade(st, t, args.dmax, args.tvmax, args.fmax), st, t.get("share"), len(ids))
-    return out
+def grade_clusters(export_dir: str, store: str | None, clusters: dict[str, dict],
+                   bounds: Bounds) -> dict[str, report.ClusterGrade]:
+    """Grade each cluster against the run's actors that used its profile.
 
-
-def table(rows: list[dict]) -> list[str]:
-    out = ["| statistic | verdict | detail |", "|---|---|---|"]
-    for r in rows:
-        if r["status"] == "skipped":
-            d = r["reason"]
-        elif "D" in r:
-            d = f"D={r['D']:.3f} p={r['p']:.2g} n={r['n']} median {r['median']:.4g} vs target {r['target_median']:.4g}"
-        elif "TV" in r:
-            d = f"TV={r['TV']:.3f}; got {fmtmap(r['got'])}; want {fmtmap(r['want'])}"
+    A cluster with no actors, or whose actors made no payment, has nothing
+    to compare and gets a single skipped row.
+    """
+    profile_of_actor = engine_stats.actor_profiles(export_dir, store)
+    grades = {}
+    for name, cluster_target in clusters.items():
+        actors = {actor for actor, profile in profile_of_actor.items() if profile == name}
+        stats = engine_stats.engine_stats(export_dir, actors)
+        if not actors or len(stats.samples["output_value_lovelace"]) == 0:
+            rows = [Skipped("(cluster)", f"{len(actors)} actors, no payments in the run")]
         else:
-            d = f"diff={r['diff']:.3f}; got {r['got']:.3f}, want {r['want']:.3f}"
-        out.append(f"| {r['name']} | {r['status'].upper()} | {d} |")
-    npass = sum(r["status"] == "pass" for r in rows)
-    nfail = sum(r["status"] == "fail" for r in rows)
-    out += ["", f"{npass} pass, {nfail} fail, {len(rows) - npass - nfail} skipped."]
-    return out
+            rows = compare_population(stats, cluster_target, bounds)
+        grades[name] = report.ClusterGrade(rows, cluster_target.get("share"), len(actors))
+    return grades
 
 
-def report(rows: list[dict], st: common.Stats, args: argparse.Namespace, per_cluster: dict | None = None) -> str:
-    out = ["# Calibration grade", "",
-           f"Run: `{args.export_dir}`; target: `{args.target}`; "
-           f"KS bound D <= {args.dmax}, TV <= {args.tvmax}, fraction diff <= {args.fmax}.", "",
-           "## Overall", ""]
-    out += table(rows)
-    if "idle_fraction_of_records" in st.info:
-        out += ["", f"Idle wake-ups (IntentChosen=idle plus Tick) are "
-                f"{st.info['idle_fraction_of_records']:.1%} of decision records."]
-    for name, (crows, _, share, n) in (per_cluster or {}).items():
-        share_txt = f", share {share:.1%}" if share is not None else ""
-        out += ["", f"## Cluster {name}", "", f"{n} actors{share_txt}.", ""]
-        out += table(crows)
-    return "\n".join(out) + "\n"
-
-
-def fmtmap(m: dict) -> str:
-    return ", ".join(f"{k} {v:.3f}" for k, v in m.items())
-
-
-def main(argv: list[str] | None = None) -> int:
+def parse_args(argv: list[str] | None) -> argparse.Namespace:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("export_dir")
     ap.add_argument("--target")
     ap.add_argument("--store")
-    ap.add_argument("--profiles-dir", default=os.environ.get(
-        "CONTINUUM_PROFILES", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "profiles")))
+    ap.add_argument("--profiles-dir", default=default_profiles_dir())
     ap.add_argument("--out", required=True)
     ap.add_argument("--chain-dir")
     ap.add_argument("--slot-seconds", type=float, default=1.0)
-    ap.add_argument("--dmax", type=float, default=0.1)
-    ap.add_argument("--tvmax", type=float, default=0.1)
-    ap.add_argument("--fmax", type=float, default=0.1)
-    a = ap.parse_args(argv)
-    if not a.target:
-        a.target = find_target(a.export_dir, a.profiles_dir)
-    with open(a.target) as f:
-        target = json.load(f)
-    overall, clusters = target_views(target)
-    st = common.engine_stats(a.export_dir)
-    if a.chain_dir:
-        st = common.merge_chain(st, common.chain_stats(a.chain_dir, a.slot_seconds))
-    rows = grade(st, overall, a.dmax, a.tvmax, a.fmax)
-    per_cluster = {}
-    if clusters:
-        store = a.store or os.path.join(os.path.dirname(os.path.abspath(a.export_dir)), "store.db")
-        per_cluster = grade_clusters(a.export_dir, store, clusters, a)
-    md = report(rows, st, a, per_cluster)
-    with open(a.out, "w") as f:
-        f.write(md)
-    print(md)
-    every = rows + [r for v in per_cluster.values() for r in v[0]]
-    return 1 if any(r["status"] == "fail" for r in every) else 0
+    ap.add_argument("--dmax", type=float, default=KS_PASS_DISTANCE)
+    ap.add_argument("--tvmax", type=float, default=SHARE_PASS_DISTANCE)
+    ap.add_argument("--fmax", type=float, default=FRACTION_PASS_DISTANCE)
+    return ap.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    bounds = Bounds(ks=args.dmax, share=args.tvmax, fraction=args.fmax)
+
+    target_path = args.target or find_target(args.export_dir, args.profiles_dir)
+    with open(target_path) as f:
+        overall_target, cluster_targets = target_views(json.load(f))
+
+    run = engine_stats.engine_stats(args.export_dir)
+    if args.chain_dir:
+        run = with_chain_tables(run, chain_stats.chain_stats(args.chain_dir, args.slot_seconds))
+
+    overall = compare_population(run, overall_target, bounds)
+    clusters = {}
+    if cluster_targets:
+        store = args.store or os.path.join(os.path.dirname(os.path.abspath(args.export_dir)), STORE_FILE)
+        clusters = grade_clusters(args.export_dir, store, cluster_targets, bounds)
+
+    text = report.render(args.export_dir, target_path, bounds, overall,
+                         run.info.get("idle_fraction_of_records"), clusters)
+    with open(args.out, "w") as f:
+        f.write(text)
+    print(text)
+    every_row = overall + [row for grade in clusters.values() for row in grade.rows]
+    return 1 if any_failed(every_row) else 0
 
 
 if __name__ == "__main__":

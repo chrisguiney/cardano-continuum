@@ -1,0 +1,185 @@
+"""Statistics of a simulated run (`continuum export` Parquet tables).
+
+The engine side of grading: the same named statistics as chain_stats, read
+from what the simulator decided to do instead of from a chain.
+
+Two things differ from the chain, and both are by construction:
+
+  * An **actor** stands in for a unit. The engine knows exactly which actor
+    sent each payment, so there is no sender or unit to work out.
+  * Time is the engine's own clock in **milliseconds** (the `at` column),
+    not slots, so durations are divided by 1000 to get seconds.
+
+The engine only submits payments. Without the devnet's own chain tables
+(population_stats.with_chain_tables) there are no input or output counts,
+no change, and the transaction mix is all plain.
+
+Tables read (continuum's export schema, internal/sink):
+    submission  one row per payment the engine submitted:
+                actor, target (payee), amount (lovelace), at (ms), seq
+    decision    one row per decision record: kind, intent_kind
+    run         one row: profile_hash
+    actor_transition  lifecycle changes, with the profile of actors born
+                during the run
+
+Guide: section 6 of guide.ipynb ("Calibration: fit, run, grade").
+"""
+
+from __future__ import annotations
+
+import os
+import sqlite3
+
+import duckdb
+import numpy as np
+
+from cardano import SECONDS_PER_DAY
+from chain_stats import has_table, sql_text, table_glob
+from population_stats import Stats, sorted_sample
+
+MS_PER_SECOND = 1000.0
+MS_PER_DAY = SECONDS_PER_DAY * MS_PER_SECOND
+
+# The engine's clock resolves one millisecond, so that is the smallest gap
+# it can record and the floor before taking a logarithm.
+MIN_GAP_SECONDS = 1e-3
+
+# Keeps a rate defined for a run with a single payment (zero-length span).
+_MIN_SPAN_DAYS = 1e-9
+
+AMOUNT_SQL = "SELECT amount FROM submission WHERE amount > 0"
+
+SPAN_MS_SQL = 'SELECT max("at") - min("at") FROM submission'
+
+PAYMENTS_PER_ACTOR_SQL = "SELECT count(*) FROM submission GROUP BY actor"
+
+# Milliseconds between each payment and the same actor's previous one.
+GAP_MS_SQL = """
+SELECT "at" - lag("at") OVER (PARTITION BY actor ORDER BY "at", seq) AS g
+FROM submission QUALIFY g IS NOT NULL
+"""
+
+# A payment's target is a reuse when an earlier payment already paid it:
+# payments are numbered per target in time order, and every one after the
+# first is a reuse.
+REUSE_SQL = """
+WITH numbered AS (
+  SELECT row_number() OVER (PARTITION BY target ORDER BY "at", seq) AS rn FROM submission)
+SELECT avg((rn > 1)::int) FROM numbered
+"""
+
+# How many decisions were to do nothing. An actor that wakes up and decides
+# to stay idle logs IntentChosen with intent 'idle'; a Tick is a wake-up
+# with nothing to decide. The third column is every decision record.
+IDLE_SQL = """
+SELECT count(*) FILTER (WHERE kind = 'IntentChosen' AND intent_kind = 'idle'),
+       count(*) FILTER (WHERE kind = 'Tick'),
+       count(*)
+FROM decision
+"""
+
+
+def run_profile_hash(root: str) -> str:
+    """Hex profile hash from the run table of a continuum export directory.
+
+    It identifies the exact profile file the run used, which is how a grade
+    finds the matching target.
+    """
+    runs = sql_text(table_glob(root, "run"))
+    rows = duckdb.connect().execute(f"SELECT hex(profile_hash) FROM read_parquet({runs})").fetchall()
+    return rows[0][0].lower()
+
+
+def actor_profiles(root: str, store: str | None = None) -> dict[int, str]:
+    """Profile name of every actor of a run.
+
+    Genesis actors have no Spawned record in the log, so their profiles come
+    from the run's store.db (store); actors born later are in the export's
+    actor_transition table and override the store.
+    """
+    profiles: dict[int, str] = {}
+    if store and os.path.exists(store):
+        profiles.update(_genesis_actor_profiles(store))
+    if has_table(root, "actor_transition"):
+        profiles.update(_born_actor_profiles(root))
+    return profiles
+
+
+def _genesis_actor_profiles(store: str) -> dict[int, str]:
+    """Actor id to profile name from a run's SQLite store, opened read-only
+    and immutable so a store that a run is still writing is not locked."""
+    db = sqlite3.connect(f"file:{store}?mode=ro&immutable=1", uri=True)
+    try:
+        return {int(actor): profile for actor, profile in db.execute("SELECT id, profile FROM actor") if profile}
+    finally:
+        db.close()
+
+
+def _born_actor_profiles(root: str) -> dict[int, str]:
+    """Actor id to profile name for actors spawned during the run."""
+    transitions = sql_text(table_glob(root, "actor_transition"))
+    rows = duckdb.connect().execute(
+        f"SELECT actor, profile FROM read_parquet({transitions}) WHERE profile IS NOT NULL"
+    ).fetchall()
+    return {int(actor): profile for actor, profile in rows}
+
+
+def _open_export(root: str, actors: set[int] | None) -> duckdb.DuckDBPyConnection:
+    """A connection with submission and decision views over the export,
+    restricted to the given actor ids when there are any. An empty set
+    selects nothing (`IN (NULL)` matches no row)."""
+    con = duckdb.connect()
+    only_actors = ""
+    if actors is not None:
+        ids = ", ".join(str(int(actor)) for actor in sorted(actors)) or "NULL"
+        only_actors = f" WHERE actor IN ({ids})"
+    for table in ("submission", "decision"):
+        files = sql_text(table_glob(root, table))
+        con.execute(f"CREATE TEMP VIEW {table} AS SELECT * FROM read_parquet({files}){only_actors}")
+    return con
+
+
+def _column(con: duckdb.DuckDBPyConnection, sql: str) -> np.ndarray:
+    """The first column of a query as a sorted sample."""
+    return sorted_sample(row[0] for row in con.execute(sql).fetchall())
+
+
+def _first_value(con: duckdb.DuckDBPyConnection, sql: str):
+    """The single value of a one-row, one-column query."""
+    return con.execute(sql).fetchall()[0][0]
+
+
+def idle_fraction(idle_choices: int, ticks: int, records: int) -> float:
+    """Share of decision records that led to no action."""
+    return (idle_choices + ticks) / max(records, 1)
+
+
+def engine_stats(root: str, actors: set[int] | None = None) -> Stats:
+    """Statistics of a continuum export directory.
+
+    actors, when given, restricts them to those actor ids (one cluster's
+    actors, when grading per cluster).
+    """
+    con = _open_export(root, actors)
+    stats = Stats()
+
+    amounts = _column(con, AMOUNT_SQL)
+    stats.samples["output_value_lovelace"] = amounts
+    stats.samples["log10_output_value"] = np.log10(amounts) if len(amounts) else amounts
+
+    span_ms = _first_value(con, SPAN_MS_SQL) or 0
+    span_days = max(span_ms / MS_PER_DAY, _MIN_SPAN_DAYS)
+    payments_per_actor = _column(con, PAYMENTS_PER_ACTOR_SQL)
+    stats.samples["tx_count_per_address"] = payments_per_actor
+    stats.samples["activity_per_day"] = payments_per_actor / span_days
+    stats.info["span_days"] = span_days
+
+    gaps = sorted_sample(row[0] / MS_PER_SECOND for row in con.execute(GAP_MS_SQL).fetchall())
+    stats.samples["gap_seconds"] = gaps
+    stats.samples["log10_gap_seconds"] = np.log10(np.maximum(gaps, MIN_GAP_SECONDS))
+
+    stats.shares["tx_type_mix"] = {"plain": 1.0, "script": 0.0, "stake": 0.0, "pool": 0.0}
+    stats.fractions["address_reuse"] = float(_first_value(con, REUSE_SQL) or 0.0)
+    stats.info["idle_fraction_of_records"] = idle_fraction(*con.execute(IDLE_SQL).fetchall()[0])
+    stats.info["payments"] = float(len(amounts))
+    return stats

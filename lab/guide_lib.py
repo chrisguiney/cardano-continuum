@@ -1,8 +1,14 @@
-"""Helpers for guide.ipynb: toy simulations, key derivation and the figures
-that read the shipped profiles and targets.
+"""Data and toy models behind guide.ipynb. Nothing here draws: the figures
+are in guide_figures.py.
 
-The toy simulations mirror the ideas of internal/sched, internal/population
-and internal/rng, not their code: they exist to be played with.
+Three kinds of helper:
+
+  * toy simulations (awake_spells, poisson_times, arrivals, random streams)
+    that mirror the ideas of internal/sched, internal/population and
+    internal/rng, not their code: they exist to be played with;
+  * readers for the shipped profiles and targets (Network);
+  * the real-data steps of the notebook (which data to use, the units
+    table, the clustering summary).
 """
 
 from __future__ import annotations
@@ -12,16 +18,27 @@ import hmac
 import json
 import os
 import re
-import zlib
+from dataclasses import dataclass
 
-import matplotlib.colors as mcolors
-import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import yaml
 from scipy import stats as sps
 
+import chain_stats
+import cluster
+import engine_stats
+import grade
+import units
+from cardano import LOVELACE_PER_ADA, SECONDS_PER_DAY
+from fit import DEFAULT_KMAX, DEFAULT_KMIN, DEFAULT_WINDOW_DAYS
+from unit_features import unit_features
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 DAY_HOURS = 24.0
+
+# Real-data runs of the notebook cap DuckDB here; the fixtures need no cap.
+REAL_DATA_MEMORY_LIMIT = "8GB"
 
 
 def profiles_dir() -> str:
@@ -34,20 +51,29 @@ def profiles_dir() -> str:
 
 def awake_spells(rng: np.random.Generator, days: float, onset_per_day: float, sleep_median_days: float,
                  sigma: float = 0.6) -> list[tuple[float, float]]:
-    """Intervals (in days) an actor is awake. Awake time ends at a constant
-    hazard (exponential spell); sleep is log-normal around its median."""
-    t, out = 0.0, []
-    while t < days:
-        end = t + rng.exponential(1.0 / onset_per_day)
-        out.append((t, min(end, days)))
-        t = end + rng.lognormal(np.log(sleep_median_days), sigma)
-    return out
+    """Intervals (start, end), in days, during which one actor is awake.
+
+    An awake spell ends at a constant hazard, so its length is exponential
+    with mean 1 / onset_per_day. Each sleep is log-normal with the given
+    median: a log-normal's median is exp(mu), so mu = ln(median).
+    """
+    now, spells = 0.0, []
+    while now < days:
+        falls_asleep = now + rng.exponential(1.0 / onset_per_day)
+        spells.append((now, min(falls_asleep, days)))
+        now = falls_asleep + rng.lognormal(np.log(sleep_median_days), sigma)
+    return spells
 
 
-def poisson_times(rng: np.random.Generator, rate: float, t0: float, t1: float) -> np.ndarray:
-    """Event times of a Poisson process of the given rate on [t0, t1)."""
-    n = rng.poisson(rate * (t1 - t0))
-    return np.sort(rng.uniform(t0, t1, n))
+def poisson_times(rng: np.random.Generator, rate: float, start: float, end: float) -> np.ndarray:
+    """Event times of a Poisson process of the given rate on [start, end).
+
+    The number of events in a stretch of length T is Poisson with mean
+    rate * T, and given that number the events fall uniformly at random.
+    https://en.wikipedia.org/wiki/Poisson_point_process
+    """
+    count = rng.poisson(rate * (end - start))
+    return np.sort(rng.uniform(start, end, count))
 
 
 def daily_factor(t_hours: np.ndarray, amplitude: float) -> np.ndarray:
@@ -55,47 +81,72 @@ def daily_factor(t_hours: np.ndarray, amplitude: float) -> np.ndarray:
     return 1.0 + amplitude * np.sin(2 * np.pi * np.asarray(t_hours) / DAY_HOURS)
 
 
+# Only this many of the latest events feed the excitation while simulating:
+# older boosts have decayed to nothing and summing them only costs time.
+_RECENT_EVENTS = 200
+
+
+def _excitation(t: float, events: list[float], beta: float) -> float:
+    """Sum over past events of exp(-beta * (t - event)): how much boost is
+    still left at time t, before multiplying by alpha."""
+    return sum(np.exp(-beta * (t - event)) for event in events)
+
+
 def arrivals(seed: int, hours: float, rate: float, amplitude: float = 0.0, alpha: float = 0.0,
              beta: float = 1.0) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Wake-up times by thinning (Ogata), with rate per hour.
+    """Wake-up times of one actor, with rate per hour.
 
-    Intensity is rate * daily(t) + a Hawkes excitation: every event adds alpha
-    to the rate and the boost decays at speed beta. alpha must stay below
-    beta, otherwise bursts feed themselves forever. Returns the event times,
-    a time grid and the intensity on it.
+    The intensity (expected wake-ups per hour, right now) is
+
+        lambda(t) = rate * daily(t) + alpha * sum over past events of exp(-beta * (t - t_i))
+
+    The first term is the daily cycle. The second is the Hawkes
+    excitation: every event adds alpha to the rate and the boost decays at
+    speed beta. alpha must stay below beta, otherwise bursts feed
+    themselves forever (each event triggers alpha/beta follow-ups on
+    average).
+
+    Events are drawn by thinning (Ogata's method): propose candidates from
+    a faster constant-rate process whose rate `bound` is at least
+    lambda(t), and keep each with probability lambda(t) / bound. Returns
+    the event times, a time grid and the intensity on it.
+    https://en.wikipedia.org/wiki/Hawkes_process
+    https://en.wikipedia.org/wiki/Poisson_point_process#Thinning
     """
     if alpha >= beta:
         raise ValueError("alpha must be below beta")
     rng = np.random.default_rng(seed)
     events: list[float] = []
 
-    def lam(t: float) -> float:
-        exc = alpha * sum(np.exp(-beta * (t - e)) for e in events[-200:])
-        return rate * float(daily_factor(np.array(t), amplitude)) + exc
+    def intensity(t: float, past: list[float]) -> float:
+        return rate * float(daily_factor(np.array(t), amplitude)) + alpha * _excitation(t, past, beta)
 
-    t = 0.0
-    while t < hours:
-        bound = rate * (1 + amplitude) + alpha * (1 + sum(np.exp(-beta * (t - e)) for e in events[-200:]))
-        t += rng.exponential(1.0 / bound)
-        if t < hours and rng.random() * bound <= lam(t):
-            events.append(t)
+    now = 0.0
+    while now < hours:
+        # The excitation only decays until the next event, and the daily
+        # factor never exceeds 1 + amplitude, so this is an upper bound on
+        # the intensity from now on.
+        bound = rate * (1 + amplitude) + alpha * (1 + _excitation(now, events[-_RECENT_EVENTS:], beta))
+        now += rng.exponential(1.0 / bound)
+        if now < hours and rng.random() * bound <= intensity(now, events[-_RECENT_EVENTS:]):
+            events.append(now)
     grid = np.linspace(0, hours, 600)
-    intensity = np.array([rate * float(daily_factor(np.array(g), amplitude)) +
-                          alpha * sum(np.exp(-beta * (g - e)) for e in events if e <= g) for g in grid])
-    return np.array(events), grid, intensity
+    on_grid = np.array([intensity(g, [event for event in events if event <= g]) for g in grid])
+    return np.array(events), grid, on_grid
 
 
 # --- seeds -------------------------------------------------------------------
 
 
 def hkdf(root: bytes, info: str, length: int = 32) -> bytes:
-    """HKDF-SHA256 (RFC 5869) with an empty salt: the stream key for a path."""
-    prk = hmac.new(b"\0" * 32, root, hashlib.sha256).digest()
-    out, block, i = b"", b"", 1
+    """HKDF-SHA256 (RFC 5869) with an empty salt: the stream key for a path.
+    https://www.rfc-editor.org/rfc/rfc5869"""
+    pseudorandom_key = hmac.new(b"\0" * 32, root, hashlib.sha256).digest()
+    out, block, counter = b"", b"", 1
     while len(out) < length:
-        block = hmac.new(prk, block + info.encode() + bytes([i]), hashlib.sha256).digest()
+        block = hmac.new(pseudorandom_key, block + info.encode() + bytes([counter]), hashlib.sha256).digest()
         out += block
-        i += 1
+        counter += 1
     return out[:length]
 
 
@@ -108,65 +159,89 @@ def stream(root_seed: int, path: str) -> np.random.Generator:
 
 def actor_draws(root_seed: int, actors: int, n: int = 3) -> dict[int, list[float]]:
     """The first n activity draws of each actor 1..actors."""
-    return {a: [round(float(x), 3) for x in stream(root_seed, f"actor/{a}/activity").random(n)]
-            for a in range(1, actors + 1)}
+    return {actor: [round(float(x), 3) for x in stream(root_seed, f"actor/{actor}/activity").random(n)]
+            for actor in range(1, actors + 1)}
+
+
+def print_replay(seed: int = 7, actors: int = 5) -> None:
+    """Show the two properties a seeded run relies on: the same seed gives
+    the same draws, and adding an actor leaves the others' draws alone."""
+    draws = actor_draws(seed, actors)
+    print(f"seed {seed}: first draws per actor")
+    for actor, values in draws.items():
+        print(f"  actor/{actor}/activity  {values}")
+    with_one_more = actor_draws(seed, actors + 1)
+    print("same seed, same run:       ", draws == actor_draws(seed, actors))
+    print("one more actor, others same:", all(with_one_more[actor] == draws[actor] for actor in draws))
+    print("different seed differs:     ", draws != actor_draws(seed + 1, actors))
 
 
 # --- bech32 addresses (the unit is the stake credential) ---------------------
 
-_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
+_BECH32_ALPHABET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
 
 
 def fake_address(prefix: str, raw: bytes) -> str:
     """A bech32-shaped address with a dummy checksum; units ignores checksums."""
-    acc = bits = 0
-    out = []
-    for b in raw:
-        acc = (acc << 8) | b
-        bits += 8
-        while bits >= 5:
-            bits -= 5
-            out.append(_CHARSET[(acc >> bits) & 31])
-    if bits:
-        out.append(_CHARSET[(acc << (5 - bits)) & 31])
-    return prefix + "1" + "".join(out) + "qqqqqq"
+    buffer = bits_in_buffer = 0
+    chars = []
+    for byte in raw:
+        buffer = (buffer << 8) | byte
+        bits_in_buffer += 8
+        while bits_in_buffer >= 5:
+            bits_in_buffer -= 5
+            chars.append(_BECH32_ALPHABET[(buffer >> bits_in_buffer) & 31])
+    if bits_in_buffer:
+        chars.append(_BECH32_ALPHABET[(buffer << (5 - bits_in_buffer)) & 31])
+    return prefix + "1" + "".join(chars) + "qqqqqq"
+
+
+def print_one_wallet_one_unit() -> None:
+    """Two payment addresses that share a stake credential are one unit."""
+    payment_1, payment_2, stake = bytes([1]) * 28, bytes([2]) * 28, bytes([9]) * 28
+    base_address_header = bytes([0x00])  # CIP-19 type 0: key payment, key stake
+    first = fake_address("addr", base_address_header + payment_1 + stake)
+    second = fake_address("addr", base_address_header + payment_2 + stake)
+    same_unit = units.unit_key(first) == units.unit_key(second)
+    print("two addresses of one wallet, one unit:", same_unit, "->", units.unit_key(first)[:18] + "...")
 
 
 # --- profiles and targets ----------------------------------------------------
 
-_DIST = re.compile(r"(\w+)\((.*)\)")
+_DISTRIBUTION = re.compile(r"(\w+)\((.*)\)")
 
 
 def parse_dist(text: str) -> tuple[str, list[float], dict[str, float]]:
     """Name, positional and keyword numbers of a profile distribution such as
     `pareto(xm=341, alpha=0.22)` or `beta(8, 2)`."""
-    name, body = _DIST.fullmatch(text.strip()).groups()
-    pos, kw = [], {}
-    for part in filter(None, (p.strip() for p in body.split(","))):
+    name, body = _DISTRIBUTION.fullmatch(text.strip()).groups()
+    positional, keyword = [], {}
+    for part in filter(None, (piece.strip() for piece in body.split(","))):
         if "=" in part:
-            k, v = part.split("=")
-            kw[k.strip()] = float(v)
+            key, value = part.split("=")
+            keyword[key.strip()] = float(value)
         else:
-            pos.append(float(part))
-    return name, pos, kw
+            positional.append(float(part))
+    return name, positional, keyword
 
 
 def header_of(path: str) -> dict[str, str]:
     """The `# key: value` comment header of a fitted profile file."""
-    out = {}
+    header = {}
     with open(path) as f:
         for line in f:
-            m = re.match(r"# (\w+): (.*)", line)
-            if m:
-                out[m.group(1)] = m.group(2)
+            match = re.match(r"# (\w+): (.*)", line)
+            if match:
+                header[match.group(1)] = match.group(2)
             elif not line.startswith("#"):
                 break
-    return out
+    return header
 
 
 def bic_curve(header: dict[str, str]) -> dict[int, float]:
-    """The BIC curve recorded in a fitted file's header."""
-    return {int(k): float(v) for k, v in (p.split("=") for p in header.get("bic", "").split(", ") if "=" in p)}
+    """The BIC curve recorded in a fitted file's header as `k=value, ...`."""
+    pairs = (pair.split("=") for pair in header.get("bic", "").split(", ") if "=" in pair)
+    return {int(k): float(bic) for k, bic in pairs}
 
 
 class Network:
@@ -190,211 +265,91 @@ class Network:
 
     @property
     def names(self) -> list[str]:
-        return [p["name"] for p in self.profiles]
+        return [profile["name"] for profile in self.profiles]
+
+    @property
+    def mixture_k(self) -> int:
+        """Components of the Gaussian mixture (files from before segments
+        recorded only k)."""
+        return int(self.header.get("k_gmm", self.header["k"]))
+
+    def summary(self) -> str:
+        """One line on how the shipped fit was made."""
+        if not self.fitted:
+            return f"{self.name}: not fitted yet"
+        h = self.header
+        return (f"{self.name}: {h['units']} units, window {h['window']}, seed {h['seed']}, "
+                f"mixture k {h.get('k_gmm', h['k'])}, {len(self.profiles)} clusters, weighting {h['weighting']}")
 
 
 def networks(root: str | None = None) -> list[Network]:
     """Preview and preprod, then mainnet (fitted only if its file exists)."""
-    return [Network(n, root) for n in ("preview", "preprod", "mainnet")]
+    return [Network(name, root) for name in ("preview", "preprod", "mainnet")]
 
 
-def colour(name: str) -> tuple:
-    """A stable colour per cluster name: one hue per behaviour class, lighter
-    for smaller payments, so variants of a class stay distinguishable."""
-    palette = {"holder": "#4c78a8", "occasional-payer": "#f58518", "frequent-trader": "#e45756",
-               "script-user": "#54a24b", "staker": "#b279a2"}
-    base = next((k for k in palette if name.startswith(k)), None)
-    if base is None:
-        return plt.cm.tab10(zlib.crc32(name.encode()) % 10)
-    white = {"-small": 0.5, "-mid": 0.25}.get(next((s for s in ("-small", "-mid", "-large") if s in name), ""), 0.0)
-    r, g, b = mcolors.to_rgb(palette[base])
-    return (r + (1 - r) * white, g + (1 - g) * white, b + (1 - b) * white)
-
-
-def panels(title: str, nets: list[Network], size=(4.6, 3.4)):
-    """One axes per network, side by side. An unfitted network gets a labelled
-    placeholder, so a mainnet fit appears the day its file does."""
-    fig, axes = plt.subplots(1, len(nets), figsize=(size[0] * len(nets), size[1]), squeeze=False)
-    for ax, n in zip(axes[0], nets):
-        ax.set_title(f"{n.name}", fontsize=10)
-        if not n.fitted:
-            ax.text(0.5, 0.5, f"{n.name}: not fitted yet", ha="center", va="center", color="#777",
-                    fontsize=11, transform=ax.transAxes)
-            ax.set_xticks([])
-            ax.set_yticks([])
-            for s in ax.spines.values():
-                s.set_linestyle("--")
-                s.set_color("#aaa")
-    fig.suptitle(title, fontsize=11)
-    return fig, axes[0]
-
-
-def fig_shares(nets: list[Network]):
-    """Cluster shares by units (the weight in each profile file)."""
-    fig, axes = panels("Cluster shares (weighted by units)", nets)
-    for ax, n in zip(axes, nets):
-        if n.fitted:
-            w = [p["weight"] for p in n.profiles]
-            ax.barh(n.names, w, color=[colour(x) for x in n.names])
-            ax.invert_yaxis()
-            ax.set_xlabel("share of units")
-    fig.tight_layout()
-    return fig
-
-
-def fig_quantile_cdfs(nets: list[Network], stat: str, xlabel: str, title: str, logx: bool = False):
-    """Per-cluster empirical CDFs of a target statistic, drawn from its quantiles."""
-    fig, axes = panels(title, nets)
-    for ax, n in zip(axes, nets):
-        for name, c in n.target.get("clusters", {}).items():
-            q = c["quantiles"].get(stat)
-            if q:
-                ax.plot(q, np.linspace(0, 1, len(q)), color=colour(name), label=name, lw=1.3)
-        if n.fitted:
-            ax.set_xlabel(xlabel)
-            if logx:
-                ax.set_xscale("log")
-            ax.set_ylabel("share at or below")
-            ax.legend(fontsize=6, loc="lower right")
-    fig.tight_layout()
-    return fig
-
-
-def amount_density(am: dict, y: np.ndarray) -> np.ndarray:
-    """Density over y = log10 lovelace of a profile's payment amount: a
+def amount_density(amount: dict, log10_lovelace: np.ndarray) -> np.ndarray:
+    """Density of a profile's payment amount over y = log10 lovelace: a
     log-normal body cut at xm plus a Pareto tail above it, weighted by
-    tail_share."""
-    xm, share = am["xm"], am.get("tail_share", 0.0)
-    mu, sg = am["mu"], am["sigma"]
-    ln = y * np.log(10)
-    body = sps.norm.pdf((ln - mu) / sg) / sg / sps.norm.cdf((np.log(xm) - mu) / sg)
-    dens = np.where(ln <= np.log(xm), (1 - share) * body, 0.0)
-    if share > 0:
-        tail = am["alpha"] * np.exp(-am["alpha"] * (ln - np.log(xm)))
-        dens = dens + np.where(ln > np.log(xm), share * tail, 0.0)
-    return dens * np.log(10)
+    tail_share (estimators.BodyTail, as stored in a target's "fit").
+
+    On the natural-log scale the cut body is a normal density divided by
+    the share of it below ln xm, and a Pareto tail is an exponential:
+    alpha * exp(-alpha * (ln x - ln xm)). The final factor ln(10) converts
+    a density per unit of ln x into one per decade.
+    """
+    xm, tail_share = amount["xm"], amount.get("tail_share", 0.0)
+    mu, sigma = amount["mu"], amount["sigma"]
+    ln_x = log10_lovelace * np.log(10)
+    body = sps.norm.pdf((ln_x - mu) / sigma) / sigma / sps.norm.cdf((np.log(xm) - mu) / sigma)
+    density = np.where(ln_x <= np.log(xm), (1 - tail_share) * body, 0.0)
+    if tail_share > 0:
+        tail = amount["alpha"] * np.exp(-amount["alpha"] * (ln_x - np.log(xm)))
+        density = density + np.where(ln_x > np.log(xm), tail_share * tail, 0.0)
+    return density * np.log(10)
 
 
-def fig_amounts(nets: list[Network]):
-    """Payment-amount curves: log-normal body, Pareto tail, per cluster."""
-    fig, axes = panels("Payment amounts: body + tail", nets)
-    y = np.linspace(5.5, 13.5, 500)
-    for ax, n in zip(axes, nets):
-        for name, c in n.target.get("clusters", {}).items():
-            ax.plot(10 ** y / 1e6, amount_density(c["fit"]["amount"], y), color=colour(name), label=name, lw=1.3)
-        if n.fitted:
-            ax.set_xscale("log")
-            ax.set_ylim(0, 2.5)  # payments that pile on one value (2 ADA) peak far above
-            ax.set_xlabel("payment (ADA)")
-            ax.set_ylabel("density per decade")
-            ax.legend(fontsize=6)
-    fig.tight_layout()
-    return fig
+# --- calibration -------------------------------------------------------------
 
 
-def fig_mix(nets: list[Network]):
-    """Transaction-type mix (the intent weights) per cluster."""
-    fig, axes = panels("Transaction-type mix", nets)
-    kinds = ["send", "script_call", "delegate", "register_pool"]
-    cols = ["#4c78a8", "#54a24b", "#b279a2", "#e45756"]
-    for ax, n in zip(axes, nets):
-        left = np.zeros(len(n.profiles))
-        for k, c in zip(kinds, cols):
-            v = np.array([p["weights"].get(k, 0.0) for p in n.profiles])
-            if n.fitted:
-                ax.barh(n.names, v, left=left, color=c, label=k)
-            left += v
-        if n.fitted:
-            ax.invert_yaxis()
-            ax.legend(fontsize=6, loc="lower right")
-    fig.tight_layout()
-    return fig
-
-
-def fig_traits(nets: list[Network]):
-    """Trait shapes of each cluster: competence and care (beta), patience (pareto)."""
-    fig, axes = plt.subplots(len(nets), 3, figsize=(13, 2.8 * len(nets)), squeeze=False)
-    x = np.linspace(0.005, 0.995, 300)
-    for row, n in zip(axes, nets):
-        if not n.fitted:
-            for ax in row:
-                ax.text(0.5, 0.5, f"{n.name}: not fitted yet", ha="center", va="center", color="#777",
-                        transform=ax.transAxes)
-                ax.set_xticks([])
-                ax.set_yticks([])
-            continue
-        for p in n.profiles:
-            for ax, trait in zip(row[:2], ("competence", "care")):
-                _, (a, b), _ = parse_dist(p["traits"][trait])
-                ax.plot(x, np.clip(sps.beta.pdf(x, a, b), 0, 8), color=colour(p["name"]), lw=1.2)
-            _, _, kw = parse_dist(p["traits"]["patience"])
-            g = np.logspace(np.log10(kw["xm"]), np.log10(kw["xm"]) + 4, 200)
-            row[2].plot(g, sps.pareto.pdf(g, kw["alpha"], scale=kw["xm"]) * g, color=colour(p["name"]), lw=1.2)
-        row[0].set_ylabel(n.name)
-        row[2].set_xscale("log")
-    for ax, t in zip(axes[0], ("competence ~ beta (0..1)", "care ~ beta (0..1)", "patience ~ pareto (s, density x s)")):
-        ax.set_title(t, fontsize=9)
-    fig.tight_layout()
-    return fig
-
-
-# --- calibration and clustering ----------------------------------------------
-
-
-def ecdf(x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    xs = np.sort(np.asarray(x, dtype=float))
-    return xs, np.arange(1, len(xs) + 1) / len(xs)
+def ecdf(sample: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """The empirical cumulative curve of a sample: sorted values, and for
+    each the share of the sample at or below it."""
+    values = np.sort(np.asarray(sample, dtype=float))
+    return values, np.arange(1, len(values) + 1) / len(values)
 
 
 def ks_gap(a: np.ndarray, b: np.ndarray) -> tuple[float, float]:
-    """The KS statistic D of two samples and the x where the curves differ most."""
+    """The KS statistic D of two samples and the x where the curves differ
+    most. Both cumulative curves are evaluated at every observed value; D
+    is the largest absolute difference (see compare.compare_sample)."""
     grid = np.sort(np.concatenate([a, b]))
-    fa = np.searchsorted(np.sort(a), grid, side="right") / len(a)
-    fb = np.searchsorted(np.sort(b), grid, side="right") / len(b)
-    i = int(np.argmax(np.abs(fa - fb)))
-    return float(abs(fa[i] - fb[i])), float(grid[i])
-
-
-def fig_ks(run: dict[str, np.ndarray], target: dict, dmax: float = 0.1):
-    """Run samples against the target's quantile curve, with D marked."""
-    stats = [s for s in ("log10_output_value", "log10_gap_seconds", "activity_per_day")
-             if len(run.get(s, [])) and s in target["quantiles"]]
-    fig, axes = plt.subplots(1, len(stats), figsize=(4.6 * len(stats), 3.5), squeeze=False)
-    for ax, s in zip(axes[0], stats):
-        q = np.asarray(target["quantiles"][s])
-        d, at = ks_gap(run[s], q)
-        xs, ys = ecdf(run[s])
-        ax.step(xs, ys, color="#f58518", label=f"run (n={len(xs)})")
-        ax.plot(q, np.linspace(0, 1, len(q)), color="#4c78a8", label="target")
-        ax.axvline(at, color="#888", ls=":")
-        ax.set_title(f"{s}\nD = {d:.3f} ({'pass' if d <= dmax else 'fail'}, bound {dmax})", fontsize=9)
-        if s == "activity_per_day":
-            ax.set_xscale("log")
-        ax.legend(fontsize=7)
-    fig.tight_layout()
-    return fig
-
-
-def fig_bic(curves: dict[str, dict[int, float]], chosen: dict[str, int]):
-    """BIC against k with the chosen k marked, one panel per fit."""
-    fig, axes = plt.subplots(1, len(curves), figsize=(4.6 * len(curves), 3.3), squeeze=False)
-    for ax, (name, c) in zip(axes[0], curves.items()):
-        ks = sorted(c)
-        ax.plot(ks, [c[k] for k in ks], "o-", ms=3)
-        if chosen[name] in c:
-            ax.plot([chosen[name]], [c[chosen[name]]], "o", color="#e45756", ms=8, label=f"chosen k = {chosen[name]}")
-        ax.set_title(name, fontsize=10)
-        ax.set_xlabel("k (mixture components)")
-        ax.set_ylabel("BIC (lower is better)")
-        ax.legend(fontsize=8)
-    fig.tight_layout()
-    return fig
+    share_of_a = np.searchsorted(np.sort(a), grid, side="right") / len(a)
+    share_of_b = np.searchsorted(np.sort(b), grid, side="right") / len(b)
+    widest = int(np.argmax(np.abs(share_of_a - share_of_b)))
+    return float(abs(share_of_a[widest] - share_of_b[widest])), float(grid[widest])
 
 
 # --- data modes --------------------------------------------------------------
 
 
-def data_paths() -> dict:
+@dataclass(frozen=True)
+class DataPaths:
+    """Where the notebooks read their data from."""
+
+    # True for a mounted real chain and run, False for the test fixtures.
+    real: bool
+    # A mithril2pq chain directory.
+    chain: str
+    # A `continuum export` directory.
+    export: str
+
+    def describe(self) -> str:
+        if self.real:
+            return "REAL preprod chain and seed-7 run"
+        return "test fixtures (mount real data to see the real plots)"
+
+
+def data_paths() -> DataPaths:
     """Where the guide reads its real data from.
 
     GUIDE_CHAIN and GUIDE_EXPORT (default /data/chain and /data/export, where
@@ -409,19 +364,73 @@ def data_paths() -> dict:
     if flag == "1" and not have:
         raise FileNotFoundError(f"GUIDE_REAL=1 but {chain} or {export} is missing")
     if flag == "0" or not have:
-        fx = os.path.join(HERE, "tests", "fixtures")
-        return {"real": False, "chain": os.path.join(fx, "chain"), "export": os.path.join(fx, "engine")}
-    return {"real": True, "chain": chain, "export": export}
+        fixtures = os.path.join(HERE, "tests", "fixtures")
+        return DataPaths(False, os.path.join(fixtures, "chain"), os.path.join(fixtures, "engine"))
+    return DataPaths(True, chain, export)
 
 
-def units_table(paths: dict):
-    """The per-unit feature table: the last 90 days of the chain when real,
-    the whole fixture otherwise."""
-    import common
-    import units
+def run_and_target(paths: DataPaths) -> tuple[dict[str, np.ndarray], dict, str]:
+    """The run's samples, the overall target to hold them against, and the
+    target file's path.
 
-    last = common.last_slot(paths["chain"])
-    window = int(90 * 86400) if paths["real"] else last + 1
-    con = common.prepare(paths["chain"], max(last - window, 0), last, units.unit_of(True),
-                         "8GB" if paths["real"] else None)
-    return units.features(con, window)
+    A real run names its target through its profile hash; the fixture run
+    has none, so it is shown against the shipped preprod target.
+    """
+    run = engine_stats.engine_stats(paths.export)
+    if paths.real:
+        target_path = grade.find_target(paths.export, profiles_dir())
+    else:
+        target_path = os.path.join(profiles_dir(), "preprod.target.json")
+    with open(target_path) as f:
+        overall, _ = grade.target_views(json.load(f))
+    return run.samples, overall, target_path
+
+
+def units_table(paths: DataPaths) -> pd.DataFrame:
+    """The per-unit feature table (unit_features.COLUMNS): the last 90 days
+    of the chain when real, the whole fixture otherwise."""
+    last = chain_stats.last_slot(paths.chain)
+    window_slots = int(DEFAULT_WINDOW_DAYS * SECONDS_PER_DAY) if paths.real else last + 1
+    con = chain_stats.load_window(paths.chain, max(last - window_slots, 0), last, units.unit_of(True),
+                                  REAL_DATA_MEMORY_LIMIT if paths.real else None)
+    return unit_features(con, window_slots)
+
+
+def cluster_units_table(table: pd.DataFrame, paths: DataPaths, seed: int = 1) -> cluster.Clustering:
+    """Cluster a units table as fit.py does, and add a `cluster` column with
+    each unit's cluster name. The fixture has too few units for more than
+    three components."""
+    kmax = DEFAULT_KMAX if paths.real else 3
+    clustering = cluster.cluster_units(table, DEFAULT_KMIN, kmax, seed=seed)
+    table["cluster"] = [clustering.names[label] for label in clustering.labels]
+    return clustering
+
+
+def describe_clustering(table: pd.DataFrame, clustering: cluster.Clustering) -> str:
+    """One line on how many clusters were found and whether BIC settled."""
+    fit = clustering.fit
+    settled = "interior" if fit.interior else "not interior: the curve is still falling at the edge of the range"
+    return (f"{len(table)} units -> {clustering.k} clusters (mixture k = {fit.k}, "
+            f"BIC minimum at k = {fit.k_min}, {settled})")
+
+
+def cluster_summary(table: pd.DataFrame) -> pd.DataFrame:
+    """Per cluster: how many units, their median activity and their median
+    payment in ADA."""
+    def median_in_ada(lovelace: pd.Series) -> float:
+        return lovelace.median() / LOVELACE_PER_ADA
+
+    summary = table.groupby("cluster").agg(
+        units=("unit", "size"),
+        tx_per_day=("tx_per_day", "median"),
+        median_payment_ada=("median_payment_lovelace", median_in_ada),
+    )
+    return summary.round(3)
+
+
+def cluster_weights(table: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
+    """Each cluster's share by number of units and by number of
+    transactions (see fit.cluster_shares)."""
+    by_units = table.groupby("cluster").size() / len(table)
+    by_transactions = table.groupby("cluster").tx_count.sum() / table.tx_count.sum()
+    return by_units, by_transactions.reindex(by_units.index)
