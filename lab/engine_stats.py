@@ -10,9 +10,9 @@ Two things differ from the chain, and both are by construction:
   * Time is the engine's own clock in **milliseconds** (the `at` column),
     not slots, so durations are divided by 1000 to get seconds.
 
-The engine only submits payments. Without the devnet's own chain tables
-(population_stats.with_chain_tables) there are no input or output counts,
-no change, and the transaction mix is all plain.
+Without the devnet's own chain tables (population_stats.with_chain_tables)
+there are no input or output counts and no change, and the transaction
+mix is read from the intent behind each submission (INTENT_TX_KIND).
 
 Tables read (continuum's export schema, internal/sink):
     submission  one row per payment the engine submitted:
@@ -35,7 +35,7 @@ import numpy as np
 
 from cardano import SECONDS_PER_DAY
 from chain_stats import has_table, sql_text, table_glob
-from population_stats import Stats, sorted_sample
+from population_stats import TX_KINDS, Stats, sorted_sample
 
 MS_PER_SECOND = 1000.0
 MS_PER_DAY = SECONDS_PER_DAY * MS_PER_SECOND
@@ -46,6 +46,31 @@ MIN_GAP_SECONDS = 1e-3
 
 # Keeps a rate defined for a run with a single payment (zero-length span).
 _MIN_SPAN_DAYS = 1e-9
+
+# The chain transaction kind (population_stats.TX_KINDS) each engine intent
+# produces, by the rule chain_stats.tx_kind applies to the transaction the
+# planner builds for it. A withdrawal carries no certificate, so on chain it
+# is plain.
+INTENT_TX_KIND = {
+    "send": "plain", "withdraw_rewards": "plain",
+    "script_call": "script", "mint": "script", "burn": "script",
+    "delegate": "stake", "undelegate": "stake", "register_stake": "stake",
+    "register_pool": "pool", "retire_pool": "pool",
+    "vote": "gov", "register_drep": "gov", "delegate_drep": "gov", "propose": "gov",
+}
+
+# Intents submitted, by kind. A Submitted record names its intent but not the
+# kind; the actor's IntentChosen record just before the intent's first
+# submission does. Retries resubmit the same intent, so each intent counts
+# once, as its transaction does on chain.
+SUBMITTED_INTENTS_SQL = """
+WITH first_submit AS (
+  SELECT intent_id, actor, min(seq) AS seq FROM decision WHERE kind = 'Submitted' GROUP BY intent_id, actor),
+chosen AS (SELECT actor, seq, intent_kind FROM decision WHERE kind = 'IntentChosen')
+SELECT c.intent_kind, count(*) FROM first_submit s
+ASOF JOIN chosen c ON s.actor = c.actor AND s.seq >= c.seq
+GROUP BY c.intent_kind ORDER BY c.intent_kind
+"""
 
 AMOUNT_SQL = "SELECT amount FROM submission WHERE amount > 0"
 
@@ -154,6 +179,20 @@ def idle_fraction(idle_choices: int, ticks: int, records: int) -> float:
     return (idle_choices + ticks) / max(records, 1)
 
 
+def type_mix(intent_counts: list[tuple[str, int]]) -> dict[str, float]:
+    """tx_type_mix of a run from its submissions per intent. A run whose
+    submissions carry no known intent counts as all plain, which is what
+    the engine submitted before it had other intents."""
+    counts = {kind: 0 for kind in TX_KINDS}
+    for intent, n in intent_counts:
+        if intent in INTENT_TX_KIND:
+            counts[INTENT_TX_KIND[intent]] += n
+    total = sum(counts.values())
+    if total == 0:
+        return {kind: float(kind == "plain") for kind in TX_KINDS}
+    return {kind: counts[kind] / total for kind in TX_KINDS}
+
+
 def engine_stats(root: str, actors: set[int] | None = None) -> Stats:
     """Statistics of a continuum export directory.
 
@@ -178,7 +217,7 @@ def engine_stats(root: str, actors: set[int] | None = None) -> Stats:
     stats.samples["gap_seconds"] = gaps
     stats.samples["log10_gap_seconds"] = np.log10(np.maximum(gaps, MIN_GAP_SECONDS))
 
-    stats.shares["tx_type_mix"] = {"plain": 1.0, "script": 0.0, "stake": 0.0, "pool": 0.0}
+    stats.shares["tx_type_mix"] = type_mix(con.execute(SUBMITTED_INTENTS_SQL).fetchall())
     stats.fractions["address_reuse"] = float(_first_value(con, REUSE_SQL) or 0.0)
     stats.info["idle_fraction_of_records"] = idle_fraction(*con.execute(IDLE_SQL).fetchall()[0])
     stats.info["payments"] = float(len(amounts))

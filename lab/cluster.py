@@ -7,7 +7,7 @@ database, no files.
 
 The steps, each a function below:
 
-    segment_units     split off script users and stakers by a fixed rule
+    segment_units     split off script users, voters and stakers by a fixed rule
     to_log_features   the remaining ("general") units as a numeric matrix
     Scaler            put every feature on the same scale
     fit_mixtures      fit Gaussian mixtures for a range of k, score by BIC
@@ -79,7 +79,7 @@ REG_COVAR = 0.1
 # and 4.
 ELBOW_FRACTION = 0.05
 
-# A script or staker segment smaller than this stays with the general
+# A script, voter or staker segment smaller than this stays with the general
 # units: a profile fitted from a few dozen units is mostly noise.
 MIN_SEGMENT = 50
 
@@ -265,14 +265,16 @@ def order_by_first(labels: np.ndarray, centers: np.ndarray) -> tuple[np.ndarray,
 # network. They only choose names (and, for the two shares, segments); no
 # fitted number depends on the activity or payment thresholds.
 #
-# A unit is a script user or a staker when at least half of its
-# transactions are of that kind: "mostly". At 0.5 a unit cannot be both
-# unless it is exactly half and half, where script wins. Sensitivity: the
+# A unit is a script user, a voter or a staker when at least half of its
+# transactions are of that kind: "mostly". At 0.5 a unit cannot be two of
+# them unless it is exactly half and half, where script wins, then
+# governance, as in chain_stats.tx_kind. Sensitivity: the
 # script threshold matters a great deal upward. In the shipped preprod
 # window 21,272 of 37,188 units are at or above 0.5 and 22,325 at or above
 # 0.3, but only 5,665 at or above 0.7: many units mix script calls with
 # plain payments about evenly.
 SCRIPT_SHARE = 0.5
+GOV_SHARE = 0.5
 STAKE_SHARE = 0.5
 FREQUENT_PER_DAY = 1.0  # median txs per day at or above: frequent-trader
 HOLDER_PER_DAY = 0.05   # below this (one tx per 20 days): holder
@@ -280,11 +282,13 @@ SMALL_LOVELACE = 10 * LOVELACE_PER_ADA       # median payment below 10 ADA
 LARGE_LOVELACE = 1_000 * LOVELACE_PER_ADA    # median payment of 1,000 ADA or more
 
 
-def behaviour_name(tx_per_day: float, script_share: float, stake_share: float) -> str:
-    """The behaviour class of one cluster; script use outranks staking, which
-    outranks activity."""
+def behaviour_name(tx_per_day: float, script_share: float, stake_share: float, gov_share: float = 0.0) -> str:
+    """The behaviour class of one cluster; script use outranks governance,
+    which outranks staking, which outranks activity."""
     if script_share >= SCRIPT_SHARE:
         return "script-user"
+    if gov_share >= GOV_SHARE:
+        return "voter"
     if stake_share >= STAKE_SHARE:
         return "staker"
     if tx_per_day >= FREQUENT_PER_DAY:
@@ -329,6 +333,7 @@ def name_clusters(units: pd.DataFrame, labels: np.ndarray) -> list[str]:
             float(members["tx_per_day"].median()),
             float(members["script_share"].mean()),
             float(members["stake_share"].mean()),
+            float(members["gov_share"].mean()),
         ))
         sizes.append(payment_size_name(float(members["median_payment_lovelace"].median())))
     names = [
@@ -338,23 +343,27 @@ def name_clusters(units: pd.DataFrame, labels: np.ndarray) -> list[str]:
     return _number_repeats(names)
 
 
-GENERAL, SCRIPT, STAKER = 0, 1, 2
+GENERAL, SCRIPT, STAKER, VOTER = 0, 1, 2, 3
+# Segments in the order their clusters are numbered after the mixture's.
+SEGMENTS = (SCRIPT, STAKER, VOTER)
 
 
 def segment_units(units: pd.DataFrame) -> np.ndarray:
-    """GENERAL, SCRIPT or STAKER per unit.
+    """GENERAL, SCRIPT, VOTER or STAKER per unit.
 
-    Script users and stakers are told apart by a fixed rule, not by the
-    mixture: "what kind of transactions does this unit send" is a category,
-    and categories make poor Gaussian features (see FEATURES). Script use
-    (share at or above SCRIPT_SHARE) outranks staking (STAKE_SHARE), as in
+    Script users, voters and stakers are told apart by a fixed rule, not by
+    the mixture: "what kind of transactions does this unit send" is a
+    category, and categories make poor Gaussian features (see FEATURES).
+    Script use (share at or above SCRIPT_SHARE) outranks governance
+    (GOV_SHARE), which outranks staking (STAKE_SHARE), as in
     behaviour_name. A segment with fewer than MIN_SEGMENT units is folded
     into GENERAL.
     """
     segments = np.full(len(units), GENERAL)
     segments[(units["stake_share"] >= STAKE_SHARE).to_numpy()] = STAKER
+    segments[(units["gov_share"] >= GOV_SHARE).to_numpy()] = VOTER
     segments[(units["script_share"] >= SCRIPT_SHARE).to_numpy()] = SCRIPT
-    for segment in (SCRIPT, STAKER):
+    for segment in SEGMENTS:
         if (segments == segment).sum() < MIN_SEGMENT:
             segments[segments == segment] = GENERAL
     return segments
@@ -372,8 +381,9 @@ class Clustering:
     fit: MixtureFit
     # Number of clusters: mixture components that got units, plus segments.
     k: int
-    # How many general units the mixture was fitted on.
+    # How many general units the mixture was fitted on, of how many.
     sampled_units: int
+    general_units: int
 
 
 def _label_general_units(features: np.ndarray, kmin: int, kmax: int, seed: int, max_units: int,
@@ -393,7 +403,7 @@ def cluster_units(units: pd.DataFrame, kmin: int = 2, kmax: int = 15, seed: int 
     every unit and name the clusters.
 
     units is a unit_features table. Mixture components come first, in order
-    of activity, then the script and staker segments.
+    of activity, then the script, staker and voter segments.
     """
     segments = segment_units(units)
     general_rows = np.flatnonzero(segments == GENERAL)
@@ -402,11 +412,11 @@ def cluster_units(units: pd.DataFrame, kmin: int = 2, kmax: int = 15, seed: int 
     labels = np.zeros(len(units), dtype=int)
     labels[general_rows] = general_labels
     next_label = fit.k
-    for segment in (SCRIPT, STAKER):
+    for segment in SEGMENTS:
         if (segments == segment).any():
             labels[segments == segment] = next_label
             next_label += 1
     # A component can end up with no unit; renumber so labels are 0..k-1
     # with no holes.
     labels = np.unique(labels, return_inverse=True)[1]
-    return Clustering(labels, name_clusters(units, labels), fit, int(labels.max()) + 1, sampled)
+    return Clustering(labels, name_clusters(units, labels), fit, int(labels.max()) + 1, sampled, len(general_rows))

@@ -6,13 +6,17 @@
 # bic: 2=1.0, 3=2.0
 # unit: stake credential
 # weighting: addresses
+# agendas: high-freq-small-value=dapp, low-freq-large-value=dapp
+# pools: 2 of 2 (scale 1)
+# dreps: 1 of 1 (scale 1)
+# contracts: 2 used in the window, not run as actors (scale 1)
 # mithril2pq_version: t
 # mithril2pq_last_chunk: 1
 version: 1
 profiles:
   - name: high-freq-small-value
     kind: wallet
-    agenda: hodl
+    agenda: dapp
     weight: 0.700000
     traits:
       competence: beta(3.38946, 2.05466)
@@ -26,17 +30,18 @@ profiles:
       tail_share: 0.1
     rates:
       base:
-        send: 1.28601e-06
+        send: 6.55864e-05
       activity_tail: 1.21685
     weights:
       send: 0.900000
       script_call: 0.100000
+      mint: 0.000000
     hazards:
       dormancy: lognormal(12.335, 0.838422)
       dormancy_onset: 1.23712e-05
   - name: low-freq-large-value
     kind: wallet
-    agenda: hodl
+    agenda: dapp
     weight: 0.300000
     traits:
       competence: beta(3.42366, 2.44437)
@@ -50,11 +55,52 @@ profiles:
       tail_share: 0.1
     rates:
       base:
-        send: 1.28601e-06
+        send: 6.55864e-05
       activity_tail: 1.21314
     weights:
       send: 0.900000
       script_call: 0.100000
+      mint: 0.000000
     hazards:
       dormancy: lognormal(12.1953, 0.69169)
       dormancy_onset: 1.59157e-05
+populations:
+  - name: pools
+    kind: pool
+    count: 2
+    chain_count: 2
+    pool:
+      register_rate: 0
+      retire_rate: 0
+      update_rate: 0.00555556
+      pledge:
+        dist: lognormal(1.90333, 0.293893)
+        point: 0
+        point_share: 0
+      margin:
+        dist: beta(1, 1)
+        point: 0
+        point_share: 0
+      cost:
+        dist: lognormal(0, 1)
+        point: 1.7e+08
+        point_share: 0.5
+  - name: dreps
+    kind: drep
+    count: 1
+    chain_count: 1
+    drep:
+      register_rate: 0
+      retire_rate: 0
+      vote_rate: 0.0111111
+      voting_share: 1
+  - name: contracts
+    kind: contract
+    chain_count: 2
+    contract:
+      new_rate: 0.000222222
+      usage: pareto(xm=1, alpha=2)
+      top_share: 0.75
+network:
+  proposal_rate:
+    info: 0.0111111

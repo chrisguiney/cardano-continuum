@@ -10,7 +10,8 @@ import (
 
 // TestFittedProfilesParse guards the contract between fit.py and
 // internal/profile: every YAML file under example/ must parse and validate,
-// including the clustered fit with amount distributions and weights. Regenerate with
+// including the clustered fit with amount distributions, weights and the
+// non-wallet populations. Regenerate with
 // `UPDATE_EXAMPLE=1 make lab-test` when it fails.
 func TestFittedProfilesParse(t *testing.T) {
 	files, err := filepath.Glob("example/*.yaml")
@@ -24,12 +25,15 @@ func TestFittedProfilesParse(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer func() { _ = r.Close() }()
-			ps, err := profile.ParseNamed(f, r)
+			file, err := profile.ParseFile(r)
 			if err != nil {
-				t.Fatalf("parse: %v", err)
+				t.Fatalf("parse %s: %v", f, err)
 			}
-			if len(ps) == 0 || ps[0].Name == "" {
-				t.Fatalf("got %d profiles", len(ps))
+			if len(file.Profiles) == 0 || file.Profiles[0].Name == "" {
+				t.Fatalf("got %d profiles", len(file.Profiles))
+			}
+			if filepath.Base(f) == "clustered.yaml" && (len(file.Populations) != 3 || len(file.Network.Proposals) == 0) {
+				t.Fatalf("clustered fit lost its populations: %+v %+v", file.Populations, file.Network)
 			}
 		})
 	}

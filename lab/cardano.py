@@ -39,3 +39,27 @@ DEFAULT_SLOT_SECONDS = 1.0
 def slots_in_days(days: float, slot_seconds: float) -> int:
     """How many whole slots fit in a number of days."""
     return int(days * SECONDS_PER_DAY / slot_seconds)
+
+
+# Where each network's fixed-length epochs start: (first Shelley slot, its
+# epoch number, slots per epoch). Byron epochs before it were shorter, so
+# epochs are counted from the Shelley start. Pool retirements name the
+# epoch they take effect in, so telling a retired pool from a live one
+# needs this. Values are from each network's Shelley genesis (epochLength)
+# and its Byron history: mainnet had 208 Byron epochs of 21,600 slots,
+# preprod 4; preview started in Shelley-era rules at slot 0.
+EPOCH_SCHEDULES = {
+    "mainnet": (4_492_800, 208, 432_000),
+    "preprod": (86_400, 4, 432_000),
+    "preview": (0, 0, 86_400),
+}
+
+
+def epoch_of_slot(slot: int, network: str) -> int | None:
+    """The epoch of a slot, or None for a network without a known schedule
+    (a devnet), whose callers then treat every announced retirement as
+    already in effect."""
+    if network not in EPOCH_SCHEDULES:
+        return None
+    first_slot, first_epoch, length = EPOCH_SCHEDULES[network]
+    return first_epoch + max(slot - first_slot, 0) // length

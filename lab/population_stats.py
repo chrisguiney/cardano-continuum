@@ -89,7 +89,7 @@ SAMPLES = (
 SHARES = (
     Quantity(
         "tx_type_mix", "share of transactions",
-        "Share of plain, script, stake and pool transactions (TX_KINDS).",
+        "Share of plain, script, stake, pool and governance transactions (TX_KINDS).",
         "Becomes the intent weights of a profile: how often an actor pays, "
         "calls a script, delegates or registers a pool.",
     ),
@@ -121,6 +121,11 @@ INFO = (
         "The rest of the time the unit is treated as dormant (chain only).",
     ),
     Quantity("txs", "transactions", "Number of transactions measured.", "Sample size (chain only)."),
+    Quantity(
+        "script_mint_share", "share of script transactions",
+        "Share of script transactions that also mint or burn tokens.",
+        "Splits a cluster's script weight between script_call and mint (chain only).",
+    ),
     Quantity("payments", "payments", "Number of payments measured.", "Sample size (engine only)."),
     Quantity(
         "idle_fraction_of_records", "share of decision records",
@@ -144,9 +149,10 @@ FRACTION_STATS = [s.name for s in FRACTIONS]
 
 # Transaction kinds of tx_type_mix, in report order. A transaction is the
 # first that applies: "script" when it carries script data (it ran a Plutus
-# script), "pool" when it has a pool certificate, "stake" when it has a
-# stake certificate, "plain" otherwise.
-TX_KINDS = ["plain", "script", "stake", "pool"]
+# script), "pool" when it has a pool certificate, "gov" when it takes part
+# in Conway governance (a vote, a proposal, a DRep certificate or a vote
+# delegation), "stake" when it has a stake certificate, "plain" otherwise.
+TX_KINDS = ["plain", "script", "stake", "pool", "gov"]
 
 # A target stores each KS statistic as this many evenly spaced quantiles
 # (0%, 0.1%, ..., 100%) instead of the raw sample. 1001 points pin the

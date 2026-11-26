@@ -22,6 +22,11 @@ and the fit itself reads top to bottom as
     cluster   unit_features, cluster     (only with --clusters)
     fit       population_fit   statistics -> distribution parameters
     write     profile_yaml     parameters -> profile.yaml + target.json
+
+With --clusters the non-wallet populations are fitted too:
+
+    measure   actor_stats      pool, DRep, vote, proposal and contract rows
+    fit       actor_fit        head counts (cut to one machine), rates
 """
 
 from __future__ import annotations
@@ -29,14 +34,19 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
+import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 import pandas as pd
 
+import actor_fit
+import actor_stats
 import chain_stats
 import cluster
 import units
-from cardano import DEFAULT_SLOT_SECONDS, slots_in_days
+from cardano import DEFAULT_SLOT_SECONDS, SECONDS_PER_DAY, slots_in_days
 from population_fit import fit_population
 from population_stats import Stats
 from profile_yaml import render_clustered, render_single
@@ -71,17 +81,32 @@ def fit_profile(stats: Stats, name: str) -> tuple[str, dict]:
 
 
 def fit_cluster_profiles(overall: Stats, clusters: dict[str, Stats], shares: dict[str, float],
-                         header: dict) -> tuple[str, dict]:
+                         header: dict, actors: actor_fit.ActorFit | None = None) -> tuple[str, dict]:
     """A clustered profile file and its target.
 
     clusters maps each cluster name to its statistics; shares gives each
     one's weight (they sum to 1). The whole population is fitted first, and
     a cluster too small to fit some piece on its own borrows that piece
-    from the overall fit.
+    from the overall fit. The agenda each cluster got is added to header.
     """
     overall_fit = fit_population(overall)
     fitted = {name: (stats, fit_population(stats, overall_fit)) for name, stats in clusters.items()}
-    return render_clustered((overall, overall_fit), fitted, shares, header)
+    header["agendas"] = ", ".join(f"{name}={fitted[name][1].agenda}" for name in sorted(fitted))
+    if actors is not None:
+        header.update(actor_header(actors))
+    return render_clustered((overall, overall_fit), fitted, shares, header, actors)
+
+
+def actor_header(actors: actor_fit.ActorFit) -> dict:
+    """The head counts of the non-wallet populations and how far they were
+    cut for one machine."""
+    out = {}
+    for key, population in (("pools", actors.pools), ("dreps", actors.dreps)):
+        if population is not None:
+            out[key] = f"{population.count} of {population.chain_count} (scale {population.scale:.6g})"
+    if actors.contracts is not None:
+        out["contracts"] = f"{actors.contracts.chain_count} used in the window, not run as actors (scale 1)"
+    return out
 
 
 @dataclass(frozen=True)
@@ -162,27 +187,52 @@ def fit_header(args: argparse.Namespace, window: Window, clustering: cluster.Clu
         "weighting": args.weighting,
         "units": unit_count,
         "sampled_units": clustering.sampled_units,
+        "sampling": (f"mixture fitted on a seeded sample of {clustering.sampled_units} of "
+                     f"{clustering.general_units} general units (cap --max-units {args.max_units}); "
+                     f"all {unit_count} units assigned"),
         "mithril2pq_version": args.m2pq_version or manifest.get("version", "unknown"),
         "mithril2pq_last_chunk": manifest.get("last_chunk", "unknown"),
     }
 
 
-def fit_clustered_chain(chain_dir: str, args: argparse.Namespace) -> tuple[str, dict]:
-    """Cluster the units active in a window of the chain and fit each cluster."""
+@contextmanager
+def timed(step: str):
+    """Print how long one step of a fit took, so a slow network shows
+    where its time goes."""
+    start = time.monotonic()
+    yield
+    print(f"[fit] {step}: {time.monotonic() - start:.1f}s", file=sys.stderr, flush=True)
+
+
+def fit_clustered_chain(chain_dir: str, args: argparse.Namespace) -> tuple[str, dict, pd.DataFrame]:
+    """Cluster the units active in a window of the chain and fit each cluster.
+
+    Returns the profile text, the target and every unit's scatter
+    coordinates with its cluster (for export_guide_data.py)."""
     last_slot = args.window_end_slot or chain_stats.last_slot(chain_dir)
     window = window_ending_at(last_slot, args.window_days, args.slot_seconds)
-    con = chain_stats.load_window(
-        chain_dir, window.first_slot, window.last_slot, units.unit_of(args.unit == "stake"), args.memory_limit)
-
-    units_table = unit_features(con, window.slots, window.slot_seconds)
-    clustering = cluster.cluster_units(units_table, args.kmin, args.kmax, args.seed, args.max_units, args.select)
-    cluster_of_unit = pd.Series([clustering.names[label] for label in clustering.labels])
-    chain_stats.set_unit_groups(con, list(units_table["unit"]), list(cluster_of_unit))
-
-    overall, by_cluster = measure_clusters(con, clustering.names, window)
+    manifest = read_manifest(chain_dir)
+    with timed("load window"):
+        con = chain_stats.load_window(
+            chain_dir, window.first_slot, window.last_slot, units.unit_of(args.unit == "stake"), args.memory_limit)
+    with timed("unit features"):
+        units_table = unit_features(con, window.slots, window.slot_seconds)
+    with timed("cluster"):
+        clustering = cluster.cluster_units(units_table, args.kmin, args.kmax, args.seed, args.max_units, args.select)
+        cluster_of_unit = pd.Series([clustering.names[label] for label in clustering.labels])
+        chain_stats.set_unit_groups(con, list(units_table["unit"]), list(cluster_of_unit))
+    with timed("measure clusters"):
+        overall, by_cluster = measure_clusters(con, clustering.names, window)
     shares = cluster_shares(units_table, cluster_of_unit, clustering.names, args.weighting)
-    header = fit_header(args, window, clustering, len(units_table), read_manifest(chain_dir))
-    return fit_cluster_profiles(overall, by_cluster, shares, header)
+    header = fit_header(args, window, clustering, len(units_table), manifest)
+    with timed("non-wallet populations"):
+        events = actor_stats.actor_events(con, chain_dir, window.first_slot, window.last_slot, manifest)
+        actors = actor_fit.fit_actors(events, window.first_slot, window.last_slot,
+                                      window.seconds / SECONDS_PER_DAY, len(units_table), args.network)
+    with timed("fit and render"):
+        text, target = fit_cluster_profiles(overall, by_cluster, shares, header, actors)
+    unit_clusters = units_table[["unit", "tx_per_day", "median_payment_lovelace"]].assign(cluster=cluster_of_unit)
+    return text, target, unit_clusters
 
 
 def write_fit(out_dir: str, profile_name: str, profile_text: str, target_name: str, target: dict) -> None:
@@ -213,13 +263,17 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     ap.add_argument("--max-units", type=int, default=DEFAULT_MAX_UNITS, help="units sampled for the mixture fit")
     ap.add_argument("--memory-limit", default=None, help="DuckDB memory limit, e.g. 8GB")
     ap.add_argument("--m2pq-version", default=None)
+    ap.add_argument("--units-out", default=None, help="with --clusters: write each unit's cluster here (Parquet)")
     return ap.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     if args.clusters:
-        profile_text, target = fit_clustered_chain(args.chain_dir, args)
+        profile_text, target, unit_clusters = fit_clustered_chain(args.chain_dir, args)
+        if args.units_out:
+            os.makedirs(os.path.dirname(os.path.abspath(args.units_out)), exist_ok=True)
+            unit_clusters.to_parquet(args.units_out, index=False)
         profile_name, target_name = f"{args.network}.yaml", f"{args.network}.target.json"
         summary = f"k={target['header']['k']}, {target['header']['units']} units"
     else:

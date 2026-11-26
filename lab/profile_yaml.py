@@ -17,7 +17,9 @@ like") of guide.ipynb.
 
 from __future__ import annotations
 
-from population_fit import PopulationFit, dormancy_onset, intent_weights
+from actor_fit import ActorFit, SpikeFit
+from agendas import WEIGHTED
+from population_fit import PopulationFit, dormancy_onset
 from population_stats import KS_STATS, Stats, quantiles
 
 PROFILE_VERSION = 1
@@ -25,7 +27,8 @@ PROFILE_VERSION = 1
 # Header keys of a clustered profile file, in the order they are written.
 HEADER_KEYS = [
     "network", "window", "seed", "k", "k_gmm", "k_bic_min", "k_interior", "bic", "unit", "weighting",
-    "sampled_units", "units", "mithril2pq_version", "mithril2pq_last_chunk",
+    "sampled_units", "units", "sampling", "agendas", "pools", "dreps", "contracts",
+    "mithril2pq_version", "mithril2pq_last_chunk",
 ]
 
 
@@ -65,12 +68,11 @@ def profile_lines(name: str, fit: PopulationFit, weight: float | None = None) ->
     has none.
     """
     activity, dormancy = fit.activity, fit.dormancy
-    weights = intent_weights(fit.mix)
     onset = dormancy_onset(activity.active_fraction, dormancy.mu, dormancy.sigma)
     lines = [
         f"  - name: {name}",
         "    kind: wallet",
-        "    agenda: hodl",
+        f"    agenda: {fit.agenda}",
     ]
     if weight is not None:
         lines.append(f"    weight: {weight:.6f}")
@@ -86,16 +88,69 @@ def profile_lines(name: str, fit: PopulationFit, weight: float | None = None) ->
     lines += [
         "    rates:",
         "      base:",
-        f"        send: {number(activity.base_per_sec)}",
+        # The engine wakes an actor at the sum of its base rates and lets the
+        # agenda pick the intent, so one rate carries the whole wake-up rate;
+        # it is keyed by the agenda's main intent for the reader.
+        f"        {WEIGHTED[fit.agenda][0]}: {number(activity.base_per_sec)}",
         f"      activity_tail: {number(activity.tail)}",
         "    weights:",
     ]
-    lines += [f"      {intent}: {weights[intent]:.6f}" for intent in weights]
+    lines += [f"      {intent}: {weight:.6f}" for intent, weight in fit.weights.items()]
     lines += [
         "    hazards:",
         f"      dormancy: lognormal({number(dormancy.mu)}, {number(dormancy.sigma)})",
         f"      dormancy_onset: {number(onset)}",
     ]
+    return lines
+
+
+def _spike_lines(name: str, spike: SpikeFit) -> list[str]:
+    return [
+        f"      {name}:",
+        f"        dist: {spike.dist}({number(spike.a)}, {number(spike.b)})",
+        f"        point: {number(spike.point)}",
+        f"        point_share: {number(spike.share)}",
+    ]
+
+
+def population_lines(actors: ActorFit) -> list[str]:
+    """The `populations` and `network` blocks (internal/profile Population
+    and Network); nothing for a chain with none of them."""
+    lines = []
+    if actors.pools:
+        p = actors.pools
+        lines += [
+            "  - name: pools", "    kind: pool", f"    count: {p.count}", f"    chain_count: {p.chain_count}",
+            "    pool:",
+            f"      register_rate: {number(p.register_rate)}",
+            f"      retire_rate: {number(p.retire_rate)}",
+            f"      update_rate: {number(p.update_rate)}",
+        ]
+        lines += _spike_lines("pledge", p.pledge) + _spike_lines("margin", p.margin) + _spike_lines("cost", p.cost)
+    if actors.dreps:
+        d = actors.dreps
+        lines += [
+            "  - name: dreps", "    kind: drep", f"    count: {d.count}", f"    chain_count: {d.chain_count}",
+            "    drep:",
+            f"      register_rate: {number(d.register_rate)}",
+            f"      retire_rate: {number(d.retire_rate)}",
+            f"      vote_rate: {number(d.vote_rate)}",
+            f"      voting_share: {number(d.voting_share)}",
+        ]
+    if actors.contracts:
+        c = actors.contracts
+        lines += [
+            "  - name: contracts", "    kind: contract", f"    chain_count: {c.chain_count}",
+            "    contract:",
+            f"      new_rate: {number(c.new_rate)}",
+            f"      usage: pareto(xm=1, alpha={number(c.usage_alpha)})",
+            f"      top_share: {number(c.top_share)}",
+        ]
+    if lines:
+        lines = ["populations:"] + lines
+    if actors.proposal_rate:
+        lines += ["network:", "  proposal_rate:"]
+        lines += [f"    {action}: {number(rate)}" for action, rate in actors.proposal_rate.items()]
     return lines
 
 
@@ -147,13 +202,15 @@ def render_clustered(
     clusters: dict[str, tuple[Stats, PopulationFit]],
     shares: dict[str, float],
     header: dict,
+    actors: ActorFit | None = None,
 ) -> tuple[str, dict]:
     """A clustered profile file and its target.
 
     clusters maps each cluster name to its statistics and fit; shares gives
     each one's weight (they sum to 1). Profiles are written in name order.
     The target carries the overall statistics and each cluster's, so a run
-    can be graded as a whole and per cluster.
+    can be graded as a whole and per cluster. actors, when given, adds the
+    non-wallet populations to both.
     """
     lines = header_lines(header) + [f"version: {PROFILE_VERSION}", "profiles:"]
     target = {"version": PROFILE_VERSION, "header": header, "overall": target_of(*overall), "clusters": {}}
@@ -163,4 +220,7 @@ def render_clustered(
         cluster_target = target_of(stats, fit)
         cluster_target["share"] = shares[name]
         target["clusters"][name] = cluster_target
+    if actors is not None:
+        lines += population_lines(actors)
+        target["actors"] = actors.as_json()
     return "\n".join(lines) + "\n", target

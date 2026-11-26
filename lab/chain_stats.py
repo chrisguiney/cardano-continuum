@@ -63,7 +63,8 @@ TX_COLUMNS = (
         "A transaction does not name its sender, so it is taken from the "
         "outputs it spends (see the tx_sender step).",
     ),
-    Quantity("kind", "category", "plain, script, stake or pool.", "The tx_type_mix shares."),
+    Quantity("kind", "category", "plain, script, stake, pool or gov.", "The tx_type_mix shares."),
+    Quantity("mints", "flag", "True when the transaction mints or burns tokens.", "Splits script use into calls and mints."),
     Quantity(
         "unit", "unit key",
         "The sender's unit (units.py); NULL when the sender is unknown.",
@@ -128,25 +129,35 @@ JOIN read_parquet({tx_output}) o
 WHERE i.kind = 'spend' GROUP BY i.tx_hash;
 
 -- tx_kind: what each transaction was for. The first rule that applies
--- wins: script, then pool certificate, then stake certificate, else plain.
+-- wins: script, then pool certificate, then governance, then stake
+-- certificate, else plain. Governance is a vote or proposal, or a
+-- certificate naming a DRep: DRep registration, update and retirement,
+-- and every kind that delegates a vote (their names contain "vote").
+-- Stake certificates are the Shelley stake_* kinds and Conway's
+-- registration and deregistration, which state their deposit.
 CREATE OR REPLACE TEMP VIEW tx_kind AS
 SELECT x.hash AS tx_hash,
   CASE WHEN x.is_script THEN 'script'
        WHEN k.pool THEN 'pool'
+       WHEN k.gov OR g.tx_hash IS NOT NULL THEN 'gov'
        WHEN k.stake THEN 'stake'
-       ELSE 'plain' END AS kind
+       ELSE 'plain' END AS kind,
+  m.tx_hash IS NOT NULL AS mints
 FROM window_tx x LEFT JOIN (
   SELECT tx_hash,
          bool_or(cert_type LIKE 'pool_%') AS pool,
-         bool_or(cert_type LIKE 'stake_%') AS stake
-  FROM {certificate} GROUP BY tx_hash) k ON k.tx_hash = x.hash;
+         bool_or(cert_type LIKE 'drep_%' OR cert_type LIKE '%vote%') AS gov,
+         bool_or(cert_type LIKE 'stake_%' OR cert_type IN ('registration', 'deregistration')) AS stake
+  FROM {certificate} GROUP BY tx_hash) k ON k.tx_hash = x.hash
+LEFT JOIN (SELECT DISTINCT tx_hash FROM {governance}) g ON g.tx_hash = x.hash
+LEFT JOIN (SELECT DISTINCT tx_hash FROM {mint}) m ON m.tx_hash = x.hash;
 
 -- tx_without_unit: the facts above side by side, one row per transaction.
 -- A transaction with no spent inputs or no counted outputs gets a count
 -- of zero instead of dropping out.
 CREATE OR REPLACE TEMP TABLE tx_without_unit AS
 SELECT x.hash, x.slot, x.block_index, coalesce(i.n_in, 0) AS n_in,
-       coalesce(o.n_out, 0) AS n_out, s.sender, k.kind
+       coalesce(o.n_out, 0) AS n_out, s.sender, k.kind, k.mints
 FROM window_tx x
 LEFT JOIN spent_input_count i ON i.tx_hash = x.hash
 LEFT JOIN output_count o ON o.tx_hash = x.hash
@@ -186,7 +197,7 @@ LEFT JOIN address_unit u ON u.address = o.address
 WHERE NOT o.is_collateral_return;
 """
 
-TX_SHAPE_SQL = "SELECT n_in, n_out, kind FROM tx_in_scope"
+TX_SHAPE_SQL = "SELECT n_in, n_out, kind, mints FROM tx_in_scope"
 
 # The size of each payment, EXCLUDING CHANGE. A Cardano output must be spent
 # whole, so a wallet paying 10 ADA from a 500 ADA output creates two
@@ -276,16 +287,28 @@ def has_table(root: str, table: str) -> bool:
     return os.path.isdir(directory) and any(name.endswith(".parquet") for name in os.listdir(directory))
 
 
+_NO_TX = "(SELECT NULL::BLOB AS tx_hash WHERE false)"
+
+
+def optional_table(root: str, table: str, columns: str, empty: str) -> str:
+    """SQL source of a table a chain may lack, or of an empty stand-in. A
+    short devnet has no certificates, a pre-Conway chain no votes."""
+    if has_table(root, table):
+        return f"(SELECT {columns} FROM read_parquet({sql_text(table_glob(root, table))}))"
+    return empty
+
+
 def _table_sources(root: str) -> dict[str, str]:
     """SQL source of every input table, keyed by the placeholder that names
-    it in the SQL above. A chain with no certificates at all (a short devnet)
-    has no certificate table, so an empty one stands in."""
+    it in the SQL above. The tables a chain may lack get empty stand-ins."""
     sources = {table: sql_text(table_glob(root, table)) for table in ["tx", "block", "tx_input", "tx_output"]}
-    if has_table(root, "certificate"):
-        files = sql_text(table_glob(root, "certificate"))
-        sources["certificate"] = f"(SELECT tx_hash, cert_type FROM read_parquet({files}))"
-    else:
-        sources["certificate"] = "(SELECT NULL::BLOB AS tx_hash, NULL::VARCHAR AS cert_type WHERE false)"
+    sources["certificate"] = optional_table(
+        root, "certificate", "tx_hash, cert_type",
+        "(SELECT NULL::BLOB AS tx_hash, NULL::VARCHAR AS cert_type WHERE false)")
+    votes = optional_table(root, "vote", "tx_hash", _NO_TX)
+    proposals = optional_table(root, "proposal", "tx_hash", _NO_TX)
+    sources["governance"] = f"({votes} UNION ALL {proposals})"
+    sources["mint"] = optional_table(root, "tx_mint", "tx_hash", _NO_TX)
     return sources
 
 
@@ -366,6 +389,12 @@ def kind_shares(kinds: list[str]) -> dict[str, float]:
     return {kind: kinds.count(kind) / total for kind in TX_KINDS}
 
 
+def script_mint_share(kinds_and_mints: list[tuple[str, bool]]) -> float:
+    """Share of script transactions that mint; 0 when there are none."""
+    mints = [bool(mints) for kind, mints in kinds_and_mints if kind == "script"]
+    return sum(mints) / len(mints) if mints else 0.0
+
+
 def _span_days(con: duckdb.DuckDBPyConnection, slot_seconds: float, span_seconds: float | None) -> float:
     """Length of the observation window in days. With no span given it is the
     time from the first to the last transaction in scope."""
@@ -400,6 +429,7 @@ def measure(
     stats.samples["inputs_per_tx"] = sorted_sample(row[0] for row in shape_rows)
     stats.samples["outputs_per_tx"] = sorted_sample(row[1] for row in shape_rows)
     stats.shares["tx_type_mix"] = kind_shares([row[2] for row in shape_rows])
+    stats.info["script_mint_share"] = script_mint_share([(row[2], row[3]) for row in shape_rows])
 
     payments = _column(con, PAYMENT_SQL)
     stats.samples["output_value_lovelace"] = payments

@@ -11,7 +11,7 @@ What is fitted, and from which statistic:
     activity          tx_count_per_address    base rate + Pareto tail index
     competence        per-unit change share   beta
     care              per-unit reuse share    beta
-    intent weights    tx_type_mix             shares, renormalised
+    agenda, weights   tx_type_mix             agendas.choose_agenda, agenda_weights
     budget            the amount fit          a multiple of the tail scale
 
 Guide: section 6 of guide.ipynb ("Calibration"); sections 2 and 3 explain
@@ -25,6 +25,7 @@ from dataclasses import asdict, dataclass
 
 import numpy as np
 
+import agendas
 from cardano import LOVELACE_PER_ADA, SECONDS_PER_DAY
 from estimators import BodyTail, fit_beta, fit_body_and_tail, fit_lognormal, fit_pareto_index
 from population_stats import Stats
@@ -59,15 +60,6 @@ ACTIVITY_FLOOR_Q = 0.1
 MIN_TAIL = 1.05
 # Lower limit for an active fraction, so a rate over it stays finite.
 MIN_ACTIVE_FRACTION = 1e-6
-
-# internal/agenda/hodl.go scores a payment 0.02 against 1 for idling, and
-# the engine samples an intent in proportion to score times the profile's
-# weight, so a wake-up becomes a payment with probability
-# 0.02 w / (1 + 0.02 w) for a send weight w. The base rate is the wake-up
-# rate, so it is the payment rate divided by that probability. This must
-# track the engine: if hodl.go changes its score, fitted runs send too many
-# or too few payments by the same factor.
-HODL_SEND_SCORE = 0.02
 
 # The dormancy onset rate must be positive for the engine; this is used
 # when a unit is active all the time.
@@ -106,14 +98,14 @@ class ActivityFit:
     """How often a unit acts while it is awake."""
 
     # Wake-ups per second of an ordinary unit while active. A wake-up is not
-    # a payment: see send_probability.
+    # a transaction: see agendas.tx_probability.
     base_per_sec: float
     # Pareto index of the per-unit multiplier on that rate (at least MIN_TAIL).
     tail: float
     # Share of days a unit is active on (population_stats.INFO).
     active_fraction: float
-    # Chance that one wake-up becomes a payment.
-    send_probability: float
+    # Chance that one wake-up becomes a transaction.
+    tx_probability: float
 
 
 @dataclass(frozen=True)
@@ -135,40 +127,17 @@ class PopulationFit:
     mix: dict[str, float]
     # Starting balance of a wallet, in lovelace.
     budget: int
+    # The agenda the cluster runs (agendas.choose_agenda) and its intent
+    # weights (agendas.agenda_weights).
+    agenda: str
+    weights: dict[str, float]
+    # Share of the cluster's transactions whose intent the agenda cannot
+    # choose: the fidelity the agenda gives up (0 when it covers the mix).
+    unreachable_share: float
 
     def as_json(self) -> dict:
         """The plain-dict form stored under "fit" in target.json."""
         return asdict(self)
-
-
-def intent_weights(mix: dict[str, float]) -> dict[str, float]:
-    """Intent weights of a profile from the transaction-kind shares.
-
-    Kinds that never occur are dropped, the rest are scaled to sum to 1 and
-    rounded to six decimals, which is what the profile file holds. Rounding
-    each weight separately can leave a sum of 0.999999 or 1.000001, which
-    internal/profile rejects, so the last weight takes whatever remains.
-    """
-    by_intent = {"send": mix["plain"], "script_call": mix["script"],
-                 "delegate": mix["stake"], "register_pool": mix["pool"]}
-    occurring = {intent: share for intent, share in by_intent.items() if share > 0}
-    total = sum(occurring.values())
-    normalised = {intent: share / total for intent, share in occurring.items()}
-    intents = list(normalised)
-    rounded = {intent: round(normalised[intent], 6) for intent in intents}
-    rounded[intents[-1]] = round(1.0 - sum(rounded[intent] for intent in intents[:-1]), 6)
-    return rounded
-
-
-def send_probability(weight: float) -> float:
-    """Chance that a wake-up of a hodl actor with this send weight is a payment.
-
-        p = s w / (1 + s w)     with s = HODL_SEND_SCORE
-
-    The actor chooses between idling (score 1) and paying (score s times
-    its send weight w) in proportion to those scores.
-    """
-    return HODL_SEND_SCORE * weight / (1.0 + HODL_SEND_SCORE * weight)
 
 
 @dataclass(frozen=True)
@@ -279,29 +248,27 @@ def wallet_budget(amount: BodyTail) -> int:
     return int(min(max(BUDGET_TAILS * amount.xm, MIN_BUDGET), MAX_BUDGET))
 
 
-def _fit_activity(stats: Stats, fallback: PopulationFit | None) -> ActivityFit:
-    """Wake-up rate from the payment rate.
+def _fit_activity(stats: Stats, fallback: PopulationFit | None, agenda: str) -> ActivityFit:
+    """Wake-up rate from the transaction rate.
 
-    The chain shows payments; the engine schedules wake-ups, of which only a
-    share p (send_probability) become payments. So
+    The chain shows transactions; the engine schedules wake-ups, of which
+    only a share p (agendas.tx_probability of the cluster's agenda) become
+    transactions. So
 
-        wake-ups per second = payments per second / p
+        wake-ups per second = transactions per second / p
 
-    A population with no per-unit counts borrows the fallback's payment
+    A population with no per-unit counts borrows the fallback's transaction
     rate (its wake-up rate times its own p) and applies this population's p.
-    A population that never sends plain payments has p = 0 and keeps the
-    payment rate as it is.
     """
     if len(stats.samples["tx_count_per_address"]):
         observed = fit_payment_activity(stats)
     else:
         borrowed = _need(fallback, "activity").activity
         observed = PaymentActivity(
-            borrowed.base_per_sec * (borrowed.send_probability or 1.0), borrowed.tail, borrowed.active_fraction
+            borrowed.base_per_sec * borrowed.tx_probability, borrowed.tail, borrowed.active_fraction
         )
-    p_send = send_probability(intent_weights(stats.shares["tx_type_mix"]).get("send", 0.0))
-    wakeups_per_sec = observed.payments_per_sec / p_send if p_send > 0 else observed.payments_per_sec
-    return ActivityFit(wakeups_per_sec, observed.tail, observed.active_fraction, p_send)
+    p_tx = agendas.tx_probability(agenda)
+    return ActivityFit(observed.payments_per_sec / p_tx, observed.tail, observed.active_fraction, p_tx)
 
 
 def fit_population(stats: Stats, fallback: PopulationFit | None = None) -> PopulationFit:
@@ -329,13 +296,18 @@ def fit_population(stats: Stats, fallback: PopulationFit | None = None) -> Popul
         borrowed = _need(fallback, "gaps")
         gap, dormancy = borrowed.gap, borrowed.dormancy
 
+    shares = agendas.intent_shares(stats.shares["tx_type_mix"], stats.info.get("script_mint_share", 0.0))
+    agenda = agendas.choose_agenda(shares)
     return PopulationFit(
         amount=amount,
         gap=gap,
         dormancy=dormancy,
-        activity=_fit_activity(stats, fallback),
+        activity=_fit_activity(stats, fallback, agenda),
         competence=fit_beta(stats.per_address["change_to_sender"]),
         care=fit_beta(stats.per_address["address_reuse"]),
         mix=stats.shares["tx_type_mix"],
         budget=wallet_budget(amount),
+        agenda=agenda,
+        weights=agendas.agenda_weights(agenda, shares),
+        unreachable_share=max(0.0, 1.0 - agendas.reach(agenda, shares)),
     )

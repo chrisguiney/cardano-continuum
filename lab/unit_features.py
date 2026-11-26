@@ -57,6 +57,12 @@ COLUMNS = (
         "Marks units that exist to stake; used to segment, not to cluster.",
     ),
     Quantity(
+        "gov_share", "share of transactions",
+        "Share whose kind is 'gov': a vote, a proposal, a DRep certificate or "
+        "a vote delegation, with no script and no pool certificate.",
+        "Marks units that take part in governance; used to segment, not to cluster.",
+    ),
+    Quantity(
         "inputs_per_tx", "count",
         "Average spent inputs per transaction.",
         "Many inputs mean a wallet full of small outputs (collecting).",
@@ -109,7 +115,8 @@ tx_summary AS (
   SELECT unit, count(*) AS tx_count,
          count(DISTINCT floor(slot * {slot_seconds} / 86400)) AS active_days,
          avg(n_in) AS inputs_per_tx, avg(n_out) AS outputs_per_tx,
-         avg((kind = 'script')::int) AS script_share, avg((kind = 'stake')::int) AS stake_share
+         avg((kind = 'script')::int) AS script_share, avg((kind = 'stake')::int) AS stake_share,
+         avg((kind = 'gov')::int) AS gov_share
   FROM unit_tx GROUP BY unit),
 -- Median output value per unit: over payments (outputs that leave the
 -- unit, so change is excluded) and over all outputs as a fallback.
@@ -122,7 +129,7 @@ reuse_summary AS (
   SELECT f.unit, avg(o.is_reuse::int) AS reuse_share
   FROM unit_tx f JOIN paid_output o ON o.hash = f.hash GROUP BY f.unit)
 -- One row per unit, with the defaults for units that lack a summary.
-SELECT b.unit, b.tx_count, b.active_days, b.inputs_per_tx, b.outputs_per_tx, b.script_share, b.stake_share,
+SELECT b.unit, b.tx_count, b.active_days, b.inputs_per_tx, b.outputs_per_tx, b.script_share, b.stake_share, b.gov_share,
        coalesce(gs.median_gap, {window_slots}) AS median_gap_slots,
        coalesce(gs.longest_gap, 0) AS longest_gap_slots,
        coalesce(v.median_payment, v.median_output, 1) AS median_payment_lovelace,

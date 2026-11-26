@@ -6,6 +6,8 @@ import os
 import numpy as np
 import yaml
 
+import actor_fit
+import actor_stats
 import chain_stats
 import cluster
 import fit
@@ -15,6 +17,15 @@ from helpers import CHAIN, EXAMPLE, synthetic_stats
 from population_stats import KS_STATS, QUANTILE_POINTS
 from unit_features import unit_features
 
+DAY = 86_400
+# Two pools (one updates), one DRep that votes, two contracts, one proposal.
+ACTORS = actor_fit.fit_actors(
+    actor_stats.ActorEvents(
+        pool_events=[("a", 1, "register", 0, 170_000_000, 0.0, None), ("b", 2, "register", 9, 340_000_000, 0.02, None),
+                     ("a", DAY, "register", 5, 170_000_000, 0.01, None)],
+        drep_events=[("d", 3, "register")], drep_votes=[("d", DAY)], proposals=[("info", DAY)],
+        contract_use=[1, 3], new_contracts=1),
+    first_slot=10, last_slot=90 * DAY, days=90.0, units=50, network="preview")
 HEADER = {"network": "synthetic", "window": "90 days", "seed": 1, "k": 2, "bic": {"2": 1.0, "3": 2.0},
           "unit": "stake credential", "weighting": "addresses", "mithril2pq_version": "t", "mithril2pq_last_chunk": 1}
 
@@ -51,8 +62,12 @@ def test_clustered_profile_is_valid_yaml_with_weights_and_a_header():
     overall = synthetic_stats(3, 15.0)
     text, target = fit.fit_cluster_profiles(
         overall, {"high-freq-small-value": small_payers, "low-freq-large-value": large_payers},
-        {"high-freq-small-value": 0.7, "low-freq-large-value": 0.3}, HEADER)
+        {"high-freq-small-value": 0.7, "low-freq-large-value": 0.3}, dict(HEADER), ACTORS)
     doc = yaml.safe_load(text)
+    assert [p["kind"] for p in doc["populations"]] == ["pool", "drep", "contract"]
+    assert doc["populations"][0]["count"] == 2 and doc["network"]["proposal_rate"]["info"] > 0
+    assert set(target["actors"]) == {"pools", "dreps", "contracts", "proposal_rate"}
+    assert "# pools: 2 of 2 (scale 1)" in text and "# agendas: " in text
     assert doc["version"] == 1
     assert [p["name"] for p in doc["profiles"]] == ["high-freq-small-value", "low-freq-large-value"]
     assert abs(sum(p["weight"] for p in doc["profiles"]) - 1.0) < 1e-6

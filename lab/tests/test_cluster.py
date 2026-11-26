@@ -79,11 +79,11 @@ def test_cluster_names_are_short_unique_and_stable_for_a_seed():
 
 def test_names_use_absolute_thresholds_in_real_units():
     """A cluster's name depends only on its own units (transactions per
-    day, script and stake shares), never on the other clusters, so a name
+    day, script, governance and stake shares), never on the other clusters, so a name
     means the same on every network. Two clusters with the same behaviour
     still get different names."""
     typical = dict(tx_per_day=0.31, median_gap_seconds=1e5, median_payment_lovelace=5e6, script_share=0.0,
-                   stake_share=0.0, inputs_per_tx=1.0, outputs_per_tx=2.0, reuse_share=0.0, active_days=10,
+                   stake_share=0.0, gov_share=0.0, inputs_per_tx=1.0, outputs_per_tx=2.0, reuse_share=0.0, active_days=10,
                    longest_gap_seconds=0.0, tx_count=28)
 
     def five_units(**changes) -> pd.DataFrame:
@@ -91,7 +91,8 @@ def test_names_use_absolute_thresholds_in_real_units():
 
     cases = [(dict(tx_per_day=0.31), "occasional-payer"), (dict(tx_per_day=3.0), "frequent-trader"),
              (dict(tx_per_day=0.002), "holder"), (dict(script_share=0.9), "script-user"),
-             (dict(stake_share=0.9), "staker")]
+             (dict(stake_share=0.9), "staker"), (dict(gov_share=0.9), "voter"),
+             (dict(gov_share=0.5, stake_share=0.5), "voter")]
     for changes, want in cases:
         assert cluster.name_clusters(five_units(**changes), np.zeros(5, dtype=int)) == [want]
     two_clusters = pd.concat([five_units(), five_units(tx_per_day=0.4, median_payment_lovelace=5e9)],

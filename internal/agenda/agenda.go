@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand/v2"
+	"slices"
 	"sort"
 
 	"github.com/chrisguiney/cardano-continuum/internal/population"
@@ -105,6 +106,7 @@ func (d descriptor) Score(a population.Actor, v View) []Score { return d.score(a
 
 var registry = map[profile.AgendaName]Policy{
 	"hodl":        descriptor{hodlScores},
+	"dapp":        descriptor{dappScores},
 	"yield":       descriptor{yieldScores},
 	"profit":      descriptor{profitScores},
 	"civic":       descriptor{civicScores},
@@ -112,6 +114,34 @@ var registry = map[profile.AgendaName]Policy{
 	"opportunist": descriptor{opportunistScores},
 	"disrupt":     adversary{cover: disruptCover},
 	"extract":     adversary{cover: extractCover},
+}
+
+// choosable lists, per agenda, every profile intent its policy scores above
+// zero in some world (TestIntentsMatchScores holds the two together). The
+// engine's own steps (Idle, GoDark, GoLive) are not profile intents and are
+// left out. lab/agendas.py keeps a copy to pick a fitted cluster's agenda.
+var choosable = map[profile.AgendaName][]profile.IntentKind{
+	"hodl":        {profile.IntentSend},
+	"dapp":        {profile.IntentMint, profile.IntentScriptCall, profile.IntentSend},
+	"yield":       {profile.IntentDelegate, profile.IntentRegisterStake, profile.IntentWithdraw},
+	"profit":      {profile.IntentDelegate, profile.IntentRegisterStake, profile.IntentSend, profile.IntentWithdraw},
+	"civic":       {profile.IntentDelegateDRep, profile.IntentRegisterDRep, profile.IntentRegisterStake, profile.IntentVote},
+	"operator":    {profile.IntentRegisterPool, profile.IntentRetirePool, profile.IntentWithdraw},
+	"opportunist": {profile.IntentDelegate, profile.IntentMint, profile.IntentRegisterStake, profile.IntentScriptCall, profile.IntentSend},
+	"disrupt":     {profile.IntentSend},
+	"extract":     {profile.IntentSend, profile.IntentWithdraw},
+}
+
+// Intents returns the profile intents the named agenda can ever choose, in
+// sorted order. A profile weight on any other intent is dead: the agenda
+// never scores it, so the actor never takes it. An adversary's attack steps
+// come from its hook and are not included.
+func Intents(name profile.AgendaName) ([]profile.IntentKind, error) {
+	ks, ok := choosable[name]
+	if !ok {
+		return nil, fmt.Errorf("%w: %q", ErrUnknown, name)
+	}
+	return slices.Clone(ks), nil
 }
 
 // For returns the policy for an agenda name.

@@ -1,10 +1,14 @@
 {
-  "9066d7b08907979a49e0a29b1ed69c904e14baabfdf7b65cd22069fbe273148f": {
+  "847208e88ea5f0337ec30b845f7b71546df9d3874cbb54a6578452bdee466f9f": {
+    "profile": "preprod",
+    "target": "preprod.target.json"
+  },
+  "9a8fcff0382acfe860397cbbd46c441022112902ba0472bb6c3e04416bf1d1ec": {
     "profile": "preview",
     "target": "preview.target.json"
   },
-  "9846c90dac4fd9b7c191b246c7d843d2c1ff4f52da4a3ef1c88aa9dfa7a49335": {
-    "profile": "preprod",
-    "target": "preprod.target.json"
+  "e590db29b53e800cb4b10bee6f5d93ea067eb1748dde4bb4e09f36c14cf046e5": {
+    "profile": "mainnet",
+    "target": "mainnet.target.json"
   }
 }

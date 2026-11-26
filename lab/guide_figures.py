@@ -355,18 +355,22 @@ def fig_amounts(nets: list[Network]):
 
 
 def fig_mix(nets: list[Network]):
-    """Transaction-type mix (the intent weights) per cluster, as stacked bars."""
-    fig, axes = panels("Transaction-type mix", nets)
-    intents = ["send", "script_call", "delegate", "register_pool"]
-    colours = [BLUE, GREEN, PURPLE, RED]
+    """Transaction-type mix on chain per cluster, as stacked bars, with the
+    agenda each cluster was given (agendas.choose_agenda) in its label."""
+    fig, axes = panels("Transaction-type mix (and agenda)", nets)
+    kinds = ["plain", "script", "stake", "pool", "gov"]
+    colours = [BLUE, GREEN, PURPLE, RED, ORANGE]
     for ax, net in zip(axes, nets):
         if not net.fitted:
             continue
+        clusters = net.target.get("clusters", {})
+        labels = [f"{profile['name']} ({profile['agenda']})" for profile in net.profiles]
         left = np.zeros(len(net.profiles))
-        for intent, intent_colour in zip(intents, colours):
-            weights = np.array([profile["weights"].get(intent, 0.0) for profile in net.profiles])
-            ax.barh(net.names, weights, left=left, color=intent_colour, label=intent)
-            left += weights
+        for kind, kind_colour in zip(kinds, colours):
+            shares = np.array([clusters.get(name, {}).get("shares", {}).get("tx_type_mix", {}).get(kind, 0.0)
+                               for name in net.names])
+            ax.barh(labels, shares, left=left, color=kind_colour, label=kind)
+            left += shares
         ax.invert_yaxis()
         ax.legend(fontsize=6, loc="lower right")
     fig.tight_layout()

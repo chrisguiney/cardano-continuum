@@ -21,7 +21,7 @@ var kinds = map[Kind]bool{Wallet: true, Pool: true, DRep: true, Contract: true, 
 type AgendaName string
 
 var agendas = map[AgendaName]bool{
-	"hodl": true, "yield": true, "profit": true, "civic": true,
+	"hodl": true, "dapp": true, "yield": true, "profit": true, "civic": true,
 	"operator": true, "opportunist": true, "disrupt": true, "extract": true,
 }
 

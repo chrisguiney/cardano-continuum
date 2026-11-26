@@ -26,12 +26,16 @@ var Preview []byte
 //go:embed preprod.yaml
 var Preprod []byte
 
+// Mainnet is the mainnet population, fitted like Preview. Its pool and
+// DRep populations are cut to what one machine runs; the header records
+// the scale.
+//
+//go:embed mainnet.yaml
+var Mainnet []byte
+
 // Fitted lists the shipped profile names that have a fit, each with a
 // profiles/NAME.target.json that lab/grade.py tests a run against.
-var Fitted = []string{"preview", "preprod"}
-
-// ErrNotFitted reports a network with no shipped fit.
-var ErrNotFitted = fmt.Errorf("not fitted yet")
+var Fitted = []string{"preview", "preprod", "mainnet"}
 
 // Named returns the shipped profile file called name.
 func Named(name string) ([]byte, error) {
@@ -45,9 +49,9 @@ func Named(name string) ([]byte, error) {
 	case "preprod":
 		return Preprod, nil
 	case "mainnet":
-		return nil, fmt.Errorf("mainnet profiles are %w", ErrNotFitted)
+		return Mainnet, nil
 	}
-	return nil, fmt.Errorf("unknown profile set %q (shipped: %v, mainnet)", name, slices.Concat([]string{"m1", "m3"}, Fitted))
+	return nil, fmt.Errorf("unknown profile set %q (shipped: %v)", name, slices.Concat([]string{"m1", "m3"}, Fitted))
 }
 
 // TargetFile is the name of a fitted profile set's target file.

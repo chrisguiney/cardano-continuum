@@ -16,7 +16,7 @@ import (
 )
 
 func TestResolveProfilesNames(t *testing.T) {
-	for _, name := range []string{"m1", "preview", "preprod"} {
+	for _, name := range []string{"m1", "preview", "preprod", "mainnet"} {
 		raw, label, err := resolveProfiles(name)
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
@@ -24,9 +24,6 @@ func TestResolveProfilesNames(t *testing.T) {
 		if _, err := profile.ParseNamed(label, bytes.NewReader(raw)); err != nil {
 			t.Fatalf("%s does not parse: %v", name, err)
 		}
-	}
-	if _, _, err := resolveProfiles("mainnet"); err == nil || !strings.Contains(err.Error(), "not fitted yet") {
-		t.Fatalf("mainnet: %v", err)
 	}
 	if _, _, err := resolveProfiles("nosuch"); err == nil || !strings.Contains(err.Error(), "preprod") {
 		t.Fatalf("an unknown name should list the shipped names: %v", err)

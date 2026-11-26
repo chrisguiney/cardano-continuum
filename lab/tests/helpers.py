@@ -31,7 +31,7 @@ def synthetic_stats(seed: int, log_payment_scale: float) -> Stats:
     stats.samples["log10_gap_seconds"] = np.log10(stats.samples["gap_seconds"])
     stats.samples["inputs_per_tx"] = rng.integers(1, 4, n).astype(float)
     stats.samples["outputs_per_tx"] = rng.integers(1, 4, n).astype(float)
-    stats.shares["tx_type_mix"] = {"plain": 0.9, "script": 0.1, "stake": 0.0, "pool": 0.0}
+    stats.shares["tx_type_mix"] = {"plain": 0.9, "script": 0.1, "stake": 0.0, "pool": 0.0, "gov": 0.0}
     stats.fractions = {"address_reuse": 0.3, "change_to_sender": 0.6}
     stats.per_address = {"change_to_sender": rng.beta(3, 2, 200), "address_reuse": rng.beta(2, 5, 200)}
     stats.info = {"span_days": 90.0, "txs": float(n), "active_fraction": 0.2}
@@ -59,6 +59,7 @@ def units_with_pinned_shares(n: int = 1500, seed: int = 0) -> pd.DataFrame:
             "median_payment_lovelace": payment * rng.lognormal(0, 0.5, m),
             "script_share": np.where(rng.random(m) < 0.97, script, 1 - script),
             "stake_share": np.zeros(m),
+            "gov_share": np.zeros(m),
             "inputs_per_tx": 1 + 2 * tx_per_day * rng.lognormal(0, 0.4, m),
             "outputs_per_tx": 2 * rng.lognormal(0, 0.4, m),
             "reuse_share": np.where(rng.random(m) < 0.97, reuse, 1 - reuse),

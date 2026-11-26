@@ -41,29 +41,44 @@ def test_payment_rate_is_per_active_second():
     assert abs(rarely_active.payments_per_sec / always_active.payments_per_sec - 10.0) < 1e-9
 
 
-def test_wakeup_rate_compensates_for_the_hodl_send_score():
-    """The engine turns only a share p of wake-ups into payments, so the
-    fitted base rate is the payment rate divided by p, with p from the
-    hodl agenda's send score (0.02) and the profile's send weight (0.9)."""
+def test_wakeup_rate_compensates_for_the_agenda_tx_score():
+    """The engine turns only a share p of wake-ups into transactions, so the
+    fitted base rate is the transaction rate divided by p, with p from the
+    chosen agenda's score: 0.02 against 1 for idling for dapp (the synthetic
+    population calls scripts in 10% of its transactions)."""
     stats = synthetic_stats(1, 16.0)
     fit = population_fit.fit_population(stats)
-    p_send = population_fit.send_probability(population_fit.intent_weights(stats.shares["tx_type_mix"])["send"])
-    assert abs(p_send - 0.02 * 0.9 / (1 + 0.02 * 0.9)) < 1e-12
-    payments_per_sec = population_fit.fit_payment_activity(stats).payments_per_sec
-    assert abs(fit.activity.base_per_sec * p_send - payments_per_sec) < 1e-18
+    assert fit.agenda == "dapp"
+    assert abs(fit.activity.tx_probability - 0.02 / 1.02) < 1e-12
+    txs_per_sec = population_fit.fit_payment_activity(stats).payments_per_sec
+    assert abs(fit.activity.base_per_sec * fit.activity.tx_probability - txs_per_sec) < 1e-18
 
 
-def test_fallback_activity_keeps_the_payment_rate():
+def test_fallback_activity_keeps_the_transaction_rate():
     """A cluster with no per-unit counts borrows the overall activity. The
-    borrowed base rate is a wake-up rate, already divided by the overall send
-    probability, so it must be turned back into a payment rate before this
-    cluster's own send probability is applied; otherwise it is divided twice."""
-    overall_fit = population_fit.fit_population(synthetic_stats(1, 16.0))
+    borrowed base rate is a wake-up rate, already divided by the overall
+    transaction probability, so it must be turned back into a transaction
+    rate before this cluster's own probability is applied; otherwise it is
+    divided twice."""
+    overall = synthetic_stats(1, 16.0)
+    overall.shares["tx_type_mix"] = {"plain": 1.0, "script": 0.0, "stake": 0.0, "pool": 0.0, "gov": 0.0}
+    overall_fit = population_fit.fit_population(overall)
     small = synthetic_stats(2, 16.0)
     small.samples["tx_count_per_address"] = np.array([])
-    small.shares["tx_type_mix"] = {"plain": 0.5, "script": 0.5, "stake": 0.0, "pool": 0.0}
+    small.shares["tx_type_mix"] = {"plain": 0.2, "script": 0.0, "stake": 0.8, "pool": 0.0, "gov": 0.0}
     fit = population_fit.fit_population(small, overall_fit)
-    payments = fit.activity.base_per_sec * fit.activity.send_probability
-    want = overall_fit.activity.base_per_sec * overall_fit.activity.send_probability
-    assert fit.activity.send_probability != overall_fit.activity.send_probability
-    assert abs(payments / want - 1.0) < 1e-12
+    txs = fit.activity.base_per_sec * fit.activity.tx_probability
+    want = overall_fit.activity.base_per_sec * overall_fit.activity.tx_probability
+    assert (fit.agenda, overall_fit.agenda) == ("yield", "hodl")
+    assert abs(txs / want - 1.0) < 1e-12
+
+
+def test_weights_name_only_what_the_agenda_chooses():
+    """A staker cluster runs yield and weighs only delegate; the plain
+    payments yield cannot make are recorded as the unreachable share."""
+    stats = synthetic_stats(3, 16.0)
+    stats.shares["tx_type_mix"] = {"plain": 0.3, "script": 0.0, "stake": 0.7, "pool": 0.0, "gov": 0.0}
+    fit = population_fit.fit_population(stats)
+    assert fit.agenda == "yield" and fit.weights == {"delegate": 1.0}
+    assert abs(fit.unreachable_share - 0.3) < 1e-12
+    assert "agenda: yield" in "\n".join(profile_lines("s", fit))

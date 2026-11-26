@@ -71,6 +71,9 @@ has a comment saying why that value and how sensitive results are to it.
 | `unit_features.py` | the per-unit feature table, documented column by column |
 | `estimators.py` | log-normal, Pareto, truncated log-normal, body + tail, beta fits, pure |
 | `population_fit.py` | `Stats` to every number of a profile, pure |
+| `agendas.py` | a cluster's agenda and intent weights from its transaction mix, pure |
+| `actor_stats.py` | DuckDB SQL for pool, DRep, vote, proposal and contract rows |
+| `actor_fit.py` | those rows to the non-wallet populations (head counts, rates, distributions), pure |
 | `profile_yaml.py` | fitted numbers to profile YAML and target JSON, pure |
 | `cluster.py` | segments, Gaussian mixture, BIC, elbow, names, pure |
 | `compare.py` | KS distance, total variation, pass bounds, pure |
@@ -88,7 +91,7 @@ has a comment saying why that value and how sensitive results are to it.
 | log10_output_value | log10 lovelace per payment (an output that leaves the sender's unit, so change is excluded) | KS |
 | activity_per_day | txs per day per sending unit, over units with at least one tx | KS |
 | log10_gap_seconds | log10 seconds between consecutive txs of one unit | KS |
-| tx_type_mix | share of plain, script (has script data hash), stake (stake certificates), pool (pool certificates) txs | total variation |
+| tx_type_mix | share of plain, script (has script data hash), stake (stake certificates, Shelley or Conway), pool (pool certificates), gov (votes, proposals, DRep certificates, vote delegations) txs | total variation |
 | address_reuse | share of outputs whose address already appeared on an earlier output | difference |
 | change_to_sender | share of txs paying an output back to the sender address | difference |
 
@@ -101,9 +104,10 @@ size bound: at millions of samples the p-value rejects every real difference,
 so it is reported but does not decide.
 
 On the engine side actors stand in for addresses and the clock is
-milliseconds. The engine only submits payments, so without devnet chain tables
-`outputs_per_tx`, `inputs_per_tx` and `change_to_sender` are skipped, the type
-mix is all plain and output value is the payment amount.
+milliseconds. Without devnet chain tables `outputs_per_tx`, `inputs_per_tx`
+and `change_to_sender` are skipped, output value is the submitted amount, and
+the type mix comes from the intent behind each submission
+(`engine_stats.INTENT_TX_KIND`).
 
 ## Clusters and named profiles
 
@@ -119,8 +123,9 @@ python fit.py /data/chain --out /work/out --clusters --network preprod \
    transaction (or `--window-end-slot`), pinned in the output.
 2. A unit is the stake credential of the sending address where it has one and
    the address otherwise (`--unit address` skips the credential).
-3. Units that send mostly script calls (share of their txs at least 0.5) or
-   staking certificates (at least 0.5) are split off as their own clusters.
+3. Units that send mostly script calls (share of their txs at least 0.5),
+   governance transactions (at least 0.5) or staking certificates (at least
+   0.5) are split off as their own clusters.
    Shares of a unit with a few transactions sit exactly at 0 or 1, and a
    Gaussian mixture explains such pinned dimensions with tiny-variance
    components, so BIC never converged; script and staking use are categorical
@@ -146,6 +151,7 @@ cluster's units (shares are means), so a name means the same on every network:
 | name | rule (first match) |
 |---|---|
 | `script-user` | at least 50% of the units' txs call scripts |
+| `voter` | at least 50% are governance transactions |
 | `staker` | at least 50% are staking certificates |
 | `frequent-trader` | median at least 1 tx per day |
 | `occasional-payer` | median from 0.05 (one tx per 20 days) up to 1 tx per day |
@@ -184,66 +190,92 @@ is not a payment.
 | `traits.patience` pareto | inter-tx gaps above their median (seconds) |
 | `amount` | payment values: log-normal body up to the 90th percentile (truncated-likelihood fit) and a Pareto tail above it; `tail_share` is the share of payments above it, and the tail is left out when none is |
 | `budget` | 20 times the tail scale, between 100 ADA and 1M ADA |
-| `rates.base.send` | the 10th percentile of per-unit tx counts, as a rate over the active share of the window, divided by the chance a hodl wake-up is a payment (see `HODL_SEND_SCORE` in `population_fit.py`) |
+| `agenda` | the agenda that reproduces most of the cluster's tx mix (`agendas.choose_agenda`): hodl, dapp (script calls and mints), yield (delegation) or civic (vote delegation) |
+| `rates.base.<intent>` | the 10th percentile of per-unit tx counts, as a rate over the active share of the window, divided by the chance a wake-up on that agenda is a transaction (`agendas.TX_SCORE`); keyed by the agenda's main intent, since the engine uses only the sum |
 | `rates.activity_tail` | Pareto index of per-unit tx counts above that percentile, at least 1.05 |
-| `weights` | tx type mix: send, script_call, delegate, register_pool (the engine runs only send) |
+| `weights` | tx type mix as intents (plain to send, script to script_call and mint, stake to delegate, gov to delegate_drep), only those the agenda can choose, renormalised; the share left out is `unreachable_share` in the target |
 | `hazards.dormancy` lognormal | gaps over one day (seconds) |
 | `hazards.dormancy_onset` | the rate that leaves a unit active for its measured share of days, given the dormancy mean |
 
 The engine's payments are floored at 2 ADA (`minPayment`), so chain outputs
 below that are out of reach of the amount fit.
 
+## Agendas
+
+Every intent weight names an intent the cluster's agenda can choose
+(`agenda.Intents` in Go; `TestShippedWeightsChoosable` fails a profile that
+breaks it). `agendas.py` picks, from hodl, dapp, yield and civic in that
+order, the agenda whose intents cover the most of the cluster's transactions;
+a later one must beat an earlier one by 5 points (`AGENDA_MARGIN`). Script
+users get dapp, stakers yield, voters civic, and holders that call scripts in
+more than a twentieth of their transactions dapp too. Pool registrations by
+wallets have no wallet agenda (operator is for pool actors) and are dropped.
+
+## Non-wallet populations
+
+A clustered fit also writes `populations` (`kind: pool | drep | contract`)
+and `network` blocks, which `profile.ParseFile` reads (`profile.Parse`, which
+the engine uses, returns only the wallet profiles):
+
+| block | fitted from |
+|---|---|
+| `pool` count | pools registered at the window's end: replayed from every registration and retirement since genesis; a retirement counts from its epoch, a later registration cancels it |
+| `pool` rates | first registrations, re-registrations (parameter updates) and retirements in the window, per registered pool per day |
+| `pool` pledge, margin, cost | each live pool's latest registration: the share on one value (pledge 0, margin 0, the most common cost) and a log-normal or beta over the rest |
+| `drep` | DReps registered at the end (expiry for inactivity is not modelled); registrations, retirements and votes per DRep per day; share of DReps that voted |
+| `contract` | a contract is a script payment credential (one validator at many stake parts is one contract); new contracts per active wallet unit per day, a Pareto index of transactions per contract above one, and the busiest 1%'s share |
+| `network.proposal_rate` | proposals per day in the window by action type |
+
+One machine runs at most 12 pools and 12 DReps (`MAX_POOLS`, `MAX_DREPS` in
+`actor_fit.py`), so `count` is cut to that and `chain_count` keeps the real
+number; the header records the scale. Rates are per member and the
+distributions are unchanged, so a cut population stays faithful. Contracts
+are not run as actors and are not cut.
+
 ## Current results
 
-Fit: Preprod, immutable chunks 0 to 6477 (7.79M txs), a 90-day window ending
-at slot 139924767 (1.11M txs, 37,188 sending units), seed 1, stake-credential
-units, weighting by units. The mixture is fitted on the 15,809 units that are
-not script users or stakers. Its BIC curve falls from 253,299 at k = 2 to
-142,478 at k = 15 with the steepest gains by k = 5 and a long shallow tail, so
-the BIC minimum is at the top of the 2 to 15 range (not interior); the elbow
-picks k = 5, and with the script-user and staker segments that is 7 clusters.
-Real units are not Gaussian (payments pile on 2 ADA, counts are integers), so
-the curve does not turn upward. Preview (chunks 0 to 29859, 8,529 units) is
-the same fit: elbow k = 5, minimum at 15, 7 clusters.
+Each network is fitted on the latest 90 days of its chain, seed 1,
+stake-credential units, weighting by units, mithril2pq 3b40e6e. BIC still
+falls at k = 15 on every network (minimum not interior), so the elbow picks
+the mixture's k; segments come on top.
 
-| preprod cluster | share of units |
-|---|---|
-| script-user | 57.2% |
-| occasional-payer-small | 25.0% |
-| holder-mid | 6.1% |
-| holder-small | 5.3% |
-| occasional-payer-mid | 3.4% |
-| holder-large | 2.7% |
-| staker | 0.3% |
+| network | chunks | units | window txs | mixture k / clusters | fit time |
+|---|---|---|---|---|---|
+| preview | 0 to 29862 | 8,527 | 262k | 6 / 9 | 10 s |
+| preprod | 0 to 6477 | 37,188 | 1.11M | 3 / 6 | 31 s |
+| mainnet | 0 to 9446 | 289,376 (mixture on a seeded 100,000 of 225,159) | 4.24M | 6 / 9 | 7 min |
 
-Grade: seed-7 fake run (`--profiles preprod`, 100 wallets, 2 epochs of
-3,888,000 slots via `--epoch-slots 3888000`, 90 simulated days, 1,317
-payments), overall:
+Mainnet clusters: holder-mid-2 25.1%, holder-mid 20.6%, holder-mid-3 13.0%
+(dapp), holder-mid-4 12.1% (dapp), script-user 11.5% (dapp), voter 5.8%
+(civic), staker 4.9% (yield), occasional-payer 4.3%, holder-large 2.6%; the
+rest run hodl. Non-wallet populations at the window's end:
+
+| network | pools (run) | DReps (run) | contracts used | proposals per day |
+|---|---|---|---|---|
+| preview | 741 (12) | 9,413 (12) | 3,416 | 0.59 |
+| preprod | 578 (12) | 296 (12) | 23,713 | 0.38 |
+| mainnet | 2,881 (12) | 1,052 (12) | 4,300 | 0.10 |
+
+Grade: seed-7 fake run (`--profiles mainnet`, 100 wallets, 2 epochs of
+3,888,000 slots, 90 simulated days), overall:
 
 | statistic | verdict | detail |
 |---|---|---|
-| outputs_per_tx, inputs_per_tx | skipped | no devnet chain tables |
-| log10_output_value | FAIL | D=0.398, median 6.56 vs 6.30 |
-| activity_per_day | FAIL | D=0.284, median 0.078 vs 0.200 per unit per day |
-| log10_gap_seconds | FAIL | D=0.474, median 4.30 vs 2.72 |
-| tx_type_mix | FAIL | TV=0.588; run is all plain, preprod 41% plain and 59% script |
-| address_reuse | PASS | 0.924 vs 0.976 |
-| change_to_sender | skipped | no devnet chain tables |
+| outputs_per_tx, inputs_per_tx, change_to_sender | skipped | no devnet chain tables |
+| log10_output_value | FAIL | D=0.708, median 6.68 vs 6.30 |
+| activity_per_day | FAIL | D=0.571, median 0.033 vs 0.011 per unit per day |
+| log10_gap_seconds | FAIL | D=0.544, median 1.78 vs 1.46 |
+| tx_type_mix | PASS | TV=0.022; run 77% plain, 20% script, 3% stake |
+| address_reuse | PASS | 0.971 vs 0.946 |
 
-The first fit (Preview chunks 0 to 1500, one profile, a 20-minute run) failed
-activity by three orders of magnitude (median 649 against 0.013 per day),
-which was a short span and a rate fit that ignored dormancy and the hodl
-agenda's 2% send score. Activity now lands within a factor of 2.6 of the
-chain's median; the largest cluster (script-user) is the farthest off, with
-56 actors giving 0.084 against 0.311. What is left:
+The run's intents: 285 sends, 68 script calls, 4 mints, 11 stake
+registrations, 23 withdrawals. What is left:
 
-- Payment value: the engine floors payments at 2 ADA, and the chain has many
-  smaller outputs, so the low end cannot match. Clusters whose payments are
-  exactly 2 ADA pass.
-- Gaps: arrivals inside an active spell are exponential, the chain's are
-  bursty, so engine gaps are longer.
-- Type mix: the engine only sends payments.
-- Clusters with a handful of actors (none for `staker`, three for
-  `holder-large`) have too few samples for KS to mean much.
-- Script users are 57% of preprod units and the engine cannot send script
-  transactions, so their type-mix grade fails by construction.
+- Activity, gaps and amounts count every submission, and the fake chain
+  refuses many with ValueNotConservedUTxO, so retries inflate them.
+- Payment value: the engine floors payments at 2 ADA; the chain has many
+  smaller outputs.
+- Stakers register their stake key but never delegate, and voters never
+  delegate a vote: a fake run has no pools or DReps for them to choose
+  (`populations` are fitted but not yet run by the engine).
+- Clusters with a handful of actors have too few samples for KS to mean much.

@@ -90,3 +90,20 @@ def test_active_days_count_days_not_slots():
     days = fixture_units_table(86400.0)
     assert (days["active_days"] >= seconds["active_days"]).all()
     assert (days["active_days"] > seconds["active_days"]).any()
+
+
+def test_engine_type_mix_counts_each_submitted_intent_once(tmp_path):
+    """A retried send is one transaction; a script call is script."""
+    import duckdb
+    import pandas as pd
+
+    import engine_stats
+    decisions = pd.DataFrame({
+        "seq": [1, 2, 3, 4, 5, 6], "actor": [1, 1, 1, 2, 2, 1],
+        "kind": ["IntentChosen", "Submitted", "IntentChosen", "IntentChosen", "Submitted", "Submitted"],
+        "intent_id": [None, 10, None, None, 11, 10], "intent_kind": ["send", None, "idle", "script_call", None, None],
+    })
+    con = duckdb.connect()
+    con.register("decision", decisions)
+    mix = engine_stats.type_mix(con.execute(engine_stats.SUBMITTED_INTENTS_SQL).fetchall())
+    assert mix["plain"] == 0.5 and mix["script"] == 0.5 and mix["gov"] == 0.0
