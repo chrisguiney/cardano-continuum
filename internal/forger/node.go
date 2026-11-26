@@ -9,8 +9,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"slices"
-	"sync"
 	"time"
 )
 
@@ -40,17 +38,9 @@ type Node struct {
 	log     *slog.Logger
 	planner *Planner
 	now     func() time.Time
-	// changed wakes the loop that answers peers waiting at their tip.
-	changed chan struct{}
-
-	mu sync.Mutex // protects chain, sessions, synced, rogue
-	// chain is every block known and each peer's view of it.
-	chain    *Chain
-	sessions map[string]*session
-	// synced is true once the upstream has reported its tip reached.
-	synced bool
-	// rogue is the forged blocks no honest node may adopt, by hash.
-	rogue map[[32]byte]Kind
+	st      *shared
+	srv     *server
+	fol     *follower
 }
 
 // New checks cfg and builds a Node.
@@ -66,10 +56,12 @@ func New(cfg Config, log *slog.Logger) (*Node, error) {
 	}
 	n := &Node{
 		cfg: cfg, log: log.With("component", "forger"), now: cfg.Now,
-		changed:  make(chan struct{}, 1),
-		sessions: map[string]*session{},
-		rogue:    map[[32]byte]Kind{},
-		synced:   len(cfg.Upstreams) == 0,
+		st: &shared{
+			changed:  make(chan struct{}, 1),
+			sessions: map[string]*session{},
+			rogue:    map[[32]byte]Kind{},
+			synced:   len(cfg.Upstreams) == 0,
+		},
 	}
 	if n.now == nil {
 		n.now = time.Now
@@ -82,7 +74,9 @@ func New(cfg Config, log *slog.Logger) (*Node, error) {
 			return nil, fmt.Errorf("forger schedule: %w", err)
 		}
 	}
-	n.chain = NewChain(cfg.Params, issuer)
+	n.st.chain = NewChain(cfg.Params, issuer)
+	n.srv = &server{log: n.log, magic: cfg.Params.Magic, listener: cfg.Listener, st: n.st}
+	n.fol = &follower{log: n.log, magic: cfg.Params.Magic, upstreams: cfg.Upstreams, st: n.st}
 	return n, nil
 }
 
@@ -92,9 +86,9 @@ func New(cfg Config, log *slog.Logger) (*Node, error) {
 func (n *Node) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	parts := []func(context.Context) error{n.accept, n.answer}
+	parts := []func(context.Context) error{n.srv.accept, n.srv.answer}
 	if len(n.cfg.Upstreams) > 0 {
-		parts = append(parts, n.follow)
+		parts = append(parts, n.fol.follow)
 	}
 	if n.planner != nil {
 		parts = append(parts, n.forge)
@@ -143,10 +137,9 @@ func (n *Node) forge(ctx context.Context) error {
 }
 
 // onSlot forges whatever the schedule plans for slot. It forges nothing
-// until the upstream's tip is reached, or when the tip is not older than
-// the slot: a block there would not be the block an honest node forges.
+// where shared.plan reports none.
 func (n *Node) onSlot(slot uint64) error {
-	st, ok := n.state(slot)
+	st, ok := n.st.plan(n.cfg.Params, slot)
 	if !ok {
 		return nil
 	}
@@ -167,36 +160,13 @@ func (n *Node) onSlot(slot uint64) error {
 		if err != nil {
 			return err
 		}
-		n.mu.Lock()
-		n.chain.Add(b, f)
-		if f.Expect == Reject {
-			n.rogue[b.Hash] = f.Kind
-		}
-		n.mu.Unlock()
+		n.st.add(b, f)
 		n.log.Info("forged", decisionAttrs(n.cfg.Schedule, st, f, b, path)...)
 	}
 	if len(forges) > 0 {
-		n.wake()
+		n.st.wake()
 	}
 	return nil
-}
-
-func (n *Node) state(slot uint64) (State, bool) {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	tip := n.chain.Tip()
-	if !n.synced || (!tip.Origin && tip.Slot >= slot) {
-		return State{}, false
-	}
-	st := State{Slot: slot, Tip: tip, Nonce: n.chain.Nonces().Tick(n.cfg.Params, slot).EpochNonce()}
-	st.Counter, st.Forged = n.chain.Counter()
-	for _, s := range n.sessions {
-		if !slices.Contains(st.Peers, s.peer) {
-			st.Peers = append(st.Peers, s.peer)
-		}
-	}
-	slices.Sort(st.Peers)
-	return st, true
 }
 
 // keep writes a forged block's CBOR to the evidence directory and returns
@@ -211,14 +181,6 @@ func (n *Node) keep(b Block, f Forge) (string, error) {
 		return "", fmt.Errorf("keep block evidence: %w", err)
 	}
 	return path, nil
-}
-
-// wake has the answer loop look at every waiting peer again.
-func (n *Node) wake() {
-	select {
-	case n.changed <- struct{}{}:
-	default:
-	}
 }
 
 // decisionAttrs is the log record of one forged block: enough to reproduce

@@ -68,7 +68,7 @@ func TestNodeServesItsChain(t *testing.T) {
 		if i > 0 && h.PrevHash() != served[i-1].Hash() {
 			t.Fatalf("block %d does not extend block %d", i, i-1)
 		}
-		b, _ := n.chain.Block(h.Hash())
+		b, _ := n.st.chain.Block(h.Hash())
 		nonces = nonces.Apply(p, b.Slot, b.Prev, b.VRFOutput)
 	}
 	if files, _ := filepath.Glob(filepath.Join(dir, "*-honest-*.block")); len(files) < want {
