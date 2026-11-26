@@ -59,6 +59,13 @@ func TestGenesisBoots(t *testing.T) {
 // first) and the system start.
 func bootNetwork(t *testing.T, spec genesis.Spec) (string, []string, time.Time) {
 	t.Helper()
+	return bootNetworkWith(t, spec, poolObject)
+}
+
+// bootNetworkWith boots the network with pool(i) as genesis pool i's
+// ContinuumPool.
+func bootNetworkWith(t *testing.T, spec genesis.Spec, pool func(int) v1alpha1.ContinuumPool) (string, []string, time.Time) {
+	t.Helper()
 	ns := newNS(t)
 	installOperator(t, ns)
 	// Keyed pods carry the operator's fence finalizer, so the pools must go
@@ -77,7 +84,7 @@ func bootNetwork(t *testing.T, spec genesis.Spec) (string, []string, time.Time) 
 	read := genesisReader(t, ns)
 
 	publishGenesis(t, ns, read, spec)
-	pods := applyNetwork(t, ns, spec)
+	pods := applyNetworkWith(t, ns, spec, pool)
 	for _, pod := range pods {
 		poll(t, 5*time.Minute, 5*time.Second, pod+" to exist", func(ctx context.Context) (bool, error) {
 			_, err := kubectl(ctx, "", "-n", ns, "get", "pod", pod)
@@ -211,6 +218,11 @@ func poolID(i int) string { return fmt.Sprintf("continuum-pool-%d", i) }
 // genesis pool, and returns the names of the pods the operator will run.
 func applyNetwork(t *testing.T, ns string, s genesis.Spec) []string {
 	t.Helper()
+	return applyNetworkWith(t, ns, s, poolObject)
+}
+
+func applyNetworkWith(t *testing.T, ns string, s genesis.Spec, pool func(int) v1alpha1.ContinuumPool) []string {
+	t.Helper()
 	apply(t, ns, v1alpha1.ContinuumNetwork{
 		TypeMeta:   metav1.TypeMeta{APIVersion: v1alpha1.GroupVersion.String(), Kind: "ContinuumNetwork"},
 		ObjectMeta: metav1.ObjectMeta{Name: "devnet"},
@@ -223,7 +235,7 @@ func applyNetwork(t *testing.T, ns string, s genesis.Spec) []string {
 	})
 	var pods []string
 	for i := range s.Pools {
-		p := poolObject(i)
+		p := pool(i)
 		apply(t, ns, p)
 		pods = append(pods, operator.PodName(operator.Name(&p)))
 	}

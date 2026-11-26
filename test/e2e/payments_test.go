@@ -36,6 +36,12 @@ type progress struct {
 	Supply     uint64 `json:"supply"`
 	Genesis    uint64 `json:"genesis"`
 	Conserved  bool   `json:"conserved"`
+	TipEpoch   uint64 `json:"tip_epoch"`
+	// Settled counts confirmed intents by kind; Guarded the stake floor's
+	// refusals; Incidents the stalls.
+	Settled   map[string]int `json:"settled"`
+	Guarded   int            `json:"guarded"`
+	Incidents int            `json:"incidents"`
 }
 
 // started is the engine's start record (internal/engine Runner).
@@ -50,13 +56,14 @@ type started struct {
 // lets them pay each other for two epochs. Mid-run the engine pod is
 // deleted; the replacement must resume from its store and keep paying. At
 // the end payments are confirmed, the engine's supply equals the faucet's
-// genesis output, and no intent was confirmed twice.
+// genesis output, no intent was confirmed twice, and every pool is on the
+// same tip: an engine following a pool on its own fork could pass the rest.
 func TestPayments(t *testing.T) {
 	if testing.Short() {
 		t.Skip("takes about 25 minutes")
 	}
 	spec := genesis.Default()
-	ns, _, start := bootNetwork(t, spec)
+	ns, pods, start := bootNetwork(t, spec)
 	p0 := poolObject(0)
 	deployEngine(t, ns, fmt.Sprintf("%s.%s.svc.cluster.local:%d", operator.Name(&p0), ns, operator.NtCPort))
 
@@ -100,11 +107,17 @@ func TestPayments(t *testing.T) {
 	if final.DoublePaid != 0 {
 		t.Errorf("%d intents confirmed twice", final.DoublePaid)
 	}
+	agreeTips(t, ns, pods, "", spec)
 }
 
 // deployEngine applies deploy/engine with the ko-built continuum image,
 // pointed at node.
-func deployEngine(t *testing.T, ns, node string) {
+func deployEngine(t *testing.T, ns, node string) { deployEngineWith(t, ns, node, false) }
+
+// deployEngineWith deploys the engine with args in place of its default
+// population, and with rbac under the continuum-engine service account
+// (engineRBAC), whose token it then mounts.
+func deployEngineWith(t *testing.T, ns, node string, rbac bool, args ...string) {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join(repoRoot(t), "deploy", "engine", "statefulset.yaml"))
 	if err != nil {
@@ -116,6 +129,24 @@ func deployEngine(t *testing.T, ns, node string) {
 		t.Fatalf("deploy/engine/statefulset.yaml: want exactly one %q", from)
 	}
 	sts = strings.Replace(sts, from, "image: "+koBuild(t, "continuum")+"\n", 1)
+	if len(args) > 0 {
+		const wallets = "            - --wallets=20\n"
+		if strings.Count(sts, wallets) != 1 {
+			t.Fatalf("deploy/engine/statefulset.yaml: want exactly one %q", wallets)
+		}
+		var b strings.Builder
+		for _, a := range args {
+			b.WriteString("            - " + a + "\n")
+		}
+		sts = strings.Replace(sts, wallets, b.String(), 1)
+	}
+	if rbac {
+		const token = "      automountServiceAccountToken: false\n"
+		if strings.Count(sts, token) != 1 {
+			t.Fatalf("deploy/engine/statefulset.yaml: want exactly one %q", token)
+		}
+		sts = strings.Replace(sts, token, "      serviceAccountName: continuum-engine\n      automountServiceAccountToken: true\n", 1)
+	}
 	apply(t, ns, corev1.ConfigMap{
 		TypeMeta:   metav1.TypeMeta{APIVersion: "v1", Kind: "ConfigMap"},
 		ObjectMeta: metav1.ObjectMeta{Name: "continuum-engine"},

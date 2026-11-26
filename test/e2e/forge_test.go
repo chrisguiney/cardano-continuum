@@ -150,6 +150,7 @@ type tip struct {
 	Slot  int    `json:"slot"`
 	Block int    `json:"block"`
 	Era   string `json:"era"`
+	Hash  string `json:"hash"`
 }
 
 // poolPods names the pods of the hand-made pools.
