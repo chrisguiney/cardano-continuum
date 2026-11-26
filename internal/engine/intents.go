@@ -405,6 +405,12 @@ func (e *Engine) attemptOf(ctx context.Context, at sched.Time, p *pendingRec) (b
 	}
 	w := e.walletOf(a)
 	built, err := sp.build(ctx, e, w, build.Spend{Inputs: e.ledgerUtxos(w, coins), TTL: ttl}, p)
+	// A rebuild at the slot of the attempt it replaces, on the same inputs,
+	// is the same transaction; a later TTL makes it a new one.
+	for _, ok := e.byTx[TxID(built.ID)]; err == nil && ok; _, ok = e.byTx[TxID(built.ID)] {
+		ttl++
+		built, err = sp.build(ctx, e, w, build.Spend{Inputs: e.ledgerUtxos(w, coins), TTL: ttl}, p)
+	}
 	if err != nil {
 		if ctx.Err() != nil {
 			return build.Built{}, nil, 0, "", ctx.Err()
@@ -422,7 +428,8 @@ func (e *Engine) attemptOf(ctx context.Context, at sched.Time, p *pendingRec) (b
 // the current epoch, so the epoch its effect reaches is known when the
 // guard runs; zero means too little of the epoch is left.
 func (e *Engine) ttl(at sched.Time, guarded bool) uint64 {
-	slot := e.cfg.Slots.SlotAt(at)
+	// A rebuild runs at a block's time, which can lag the block's own slot.
+	slot := max(e.cfg.Slots.SlotAt(at), e.Tip().Slot)
 	ttl := slot + e.cfg.TTL
 	if !guarded {
 		return ttl

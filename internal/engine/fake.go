@@ -43,6 +43,20 @@ type FakeNode struct {
 	// BlockEvery is the chain's block interval; the pacer wakes at each
 	// block slot.
 	BlockEvery uint64
+	// evicted is how many of the chain's evictions Dropped has reported.
+	evicted int
+}
+
+// Dropped implements Dropper: the fake chain's evictions since the last
+// call.
+func (f *FakeNode) Dropped() []TxID {
+	ev := f.Chain.Evictions()
+	var out []TxID
+	for _, x := range ev[min(f.evicted, len(ev)):] {
+		out = append(out, TxID(x.Tx))
+	}
+	f.evicted = len(ev)
+	return out
 }
 
 // Submit implements Node.

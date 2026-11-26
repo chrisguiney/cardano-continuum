@@ -8,7 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/blinklabs-io/gouroboros/ledger/conway"
+
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
+	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
+	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/submit"
 )
@@ -41,11 +45,12 @@ type payments struct {
 	released  map[uint64][]string
 	refused   map[TxID]int
 	gaveUp    map[uint64]int
+	actor     map[uint64]uint64 // intent to actor
 }
 
 func readPayments(t *testing.T, l eventlog.Reader) payments {
 	t.Helper()
-	p := payments{confirmed: map[uint64]int{}, released: map[uint64][]string{}, refused: map[TxID]int{}, gaveUp: map[uint64]int{}}
+	p := payments{confirmed: map[uint64]int{}, released: map[uint64][]string{}, refused: map[TxID]int{}, gaveUp: map[uint64]int{}, actor: map[uint64]uint64{}}
 	for _, rec := range logRecords(t, l) {
 		switch rec.Kind {
 		case KindSubmitted:
@@ -54,6 +59,7 @@ func readPayments(t *testing.T, l eventlog.Reader) payments {
 				t.Fatal(err)
 			}
 			p.submitted = append(p.submitted, s)
+			p.actor[s.Intent] = uint64(rec.Actor)
 		case KindConfirmed:
 			var c Confirmed
 			if err := eventlog.Decode(rec.Body, &c); err != nil {
@@ -315,7 +321,8 @@ func released(t *testing.T, out []eventlog.Record, intent uint64) []string {
 }
 
 // TestExpiryAtSettledTTL: a payment valid only below slot TTL is dead once
-// the settled block's slot reaches TTL, not one block later.
+// the settled block's slot reaches TTL, not one block later. Dead, its
+// machine builds the next attempt (submit-retry: Submit, dead -> Build).
 func TestExpiryAtSettledTTL(t *testing.T) {
 	cfg := testConfig(t, 3, 8)
 	cfg.K = 2
@@ -340,12 +347,13 @@ func TestExpiryAtSettledTTL(t *testing.T) {
 	// Blocks at TTL-1, TTL, TTL+1, TTL+2: with K = 2 the third settles the
 	// block at TTL-1 and the fourth the block at TTL.
 	for i, slot := range []uint64{sub.TTL - 1, sub.TTL, sub.TTL + 1, sub.TTL + 2} {
-		why := released(t, mustHandle(t, e, blockAt(t, slotPoint(slot, uint64(i+1)))), sub.Intent)
+		out := mustHandle(t, e, blockAt(t, slotPoint(slot, uint64(i+1))))
+		dead := len(released(t, out, sub.Intent)) > 0 || rebuilt(t, out, *sub)
 		switch {
-		case i < 3 && len(why) > 0:
-			t.Fatalf("released at block %d (slot %d), before the settled slot reached TTL %d", i+1, slot, sub.TTL)
-		case i == 3 && len(why) != 1:
-			t.Fatalf("not released when the block at TTL %d settled: %v", sub.TTL, why)
+		case i < 3 && dead:
+			t.Fatalf("written off at block %d (slot %d), before the settled slot reached TTL %d", i+1, slot, sub.TTL)
+		case i == 3 && !dead:
+			t.Fatalf("not written off when the block at TTL %d settled", sub.TTL)
 		}
 	}
 }
@@ -379,5 +387,177 @@ func TestRefusedGiveUpReleasesOnce(t *testing.T) {
 	}
 	if gave == 0 {
 		t.Fatal("no intent gave up")
+	}
+	// Giving up frustrates the actor (submit.Frustrate).
+	a, _ := r.Engine().census.Get(population.ActorID(p.actor[p.submitted[0].Intent]))
+	if a.Frustration <= 0 {
+		t.Fatalf("actor %d gave up with frustration %v", a.ID, a.Frustration)
+	}
+}
+
+// TestFixThatWorksTeaches: the first attempt is refused for its fee; the
+// actor fixes it, the next attempt settles, and the actor's competence
+// rises (submit.Learn).
+func TestFixThatWorksTeaches(t *testing.T) {
+	cfg := testConfig(t, 9, 4)
+	w := newWorld(t, cfg)
+	sn := &scriptedNode{FakeNode: w.node}
+	sn.answer = func(ctx context.Context, n int, tx []byte) error {
+		if n == 1 {
+			return &submit.RejectedError{Failures: []submit.Failure{{Class: submit.FeeTooSmall}}}
+		}
+		return w.node.Submit(ctx, tx)
+	}
+	l := &eventlog.MemLog{}
+	r, err := Start(context.Background(), w.cfg, Deps{Clock: w.clock, Log: l, Node: sn, Pacer: w.node})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Run(context.Background(), 150_000); err != nil {
+		t.Fatal(err)
+	}
+	p := readPayments(t, l)
+	s := p.submitted[0]
+	if p.confirmed[s.Intent] != 1 || p.refused[s.ID] != 1 {
+		t.Fatalf("intent %d: confirmed %d, first attempt refused %d", s.Intent, p.confirmed[s.Intent], p.refused[s.ID])
+	}
+	a, _ := r.Engine().census.Get(population.ActorID(p.actor[s.Intent]))
+	if a.Competence <= a.Traits.Competence {
+		t.Fatalf("competence %v, drawn %v: the fix taught nothing", a.Competence, a.Traits.Competence)
+	}
+}
+
+// rebuilt reports a new attempt of sub's intent among out.
+func rebuilt(t *testing.T, out []eventlog.Record, sub Submitted) bool {
+	t.Helper()
+	for _, rec := range out {
+		if rec.Kind != KindSubmitted {
+			continue
+		}
+		var s Submitted
+		if err := eventlog.Decode(rec.Body, &s); err != nil {
+			t.Fatal(err)
+		}
+		if s.Intent == sub.Intent && s.ID != sub.ID {
+			return true
+		}
+	}
+	return false
+}
+
+// TestDropRebuilds: the first payment leaves the mempool without a block
+// after the node accepted it. The drop notice moves its machine to build
+// the next attempt through Reserve, which lands, and the payment confirms
+// once.
+func TestDropRebuilds(t *testing.T) {
+	cfg := testConfig(t, 7, 4)
+	w := newWorld(t, cfg)
+	sn := &scriptedNode{FakeNode: w.node}
+	var dropped TxID
+	sn.answer = func(ctx context.Context, n int, tx []byte) error {
+		err := w.node.Submit(ctx, tx)
+		if n == 1 && err == nil {
+			ct, derr := conway.NewConwayTransactionFromCbor(tx)
+			if derr != nil {
+				t.Fatal(derr)
+			}
+			dropped = TxID(ct.Hash())
+			if ierr := w.chain.Inject(fakechain.Drop{Tx: ct.Hash()}); ierr != nil {
+				t.Fatal(ierr)
+			}
+		}
+		return err
+	}
+	l := &eventlog.MemLog{}
+	r, err := Start(context.Background(), w.cfg, Deps{Clock: w.clock, Log: l, Node: sn, Pacer: w.node})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Run(context.Background(), 150_000); err != nil {
+		t.Fatal(err)
+	}
+	p := readPayments(t, l)
+	if p.submitted[0].ID != dropped {
+		t.Fatal("the dropped transaction is not the first attempt")
+	}
+	id := p.submitted[0].Intent
+	attempts := 0
+	for _, s := range p.submitted {
+		if s.Intent == id {
+			attempts++
+		}
+	}
+	if attempts < 2 {
+		t.Fatalf("intent %d: %d attempts, want a rebuild after the drop", id, attempts)
+	}
+	if p.confirmed[id] != 1 {
+		t.Fatalf("intent %d confirmed %d times, want once", id, p.confirmed[id])
+	}
+}
+
+// firstPayment ticks e until it submits a payment and returns it.
+func firstPayment(t *testing.T, e *Engine) Submitted {
+	t.Helper()
+	for at := sched.Time(1000); at < 1_000_000; at += 1000 {
+		for _, rec := range mustHandle(t, e, tickInput(at)) {
+			if rec.Kind == KindSubmitted {
+				var s Submitted
+				if err := eventlog.Decode(rec.Body, &s); err != nil {
+					t.Fatal(err)
+				}
+				return s
+			}
+		}
+	}
+	t.Fatal("no payment was submitted")
+	return Submitted{}
+}
+
+func answer(t *testing.T, r SubmitResult) eventlog.Record {
+	t.Helper()
+	body, err := eventlog.Encode(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return eventlog.Record{Class: eventlog.Input, Kind: eventlog.KindSubmitResult, Body: body}
+}
+
+// TestRolledBackAttemptIsSentAgain: an accepted payment in a block that a
+// rollback removes goes out again as the same bytes, with nothing released
+// and no new attempt built (submit-retry: Confirmed, left the view ->
+// Submit).
+func TestRolledBackAttemptIsSentAgain(t *testing.T) {
+	cfg := testConfig(t, 3, 8)
+	e, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sub := firstPayment(t, e)
+	mustHandle(t, e, answer(t, SubmitResult{Intent: sub.Intent, Verdict: VerdictAccepted}))
+	if len(e.InFlight()) != 0 {
+		t.Fatal("an accepted payment is still in flight")
+	}
+	before := e.Tip()
+	content, err := eventlog.Encode(BlockContent{Txs: []TxDigest{{ID: sub.ID, Inputs: sub.Inputs}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := eventlog.Encode(eventlog.BlockApplied{Point: slotPoint(sub.TTL-5, 1), Content: content})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustHandle(t, e, eventlog.Record{Class: eventlog.Input, Kind: eventlog.KindBlockApplied, Body: body})
+	if got := e.pending[sub.Intent].M.State; got != submit.Confirmed {
+		t.Fatalf("machine %v after the block, want Confirmed", got)
+	}
+	out := mustHandle(t, e, rollbackInput(t, before))
+	if len(released(t, out, sub.Intent)) > 0 || rebuilt(t, out, sub) {
+		t.Fatal("the rollback released or rebuilt the payment")
+	}
+	// The resend waits out its backoff first.
+	mustHandle(t, e, tickInput(max(e.pending[sub.Intent].NotBefore, e.Now())))
+	inf := e.InFlight()
+	if len(inf) != 1 || inf[0].ID != sub.ID || !bytes.Equal(inf[0].Tx, sub.Tx) {
+		t.Fatalf("in flight %+v, want the same bytes again", inf)
 	}
 }

@@ -30,7 +30,7 @@ func (e *Engine) Snapshot() ([]byte, error) {
 		st := e.actors[id]
 		s.Actors = append(s.Actors, actorRec{
 			ID: uint64(id), Profile: a.Profile, State: string(a.State), Born: a.Born, Changed: a.Changed,
-			Frustration: a.Frustration, HazardAt: st.hazardAt, HazardTo: string(st.hazardTo), ActAt: st.actAt, Draws: st.draws,
+			Frustration: a.Frustration, Competence: a.Competence, HazardAt: st.hazardAt, HazardTo: string(st.hazardTo), ActAt: st.actAt, Draws: st.draws,
 		})
 	}
 	for _, b := range e.births {
@@ -186,6 +186,9 @@ func (e *Engine) restoreActor(r actorRec) error {
 	if err := e.census.SetFrustration(a.ID, r.Frustration); err != nil {
 		return err
 	}
+	if err := e.census.SetCompetence(a.ID, r.Competence); err != nil {
+		return err
+	}
 	st := e.register(a, p)
 	st.hazardAt, st.hazardTo, st.actAt, st.draws = r.HazardAt, population.State(r.HazardTo), r.ActAt, r.Draws
 	if st.hazardAt != population.Never {
@@ -305,6 +308,12 @@ func (e *Engine) Reservations() (store.Blob, error) { return e.led.Blob() }
 
 // Actors is the number of actors ever spawned.
 func (e *Engine) Actors() int { return e.census.Len() }
+
+// IntentOf is the intent an unfinished attempt belongs to.
+func (e *Engine) IntentOf(tx TxID) (uint64, bool) {
+	id, ok := e.byTx[tx]
+	return id, ok
+}
 
 // Pending is the number of payments not yet confirmed or released.
 func (e *Engine) Pending() int { return len(e.pending) }

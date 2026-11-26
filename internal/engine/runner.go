@@ -43,6 +43,14 @@ type Node interface {
 	Intersect(points []eventlog.ChainPoint) (Follower, eventlog.ChainPoint, error)
 }
 
+// Dropper is a Node that reports transactions leaving its mempool without
+// a block (the fake chain's evictions). Live has no mempool monitor, so it
+// is optional.
+type Dropper interface {
+	// Dropped returns the transactions dropped since the last call.
+	Dropped() []TxID
+}
+
 // Pacer drives a chain that has no clock of its own (the fake chain).
 type Pacer interface {
 	Advance(t sched.Time) error
@@ -423,6 +431,30 @@ func (r *Runner) pods(ctx context.Context) error {
 	return nil
 }
 
+// drops feeds a drop notice for every dropped transaction that is one of
+// the engine's attempts.
+func (r *Runner) drops(ctx context.Context) error {
+	d, ok := r.d.Node.(Dropper)
+	if !ok {
+		return nil
+	}
+	for _, tx := range d.Dropped() {
+		id, ok := r.eng.IntentOf(tx)
+		if !ok {
+			continue
+		}
+		body, err := eventlog.Encode(SubmitResult{Intent: id, Verdict: VerdictDropped, Tx: &tx})
+		if err != nil {
+			return err
+		}
+		rec := eventlog.Record{At: r.eng.Now(), Kind: eventlog.KindSubmitResult, Body: body}
+		if err := r.step(ctx, func() error { return r.sess.Feed(ctx, rec) }); err != nil {
+			return err
+		}
+	}
+	return r.effects(ctx)
+}
+
 // pollEvery bounds a wait when nothing tells the loop when to wake.
 const pollEvery sched.Time = 1000
 
@@ -439,6 +471,9 @@ func (r *Runner) Run(ctx context.Context, until sched.Time) error {
 			return err
 		}
 		if err := r.pods(ctx); err != nil {
+			return err
+		}
+		if err := r.drops(ctx); err != nil {
 			return err
 		}
 		now := r.d.Clock.Now()

@@ -574,8 +574,11 @@ func (e *Engine) stopAwaiting(id uint64) {
 // only (RetryRebuildOnOwnSpendBug in models/specs/submit-retry).
 func (e *Engine) submitResult(ctx context.Context, at sched.Time, r SubmitResult) error {
 	p, ok := e.pending[r.Intent]
-	if !ok || !p.Awaiting {
+	if !ok || (!p.Awaiting && r.Verdict != VerdictDropped) {
 		return nil
+	}
+	if r.Verdict == VerdictDropped {
+		return e.dropped(ctx, at, r)
 	}
 	if p.Refill {
 		return e.refillResult(ctx, at, p, r)
@@ -591,10 +594,12 @@ func (e *Engine) submitResult(ctx context.Context, at sched.Time, r SubmitResult
 	return e.apply(ctx, at, p, submit.Answered{Out: out}, reasonOf(r))
 }
 
-// release emits Released for the payments whose last unfinished attempt is
-// dead and forgets them. An empty why names the cause per payment: expiry or
-// conflict.
-func (e *Engine) release(at sched.Time, dead []plan.TxID, why string) {
+// release handles attempts the ledger wrote off. The current attempt of a
+// live machine is Dead to it, and it builds again unless its patience is
+// spent; a payment whose last unfinished attempt is dead and whose machine
+// is done with it is released and forgotten. An empty why names the cause
+// per payment: expiry or conflict.
+func (e *Engine) release(ctx context.Context, at sched.Time, dead []plan.TxID, why string) error {
 	for _, tx := range dead {
 		id, ok := e.byTx[TxID(tx)]
 		if !ok {
@@ -602,7 +607,10 @@ func (e *Engine) release(at sched.Time, dead []plan.TxID, why string) {
 		}
 		p := e.pending[id]
 		e.forgetTx(TxID(tx))
-		if len(p.Txs) > 0 {
+		if err := e.dead(ctx, at, p, TxID(tx)); err != nil {
+			return err
+		}
+		if e.pending[id] != p || len(p.Txs) > 0 || (!p.Refill && p.M.State != submit.GaveUp) {
 			continue
 		}
 		w := why
@@ -615,6 +623,7 @@ func (e *Engine) release(at sched.Time, dead []plan.TxID, why string) {
 		e.dropPending(id)
 		e.emit(at, KindReleased, population.ActorID(p.Actor), Released{Intent: id, Why: w})
 	}
+	return nil
 }
 
 // coins lists what the ledger offers actor a for intent id, sorted by Ref.
@@ -656,6 +665,9 @@ func (e *Engine) applyBlock(ctx context.Context, at sched.Time, b blockRec) erro
 		return fmt.Errorf("engine: view: %w", err)
 	}
 	e.window = append(e.window, b)
+	if err := e.inBlock(ctx, at, b); err != nil {
+		return err
+	}
 	was := e.cfg.Slots.EpochOfSlot(e.conf.Slot)
 	for uint64(len(e.window)) > e.cfg.K {
 		e.confirm(e.window[0])
@@ -669,14 +681,19 @@ func (e *Engine) applyBlock(ctx context.Context, at sched.Time, b blockRec) erro
 	for _, tx := range res.Settled {
 		if id, ok := e.byTx[TxID(tx)]; ok {
 			p := e.pending[id]
+			if err := e.observe(ctx, at, p, submit.Settled{Tx: tx}); err != nil {
+				return err
+			}
 			e.dropPending(id)
-			e.emit(at, KindConfirmed, population.ActorID(p.Actor), Confirmed{Intent: id, ID: p.Tx})
+			e.emit(at, KindConfirmed, population.ActorID(p.Actor), Confirmed{Intent: id, ID: TxID(tx)})
 			if err := e.settle(at, p, TxID(tx)); err != nil {
 				return err
 			}
 		}
 	}
-	e.release(at, res.Dead, "")
+	if err := e.release(ctx, at, res.Dead, ""); err != nil {
+		return err
+	}
 	return e.recover(ctx, at)
 }
 
@@ -746,8 +763,9 @@ func (e *Engine) rollback(ctx context.Context, p eventlog.ChainPoint) error {
 	if _, err := e.view.Rollback(lp); err != nil {
 		return fmt.Errorf("engine: view: %w", err)
 	}
+	gone := slices.Clone(e.window[keep:])
 	e.window = e.window[:keep]
-	return nil
+	return e.leftView(ctx, e.now, gone)
 }
 
 // walletOf is the wallet of a ledger owner: an actor or the faucet.

@@ -23,7 +23,7 @@ func outcomeOf(r SubmitResult) (submit.Outcome, error) {
 	switch r.Verdict {
 	case VerdictAccepted:
 		return submit.Outcome{Verdict: submit.Accepted}, nil
-	case VerdictUnreached:
+	case VerdictUnreached, VerdictDropped:
 		return submit.Outcome{Verdict: submit.Unreached}, nil
 	case VerdictRejected:
 		o := submit.Outcome{Verdict: submit.Rejected}
@@ -58,9 +58,15 @@ func (e *Engine) apply(ctx context.Context, at sched.Time, p *pendingRec, ev sub
 	if err != nil {
 		return fmt.Errorf("engine: intent %d: %w", p.ID, err)
 	}
+	return e.carry(ctx, at, p, m, acts, why)
+}
+
+// carry adopts the machine's next state and does its actions. The bytes
+// are kept while the attempt is pending: a rollback can ask for them again.
+func (e *Engine) carry(ctx context.Context, at sched.Time, p *pendingRec, m submit.Machine, acts []submit.Action, why string) error {
 	p.M = m
 	if m.State == submit.Pending {
-		p.Awaiting, p.Cbor = false, nil
+		p.Awaiting = false
 		e.stopAwaiting(p.ID)
 	}
 	for i, act := range acts {
@@ -109,6 +115,10 @@ func (e *Engine) act1(ctx context.Context, at sched.Time, p *pendingRec, act sub
 		p.Awaiting, p.Cbor = false, nil
 		e.stopAwaiting(p.ID)
 		e.emit(at, KindGaveUp, population.ActorID(p.Actor), GaveUp{Intent: p.ID})
+	case submit.Learn:
+		return e.learn(population.ActorID(p.Actor))
+	case submit.Frustrate:
+		return e.frustrate(at, population.ActorID(p.Actor))
 	}
 	return nil
 }

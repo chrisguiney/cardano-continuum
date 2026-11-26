@@ -135,8 +135,7 @@ func (e *Engine) refillResult(ctx context.Context, at sched.Time, p *pendingRec,
 		if err != nil {
 			return fmt.Errorf("engine: refuse refill %d: %w", p.ID, err)
 		}
-		e.release(at, dead, reasonOf(r))
-		return nil
+		return e.release(ctx, at, dead, reasonOf(r))
 	default:
 		return fmt.Errorf("%w: intent %d", ErrUnknownVerdict, r.Intent)
 	}

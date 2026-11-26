@@ -124,6 +124,9 @@ const (
 	// VerdictUnreached: the answer is unknown (a dial, timeout or broken
 	// connection); the transaction may be in a mempool.
 	VerdictUnreached
+	// VerdictDropped: a drop notice, not an answer to a submission: the
+	// attempt Tx is in no mempool and no block the node has.
+	VerdictDropped
 )
 
 // SubmitResult is the body of a SubmitResult input: what the node said to a
@@ -143,6 +146,8 @@ type SubmitResult struct {
 	// machine reads them: after an earlier send only a class that depends on
 	// the transaction alone proves the attempt never reached a mempool.
 	Failures []string `cbor:"5,keyasint,omitempty"`
+	// Tx is the attempt a drop notice is about.
+	Tx *TxID `cbor:"6,keyasint,omitempty"`
 }
 
 // Spawned is the body of a Spawned decision.
@@ -279,6 +284,7 @@ type actorRec struct {
 	HazardTo    string     `cbor:"8,keyasint"`
 	ActAt       sched.Time `cbor:"9,keyasint"`
 	Draws       uint64     `cbor:"10,keyasint"`
+	Competence  float64    `cbor:"11,keyasint"`
 }
 
 type birthRec struct {
