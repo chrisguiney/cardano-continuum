@@ -2,16 +2,12 @@ package oracle
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"os"
-	"path/filepath"
 	"reflect"
 	"sync"
 	"testing"
 
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
-	"github.com/chrisguiney/cardano-continuum/internal/httpapi"
 	"github.com/chrisguiney/cardano-continuum/internal/mistake"
 	"github.com/chrisguiney/cardano-continuum/internal/submit"
 )
@@ -81,7 +77,7 @@ func TestSetConcurrent(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			s.Add(wrongAccept(uint64(i), "p1"))
-			_, _ = s.Findings(context.Background(), httpapi.Page{Limit: 10})
+			_, _ = s.Page(0, 10)
 		}()
 	}
 	wg.Wait()
@@ -150,57 +146,6 @@ func TestSetLoadsFromLog(t *testing.T) {
 	}
 	if got := s.Add(a); len(got) != 0 {
 		t.Fatal("a finding already in the log was new again")
-	}
-}
-
-// The adapter serialises to the httpapi Finding shape: the expected verdict
-// is one of the sources, and every node answer carries its build.
-func TestFindingsPageGolden(t *testing.T) {
-	s := NewSet()
-	dirty := node("dingo", "p2")
-	dirty.Dirty = true
-	dirty.Revisions = map[string]string{"dingo": "abc123", "gouroboros": "def456"}
-	a := attempt(expect(mistake.Of(mistake.FeeTooSmall), false),
-		Answer{Node: node("cardano-node", "p1"), Outcome: rejected(submit.FeeTooSmall)},
-		Answer{Node: dirty, Outcome: accepted()},
-	)
-	s.Add(Judge(a, run)...)
-	split, _ := Differential(a, run)
-	v := value()
-	v.Reserves += 3
-	s.Add(split)
-	s.Add(Monitors(k, guard(t))[0].Check(Snapshot{Value: v, Seq: 50, Run: run})...)
-
-	page, err := s.Findings(context.Background(), httpapi.Page{Limit: 2, Offset: 1})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if page.Total != 3 || len(page.Rows) != 2 {
-		t.Fatalf("page = %+v", page)
-	}
-	got, err := json.MarshalIndent(page, "", "  ")
-	if err != nil {
-		t.Fatal(err)
-	}
-	golden := filepath.Join("testdata", "findings.golden.json")
-	if os.Getenv("UPDATE_GOLDEN") != "" {
-		if err := os.WriteFile(golden, append(got, '\n'), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	want, err := os.ReadFile(golden)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(want) != string(got)+"\n" {
-		t.Fatalf("page differs from %s:\n%s", golden, got)
-	}
-	empty, err := NewSet().Findings(context.Background(), httpapi.Page{Limit: 10})
-	if err != nil || empty.Rows == nil || empty.Total != 0 {
-		t.Fatalf("empty page %+v %v: rows must serialise as []", empty, err)
-	}
-	if _, err := s.Findings(context.Background(), httpapi.Page{Limit: 1, Offset: 10}); err != nil {
-		t.Fatalf("offset past the end: %v", err)
 	}
 }
 

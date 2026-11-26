@@ -1,16 +1,10 @@
 package oracle
 
 import (
-	"context"
-	"encoding/hex"
-	"fmt"
-	"maps"
 	"slices"
-	"strings"
 	"sync"
 
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
-	"github.com/chrisguiney/cardano-continuum/internal/httpapi"
 )
 
 // Set holds findings deduplicated by ID, in order of first occurrence. It is
@@ -74,70 +68,13 @@ func (s *Set) Find(id string) (Finding, bool) {
 	return s.list[i], true
 }
 
-// Findings implements httpapi.Source.Findings: one page of findings in order
-// of first occurrence.
-func (s *Set) Findings(_ context.Context, p httpapi.Page) (httpapi.FindingPage, error) {
-	if p.Limit <= 0 {
-		p.Limit = httpapi.DefaultLimit
-	}
+// Page returns the findings from offset, at most limit of them, in order of
+// first occurrence, and how many there are in all.
+func (s *Set) Page(offset, limit int) ([]Finding, int) {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	total := len(s.list)
-	lo := min(max(p.Offset, 0), total)
-	hi := min(lo+p.Limit, total)
-	page := slices.Clone(s.list[lo:hi])
-	s.mu.Unlock()
-	rows := make([]httpapi.Finding, 0, len(page))
-	for _, f := range page {
-		rows = append(rows, API(f))
-	}
-	return httpapi.FindingPage{Total: total, Offset: p.Offset, Limit: p.Limit, Rows: rows}, nil
-}
-
-// API converts a finding to the HTTP API's shape. The expected verdict set
-// is the first verdict, from source "expected"; a monitor finding lists the
-// nodes it involves with verdict "involved".
-func API(f Finding) httpapi.Finding {
-	out := httpapi.Finding{
-		ID: f.ID, Seq: f.Seq,
-		Summary:      fmt.Sprintf("%s %s: %s", f.Severity, f.Kind, f.Summary),
-		TxCBORHex:    hex.EncodeToString(f.Tx),
-		Verdicts:     []httpapi.ImplVerdict{},
-		Reproducible: f.Reproducible, ReplayCommand: f.Replay,
-	}
-	if f.Expected != nil {
-		out.Verdicts = append(out.Verdicts, httpapi.ImplVerdict{Impl: "expected", Verdict: f.Expected.String()})
-	}
-	for _, v := range f.Verdicts {
-		text := v.Verdict
-		if len(v.Classes) > 0 {
-			text += " " + classList(v.Classes)
-		}
-		out.Verdicts = append(out.Verdicts, implVerdict(v.Node, text))
-	}
-	if len(f.Verdicts) == 0 {
-		for _, n := range f.Nodes {
-			out.Verdicts = append(out.Verdicts, implVerdict(n, "involved"))
-		}
-	}
-	return out
-}
-
-func implVerdict(n Node, verdict string) httpapi.ImplVerdict {
-	return httpapi.ImplVerdict{Impl: n.Impl, Verdict: verdict, Build: buildText(n), Dirty: n.Dirty}
-}
-
-// buildText is the pool, the image digest and each dependency's revision,
-// sorted by dependency.
-func buildText(n Node) string {
-	var parts []string
-	if n.Pool != "" {
-		parts = append(parts, "pool="+n.Pool)
-	}
-	if n.Digest != "" {
-		parts = append(parts, n.Digest)
-	}
-	for _, dep := range slices.Sorted(maps.Keys(n.Revisions)) {
-		parts = append(parts, dep+"="+n.Revisions[dep])
-	}
-	return strings.Join(parts, " ")
+	lo := min(max(offset, 0), total)
+	hi := min(lo+max(limit, 0), total)
+	return slices.Clone(s.list[lo:hi]), total
 }
