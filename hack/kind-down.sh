@@ -1,10 +1,7 @@
 #!/usr/bin/env bash
-# Remove everything kind-up.sh made for one cluster name: the cluster and its
-# registry container. Environment: KIND, CONTINUUM_KIND_NAME (default
-# continuum-e2e), matching kind-up.sh.
+# Remove everything kind-up.sh made: the cluster and the registry container.
 set -euo pipefail
 
 KIND=${KIND:-kind}
-CLUSTER=${CONTINUUM_KIND_NAME:-continuum-e2e}
-$KIND delete cluster --name "$CLUSTER"
-docker rm -f "${CLUSTER}-registry" >/dev/null 2>&1 || true
+$KIND delete cluster --name continuum-e2e
+docker rm -f continuum-e2e-registry >/dev/null 2>&1 || true

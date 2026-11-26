@@ -182,18 +182,6 @@ kind-up: ## Start the kind cluster and its plain-HTTP registry (names continuum-
 kind-down: ## Remove the kind cluster and the registry
 	KIND="$(KIND)" hack/kind-down.sh
 
-# The long-lived developer cluster: separate name and port from e2e, so test
-# teardown never touches it, and a registry that survives a Docker restart.
-DEV_CLUSTER ?= continuum-dev
-DEV_PORT ?= 5002
-
-.PHONY: dev-up dev-down
-dev-up: ## Start (or reuse) the persistent developer cluster continuum-dev and its registry on localhost:5002
-	KIND="$(KIND)" CONTINUUM_KIND_NAME=$(DEV_CLUSTER) CONTINUUM_E2E_PORT=$(DEV_PORT) CONTINUUM_KIND_RESTART=unless-stopped hack/kind-up.sh
-
-dev-down: ## Delete the developer cluster and its registry (destroys the running simulation)
-	KIND="$(KIND)" CONTINUUM_KIND_NAME=$(DEV_CLUSTER) hack/kind-down.sh
-
 e2e: kind-up ## Run the kind e2e suite (about an hour; go test -short skips the slowest)
 	CONTINUUM_REGISTRY=localhost:$(E2E_PORT)/continuum CONTINUUM_REGISTRY_INSECURE=true \
 	CONTINUUM_KO="$(KO)" CONTINUUM_DINGO_SRC="$(DINGO_SRC)" CONTINUUM_GOUROBOROS_SRC="$(GOUROBOROS_SRC)" \
