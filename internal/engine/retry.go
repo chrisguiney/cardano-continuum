@@ -68,7 +68,8 @@ func (e *Engine) apply(ctx context.Context, at sched.Time, p *pendingRec, ev sub
 			return err
 		}
 	}
-	if p.M.State == submit.GaveUp && len(p.Txs) == 0 {
+	// A nested apply (a diagnosis) may have released the payment already.
+	if p.M.State == submit.GaveUp && len(p.Txs) == 0 && e.pending[p.ID] == p {
 		e.dropPending(p.ID)
 		e.emit(at, KindReleased, population.ActorID(p.Actor), Released{Intent: p.ID, Why: "gave up"})
 	}

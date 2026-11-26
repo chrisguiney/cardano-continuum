@@ -349,3 +349,35 @@ func TestExpiryAtSettledTTL(t *testing.T) {
 		}
 	}
 }
+
+// TestRefusedGiveUpReleasesOnce: every node refuses every attempt, so the
+// actor rebuilds until its patience runs out. The give-up happens inside
+// the diagnosis of the last refusal, and the payment is released once.
+func TestRefusedGiveUpReleasesOnce(t *testing.T) {
+	cfg := testConfig(t, 5, 6)
+	cfg.Retry = submit.Policy{Base: 100 * time.Millisecond, Cap: 100 * time.Millisecond}
+	w := newWorld(t, cfg)
+	sn := &scriptedNode{FakeNode: w.node}
+	sn.answer = func(context.Context, int, []byte) error {
+		return &submit.RejectedError{Failures: []submit.Failure{{Class: submit.FeeTooSmall}}}
+	}
+	l := &eventlog.MemLog{}
+	r, err := Start(context.Background(), w.cfg, Deps{Clock: w.clock, Log: l, Node: sn, Pacer: w.node})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Run(context.Background(), 300_000); err != nil {
+		t.Fatal(err)
+	}
+	p := readPayments(t, l)
+	gave := 0
+	for id, n := range p.gaveUp {
+		gave += n
+		if why := p.released[id]; len(why) != 1 || why[0] != "gave up" {
+			t.Errorf("intent %d released %v, want once on give-up", id, why)
+		}
+	}
+	if gave == 0 {
+		t.Fatal("no intent gave up")
+	}
+}
