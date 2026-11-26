@@ -217,6 +217,7 @@ func report(ctx context.Context, log *slog.Logger, cfg engine.Config, r *engine.
 	log.Info("progress", "epoch", cfg.Slots.EpochAt(now), "slot", cfg.Slots.SlotAt(now), "tip_slot", e.Tip().Slot,
 		"actors", e.Actors(), "payments", t.Payments, "refills", t.Refills, "confirmed", t.Confirmed, "paid", t.Paid,
 		"released", t.Released, "double_paid", t.DoublePaid, "pending", e.Pending(),
+		"tip_epoch", cfg.Slots.EpochOfSlot(e.Tip().Slot), "settled", t.Settled, "guarded", t.Guarded, "incidents", t.Incidents,
 		"supply", e.Supply(), "genesis", cfg.Faucet, "conserved", e.Supply() == cfg.Faucet, "log_seq", l.LastSeq())
 	return nil
 }

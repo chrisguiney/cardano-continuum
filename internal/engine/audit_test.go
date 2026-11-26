@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
@@ -34,6 +35,10 @@ func TestAuditCountsAndFindsDoublePayment(t *testing.T) {
 		decision(t, KindConfirmed, Confirmed{Intent: 2}),
 		decision(t, KindSubmitted, Submitted{Intent: 3}),
 		decision(t, KindReleased, Released{Intent: 3}),
+		decision(t, KindSubmitted, Submitted{Intent: 4, Kind: "delegate"}),
+		decision(t, KindConfirmed, Confirmed{Intent: 4}),
+		decision(t, KindGuarded, Guarded{Kind: "go_dark"}),
+		decision(t, KindIncident, Incident{Kind: "stall"}),
 	}
 	var a Audit
 	for _, r := range recs {
@@ -41,8 +46,9 @@ func TestAuditCountsAndFindsDoublePayment(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	want := Tally{Payments: 2, Refills: 1, Confirmed: 2, Paid: 1, Released: 1}
-	if a.Tally != want {
+	want := Tally{Payments: 3, Refills: 1, Confirmed: 3, Paid: 2, Released: 1,
+		Settled: map[string]int{"send": 1, "delegate": 1}, Guarded: 1, Incidents: 1}
+	if !reflect.DeepEqual(a.Tally, want) {
 		t.Fatalf("audit %+v, want %+v", a.Tally, want)
 	}
 	for _, r := range []eventlog.Record{

@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 
@@ -20,6 +21,12 @@ type Tally struct {
 	// released. Each is money the engine paid twice or lost track of; a
 	// correct run has none, across any number of restarts.
 	DoublePaid int
+	// Settled counts confirmed intents by kind ("send" for a payment),
+	// refills left out.
+	Settled map[string]int
+	// Guarded counts the stake-floor guard's refusals, Incidents the stall
+	// incidents.
+	Guarded, Incidents int
 }
 
 // Audit folds decision records into a Tally. The zero value is ready.
@@ -29,6 +36,7 @@ type Audit struct {
 	ended   map[uint64]bool
 	seen    map[uint64]bool
 	refills map[uint64]bool
+	kind    map[uint64]string
 }
 
 // Add folds one record. Inputs and other decisions are ignored.
@@ -38,6 +46,22 @@ func (a *Audit) Add(rec eventlog.Record) error {
 	}
 	if a.seen == nil {
 		a.seen, a.ended, a.refills = map[uint64]bool{}, map[uint64]bool{}, map[uint64]bool{}
+		a.kind, a.Settled = map[uint64]string{}, map[string]int{}
+	}
+	switch rec.Kind {
+	case KindGuarded:
+		a.Guarded++
+		return nil
+	case KindIncident:
+		a.Incidents++
+		return nil
+	}
+	if rec.Kind == KindSubmitted {
+		var s Submitted
+		if err := eventlog.Decode(rec.Body, &s); err != nil {
+			return fmt.Errorf("engine: audit seq %d: %w", rec.Seq, err)
+		}
+		a.kind[s.Intent] = cmp.Or(s.Kind, "send")
 	}
 	switch rec.Kind {
 	case KindSubmitted, KindRefill:
@@ -60,6 +84,9 @@ func (a *Audit) Add(rec eventlog.Record) error {
 		a.Confirmed++
 		if !a.refills[id] {
 			a.Paid++
+			if !a.ended[id] {
+				a.Settled[a.kind[id]]++
+			}
 		}
 		if a.ended[id] {
 			a.DoublePaid++
