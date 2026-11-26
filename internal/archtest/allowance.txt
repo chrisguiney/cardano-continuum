@@ -74,7 +74,6 @@ stray-methods internal/keys Store 5
 stray-methods internal/keys Wallet 2
 stray-methods internal/mistake mutant 5
 stray-methods internal/oracle Finding 1
-stray-methods internal/plan state 2
 stray-methods internal/policy Guard 2
 stray-methods internal/policy State 1
 stray-methods internal/profile rawAmount 1

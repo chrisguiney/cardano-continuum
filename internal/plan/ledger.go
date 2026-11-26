@@ -79,7 +79,7 @@ func (l *Ledger) commit(ctx context.Context, next *state) error {
 	if l.inPlace {
 		return nil
 	}
-	b, err := next.encode()
+	b, err := encode(next)
 	if err != nil {
 		return err
 	}
@@ -217,4 +217,4 @@ func (l *Ledger) Settled() []Utxo {
 // Blob returns the encoding a Commit of the current state would write. A
 // caller that keeps durability elsewhere (the engine, whose event log
 // replays every Reserve) stores it in its own checkpoint.
-func (l *Ledger) Blob() (store.Blob, error) { return l.st.encode() }
+func (l *Ledger) Blob() (store.Blob, error) { return encode(l.st) }

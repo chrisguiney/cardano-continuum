@@ -32,7 +32,7 @@ type disk struct {
 
 // encode returns the canonical encoding of s, sorted so equal states give
 // equal bytes.
-func (s *state) encode() (store.Blob, error) {
+func encode(s *state) (store.Blob, error) {
 	d := disk{SettledSlot: s.settled.Slot, NextSeq: s.nextSeq}
 	if !s.settled.IsOrigin() {
 		d.SettledHash = s.settled.Hash[:]
@@ -79,7 +79,7 @@ func decode(k uint64, b store.Blob) (*state, error) {
 	for _, id := range d.Paid {
 		s.paid[id] = struct{}{}
 	}
-	if err := s.restoreAttempts(d.Attempts, d.NextSeq); err != nil {
+	if err := restoreAttempts(s, d.Attempts, d.NextSeq); err != nil {
 		return nil, err
 	}
 	if err := s.consistent(); err != nil {
@@ -88,7 +88,9 @@ func decode(k uint64, b store.Blob) (*state, error) {
 	return s, nil
 }
 
-func (s *state) restoreAttempts(recs []record, nextSeq uint64) error {
+// restoreAttempts adds the stored attempts recs to s, checking each against
+// what Reserve would have accepted.
+func restoreAttempts(s *state, recs []record, nextSeq uint64) error {
 	if !slices.IsSortedFunc(recs, func(a, b record) int { return cmp.Compare(a.Seq, b.Seq) }) {
 		return fmt.Errorf("%w: attempts out of order", ErrBlob)
 	}
