@@ -45,7 +45,7 @@ var (
 
 // SchemaVersion is the schema this binary writes. Older files are migrated
 // forward on Open; newer ones are refused.
-const SchemaVersion = 1
+const SchemaVersion = 2
 
 // migrations[i] upgrades schema version i to i+1.
 var migrations = []string{`
@@ -70,7 +70,10 @@ CREATE TABLE actor (
 	id INTEGER PRIMARY KEY,
 	name TEXT NOT NULL,
 	role TEXT NOT NULL
-);`}
+);`,
+	// v2: genesis actors carry their profile in the store, since the log has
+	// no Spawned record for them. Rows written before v2 keep the empty profile.
+	`ALTER TABLE actor ADD COLUMN profile TEXT NOT NULL DEFAULT '';`}
 
 // Failpoint stages inside SaveCheckpoint, after the named write.
 const (

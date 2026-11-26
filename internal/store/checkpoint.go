@@ -117,7 +117,7 @@ reservations_version = excluded.reservations_version, reservations = excluded.re
 				return err
 			}
 			for _, a := range c.ActorRows {
-				if _, err := tx.ExecContext(ctx, "INSERT INTO actor (id, name, role) VALUES (?, ?, ?)", a.ID, a.Name, a.Role); err != nil {
+				if _, err := tx.ExecContext(ctx, "INSERT INTO actor (id, name, role, profile) VALUES (?, ?, ?, ?)", a.ID, a.Name, a.Role, a.Profile); err != nil {
 					return err
 				}
 			}
@@ -188,13 +188,13 @@ intents_version, intents, reservations_version, reservations FROM checkpoint WHE
 	if err := rows.Err(); err != nil {
 		return Checkpoint{}, err
 	}
-	rows, err = tx.QueryContext(ctx, "SELECT id, name, role FROM actor ORDER BY id")
+	rows, err = tx.QueryContext(ctx, "SELECT id, name, role, profile FROM actor ORDER BY id")
 	if err != nil {
 		return Checkpoint{}, fmt.Errorf("load actors: %w", err)
 	}
 	for rows.Next() {
 		var a ActorRow
-		if err := rows.Scan(&a.ID, &a.Name, &a.Role); err != nil {
+		if err := rows.Scan(&a.ID, &a.Name, &a.Role, &a.Profile); err != nil {
 			_ = rows.Close()
 			return Checkpoint{}, err
 		}

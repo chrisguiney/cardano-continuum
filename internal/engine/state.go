@@ -337,7 +337,7 @@ func (e *Engine) ActorRows() []store.ActorRow {
 	out := make([]store.ActorRow, 0, len(e.order))
 	for _, id := range e.order {
 		a, _ := e.census.Get(id)
-		out = append(out, store.ActorRow{ID: uint64(id), Name: fmt.Sprintf("%s-%d", a.Profile, id), Role: string(a.State)})
+		out = append(out, store.ActorRow{ID: uint64(id), Name: fmt.Sprintf("%s-%d", a.Profile, id), Role: string(a.State), Profile: a.Profile})
 	}
 	return out
 }
