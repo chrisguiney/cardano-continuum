@@ -34,6 +34,30 @@ jobs:
       - name: make check
         run: make check
 
+  # The web UI's typecheck and Vitest unit tests need Node, so they run in
+  # their own job. make check stays free of Node: web/dist is committed.
+  web-test:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: make web-test
+        run: make web-test
+
   # The kind e2e suite takes about half an hour, so it runs nightly and on
   # demand instead of on every push. Docker is preinstalled on the runner;
   # kind and ko run through `go run` at the versions pinned in the Makefile.
