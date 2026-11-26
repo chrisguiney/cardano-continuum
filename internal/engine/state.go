@@ -28,7 +28,8 @@ func blake2b256(b []byte) common.Blake2b256 { return common.Blake2b256Hash(b) }
 // Snapshot implements eventlog.Engine: the whole state in canonical CBOR,
 // the ledger's blob included.
 func (e *Engine) Snapshot() ([]byte, error) {
-	s := snapshot{Version: snapshotVersion, Now: e.clk.Now(), NextIntent: e.nextID, Conf: e.conf, Fees: e.fees, Foreign: e.foreign, RefillAt: e.refillAt, Deposits: e.deposits, Market: e.market, Lost: e.lost,
+	sv := e.win.Saved()
+	s := snapshot{Version: snapshotVersion, Now: e.clk.Now(), NextIntent: e.nextID, Conf: sv.Conf, Fees: sv.Fees, Foreign: sv.Foreign, RefillAt: e.refillAt, Deposits: e.deposits, Market: e.market, Lost: e.lost,
 		Contracts: e.contracts, DeployAt: e.deployAt, DeployN: e.deployN}
 	for _, id := range e.order {
 		a, _ := e.census.Get(id)
@@ -42,7 +43,7 @@ func (e *Engine) Snapshot() ([]byte, error) {
 	for _, b := range e.births {
 		s.Births = append(s.Births, birthRec{Profile: b.prof.Name, At: b.at, N: b.n})
 	}
-	s.Window = slices.Clone(e.window)
+	s.Window = e.win.Volatile()
 	for _, id := range e.pendingIDs() {
 		s.Pending = append(s.Pending, *e.pending[id])
 	}
@@ -61,7 +62,7 @@ func (e *Engine) Snapshot() ([]byte, error) {
 	}
 	s.Charges = e.costs.Entries()
 	s.Contested = slices.SortedFunc(maps.Keys(e.contested), cmpLogRef)
-	if s.View, err = encodeView(e.view.Base()); err != nil {
+	if s.View, err = encodeView(e.win.View().Base()); err != nil {
 		return nil, err
 	}
 	return eventlog.Encode(s)
@@ -92,7 +93,7 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
-	e.nextID, e.conf, e.fees, e.foreign, e.deposits = s.NextIntent, s.Conf, s.Fees, s.Foreign, s.Deposits
+	e.nextID, e.deposits = s.NextIntent, s.Deposits
 	// Between inputs the last Tick's time is the clock.
 	e.clk.Restore(s.Now)
 	e.market, e.stalled, e.lost = s.Market, s.Stalled, s.Lost
@@ -177,19 +178,19 @@ func (e *Engine) restoreLedger(s snapshot) error {
 		return fmt.Errorf("engine: snapshot ledger: %w", err)
 	}
 	e.led = led
-	if conf, _ := chain.PointFromLog(e.conf); led.ResumePoint() != conf {
-		return fmt.Errorf("engine: snapshot ledger settled at slot %d, engine confirmed slot %d", led.ResumePoint().Slot, e.conf.Slot)
+	if conf, _ := chain.PointFromLog(s.Conf); led.ResumePoint() != conf {
+		return fmt.Errorf("engine: snapshot ledger settled at slot %d, engine confirmed slot %d", led.ResumePoint().Slot, s.Conf.Slot)
 	}
 	vs, err := decodeView(s.View)
 	if err != nil {
 		return err
 	}
-	if e.view, err = chain.New(e.viewConfig(), vs); err != nil {
+	if err := e.win.Open(vs, windowSaved{Conf: s.Conf, Fees: s.Fees, Foreign: s.Foreign}); err != nil {
 		return fmt.Errorf("engine: snapshot view: %w", err)
 	}
 	ctx := context.Background()
 	for _, b := range s.Window {
-		lb, err := e.ledgerBlock(e.Tip(), b)
+		lb, vb, err := e.win.Blocks(b, members{e})
 		if err != nil {
 			return err
 		}
@@ -203,14 +204,9 @@ func (e *Engine) restoreLedger(s snapshot) error {
 		if len(res.Settled)+len(res.Dead) > 0 {
 			return fmt.Errorf("engine: snapshot window at slot %d finishes a payment", b.Point.Slot)
 		}
-		vb, err := viewBlock(e.Tip(), b)
-		if err != nil {
-			return err
-		}
-		if _, err := e.view.Apply(vb); err != nil {
+		if err := e.win.Push(b, vb); err != nil {
 			return fmt.Errorf("engine: snapshot window: %w", err)
 		}
-		e.window = append(e.window, b)
 	}
 	return nil
 }
@@ -260,7 +256,7 @@ func (e *Engine) restoreActor(r actorRec) error {
 func (e *Engine) ledgerUtxos(w keys.Wallet, coins []Coin) []common.Utxo {
 	out := make([]common.Utxo, len(coins))
 	for i, c := range coins {
-		if u, ok := e.view.Utxo(chain.Ref{Tx: chain.TxID(c.Ref.Tx), Index: c.Ref.Index}); ok {
+		if u, ok := e.win.View().Utxo(chain.Ref{Tx: chain.TxID(c.Ref.Tx), Index: c.Ref.Index}); ok {
 			out[i] = u
 			continue
 		}
@@ -274,6 +270,16 @@ func (e *Engine) ledgerConfig() plan.Config {
 }
 
 // owners maps addresses to actors for the ledger.
+// members is the population as the window reads outputs.
+type members struct{ e *Engine }
+
+func (m members) Owner(addr []byte) (population.ActorID, bool) {
+	id, ok := m.e.byAddr[string(addr)]
+	return id, ok
+}
+
+func (m members) Address(id population.ActorID) common.Address { return m.e.walletOf(id).Address() }
+
 type owners struct{ e *Engine }
 
 func (o owners) Owner(a common.Address) (population.ActorID, bool) {
@@ -312,26 +318,15 @@ func (e *Engine) Now() sched.Time { return e.clk.Now() }
 func (e *Engine) NextEvent() (sched.Time, bool) { return e.clk.Peek() }
 
 // Confirmed is the K-deep point durable state comes from.
-func (e *Engine) Confirmed() eventlog.ChainPoint { return e.conf }
+func (e *Engine) Confirmed() eventlog.ChainPoint { return e.win.Confirmed() }
 
 // Points are the engine's intersection points, oldest first: the confirmed
 // point and every volatile block above it, so FindIntersect never has to fall
 // back below the confirmed point.
-func (e *Engine) Points() []eventlog.ChainPoint {
-	out := []eventlog.ChainPoint{e.conf}
-	for _, b := range e.window {
-		out = append(out, b.Point)
-	}
-	return out
-}
+func (e *Engine) Points() []eventlog.ChainPoint { return e.win.Points() }
 
 // Tip is the last block the engine applied.
-func (e *Engine) Tip() eventlog.ChainPoint {
-	if n := len(e.window); n > 0 {
-		return e.window[n-1].Point
-	}
-	return e.conf
-}
+func (e *Engine) Tip() eventlog.ChainPoint { return e.win.Tip() }
 
 // Spendable is the lovelace the ledger would offer the actor's next
 // payment: its settled outputs that are neither reserved nor spent in a
@@ -362,7 +357,8 @@ func (e *Engine) Supply() uint64 {
 	for _, u := range e.led.Settled() {
 		sum += u.Lovelace
 	}
-	return sum + e.fees + e.foreign + e.deposits
+	sv := e.win.Saved()
+	return sum + sv.Fees + sv.Foreign + e.deposits
 }
 
 // Reservations is the ledger's blob, for store.Checkpoint.Reservations. The

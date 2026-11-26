@@ -25,12 +25,12 @@ func (e *Engine) settle(at sched.Time, p *pendingRec, tx TxID) error {
 	default:
 		// A refund of a deposit paid before the engine's genesis (a
 		// genesis registration) comes from outside the population.
-		e.foreign -= min(e.foreign, uint64(-d)-e.deposits)
+		e.win.Reclaim(uint64(-d) - e.deposits)
 		e.deposits = 0
 	}
 	if p.Kind == unlockKind {
 		// The lock's script output counted as foreign when it settled.
-		e.foreign -= min(e.foreign, p.Amount)
+		e.win.Reclaim(p.Amount)
 	}
 	id := population.ActorID(p.Actor)
 	a, ok := e.census.Get(id)
@@ -77,7 +77,7 @@ func (e *Engine) move(at sched.Time, a population.Actor, to population.State, ca
 // epochApplied retires every retiring pool actor whose retirement the
 // confirmed view's epoch transition into epoch applied.
 func (e *Engine) epochApplied(at sched.Time, epoch uint64) error {
-	c := e.view.Confirmed()
+	c := e.win.View().Confirmed()
 	for _, id := range e.census.IDs(profile.Pool, population.Retiring) {
 		if c.PoolRegistered(id) {
 			continue

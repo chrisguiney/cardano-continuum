@@ -202,7 +202,7 @@ func answerOutcome(a Answer) submit.Outcome {
 // nodes answered (views).
 func (e *Engine) watch(at sched.Time, from eventlog.ChainPoint, views []oracle.ViewCheck, tips []oracle.Branch) error {
 	before, _ := chain.PointFromLog(from)
-	conf, _ := chain.PointFromLog(e.conf)
+	conf, _ := chain.PointFromLog(e.win.Confirmed())
 	res := oracle.ReservationsOf(e.led)
 	s := oracle.Snapshot{
 		Seq: e.jr.Seq(), Run: e.cfg.Run,
@@ -243,7 +243,7 @@ func (e *Engine) blockBudget(at eventlog.ChainPoint, txs []TxDigest) *oracle.Blo
 // monitorSnapshot fills in the engine's side of each view the runner
 // asked a node for: the settled balances, at the settled point.
 func (e *Engine) monitorSnapshot(at sched.Time, from eventlog.ChainPoint, m MonitorSnapshot) error {
-	conf, _ := chain.PointFromLog(e.conf)
+	conf, _ := chain.PointFromLog(e.win.Confirmed())
 	bal := map[population.ActorID]uint64{}
 	for id, v := range e.Balances() {
 		bal[population.ActorID(id)] = v

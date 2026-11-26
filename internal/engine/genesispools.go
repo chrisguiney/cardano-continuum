@@ -97,10 +97,10 @@ func (e *Engine) stakeGenesis(s *chain.State) error {
 // bookGenesis names the genesis owners in the view's book.
 func (e *Engine) bookGenesis() error {
 	for _, g := range e.gpools {
-		if err := e.book.AddAddress(g.Owner.Address(), ownerActor(g.Index)); err != nil {
+		if err := e.win.Book().AddAddress(g.Owner.Address(), ownerActor(g.Index)); err != nil {
 			return fmt.Errorf("engine: book: %w", err)
 		}
-		e.book.AddStake(common.Blake2b224(g.Owner.StakeKeyHash()), ownerActor(g.Index))
+		e.win.Book().AddStake(common.Blake2b224(g.Owner.StakeKeyHash()), ownerActor(g.Index))
 	}
 	return nil
 }

@@ -46,7 +46,7 @@ func (p podsView) PodRunning(pool population.ActorID) bool { return !p.e.down[po
 // floorState is the guard's input now. The epoch is the clock's, or the
 // block's when a block runs ahead of the last tick.
 func (e *Engine) floorState(at sched.Time) policy.State {
-	return e.view.PolicyState(e.cfg.Slots.EpochAt(max(at, e.clk.Now())), podsView{e}, e.inflight())
+	return e.win.View().PolicyState(e.cfg.Slots.EpochAt(max(at, e.clk.Now())), podsView{e}, e.inflight())
 }
 
 // inflight lists the engine's guarded transactions neither settled nor
@@ -211,7 +211,7 @@ func (e *Engine) move1(ctx context.Context, at sched.Time, mv policy.Intent) err
 	if !ok {
 		return nil
 	}
-	p := &pendingRec{Actor: uint64(a.ID), Kind: string(profile.IntentDelegate), To: uint64(mv.Pool), Register: !e.view.StakeRegistered(a.ID)}
+	p := &pendingRec{Actor: uint64(a.ID), Kind: string(profile.IntentDelegate), To: uint64(mv.Pool), Register: !e.win.View().StakeRegistered(a.ID)}
 	why, err := e.start(ctx, at, p)
 	if err != nil {
 		return err

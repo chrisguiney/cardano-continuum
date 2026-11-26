@@ -164,7 +164,7 @@ func TestPopulationsAct(t *testing.T) {
 	}
 	used := map[string]bool{}
 	for i := range uint64(e.Contracts()) {
-		if len(e.view.UtxosAt(build.Contract(i).Address(cfg.NetworkID))) > 0 {
+		if len(e.win.View().UtxosAt(build.Contract(i).Address(cfg.NetworkID))) > 0 {
 			used[build.Contract(i).Name] = true
 		}
 	}

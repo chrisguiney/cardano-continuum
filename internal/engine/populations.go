@@ -258,17 +258,17 @@ func proposerClocks(total float64, rates map[string]float64) []clock {
 // registered reports whether a population actor's registration is on the
 // chain the engine follows.
 func (e *Engine) registered(id population.ActorID, boot profile.IntentKind) bool {
-	if e.view == nil {
+	if e.win.View() == nil {
 		// Genesis actors spawn before the view exists; none has registered.
 		return false
 	}
 	switch boot {
 	case profile.IntentRegisterPool:
-		return e.view.PoolRegistered(id)
+		return e.win.View().PoolRegistered(id)
 	case profile.IntentRegisterDRep:
-		return e.view.DRepRegistered(id)
+		return e.win.View().DRepRegistered(id)
 	}
-	return e.view.StakeRegistered(id)
+	return e.win.View().StakeRegistered(id)
 }
 
 // bootstrapping reports that the proposer is registered and the chain has
@@ -279,8 +279,8 @@ func (e *Engine) registered(id population.ActorID, boot profile.IntentKind) bool
 // proposal open. Which action type it proposes is drawn from the fitted
 // rates as any of its wakes, from the actor's seeded stream.
 func (e *Engine) bootstrapping(id population.ActorID, st *actor) bool {
-	return st.prof.Name == proposerName && len(e.cfg.Network.Proposals) > 0 && e.view != nil &&
-		e.registered(id, st.boot) && len(e.view.OpenProposals()) == 0 && !e.inFlight(id, string(profile.IntentPropose))
+	return st.prof.Name == proposerName && len(e.cfg.Network.Proposals) > 0 && e.win.View() != nil &&
+		e.registered(id, st.boot) && len(e.win.View().OpenProposals()) == 0 && !e.inFlight(id, string(profile.IntentPropose))
 }
 
 // ready reports that a population actor wakes at its fitted rates:
@@ -449,7 +449,7 @@ func (e *Engine) deploy(at sched.Time) error {
 }
 
 func (e *Engine) bookContract(i uint64) error {
-	if err := e.book.AddAddress(build.Contract(i).Address(e.cfg.NetworkID), scriptActor); err != nil {
+	if err := e.win.Book().AddAddress(build.Contract(i).Address(e.cfg.NetworkID), scriptActor); err != nil {
 		return fmt.Errorf("engine: book contract %d: %w", i, err)
 	}
 	return nil

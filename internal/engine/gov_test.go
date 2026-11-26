@@ -102,7 +102,7 @@ func TestProposerBootstrapsGovernance(t *testing.T) {
 		w := newWorld(t, cfg)
 		p := cleanRun(t, w, 2*3600*1000)
 		kinds, _ := submittedKinds(t, p.log)
-		if open := p.r.Engine().view.OpenProposals(); len(open) == 0 {
+		if open := p.r.Engine().win.View().OpenProposals(); len(open) == 0 {
 			t.Errorf("no open proposal after two hours (submitted %v)", kinds)
 		}
 		return w.logBytes(), kinds

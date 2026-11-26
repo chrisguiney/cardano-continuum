@@ -289,7 +289,7 @@ func TestRecoveryBound(t *testing.T) {
 			death := cfg.Slots.EpochStart(3)
 			e := cleanRun(t, w, death-1).r.Engine()
 			for id := population.ActorID(5); id <= 12; id++ {
-				if pool, ok := e.view.DelegatedTo(id); !ok || pool != 1 {
+				if pool, ok := e.win.View().DelegatedTo(id); !ok || pool != 1 {
 					t.Fatalf("precondition: staker %d on pool %d (%v), want pool 1", id, pool, ok)
 				}
 			}

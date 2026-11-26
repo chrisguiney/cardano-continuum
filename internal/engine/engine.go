@@ -129,20 +129,14 @@ type Engine struct {
 	births []*birth             // by profile name
 	byAddr map[string]population.ActorID
 
-	conf   eventlog.ChainPoint
-	window []blockRec
-	// view folds the same blocks as window and led; book names what it
-	// tracks.
-	view *chain.View
-	book *chain.Book
+	// win folds the same blocks as led.
+	win *window
 
 	led      *plan.Ledger
 	pending  map[uint64]*pendingRec
 	byTx     map[TxID]uint64
 	awaiting []uint64 // ascending intent IDs without a node answer
 	nextID   uint64
-	fees     uint64
-	foreign  uint64
 	// deposits is the lovelace the engine's settled certificates and
 	// proposals hold in the ledger's deposit pot.
 	deposits uint64
@@ -247,7 +241,7 @@ func New(cfg Config) (*Engine, error) {
 			return nil, fmt.Errorf("engine: genesis pool actor %d: %w", g.Actor, err)
 		}
 	}
-	if e.view, err = chain.New(e.viewConfig(), gs); err != nil {
+	if err = e.win.Open(gs, windowSaved{}); err != nil {
 		return nil, fmt.Errorf("engine: view: %w", err)
 	}
 	for _, b := range e.births {
@@ -283,7 +277,8 @@ func newEmpty(cfg Config) (*Engine, error) {
 		cfg: cfg, keys: ks, builder: build.New(cfg.Build), sel: sel, root: cfg.Seed.Derive(censusStream),
 		retry: cfg.retry(), diag: diag,
 		actors: map[population.ActorID]*actor{}, byAddr: map[string]population.ActorID{},
-		pending: map[uint64]*pendingRec{}, byTx: map[TxID]uint64{}, book: chain.NewBook(),
+		pending: map[uint64]*pendingRec{}, byTx: map[TxID]uint64{},
+		win:   newWindow(chain.Config{K: cfg.K, Slots: cfg.Slots, NOpt: cfg.NOpt, GovLifetime: cfg.GovLifetime}),
 		pools: map[population.ActorID][28]byte{},
 		dark:  map[population.ActorID]bool{}, down: map[population.ActorID]bool{}, repairs: map[population.ActorID]bool{},
 		images: map[population.ActorID]string{}, contracts: 1, deployAt: population.Never,
@@ -300,7 +295,7 @@ func newEmpty(cfg Config) (*Engine, error) {
 	for _, f := range funds {
 		e.genesis += f.Lovelace
 	}
-	if err := e.book.AddAddress(build.AlwaysSucceeds.Address(cfg.NetworkID), scriptActor); err != nil {
+	if err := e.win.Book().AddAddress(build.AlwaysSucceeds.Address(cfg.NetworkID), scriptActor); err != nil {
 		return nil, fmt.Errorf("engine: book: %w", err)
 	}
 	if e.rootKeys, err = keys.New(cfg.Seed, cfg.NetworkID); err != nil {
@@ -327,7 +322,7 @@ func newEmpty(cfg Config) (*Engine, error) {
 			return nil, fmt.Errorf("engine: faucet address: %w", err)
 		}
 		e.byAddr[string(addr)] = faucetActor
-		_ = e.book.AddAddress(e.faucet.Address(), faucetActor)
+		_ = e.win.Book().AddAddress(e.faucet.Address(), faucetActor)
 	}
 	return e, nil
 }
@@ -337,7 +332,7 @@ func newEmpty(cfg Config) (*Engine, error) {
 func (e *Engine) Handle(ctx context.Context, in eventlog.Record) ([]eventlog.Record, error) {
 	e.jr.Begin(in.Seq)
 	e.budget = nil
-	from := e.conf
+	from := e.win.Confirmed()
 	var err error
 	switch in.Kind {
 	case eventlog.KindTick:
@@ -762,7 +757,7 @@ func (e *Engine) release(ctx context.Context, at sched.Time, dead []plan.TxID, w
 		w := why
 		if w == "" {
 			w = "conflict"
-			if p.TTL <= e.conf.Slot {
+			if p.TTL <= e.win.Confirmed().Slot {
 				w = "expired"
 			}
 		}
@@ -795,11 +790,7 @@ func sumCoins(cs []Coin) uint64 {
 // A block with K successors is settled: its fees and foreign outputs count,
 // and the ledger reports the payments it settled or killed.
 func (e *Engine) applyBlock(ctx context.Context, at sched.Time, b blockRec) error {
-	lb, err := e.ledgerBlock(e.Tip(), b)
-	if err != nil {
-		return err
-	}
-	vb, err := viewBlock(e.Tip(), b)
+	lb, vb, err := e.win.Blocks(b, members{e})
 	if err != nil {
 		return err
 	}
@@ -808,19 +799,15 @@ func (e *Engine) applyBlock(ctx context.Context, at sched.Time, b blockRec) erro
 		return fmt.Errorf("engine: ledger: %w", err)
 	}
 	// The ledger accepted the block, so it extends the tip the view shares.
-	if _, err := e.view.Apply(vb); err != nil {
+	if err := e.win.Push(b, vb); err != nil {
 		return fmt.Errorf("engine: view: %w", err)
 	}
-	e.window = append(e.window, b)
 	if err := e.inBlock(ctx, at, b); err != nil {
 		return err
 	}
-	was := e.cfg.Slots.EpochOfSlot(e.conf.Slot)
-	for uint64(len(e.window)) > e.cfg.K {
-		e.confirm(e.window[0])
-		e.window = slices.Delete(e.window, 0, 1)
-	}
-	if ep := e.cfg.Slots.EpochOfSlot(e.conf.Slot); ep > was {
+	was := e.cfg.Slots.EpochOfSlot(e.win.Confirmed().Slot)
+	e.win.Confirm(members{e})
+	if ep := e.cfg.Slots.EpochOfSlot(e.win.Confirmed().Slot); ep > was {
 		if err := e.epochApplied(at, ep); err != nil {
 			return err
 		}
@@ -848,74 +835,22 @@ func (e *Engine) applyBlock(ctx context.Context, at sched.Time, b blockRec) erro
 	return e.recover(ctx, at)
 }
 
-func (e *Engine) confirm(b blockRec) {
-	for _, tx := range b.Txs {
-		for _, o := range tx.Outputs {
-			if _, ok := e.byAddr[string(o.Address)]; !ok {
-				e.foreign += o.Lovelace
-			}
-		}
-		e.fees += tx.Fee
-	}
-	e.conf = b.Point
-}
-
-// ledgerBlock is b as the ledger reads it. The digest has no previous hash;
-// the follower delivers blocks in chain order, so it is the engine's tip.
-// Only outputs to the population are passed: the ledger tracks no others.
-func (e *Engine) ledgerBlock(prev eventlog.ChainPoint, b blockRec) (chain.Block, error) {
-	p, ok := chain.PointFromLog(b.Point)
-	if !ok {
-		return chain.Block{}, fmt.Errorf("%w: slot %d, hash of %d bytes", ErrBadPoint, b.Point.Slot, len(b.Point.Hash))
-	}
-	pp, _ := chain.PointFromLog(prev)
-	out := chain.Block{Point: p, Prev: pp.Hash}
-	for _, tx := range b.Txs {
-		t := chain.Tx{Hash: chain.TxID(tx.ID)}
-		for _, r := range tx.Inputs {
-			t.Spends = append(t.Spends, chain.Ref{Tx: chain.TxID(r.Tx), Index: r.Index})
-		}
-		for _, o := range tx.Outputs {
-			owner, ok := e.byAddr[string(o.Address)]
-			if !ok {
-				continue
-			}
-			t.Creates = append(t.Creates, ownedUtxo(e.walletOf(owner).Address(), Ref{Tx: tx.ID, Index: o.Index}, o.Lovelace))
-		}
-		out.Txs = append(out.Txs, t)
-	}
-	return out, nil
-}
-
 // rollback unwinds the volatile window and the ledger's view to p. It checks
 // before it changes anything, so a refused rollback leaves the engine as it
 // was. The ledger keeps every reservation: a rolled-back payment may be
 // included again.
 func (e *Engine) rollback(ctx context.Context, p eventlog.ChainPoint) error {
-	keep := -1
-	if samePoint(p, e.conf) {
-		keep = 0
+	c, err := e.win.Check(p)
+	if err != nil {
+		return err
 	}
-	for i := len(e.window) - 1; i >= 0 && keep < 0; i-- {
-		if samePoint(e.window[i].Point, p) {
-			keep = i + 1
-		}
-	}
-	if keep < 0 {
-		if p.Slot < e.conf.Slot {
-			return fmt.Errorf("%w: slot %d, confirmed slot %d", ErrRollbackBelowConfirmed, p.Slot, e.conf.Slot)
-		}
-		return fmt.Errorf("%w: slot %d", ErrUnknownPoint, p.Slot)
-	}
-	lp, _ := chain.PointFromLog(p)
-	if _, err := e.led.Advance(ctx, chain.Event{Kind: chain.Backward, Point: lp}); err != nil {
+	if _, err := e.led.Advance(ctx, chain.Event{Kind: chain.Backward, Point: c.To()}); err != nil {
 		return fmt.Errorf("engine: ledger: %w", err)
 	}
-	if _, err := e.view.Rollback(lp); err != nil {
+	gone, err := e.win.Rollback(c)
+	if err != nil {
 		return fmt.Errorf("engine: view: %w", err)
 	}
-	gone := slices.Clone(e.window[keep:])
-	e.window = e.window[:keep]
 	return e.leftView(ctx, e.clk.Now(), gone)
 }
 

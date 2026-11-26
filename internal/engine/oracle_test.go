@@ -238,7 +238,7 @@ func (o offByOne) View(_ context.Context, at chain.Point, addrs []common.Address
 	e := o.eng()
 	ans := ViewAnswer{Node: oracle.Node{Impl: "fakechain", Pool: "liar"}, At: at}
 	for _, a := range addrs {
-		for _, u := range e.view.UtxosAt(a) {
+		for _, u := range e.win.View().UtxosAt(a) {
 			ref := Ref{Tx: TxID(u.Id.Id()), Index: u.Id.Index()}
 			ans.Utxos = append(ans.Utxos, ownedUtxo(a, ref, u.Output.Amount().Uint64()-1))
 		}

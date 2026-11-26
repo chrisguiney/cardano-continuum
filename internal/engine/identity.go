@@ -62,7 +62,7 @@ func (e *Engine) holdings() map[population.ActorID]*holding {
 		h.inflight++
 		h.unconfirmed += p.Amount
 	}
-	for id, us := range e.view.Owned() {
+	for id, us := range e.win.View().Owned() {
 		for _, u := range us {
 			addTokens(of(id), u)
 		}
@@ -217,14 +217,14 @@ func (e *Engine) identityOf(a population.Actor, st *actor, hs map[population.Act
 }
 
 func (e *Engine) delegationOf(out *store.Identity, id population.ActorID) {
-	s, ok := e.view.StakeOf(id)
+	s, ok := e.win.View().StakeOf(id)
 	if !ok {
 		return
 	}
 	out.StakeRegistered = s.Registered
 	if s.Delegated {
 		out.DelegatedPool = bech32Of("pool", s.Pool[:])
-		if pa, ok := e.view.PoolActor(s.Pool); ok {
+		if pa, ok := e.win.View().PoolActor(s.Pool); ok {
 			out.DelegatedActor = uint64(pa)
 		}
 	}

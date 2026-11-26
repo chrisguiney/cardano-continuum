@@ -561,7 +561,7 @@ func (v view) Shared() []adversary.Locked {
 		}
 	}
 	var out []adversary.Locked
-	for _, u := range e.view.UtxosAt(build.AlwaysSucceeds.Address(e.cfg.NetworkID)) {
+	for _, u := range e.win.View().UtxosAt(build.AlwaysSucceeds.Address(e.cfg.NetworkID)) {
 		ref := Ref{Tx: TxID(u.Id.Id()), Index: u.Id.Index()}
 		owner, ok := e.lockOwner(u.Output.Datum())
 		if !ok || taken[ref] {

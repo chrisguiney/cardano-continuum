@@ -107,7 +107,7 @@ func (e *Engine) inject(ctx context.Context, at sched.Time, s string) (string, e
 }
 
 func (e *Engine) injectPropose(ctx context.Context, at sched.Time) (string, error) {
-	id, ok := e.richest(func(id population.ActorID) bool { return e.view.StakeRegistered(id) })
+	id, ok := e.richest(func(id population.ActorID) bool { return e.win.View().StakeRegistered(id) })
 	if !ok {
 		return "no actor with a registered stake key", nil
 	}
@@ -116,7 +116,7 @@ func (e *Engine) injectPropose(ctx context.Context, at sched.Time) (string, erro
 
 func (e *Engine) injectSPOProbe(ctx context.Context, at sched.Time) (string, error) {
 	var target agenda.ProposalInfo
-	for _, p := range e.view.OpenProposals() {
+	for _, p := range e.win.View().OpenProposals() {
 		if !p.Pools && p.Type != "" {
 			target = p
 			break
@@ -131,14 +131,14 @@ func (e *Engine) injectSPOProbe(ctx context.Context, at sched.Time) (string, err
 	}
 	id, ok := e.richest(func(id population.ActorID) bool {
 		_, pool := e.poolOf(id)
-		return pool && e.view.PoolRegistered(id)
+		return pool && e.win.View().PoolRegistered(id)
 	})
 	if !ok {
 		return "no registered pool", nil
 	}
 	voter, _ := e.voterOf(id)
 	return e.start(ctx, at, &pendingRec{Actor: uint64(id), Kind: string(profile.IntentVote), Action: &ref,
-		Choice: common.GovVoteYes, Power: e.view.VotingPower(voter), Probe: true})
+		Choice: common.GovVoteYes, Power: e.win.View().VotingPower(voter), Probe: true})
 }
 
 func (e *Engine) injectGoDark(at sched.Time, arg string) string {

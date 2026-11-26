@@ -15,7 +15,7 @@ members internal/build Builder 33
 members internal/chain View 67
 members internal/chain par 23
 members internal/engine Config 44
-members internal/engine Engine 221
+members internal/engine Engine 213
 members internal/engine Runner 37
 members internal/engine pendingRec 32
 members internal/engine snapshot 31
@@ -53,7 +53,7 @@ stray-methods internal/chain Querier 5
 stray-methods internal/chain View 35
 stray-methods internal/devbuild Builder 3
 stray-methods internal/engine Config 7
-stray-methods internal/engine Engine 141
+stray-methods internal/engine Engine 140
 stray-methods internal/engine Runner 2
 stray-methods internal/engine actor 1
 stray-methods internal/engine pendingRec 2

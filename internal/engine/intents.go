@@ -218,7 +218,7 @@ func buildMint(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p 
 }
 
 func buildUnlock(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
-	u, ok := e.view.Utxo(chain.Ref{Tx: chain.TxID(p.Locked.Tx), Index: p.Locked.Index})
+	u, ok := e.win.View().Utxo(chain.Ref{Tx: chain.TxID(p.Locked.Tx), Index: p.Locked.Index})
 	if !ok {
 		return build.Built{}, fmt.Errorf("locked output %x#%d not in the view", p.Locked.Tx[:4], p.Locked.Index)
 	}
@@ -298,11 +298,11 @@ func (e *Engine) prepare(at sched.Time, a population.Actor, in agenda.Intent, r 
 	case profile.IntentRegisterStake:
 		// The view shows only registrations in blocks: a second one sent
 		// beside one in flight fails StakeKeyRegisteredDELEG.
-		if e.view.StakeRegistered(a.ID) || e.registering(a.ID) {
+		if e.win.View().StakeRegistered(a.ID) || e.registering(a.ID) {
 			return nil, "stake key registered or being registered"
 		}
 	case profile.IntentRegisterDRep:
-		if e.view.DRepRegistered(a.ID) || e.inFlight(a.ID, string(profile.IntentRegisterDRep)) {
+		if e.win.View().DRepRegistered(a.ID) || e.inFlight(a.ID, string(profile.IntentRegisterDRep)) {
 			return nil, "DRep registered or being registered"
 		}
 	case profile.IntentDelegate:
@@ -312,9 +312,9 @@ func (e *Engine) prepare(at sched.Time, a population.Actor, in agenda.Intent, r 
 		if e.registering(a.ID) {
 			return nil, "stake key being registered"
 		}
-		p.Register = !e.view.StakeRegistered(a.ID)
+		p.Register = !e.win.View().StakeRegistered(a.ID)
 	case profile.IntentDelegateDRep:
-		if !e.view.DRepRegistered(in.Target) {
+		if !e.win.View().DRepRegistered(in.Target) {
 			return nil, fmt.Sprintf("actor %d is no registered DRep", in.Target)
 		}
 	case profile.IntentVote:
@@ -324,7 +324,7 @@ func (e *Engine) prepare(at sched.Time, a population.Actor, in agenda.Intent, r 
 		}
 		p.Action, p.Choice = &ref, voteChoice(r)
 		voter, _ := e.voterOf(a.ID)
-		p.Power = e.view.VotingPower(voter)
+		p.Power = e.win.View().VotingPower(voter)
 	case profile.IntentMint:
 		p.Amount = mintQuantity
 	case profile.IntentBurn:
@@ -335,13 +335,13 @@ func (e *Engine) prepare(at sched.Time, a population.Actor, in agenda.Intent, r 
 		if _, ok := e.poolOf(a.ID); !ok {
 			return nil, "actor operates no pool"
 		}
-		p.Update = e.view.PoolRegistered(a.ID)
+		p.Update = e.win.View().PoolRegistered(a.ID)
 	case profile.IntentUpdatePool:
-		if !e.view.PoolRegistered(a.ID) {
+		if !e.win.View().PoolRegistered(a.ID) {
 			return nil, "pool not registered"
 		}
 	case profile.IntentRetireDRep:
-		if !e.view.DRepRegistered(a.ID) || e.inFlight(a.ID, string(profile.IntentRetireDRep)) {
+		if !e.win.View().DRepRegistered(a.ID) || e.inFlight(a.ID, string(profile.IntentRetireDRep)) {
 			return nil, "DRep not registered or retiring"
 		}
 	case profile.IntentScriptCall:
@@ -351,7 +351,7 @@ func (e *Engine) prepare(at sched.Time, a population.Actor, in agenda.Intent, r 
 	case profile.IntentWithdraw:
 		// Conway refuses a withdrawal from an account with no vote
 		// delegation (ConwayWdrlNotDelegatedToDRep).
-		if !e.view.VoteDelegated(a.ID) {
+		if !e.win.View().VoteDelegated(a.ID) {
 			return nil, "withdrawal needs a vote delegation"
 		}
 	}
@@ -445,7 +445,7 @@ func (e *Engine) prepareScript(id population.ActorID, p *pendingRec, r *rand.Ran
 	}
 	want := datumKey(actorDatum(id))
 	for c := range e.contracts {
-		for _, u := range e.view.UtxosAt(build.Contract(c).Address(e.cfg.NetworkID)) {
+		for _, u := range e.win.View().UtxosAt(build.Contract(c).Address(e.cfg.NetworkID)) {
 			d := u.Output.Datum()
 			ref := Ref{Tx: TxID(u.Id.Id()), Index: u.Id.Index()}
 			if d == nil || busy[ref] || !bytes.Equal(datumKey(*d), want) {
@@ -462,7 +462,7 @@ func (e *Engine) prepareScript(id population.ActorID, p *pendingRec, r *rand.Ran
 func (e *Engine) tokens(id population.ActorID) uint64 {
 	policy := build.FreeMint.Hash()
 	var sum uint64
-	for _, u := range e.view.UtxosAt(e.walletOf(id).Address()) {
+	for _, u := range e.win.View().UtxosAt(e.walletOf(id).Address()) {
 		if as := u.Output.Assets(); as != nil {
 			if q := as.Asset(common.Blake2b224(policy), tokenName); q != nil {
 				sum += q.Uint64()
