@@ -3,6 +3,8 @@
 //	continuum run --fake --seed N --out DIR [flags]
 //	continuum run --node HOST:PORT --state DIR --genesis FILE [flags]
 //	continuum replay --seed N [flags] DIR/events.log
+//	continuum replay --image impl=ref [--live --network N --node HOST:PORT --genesis FILE] DIR/events.log
+//	continuum bisect --dep D <good>..<bad> --repo DIR --check KIND|COMMAND [--dingo DIR] [--seed N]
 //	continuum export EVENTS.LOG --out DIR
 //	continuum serve --log EVENTS.LOG [--store DB] [--addr 127.0.0.1:8088] [--controls]
 //	continuum image set <impl>=<ref> --network N [--pools N% | --pool ID] [--tier T] [--dry-run]
@@ -55,7 +57,7 @@ func main() {
 	}
 }
 
-var errUsage = errors.New("usage: continuum run|replay|export|image|build|serve|harvest|vectors|profiles [flags]")
+var errUsage = errors.New("usage: continuum run|replay|export|image|build|bisect|serve|harvest|vectors|profiles [flags]")
 
 func run(ctx context.Context, args []string, out io.Writer) error {
 	if len(args) == 0 {
@@ -74,6 +76,8 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 		return cmdProfiles(args[1:], out)
 	case "build":
 		return cmdBuild(ctx, args[1:], out)
+	case "bisect":
+		return cmdBisect(ctx, args[1:], out)
 	case "serve":
 		return cmdServe(ctx, args[1:], out, openKube)
 	case "harvest":
@@ -358,14 +362,25 @@ func (w *writer) printf(format string, a ...any) {
 }
 
 func cmdReplay(ctx context.Context, args []string, out io.Writer) error {
+	return cmdReplayWith(ctx, args, out, realReplayDeps())
+}
+
+func cmdReplayWith(ctx context.Context, args []string, out io.Writer, deps replayDeps) error {
 	fs := flag.NewFlagSet("replay", flag.ContinueOnError)
 	var sf simFlags
 	sf.register(fs)
+	var lf liveFlags
+	lf.register(fs)
+	image := fs.String("image", "", "replay against a node build: <impl>=<ref>; needs --live to re-run a live log")
+	live := fs.Bool("live", false, "the log was recorded by a live run (with --image: re-run it on --network)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
 		return errors.New("replay: want one log path")
+	}
+	if *image != "" {
+		return replayImage(ctx, *image, fs.Arg(0), *live, sf, lf, out, deps)
 	}
 	cfg, err := sf.config()
 	if err != nil {

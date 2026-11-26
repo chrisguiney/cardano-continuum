@@ -1,7 +1,13 @@
+import { reproBadge } from "../lib/findings";
 import { count } from "../lib/format";
 import { usePoll } from "../lib/hooks";
-import type { FindingPage } from "../lib/types";
+import type { Finding, FindingPage } from "../lib/types";
 import { ErrorNote } from "./common";
+
+function badgeOf(f: Finding) {
+  const b = reproBadge(f);
+  return b ? <span class={`tag ${b.tone}`} title={b.title}>{b.text}</span> : "yes";
+}
 
 export function Findings() {
   const { data, error } = usePoll<FindingPage>("/api/findings?limit=100", 10000);
@@ -21,7 +27,7 @@ export function Findings() {
                 <td>{f.summary}</td>
                 <td>{f.verdicts.map((v) => `${v.impl}: ${v.verdict}`).join("; ")}</td>
                 <td>{f.provenance ?? ""}</td>
-                <td>{f.reproducible ? "yes" : <span class="tag warn">non-reproducible</span>}</td>
+                <td>{badgeOf(f)}</td>
                 <td>{f.replay_command ? <code>{f.replay_command}</code> : ""}</td>
               </tr>
             ))}
