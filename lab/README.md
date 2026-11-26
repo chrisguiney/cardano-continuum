@@ -74,6 +74,7 @@ has a comment saying why that value and how sensitive results are to it.
 | `agendas.py` | a cluster's agenda and intent weights from its transaction mix, pure |
 | `actor_stats.py` | DuckDB SQL for pool, DRep, vote, proposal and contract rows |
 | `actor_fit.py` | those rows to the non-wallet populations (head counts, rates, distributions), pure |
+| `export_guide_data.py` | one small JSON per network for the guide pages (`docs/guide-data/`) |
 | `profile_yaml.py` | fitted numbers to profile YAML and target JSON, pure |
 | `cluster.py` | segments, Gaussian mixture, BIC, elbow, names, pure |
 | `compare.py` | KS distance, total variation, pass bounds, pure |
@@ -231,6 +232,18 @@ One machine runs at most 12 pools and 12 DReps (`MAX_POOLS`, `MAX_DREPS` in
 number; the header records the scale. Rates are per member and the
 distributions are unchanged, so a cut population stays faithful. Contracts
 are not run as actors and are not cut.
+
+## Guide data
+
+```sh
+python fit.py /data/chain --out OUT --clusters --network N --units-out OUT/N.units.parquet
+python export_guide_data.py OUT/N.target.json OUT/N.units.parquet --out ../docs/guide-data/N.json
+```
+
+One compact JSON per network (under 300 KB): each cluster's share, agenda,
+mix and fitted parameters, a seeded stratified sample of about 1,500 units
+(log10 tx/day, log10 median payment in ADA, cluster), the non-wallet fits and
+the BIC curve. The same fit gives the same bytes.
 
 ## Current results
 
