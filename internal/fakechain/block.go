@@ -11,6 +11,32 @@ import (
 	"github.com/blinklabs-io/ouroboros-mock/fixtures"
 )
 
+// blockUse is what a block's transactions take of its capacity: body bytes
+// and the execution units their redeemers declare.
+type blockUse struct {
+	bytes uint64
+	units common.ExUnits
+}
+
+// add returns u with tx's size and declared units added.
+func (u blockUse) add(tx *conway.ConwayTransaction) blockUse {
+	u.bytes += uint64(len(tx.Cbor()))
+	if w := tx.Witnesses(); w != nil && w.Redeemers() != nil {
+		for _, r := range w.Redeemers().Iter() {
+			u.units.Memory += r.ExUnits.Memory
+			u.units.Steps += r.ExUnits.Steps
+		}
+	}
+	return u
+}
+
+// fits reports whether u is within a block's body size and execution
+// budget.
+func (u blockUse) fits(pp *conway.ConwayProtocolParameters) bool {
+	return u.bytes <= uint64(pp.MaxBlockBodySize) &&
+		u.units.Memory <= pp.MaxBlockExUnits.Memory && u.units.Steps <= pp.MaxBlockExUnits.Steps
+}
+
 // encode builds the Conway block at c.slot holding txs.
 func (c *Chain) encode(txs []*conway.ConwayTransaction) (Block, error) {
 	var prev common.Blake2b256

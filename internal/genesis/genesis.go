@@ -62,8 +62,11 @@ func Render(s Spec, k *keys.Store) (Bundle, error) {
 		staked[i] = stakedPool{keys: pk, owner: k.Wallet(keys.ActorID(i))}
 	}
 
-	b := Bundle{Alonzo: alonzoTemplate, Faucet: faucet.Address(), SpecHash: specHash(s)}
+	b := Bundle{Faucet: faucet.Address(), SpecHash: specHash(s)}
 	var err error
+	if b.Alonzo, err = renderAlonzo(s); err != nil {
+		return Bundle{}, fmt.Errorf("alonzo genesis: %w", err)
+	}
 	if b.Byron, err = renderByron(s); err != nil {
 		return Bundle{}, fmt.Errorf("byron genesis: %w", err)
 	}

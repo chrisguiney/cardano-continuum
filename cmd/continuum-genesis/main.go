@@ -3,6 +3,14 @@
 // directory. It runs as a Kubernetes Job (deploy/genesis/job.yaml) and is
 // idempotent: rerun against a directory that already holds the same spec,
 // it exits 0 without touching it, so systemStart is kept.
+//
+// -override path=value (repeatable) changes one execution limit or cost
+// model length of the default spec; genesis.OverridePaths lists the paths.
+// An override that makes the genesis inconsistent is refused unless the
+// matching -allow flag says it is deliberate: -allow-inconsistent-exunits
+// for a per-transaction budget above the per-block one (the
+// exunits-block-gap attack's devnet), -allow-short-cost-models for a cost
+// model missing parameters its protocol version defines.
 package main
 
 import (
@@ -12,6 +20,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/chrisguiney/cardano-continuum/internal/genesis"
@@ -54,6 +63,15 @@ func parse(args []string) (options, error) {
 	fs.IntVar(&s.Committee, "committee", s.Committee, "constitutional committee members")
 	fs.StringVar(&s.PoolHost, "pool-host", s.PoolHost, "fmt pattern for pool i's host name")
 	fs.IntVar(&s.PoolPort, "pool-port", s.PoolPort, "pool node-to-node port")
+	fs.Func("override", "path=value change to the spec, repeatable: "+strings.Join(genesis.OverridePaths(), ", "), func(v string) error {
+		ov, err := genesis.ParseOverride(v)
+		if err == nil {
+			ov.Apply(s)
+		}
+		return err
+	})
+	fs.BoolVar(&s.Allow.InconsistentExUnits, "allow-inconsistent-exunits", false, "allow maxTxExUnits above maxBlockExUnits")
+	fs.BoolVar(&s.Allow.ShortCostModels, "allow-short-cost-models", false, "allow cost models shorter than the protocol version defines")
 	if err := fs.Parse(args); err != nil {
 		return o, err
 	}
@@ -64,6 +82,10 @@ func parse(args []string) (options, error) {
 		return o, fmt.Errorf("-magic %d out of range", *magic)
 	}
 	s.Magic = uint32(*magic)
+	// Refuse an inconsistent spec at the flags, before the seed is read.
+	if err := genesis.Check(*s); err != nil {
+		return o, err
+	}
 	return o, nil
 }
 

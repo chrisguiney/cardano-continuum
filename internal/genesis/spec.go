@@ -42,10 +42,20 @@ type Spec struct {
 	PoolHost string
 	// PoolPort is the node-to-node port of every pool.
 	PoolPort int
+	// TxExUnits and BlockExUnits are the Alonzo genesis maxTxExUnits and
+	// maxBlockExUnits.
+	TxExUnits, BlockExUnits ExUnits
+	// CostModelLen truncates each language's cost model to that many
+	// parameters, indexed by Language; zero keeps the full model for the
+	// protocol version.
+	CostModelLen [numLanguages]int
+	// Allow lists the inconsistencies this devnet carries on purpose.
+	Allow Allow
 }
 
 // Default is a Conway PV10 devnet with 500-slot epochs of 1 s slots, k=5,
-// f=0.05, three pools and a three-member committee.
+// f=0.05, three pools, a three-member committee, mainnet's execution limits
+// and full PV10 cost models.
 func Default() Spec {
 	return Spec{
 		Magic:            42,
@@ -61,6 +71,8 @@ func Default() Spec {
 		ProtocolVersion:  [2]uint{10, 0},
 		PoolHost:         "pool-%d",
 		PoolPort:         3001,
+		TxExUnits:        mainnetTxExUnits,
+		BlockExUnits:     mainnetBlockExUnits,
 	}
 }
 
@@ -74,8 +86,17 @@ const conwayMajor = 9
 // express it. It must also exceed 4k/f, the window after which the
 // candidate nonce freezes; at or below it every epoch's nonce is fixed
 // before the epoch starts.
+//
+// The execution limits and cost models must be consistent (checkLimits,
+// checkCostModels) unless s.Allow names the inconsistency.
 func Check(s Spec) error {
 	if err := checkFields(s); err != nil {
+		return err
+	}
+	if err := checkLimits(s); err != nil {
+		return err
+	}
+	if err := checkCostModels(s); err != nil {
 		return err
 	}
 	inv := 1 / s.ActiveSlotsCoeff

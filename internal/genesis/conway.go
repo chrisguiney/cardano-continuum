@@ -1,24 +1,11 @@
 package genesis
 
 import (
-	_ "embed"
 	"encoding/hex"
 	"encoding/json"
 
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 )
-
-// alonzoTemplate is cardano-cli 11.2.3.1's create-testnet-data Alonzo
-// genesis, verbatim: nothing in it depends on the seed or the Spec. Its
-// extraConfig carries the PlutusV1 and PlutusV2 cost models.
-//
-//go:embed template/alonzo-genesis.json
-var alonzoTemplate []byte
-
-// plutusV3CostModel is the 251-entry list from the same cardano-cli run.
-//
-//go:embed template/plutus-v3-cost-model.json
-var plutusV3CostModel []byte
 
 // committeeExpiry is the epoch at which genesis committee members expire:
 // far enough that a devnet never reaches it.
@@ -37,7 +24,7 @@ type conwayDoc struct {
 	GovActionDeposit    uint64          `json:"govActionDeposit"`
 	GovActionLifetime   int             `json:"govActionLifetime"`
 	MinFeeRefScriptCost json.Number     `json:"minFeeRefScriptCostPerByte"`
-	PlutusV3CostModel   json.RawMessage `json:"plutusV3CostModel"`
+	PlutusV3CostModel   []int64         `json:"plutusV3CostModel"`
 	PoolThresholds      poolThresholds  `json:"poolVotingThresholds"`
 }
 
@@ -82,8 +69,16 @@ type poolThresholds struct {
 // renderConway gives the committee members' cold credentials from the
 // keystore and a 2/3 threshold. Hot keys are authorised later by
 // transaction, as on any network. The minimum committee size is the
-// member count. There are no initial DReps or delegations.
+// member count. There are no initial DReps or delegations. The PlutusV3
+// cost model is the full one's first conwayV3Len parameters, the count the
+// ledger requires here; renderAlonzo's extraConfig carries the rest.
 func renderConway(s Spec, k *keys.Store) ([]byte, error) {
+	ms, err := CostModels(s)
+	if err != nil {
+		return nil, err
+	}
+	v3 := ms[uint(PlutusV3)]
+	v3 = v3[:min(len(v3), conwayV3Len)]
 	members := make(map[string]int, s.Committee)
 	for i := range s.Committee {
 		cold, _ := k.Committee(uint32(i))
@@ -97,7 +92,7 @@ func renderConway(s Spec, k *keys.Store) ([]byte, error) {
 		GovActionDeposit:    1_000_000_000,
 		GovActionLifetime:   6,
 		MinFeeRefScriptCost: "15",
-		PlutusV3CostModel:   plutusV3CostModel,
+		PlutusV3CostModel:   v3,
 		DRepThresholds: drepThresholds{
 			CommitteeNoConfidence: "0.6", CommitteeNormal: "0.67", HardForkInitiation: "0.6",
 			MotionNoConfidence: "0.67", PPEconomicGroup: "0.67", PPGovGroup: "0.75",

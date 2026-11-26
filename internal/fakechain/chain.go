@@ -20,10 +20,13 @@
 // the ledger plus every earlier mempool transaction at the slot after the
 // tip; after each block and rollback the mempool is revalidated in order and
 // transactions that no longer apply are evicted. Transactions in rolled-back
-// blocks vanish unless the rollback asks for them to be re-added.
+// blocks vanish unless the rollback asks for them to be re-added. A block
+// takes the longest mempool prefix within its body size and execution
+// budget, as the node's forging does.
 //
 // Certificates, withdrawals, minting, votes, proposals, collateral and
-// PlutusV3 scripts are checked by the same gouroboros rules against the
+// Plutus scripts of every language (with the devnet genesis cost models,
+// ParamsFor) are checked by the same gouroboros rules against the
 // fake's delegation and governance state (see certState), which accepted
 // transactions update. Epoch-boundary effects are not modelled: no rewards,
 // pool retirement, ratification or enactment. Treasury donations, the
@@ -35,7 +38,6 @@ package fakechain
 import (
 	"context"
 	"fmt"
-	"maps"
 	"slices"
 	"sync"
 	"time"
@@ -96,19 +98,37 @@ type GenesisStake struct {
 	Delegators []common.Blake2b224
 }
 
-// DefaultParams returns ouroboros-mock's mainnet-like Conway parameters at
-// protocol version 10 (past the Conway bootstrap phase), with the devnet
-// genesis PlutusV3 cost model in place of the mock's placeholder one.
+// DefaultParams returns ParamsFor the default devnet genesis.
 func DefaultParams() conway.ConwayProtocolParameters {
-	pp := mockledger.NewMockConwayProtocolParams()
-	pp.ProtocolVersion.Major, pp.ProtocolVersion.Minor = 10, 0
-	pp.CostModels = maps.Clone(pp.CostModels)
-	pp.CostModels[plutusV3] = genesis.PlutusV3CostModel()
+	pp, err := ParamsFor(genesis.Default())
+	if err != nil {
+		// Unreachable: the default spec ships cost models for its version.
+		panic("fakechain: default params: " + err.Error())
+	}
 	return pp
 }
 
-// plutusV3 is the PlutusV3 key in ConwayProtocolParameters.CostModels.
-const plutusV3 = 2
+// ParamsFor returns ouroboros-mock's mainnet-like Conway parameters with
+// the protocol version, execution limits and cost models of the devnet
+// genesis s, so a fake run and a devnet judge scripts alike.
+func ParamsFor(s genesis.Spec) (conway.ConwayProtocolParameters, error) {
+	pp := mockledger.NewMockConwayProtocolParams()
+	cms, err := genesis.CostModels(s)
+	if err != nil {
+		return pp, fmt.Errorf("fakechain: params: %w", err)
+	}
+	pp.ProtocolVersion.Major, pp.ProtocolVersion.Minor = s.ProtocolVersion[0], s.ProtocolVersion[1]
+	pp.CostModels = cms
+	pp.MaxTxExUnits = exUnits(s.TxExUnits)
+	pp.MaxBlockExUnits = exUnits(s.BlockExUnits)
+	return pp, nil
+}
+
+// exUnits converts a genesis budget; genesis.ParseOverride bounds each
+// value below 2^62, so it fits an int64.
+func exUnits(u genesis.ExUnits) common.ExUnits {
+	return common.ExUnits{Memory: int64(u.Memory), Steps: int64(u.Steps)}
+}
 
 // Block is one block on the fake chain.
 type Block struct {
@@ -175,6 +195,7 @@ type Chain struct {
 	immutable int
 	pool      mempool
 	include   []TxID
+	overfull  bool
 	evicted   []Eviction
 	view      func(Ref) (common.Utxo, bool)
 }
@@ -385,27 +406,33 @@ func (c *Chain) produce() error {
 // assemble chooses the block's transactions: the Include list if one is
 // pending, otherwise the mempool in order. Each is revalidated at the block
 // slot against the block so far; failures are evicted. Assembly stops at the
-// first transaction that does not fit, as the node takes a mempool prefix.
+// first transaction that does not fit the body size or the execution
+// budget, as the node takes the longest mempool prefix within the block
+// capacity (ouroboros-consensus Mempool/Impl/Common.hs, splitAfterTxSize
+// over blockCapacityTxMeasure, at 136122cc). So a transaction within the
+// per-transaction budget but over the per-block one is never forged and
+// holds back every later one until it leaves the mempool.
 func (c *Chain) assemble() []*conway.ConwayTransaction {
 	cands := c.pool.txs
+	overfull := false
 	if c.include != nil {
-		cands = c.pool.pick(c.include)
-		c.include = nil
+		cands, overfull = c.pool.pick(c.include), c.overfull
+		c.include, c.overfull = nil, false
 	}
 	view := newOverlay(c.utxo, c.certs)
 	r := c.effects()
 	var chosen []*conway.ConwayTransaction
-	var used uint64
+	var used blockUse
 	for _, tx := range cands {
 		if fs := c.check(tx, c.slot, view); len(fs) > 0 {
 			c.evict(tx, ReasonInvalid, fs)
 			continue
 		}
-		size := uint64(len(tx.Cbor()))
-		if used+size > uint64(c.pp.MaxBlockBodySize) {
+		next := used.add(tx)
+		if !overfull && !next.fits(c.pp) {
 			break
 		}
-		used += size
+		used = next
 		view.apply(tx, c.slot, r)
 		chosen = append(chosen, tx)
 	}

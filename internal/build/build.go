@@ -66,8 +66,11 @@ type Params struct {
 
 	// Prices are the execution unit prices; nil prices make script
 	// transactions fail to build.
-	Prices              common.ExUnitPrice
-	MaxTxExUnits        common.ExUnits
+	Prices       common.ExUnitPrice
+	MaxTxExUnits common.ExUnits
+	// MaxBlockExUnits is the per-block budget, which a transaction's
+	// declared units must also fit to be forged.
+	MaxBlockExUnits     common.ExUnits
 	CollateralPercent   uint
 	MaxCollateralInputs uint
 	ProtocolMajor       uint
@@ -88,7 +91,7 @@ func ParamsFromConway(pp *conway.ConwayProtocolParameters, networkID uint8) Para
 		KeyDeposit: uint64(pp.KeyDeposit), PoolDeposit: uint64(pp.PoolDeposit),
 		DRepDeposit: pp.DRepDeposit, GovActionDeposit: pp.GovActionDeposit,
 		MinPoolCost: pp.MinPoolCost, MaxRetireEpochs: uint64(pp.MaxEpoch),
-		Prices: pp.ExecutionCosts, MaxTxExUnits: pp.MaxTxExUnits,
+		Prices: pp.ExecutionCosts, MaxTxExUnits: pp.MaxTxExUnits, MaxBlockExUnits: pp.MaxBlockExUnits,
 		CollateralPercent: pp.CollateralPercentage, MaxCollateralInputs: pp.MaxCollateralInputs,
 		ProtocolMajor: pp.ProtocolVersion.Major, PlutusV3: pp.CostModels[2],
 	}

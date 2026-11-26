@@ -47,3 +47,26 @@ func TestRunIdempotent(t *testing.T) {
 		t.Fatal("run over a different spec succeeded")
 	}
 }
+
+func TestOverrideNeedsAllowFlag(t *testing.T) {
+	gap := "-override=maxTxExUnits.memory=140000000"
+	if _, err := parse([]string{"-out", "x", gap}); err == nil || !strings.Contains(err.Error(), "maxBlockExUnits") {
+		t.Fatalf("parse without -allow-inconsistent-exunits = %v, want a refusal", err)
+	}
+	o, err := parse([]string{"-out", "x", gap, "-override", "maxBlockExUnits.memory=62000000", "-allow-inconsistent-exunits"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o.spec.TxExUnits.Memory != 140_000_000 || o.spec.BlockExUnits.Memory != 62_000_000 || !o.spec.Allow.InconsistentExUnits {
+		t.Fatalf("spec = %+v", o.spec)
+	}
+	if _, err := parse([]string{"-out", "x", "-override", "costModels.PlutusV3.length=251"}); err == nil {
+		t.Fatal("a short cost model parsed without -allow-short-cost-models")
+	}
+	if _, err := parse([]string{"-out", "x", "-override", "costModels.PlutusV3.length=251", "-allow-short-cost-models"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := parse([]string{"-out", "x", "-override", "systemStart=0"}); err == nil {
+		t.Fatal("an unknown override path parsed")
+	}
+}

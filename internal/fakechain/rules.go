@@ -343,12 +343,9 @@ func resolution(err error) bool {
 
 // unsupported names the first feature of tx the fake does not model, or "".
 //
-// PlutusV1 and V2 are refused because the fake's V1 and V2 cost models are
-// ouroboros-mock placeholders, so their budgets would be meaningless.
 // Phase-2-invalid transactions are refused because collateral collection is
 // not modelled.
 func unsupported(tx *conway.ConwayTransaction) string {
-	w := tx.Witnesses()
 	checks := []struct {
 		name string
 		used bool
@@ -356,7 +353,6 @@ func unsupported(tx *conway.ConwayTransaction) string {
 		{"phase-2-invalid flag", !tx.IsValid()},
 		{"treasury donation", tx.Donation() != nil && tx.Donation().Sign() > 0},
 		{"current treasury value", tx.CurrentTreasuryValuePresent()},
-		{"plutus v1/v2 scripts", w != nil && len(w.PlutusV1Scripts())+len(w.PlutusV2Scripts()) > 0},
 	}
 	for _, c := range checks {
 		if c.used {
