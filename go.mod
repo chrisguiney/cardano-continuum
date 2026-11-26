@@ -4,6 +4,7 @@ go 1.27.4
 
 require (
 	github.com/Salvionied/apollo/v2 v2.2.1
+	github.com/apache/arrow-go/v18 v18.8.0
 	github.com/blinklabs-io/bursa v0.29.0
 	github.com/blinklabs-io/gouroboros v0.220.1
 	github.com/blinklabs-io/ouroboros-mock v0.21.4
@@ -24,6 +25,8 @@ require (
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
+	github.com/andybalholm/brotli v1.2.3 // indirect
+	github.com/apache/thrift v0.24.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.25.0 // indirect
 	github.com/blinklabs-io/go-bip39 v0.2.1 // indirect
@@ -56,11 +59,14 @@ require (
 	github.com/go-openapi/swag/stringutils v0.27.1 // indirect
 	github.com/go-openapi/swag/typeutils v0.27.1 // indirect
 	github.com/go-openapi/swag/yamlutils v0.27.1 // indirect
+	github.com/goccy/go-json v0.10.6 // indirect
+	github.com/google/flatbuffers v25.12.19+incompatible // indirect
 	github.com/google/gnostic-models v0.7.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jinzhu/copier v0.4.0 // indirect
 	github.com/json-iterator/go v1.1.13-0.20220915233716-71ac16282d12 // indirect
 	github.com/klauspost/compress v1.20.1 // indirect
+	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.3-0.20250322232337-35a7c28c31ee // indirect
@@ -68,6 +74,7 @@ require (
 	github.com/ncruces/go-strftime v1.1.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
+	github.com/pierrec/lz4/v4 v4.1.29 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_golang v1.25.0 // indirect
 	github.com/prometheus/client_model v0.6.3 // indirect
@@ -79,9 +86,11 @@ require (
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/utxorpc/go-codegen v0.19.2 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
+	github.com/zeebo/xxh3 v1.1.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.6 // indirect
 	golang.org/x/crypto v0.59.0 // indirect
+	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
 	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/oauth2 v0.37.0 // indirect
 	golang.org/x/sync v0.25.0 // indirect
@@ -90,6 +99,8 @@ require (
 	golang.org/x/text v0.44.0 // indirect
 	golang.org/x/time v0.16.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.4.0 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20261026165753-2ffab32bce7e // indirect
+	google.golang.org/grpc v1.85.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect

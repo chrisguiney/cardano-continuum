@@ -2,6 +2,7 @@
 //
 //	continuum run --fake --seed N --out DIR [flags]
 //	continuum replay --seed N [flags] DIR/events.log
+//	continuum export EVENTS.LOG --out DIR
 //	continuum image set <impl>=<ref> --network N [--pools N% | --pool ID] [--tier T] [--dry-run]
 //
 // replay takes the same population and chain flags as run; the log header's
@@ -43,7 +44,7 @@ func main() {
 	}
 }
 
-var errUsage = errors.New("usage: continuum run|replay|image [flags]")
+var errUsage = errors.New("usage: continuum run|replay|export|image [flags]")
 
 func run(ctx context.Context, args []string, out io.Writer) error {
 	if len(args) == 0 {
@@ -54,6 +55,8 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 		return cmdRun(ctx, args[1:], out)
 	case "replay":
 		return cmdReplay(ctx, args[1:], out)
+	case "export":
+		return cmdExport(ctx, args[1:], out)
 	case "image":
 		return cmdImage(ctx, args[1:], out, openKube)
 	}
