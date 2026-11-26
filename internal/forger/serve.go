@@ -153,7 +153,7 @@ func (n *Node) point(c Cursor) pcommon.Point {
 // offered block is what the peer believes the forger selected.
 func (n *Node) viewTip(s *session) chainsync.Tip {
 	t := n.chain.Tip()
-	if suffix := n.chain.suffix(s.peer, s.cursor); len(suffix) > 0 {
+	if suffix := n.chain.v.suffix(s.peer, s.cursor); len(suffix) > 0 {
 		t = suffix[len(suffix)-1].Tip()
 	}
 	if t.Origin {

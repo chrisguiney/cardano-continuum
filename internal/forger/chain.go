@@ -17,13 +17,6 @@ type entry struct {
 	forged  bool
 }
 
-// offer is a forged block shown only to chosen peers.
-type offer struct {
-	hash [32]byte
-	// to is empty for every peer.
-	to []PeerID
-}
-
 // Chain is what the forger knows and what each peer is shown. The followed
 // chain is the authority: it is the upstream node's selection. On top of it
 // sit the forger's own honest blocks the upstream has not adopted yet, and
@@ -44,17 +37,14 @@ type Chain struct {
 	followed []entry
 	at       map[[32]byte]int
 	own      []Block
-	offers   []offer
-	served   map[PeerID]map[[32]byte]bool
+	v        *views
 }
 
 // NewChain is an empty chain for the pool with cold key issuer.
 func NewChain(p Params, issuer [32]byte) *Chain {
-	return &Chain{
-		p: p, pool: issuer,
-		blocks: map[[32]byte]Block{}, at: map[[32]byte]int{},
-		served: map[PeerID]map[[32]byte]bool{},
-	}
+	c := &Chain{p: p, pool: issuer, blocks: map[[32]byte]Block{}, at: map[[32]byte]int{}}
+	c.v = &views{c: c, served: map[PeerID]map[[32]byte]bool{}}
+	return c
 }
 
 // Extend adds the upstream's next block. An own block the upstream adopted
@@ -80,7 +70,7 @@ func (c *Chain) Extend(b Block) error {
 	} else {
 		c.own = nil
 	}
-	c.offers = nil
+	c.v.offers = nil
 	check.PostFn(func() bool { return c.last().Hash == b.Hash && c.at[b.Hash] == len(c.followed)-1 },
 		"forger.Chain.Extend: the block is the followed tip")
 	return nil
@@ -101,7 +91,7 @@ func (c *Chain) Rollback(origin bool, hash [32]byte) bool {
 		delete(c.at, e.Hash)
 	}
 	c.followed = c.followed[:keep]
-	c.own, c.offers = nil, nil
+	c.own, c.v.offers = nil, nil
 	return true
 }
 
@@ -159,7 +149,7 @@ func (c *Chain) Add(b Block, f Forge) {
 		c.own = append(c.own, b)
 		return
 	}
-	c.offers = append(c.offers, offer{hash: b.Hash, to: slices.Clone(f.SendTo)})
+	c.v.offers = append(c.v.offers, offer{hash: b.Hash, to: slices.Clone(f.SendTo)})
 }
 
 // Cursor is the last point a peer was sent.
@@ -188,100 +178,14 @@ type Step struct {
 	To    Cursor
 }
 
-// suffix is what follows the followed chain in peer's view. An offer
-// applies while its parent is still in the view and the peer has not been
-// served it, or is standing on it.
-func (c *Chain) suffix(peer PeerID, cur Cursor) []Block {
-	for i := len(c.offers) - 1; i >= 0; i-- {
-		o := c.offers[i]
-		if len(o.to) > 0 && !slices.Contains(o.to, peer) {
-			continue
-		}
-		if c.served[peer][o.hash] && (cur.Origin || cur.Hash != o.hash) {
-			continue
-		}
-		b := c.blocks[o.hash]
-		if b.Prev == c.last().Hash {
-			return []Block{b}
-		}
-		if i := slices.IndexFunc(c.own, func(x Block) bool { return x.Hash == b.Prev }); i >= 0 {
-			return append(slices.Clone(c.own[:i+1]), b)
-		}
-	}
-	return c.own
-}
-
-// position is where hash sits in the view made of the followed chain and
-// suffix, counting from 0, or -1.
-func (c *Chain) position(suffix []Block, hash [32]byte) int {
-	if i, ok := c.at[hash]; ok {
-		return i
-	}
-	if i := slices.IndexFunc(suffix, func(b Block) bool { return b.Hash == hash }); i >= 0 {
-		return len(c.followed) + i
-	}
-	return -1
-}
-
-func (c *Chain) viewAt(suffix []Block, i int) Block {
-	if i < len(c.followed) {
-		return c.followed[i].Block
-	}
-	return suffix[i-len(c.followed)]
-}
-
 // Next is the reply to peer's request with its cursor at cur. Sending an
 // offered block marks it served.
-func (c *Chain) Next(peer PeerID, cur Cursor) Step {
-	suffix := c.suffix(peer, cur)
-	pos := -1
-	if !cur.Origin {
-		if pos = c.position(suffix, cur.Hash); pos < 0 {
-			return Step{Move: Backward, To: c.ancestor(suffix, cur.Hash)}
-		}
-	}
-	if pos+1 >= len(c.followed)+len(suffix) {
-		return Step{Move: Wait}
-	}
-	b := c.viewAt(suffix, pos+1)
-	check.Post(cur.Origin || b.Hash != cur.Hash, "forger.Chain.Next: a forward step moves the cursor")
-	if _, followed := c.at[b.Hash]; !followed && !c.isOwn(b.Hash) {
-		if c.served[peer] == nil {
-			c.served[peer] = map[[32]byte]bool{}
-		}
-		c.served[peer][b.Hash] = true
-	}
-	return Step{Move: Forward, Block: b}
-}
-
-func (c *Chain) isOwn(hash [32]byte) bool {
-	return slices.ContainsFunc(c.own, func(b Block) bool { return b.Hash == hash })
-}
-
-// ancestor is the newest ancestor of hash in the view, or the origin.
-func (c *Chain) ancestor(suffix []Block, hash [32]byte) Cursor {
-	for {
-		b, ok := c.blocks[hash]
-		if !ok {
-			return Cursor{Origin: true}
-		}
-		if c.position(suffix, b.Prev) >= 0 {
-			return Cursor{Hash: b.Prev}
-		}
-		hash = b.Prev
-	}
-}
+func (c *Chain) Next(peer PeerID, cur Cursor) Step { return c.v.next(peer, cur) }
 
 // Intersect is the first of points in peer's view, for a peer whose cursor
 // is not yet set.
 func (c *Chain) Intersect(peer PeerID, points []Cursor) (Cursor, bool) {
-	suffix := c.suffix(peer, Cursor{Origin: true})
-	for _, pt := range points {
-		if pt.Origin || c.position(suffix, pt.Hash) >= 0 {
-			return pt, true
-		}
-	}
-	return Cursor{}, false
+	return c.v.intersect(peer, points)
 }
 
 // maxRange bounds one block-fetch reply.

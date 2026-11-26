@@ -22,7 +22,6 @@ members internal/engine snapshot 31
 members internal/engine view 22
 members internal/explorer TxView 27
 members internal/fakechain ledgerView 25
-members internal/forger Chain 25
 members internal/forger Node 34
 members internal/httpapi Explorer 26
 members internal/httpapi LogSource 21
