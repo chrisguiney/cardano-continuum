@@ -194,12 +194,18 @@ is not a payment.
 | `agenda` | the agenda that reproduces most of the cluster's tx mix (`agendas.choose_agenda`): hodl, dapp (script calls and mints), yield (delegation) or civic (vote delegation) |
 | `rates.base.<intent>` | the 10th percentile of per-unit tx counts, as a rate over the active share of the window, divided by the chance a wake-up on that agenda is a transaction (`agendas.TX_SCORE`); keyed by the agenda's main intent, since the engine uses only the sum |
 | `rates.activity_tail` | Pareto index of per-unit tx counts above that percentile, at least 1.05 |
+| `rates.hawkes` | burstiness (`population_fit.fit_hawkes`): alpha/beta is the share of gaps of at most 300 s (same-slot gaps included), beta = ln 2 / their median (at least one slot); none below a 5% share, capped at 0.9. The engine makes an excited wake-up a follow-up that acts, so each transaction begets alpha/beta more at the same mean rate |
 | `weights` | tx type mix as intents (plain to send, script to script_call and mint, stake to delegate, gov to delegate_drep), only those the agenda can choose, renormalised; the share left out is `unreachable_share` in the target |
 | `hazards.dormancy` lognormal | gaps over one day (seconds) |
 | `hazards.dormancy_onset` | the rate that leaves a unit active for its measured share of days, given the dormancy mean |
 
-The engine's payments are floored at 2 ADA (`minPayment`), so chain outputs
-below that are out of reach of the amount fit.
+The engine floors a payment at its output's min-UTxO (`build.MinPayment`,
+about 1 ADA to a base address), as the ledger does.
+
+Profiles fitted before `rates.hawkes` existed get it from their target's
+overall gap quantiles with `python add_hawkes.py PROFILE.yaml TARGET.json`,
+which gives every wallet profile the network's fit and records it in the
+header; a refit gives each cluster its own.
 
 ## Agendas
 
@@ -232,6 +238,20 @@ One machine runs at most 12 pools and 12 DReps (`MAX_POOLS`, `MAX_DREPS` in
 number; the header records the scale. Rates are per member and the
 distributions are unchanged, so a cut population stays faithful. Contracts
 are not run as actors and are not cut.
+
+The engine runs them (`engine.Populate`): each pool and DRep population is
+`count` actors on the operator and civic agendas, with one Poisson clock per
+fitted rate (pool updates and retirements, DRep votes and retirements;
+registrations are births), a pledge, margin and cost drawn per registration,
+and a vote rate over `voting_share` for the DReps that vote at all. A fake
+run makes the pools genesis pools, as a devnet's are. A proposer actor
+(`network`) submits each action type at its rate. Contracts are deployed at
+`new_rate` per genesis wallet per day and each lock picks its contract in
+proportion to a Pareto usage weight. `grade.py` grades the target's `actors`
+block (head counts; event counts against the 99% Poisson or binomial range
+the fitted rate predicts; the busiest 1%'s share), and grades the overall
+statistics on the wallets alone: the population actors' transactions are
+already in the clusters' fitted mixes.
 
 ## Guide data
 
@@ -269,28 +289,36 @@ rest run hodl. Non-wallet populations at the window's end:
 | preprod | 578 (12) | 296 (12) | 23,713 | 0.38 |
 | mainnet | 2,881 (12) | 1,052 (12) | 4,300 | 0.10 |
 
-Grade: seed-7 fake run (`--profiles mainnet`, 100 wallets, 2 epochs of
-3,888,000 slots, 90 simulated days), overall:
+Grade: seed-7 fake runs (100 wallets, 2 epochs of 3,888,000 slots, 90
+simulated days), overall, KS D / TV / fraction difference, before the
+engine ran the populations, Hawkes follow-ups, the min-UTxO floor and
+care-driven payees, and after:
 
-| statistic | verdict | detail |
-|---|---|---|
-| outputs_per_tx, inputs_per_tx, change_to_sender | skipped | no devnet chain tables |
-| log10_output_value | FAIL | D=0.556, median 7.51 vs 6.30 |
-| activity_per_day | FAIL | D=0.571, median 0.034 vs 0.011 per unit per day |
-| log10_gap_seconds | FAIL | D=0.667, median 4.36 vs 1.46 |
-| tx_type_mix | PASS | TV=0.036; run 79% plain, 18% script, 3% stake |
-| address_reuse | FAIL | 0.776 vs 0.946 |
+| statistic | preview | preprod | mainnet |
+|---|---|---|---|
+| log10_output_value | 0.334 → 0.313 FAIL | 0.326 → 0.169 FAIL | 0.556 → 0.495 FAIL |
+| activity_per_day | 0.348 → 0.348 FAIL | 0.419 → 0.327 FAIL | 0.571 → 0.571 FAIL |
+| log10_gap_seconds | 0.756 → 0.270 FAIL | 0.445 → 0.111 FAIL | 0.667 → 0.410 FAIL |
+| tx_type_mix | 0.431 → 0.354 FAIL | 0.455 → 0.032 PASS | 0.036 → 0.037 PASS |
+| address_reuse | 0.092 → 0.100 PASS | 0.079 → 0.015 PASS | 0.169 → 0.151 FAIL |
+| outputs_per_tx, inputs_per_tx, change_to_sender | skipped | skipped | skipped (no devnet chain tables) |
 
-The run's intents: 301 sends, 72 script calls, 4 mints, 11 stake
-registrations, 23 withdrawals; honest mistakes are on, so some are
-rejected on purpose. What is left:
+What is left:
 
-- Activity: the run's median unit is three times as busy as the chain's,
-  and its gaps are longer: arrivals inside an active spell are exponential,
-  the chain's are bursty.
-- Payment value: the engine floors payments at 2 ADA; the chain has many
-  smaller outputs.
-- Stakers register their stake key but never delegate, and voters never
-  delegate a vote: a fake run has no pools or DReps for them to choose
-  (`populations` are fitted but not yet run by the engine).
+- Activity: the run's median actor is two to three times as busy as the
+  chain's median unit, which sends once in the window; the base rate is
+  fitted from the 10th percentile of per-unit counts.
+- Gaps: a follow-up has to wait K blocks for its change, since the planner
+  spends only settled outputs, so the chain's same-slot bursts (43% of
+  mainnet gaps) are out of reach of a one-coin wallet.
+- Payment value overall: clusters weigh in by their transaction volume,
+  which follows activity; most clusters are within D 0.2 on their own.
+- Preview's script share (14% against 50%): its script traffic comes from
+  few units the run's 100 wallets do not reproduce; not yet traced.
+- Address reuse overall: the chain counts change outputs, nearly always to
+  a known address; a run's payees alone cannot, and the clusters pass.
+- Actors block: DRep votes need open proposals, and a run starts with none
+  where mainnet always has many; born pools and DReps start unfunded on a
+  fake chain, so retirements outrun registrations; the busiest 1% of one or
+  two contracts is all of them.
 - Clusters with a handful of actors have too few samples for KS to mean much.
