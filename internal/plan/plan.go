@@ -40,7 +40,41 @@
 //
 // The pure part (state) never does I/O; Ledger applies each operation to a
 // copy, commits its encoding and only then adopts it, so a failed commit
-// leaves the ledger as it was.
+// leaves the ledger as it was. state holds the rules and three parts hold
+// the data:
+//
+//	```mermaid
+//	flowchart LR
+//	  led[Ledger] --> st[state: rules]
+//	  st --> view[view: settled point, blocks above it]
+//	  st --> out[outputs: owned outputs at the settled point]
+//	  st --> att[attempts: unfinished attempts, reservations]
+//	```
+//
+// The model's planner actions map onto the code as follows; Deliver,
+// Extend, IncludeTx, AdvSpend, Rollback and MempoolDrop are the submitter
+// and the node.
+//
+//   - Offer: Ledger.Available, state.available.
+//   - Build: Ledger.Reserve. state.reserve checks rule 3 (Coherent,
+//     Excludes), attempts.add records the attempt and holds its inputs.
+//   - Persist: Ledger.commit, inside Reserve and before it returns.
+//   - Process: Ledger.Advance. A roll-forward is state.forward:
+//     view.extend, then state.settle for each block K deep and state.reap,
+//     the settled and dead branches of Reap. A roll-backward is
+//     state.rollback, which is view.rollback alone.
+//   - SubmitFails: Ledger.Refused, state.refused.
+//   - ObserveDrop: Ledger.DropNotice, which changes no state.
+//   - Restart: Open (decode); chain-sync resumes at ResumePoint.
+//   - Released: attempts.finish, called by settle, reap and refused.
+//
+// Each store invariant has one enforcer. ReservedWhileUnfinished and the
+// release half of NoLeak: attempts, whose add and finish are the only
+// writers of reservations. InputsTracked and the doomed half of NoLeak:
+// state.doomed, applied by state.reap after every step that settles a
+// block or writes off an attempt. Exclusivity, behind NoSelfConflict and
+// IntentAtMostOnce: state.reserve. The settled point as a high-water mark
+// at most K below the tip: view. state.consistent checks them all.
 package plan
 
 import (
