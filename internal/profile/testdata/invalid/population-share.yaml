@@ -1,0 +1,12 @@
+version: 1
+profiles:
+  - name: w
+    kind: wallet
+    agenda: hodl
+    traits: {competence: "beta(1, 1)", patience: "const(1)", learning_rate: "const(0)", care: "beta(1, 1)"}
+populations:
+  - name: q
+    kind: pool
+    count: 1
+    chain_count: 10
+    pool: {register_rate: 0, retire_rate: 0, update_rate: 0, pledge: {dist: "const(1)", point: 0, point_share: 1.5}, margin: {dist: "beta(1, 1)"}, cost: {dist: "const(1)"}}

@@ -1,0 +1,10 @@
+version: 1
+profiles:
+  - name: w
+    kind: wallet
+    agenda: hodl
+    traits: {competence: "beta(1, 1)", patience: "const(1)", learning_rate: "const(0)", care: "beta(1, 1)"}
+populations:
+  - name: q
+    kind: wallet
+    chain_count: 1

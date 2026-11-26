@@ -25,8 +25,10 @@ const weightTolerance = 1e-6
 var identRE = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
 
 type rawFile struct {
-	Version  int          `yaml:"version"`
-	Profiles []rawProfile `yaml:"profiles"`
+	Version     int             `yaml:"version"`
+	Profiles    []rawProfile    `yaml:"profiles"`
+	Populations []rawPopulation `yaml:"populations,omitempty"`
+	Network     rawNetwork      `yaml:"network,omitempty"`
 }
 
 type rawProfile struct {
@@ -85,41 +87,64 @@ type rawAdversary struct {
 // Parse reads a profile file from r. See ParseNamed.
 func Parse(r io.Reader) ([]Profile, error) { return ParseNamed("", r) }
 
-// ParseNamed reads and validates a profile file, reading at most 1 MiB. Unknown
-// fields are errors. Errors name file (when non-empty), profile and field.
+// ParseNamed reads and validates a profile file, reading at most 1 MiB, and
+// returns its wallet-behaviour profiles. Populations and network rates are
+// validated too, so a broken file is rejected whole; ParseFile returns
+// them. Unknown fields are errors. Errors name file (when non-empty),
+// profile and field.
 func ParseNamed(file string, r io.Reader) ([]Profile, error) {
-	ps, err := parse(r)
+	f, err := parseFile(r)
 	if err != nil && file != "" {
 		return nil, fmt.Errorf("%s: %w", file, err)
 	}
-	return ps, err
+	return f.Profiles, err
 }
 
-func parse(r io.Reader) ([]Profile, error) {
+// ParseFile reads and validates a whole profile file: profiles,
+// populations and network rates. A file without the last two is valid.
+func ParseFile(r io.Reader) (File, error) { return parseFile(r) }
+
+func parseFile(r io.Reader) (File, error) {
+	ps, f, err := parse(r)
+	if err != nil {
+		return File{}, err
+	}
+	pops, err := validatePopulations(f.Populations)
+	if err != nil {
+		return File{}, err
+	}
+	net, err := f.Network.validate()
+	if err != nil {
+		return File{}, err
+	}
+	return File{Profiles: ps, Populations: pops, Network: net}, nil
+}
+
+func parse(r io.Reader) ([]Profile, rawFile, error) {
 	data, err := io.ReadAll(io.LimitReader(r, maxInput+1))
 	if err != nil {
-		return nil, fmt.Errorf("read profiles: %w", err)
+		return nil, rawFile{}, fmt.Errorf("read profiles: %w", err)
 	}
 	if len(data) > maxInput {
-		return nil, fmt.Errorf("profile file exceeds %d bytes", maxInput)
+		return nil, rawFile{}, fmt.Errorf("profile file exceeds %d bytes", maxInput)
 	}
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
 	var f rawFile
 	if err := dec.Decode(&f); err != nil {
 		if errors.Is(err, io.EOF) {
-			return nil, errors.New("profile file is empty")
+			return nil, rawFile{}, errors.New("profile file is empty")
 		}
-		return nil, fmt.Errorf("parse profiles: %w", err)
+		return nil, rawFile{}, fmt.Errorf("parse profiles: %w", err)
 	}
 	if err := dec.Decode(new(yaml.Node)); !errors.Is(err, io.EOF) {
-		return nil, errors.New("profile file holds more than one YAML document")
+		return nil, rawFile{}, errors.New("profile file holds more than one YAML document")
 	}
 	if f.Version != SchemaVersion {
-		return nil, fmt.Errorf("version: got %d, want %d", f.Version, SchemaVersion)
+		return nil, rawFile{}, fmt.Errorf("version: got %d, want %d", f.Version, SchemaVersion)
 	}
 	if len(f.Profiles) == 0 {
-		return nil, errors.New("profiles: none defined")
+		return nil, rawFile{}, errors.New("profiles: none defined")
 	}
 	out := make([]Profile, 0, len(f.Profiles))
 	for i, rp := range f.Profiles {
@@ -129,11 +154,11 @@ func parse(r io.Reader) ([]Profile, error) {
 			if rp.Name != "" {
 				label = fmt.Sprintf("profile %q", rp.Name)
 			}
-			return nil, fmt.Errorf("%s: %w", label, err)
+			return nil, rawFile{}, fmt.Errorf("%s: %w", label, err)
 		}
 		out = append(out, p)
 	}
-	return out, nil
+	return out, f, nil
 }
 
 func fieldErr(field, format string, a ...any) error {

@@ -1,0 +1,52 @@
+version: 1
+profiles:
+  - name: casual-wallet
+    kind: wallet
+    agenda: hodl
+    traits:
+      competence: beta(8, 2)
+      patience: lognormal(1.0, 0.5)
+      learning_rate: const(0.05)
+      care: beta(2, 2)
+    budget: 1000000000
+populations:
+  - name: pools
+    kind: pool
+    count: 12
+    chain_count: 3000
+    pool:
+      register_rate: 0.0002
+      retire_rate: 0.0001
+      update_rate: 0.001
+      pledge:
+        dist: lognormal(25, 2)
+        point: 0
+        point_share: 0.1
+      margin:
+        dist: beta(1, 30)
+        point: 0
+        point_share: 0.2
+      cost:
+        dist: lognormal(19.2, 0.5)
+        point: 170000000
+        point_share: 0.8
+  - name: dreps
+    kind: drep
+    count: 12
+    chain_count: 1000
+    drep:
+      register_rate: 0.001
+      retire_rate: 0.0005
+      vote_rate: 0.05
+      voting_share: 0.3
+  - name: contracts
+    kind: contract
+    chain_count: 50000
+    contract:
+      new_rate: 0.002
+      usage: pareto(xm=1, alpha=0.8)
+      top_share: 0.9
+network:
+  proposal_rate:
+    info: 0.4
+    treasury_withdrawals: 1.2

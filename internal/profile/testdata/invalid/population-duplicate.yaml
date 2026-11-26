@@ -1,0 +1,15 @@
+version: 1
+profiles:
+  - name: w
+    kind: wallet
+    agenda: hodl
+    traits: {competence: "beta(1, 1)", patience: "const(1)", learning_rate: "const(0)", care: "beta(1, 1)"}
+populations:
+  - name: q
+    kind: contract
+    chain_count: 1
+    contract: {new_rate: 0, usage: "pareto(xm=1, alpha=1)", top_share: 0}
+  - name: q
+    kind: contract
+    chain_count: 1
+    contract: {new_rate: 0, usage: "pareto(xm=1, alpha=1)", top_share: 0}
