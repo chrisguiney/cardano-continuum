@@ -1,4 +1,4 @@
-package operator
+package phase
 
 import (
 	"context"
@@ -198,7 +198,7 @@ func (w *Watch) Observe(ctx context.Context, p *v1alpha1.ContinuumPool, net *v1a
 	o := Observation{Facts: facts, Last: p.Status.LastBlock}
 	o.Seen = withPriorTip(seenOf(tips[key], issuer, netTip(tips, p.Namespace+"/"+p.Spec.NetworkRef+"/")), p.Status.Tip)
 	if o.Seen.HaveOwn && int64(o.Seen.Own.Slot) >= o.Last.Slot {
-		o.Last = tipStatus(o.Seen.Own)
+		o.Last = TipStatus(o.Seen.Own)
 	} else if o.Last.Slot > 0 {
 		o.Seen.Own, o.Seen.HaveOwn = chain.Mark{Point: chain.Point{Slot: uint64(o.Last.Slot)}}, true
 	}
@@ -264,6 +264,7 @@ func netTip(tips map[string][]chain.Mark, prefix string) uint64 {
 	return best
 }
 
-func tipStatus(m chain.Mark) v1alpha1.TipStatus {
+// TipStatus is m as the status recorded on a pool.
+func TipStatus(m chain.Mark) v1alpha1.TipStatus {
 	return v1alpha1.TipStatus{Slot: int64(m.Slot), Hash: m.Hash.String(), Height: int64(m.Height)}
 }

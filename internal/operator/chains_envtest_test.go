@@ -19,6 +19,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/genesis"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/phase"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 	"github.com/chrisguiney/cardano-continuum/internal/poolwatch"
 )
@@ -110,7 +111,7 @@ func fixtureOpCert(t *testing.T) string {
 
 func fixtureIssuer(t *testing.T) common.Blake2b224 {
 	t.Helper()
-	id, err := IssuerOf(string(fixtureText(t, "poolid.hex")), nil)
+	id, err := phase.IssuerOf(string(fixtureText(t, "poolid.hex")), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,4 +168,13 @@ func TestDarkPoolStopsBeingFollowed(t *testing.T) {
 	h.edit("r", func(p *v1alpha1.ContinuumPool) { p.Spec.Dark = true })
 	h.eventually("Dark", func() bool { return h.get("r").Status.Phase == v1alpha1.PhaseDark })
 	h.eventually("connection closed", func() bool { return fc.open.Load() == 0 })
+}
+
+func fixtureText(t *testing.T, name string) []byte {
+	t.Helper()
+	raw, err := os.ReadFile("../poolwatch/testdata/" + name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return []byte(strings.TrimSpace(string(raw)))
 }

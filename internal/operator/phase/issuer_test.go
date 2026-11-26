@@ -1,4 +1,4 @@
-package operator
+package phase
 
 import (
 	"encoding/hex"
@@ -13,7 +13,7 @@ import (
 
 func fixtureText(t *testing.T, name string) []byte {
 	t.Helper()
-	raw, err := os.ReadFile("../poolwatch/testdata/" + name)
+	raw, err := os.ReadFile("../../poolwatch/testdata/" + name)
 	if err != nil {
 		t.Fatal(err)
 	}

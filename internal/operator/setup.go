@@ -20,6 +20,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/image"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/phase"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 	"github.com/chrisguiney/cardano-continuum/internal/poolwatch"
 )
@@ -69,7 +70,7 @@ func Setup(ctx context.Context, mgr manager.Manager, o Options) error {
 	if o.Drivers == nil || o.Images == nil || o.Log == nil {
 		return errors.New("operator setup: render.Drivers, Images and Log are required")
 	}
-	w := NewWatch(WatchOptions{Live: mgr.GetAPIReader(), Dial: o.Dial, Poll: o.Poll, Log: o.Log})
+	w := phase.NewWatch(phase.WatchOptions{Live: mgr.GetAPIReader(), Dial: o.Dial, Poll: o.Poll, Log: o.Log})
 	return errors.Join(
 		Index(ctx, mgr),
 		mgr.Add(w),

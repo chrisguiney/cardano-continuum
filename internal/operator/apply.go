@@ -20,6 +20,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/ident"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/phase"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
 
@@ -304,7 +305,7 @@ func (r *applier) observe(ctx context.Context, p *v1alpha1.ContinuumPool, worklo
 			held = append(held, fmt.Sprintf("pod %s on node %s", pod.Name, pod.Spec.NodeName))
 		}
 	}
-	p.Status.Phase = PhaseOf(p, live)
+	p.Status.Phase = phase.PhaseOf(p, live)
 	if len(held) == 0 {
 		setCondition(p, CondFence, metav1.ConditionFalse, ReasonNoneHeld, "no keyed pod is held on an unreachable node")
 		return live, nil

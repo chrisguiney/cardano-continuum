@@ -22,6 +22,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/image"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/phase"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
 
@@ -69,7 +70,7 @@ type Pools struct {
 	now    func() time.Time
 	// watch refines Syncing with the pool's chain; nil leaves a Ready pod
 	// Syncing.
-	watch   *Watch
+	watch   *phase.Watch
 	plans   planner
 	writes  applier
 	reloads reloader
@@ -95,7 +96,7 @@ func NewPools(c client.Client, drivers render.Registry, images image.Resolver, e
 }
 
 // WithWatch makes r judge Forging and Following from w and returns r.
-func (r *Pools) WithWatch(w *Watch) *Pools {
+func (r *Pools) WithWatch(w *phase.Watch) *Pools {
 	r.watch = w
 	return r
 }
@@ -218,7 +219,7 @@ func (r *Pools) chains(ctx context.Context, p *v1alpha1.ContinuumPool, pod *core
 	}
 	o := r.watch.Observe(ctx, p, &net, pod)
 	if o.Seen.HaveTip {
-		p.Status.Tip = tipStatus(o.Seen.Tip)
+		p.Status.Tip = phase.TipStatus(o.Seen.Tip)
 	}
 	p.Status.LastBlock = o.Last
 	p.Status.Phase = r.watch.Phase(p.Status.Phase, p, o)
