@@ -45,6 +45,16 @@ go run ./cmd/continuum replay --seed 7 --wallets 100 run1/events.log
 refuses a log recorded under different ones. `make determinism` runs the
 determinism tests under the race detector at `GOMAXPROCS=1` and `8`.
 
+## Web UI
+
+`continuum serve --log run1/events.log` serves the web UI and its API on
+`127.0.0.1:8088`. The single-page app (Preact, Vite, TypeScript) is in `web/`;
+its build, `web/dist`, is committed and embedded in the binary, so Go builds
+need no Node. After changing `web/src`, run `make web` and commit `web/dist`;
+`make web-test` typechecks and runs the unit tests. Screenshots are in
+`docs/screenshots/`; the `-sample` ones use stand-in API data because a fake
+run has no pools and writes its log only when it ends.
+
 TLA+ models live under `models/`. Install the pinned tools once, then check
 every model:
 

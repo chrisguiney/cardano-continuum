@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -152,5 +153,48 @@ func TestServeUsageErrors(t *testing.T) {
 		if err := run(ctx, args, &out); err == nil {
 			t.Errorf("%v succeeded", args)
 		}
+	}
+}
+
+func TestServeServesTheWebUI(t *testing.T) {
+	log := fakeRunLog(t)
+	base, stop := startServe(t, "--log", log, "--epoch-slots", "60")
+	defer stop()
+
+	fetch := func(path string) (*http.Response, string) {
+		resp, err := http.Get(base + path) //nolint:gosec,noctx // loopback test server
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		b, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp, string(b)
+	}
+
+	resp, index := fetch("/")
+	if resp.StatusCode != 200 || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") {
+		t.Fatalf("index: %d %q", resp.StatusCode, resp.Header.Get("Content-Type"))
+	}
+	for ext, ctype := range map[string]string{"js": "text/javascript", "css": "text/css"} {
+		m := regexp.MustCompile(`/assets/[A-Za-z0-9._-]+\.` + ext).FindString(index)
+		if m == "" {
+			t.Fatalf("index.html references no .%s asset", ext)
+		}
+		if r, _ := fetch(m); r.StatusCode != 200 || !strings.HasPrefix(r.Header.Get("Content-Type"), ctype) {
+			t.Errorf("%s: %d %q, want %s", m, r.StatusCode, r.Header.Get("Content-Type"), ctype)
+		}
+	}
+	if r, body := fetch("/actors/3"); r.StatusCode != 200 || body != index {
+		t.Errorf("client route did not fall back to index.html: %d", r.StatusCode)
+	}
+	if r, _ := fetch("/assets/missing.js"); r.StatusCode != http.StatusNotFound {
+		t.Errorf("missing asset: %d", r.StatusCode)
+	}
+	var caps struct{ Controls bool }
+	if code := getJSON(t, base+"/api/capabilities", &caps); code != 200 || caps.Controls {
+		t.Errorf("capabilities: %d %+v", code, caps)
 	}
 }

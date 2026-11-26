@@ -16,11 +16,12 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/httpapi"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/store"
+	"github.com/chrisguiney/cardano-continuum/web"
 )
 
 const serveUsage = "usage: continuum serve --log EVENTS.LOG [--store DB] [--addr HOST:PORT] [--controls] [--network N [--namespace NS] [--kubeconfig PATH]]"
 
-// cmdServe serves the web UI's API over an event log. It reads the log
+// cmdServe serves the web UI and its API over an event log. It reads the log
 // without ever repairing it, so it can follow a run that is still writing;
 // --controls makes it the log's writer, which is only safe on a log no
 // engine is appending to.
@@ -84,7 +85,7 @@ func serve(ctx context.Context, p serveParams, out io.Writer) error {
 	if _, err := tail.Poll(ctx); err != nil {
 		return err
 	}
-	hcfg := httpapi.Config{Source: httpapi.NewLogSource(p.cfg), Logger: slog.New(slog.NewTextHandler(os.Stderr, nil))}
+	hcfg := httpapi.Config{Source: httpapi.NewLogSource(p.cfg), UI: web.Handler(), Logger: slog.New(slog.NewTextHandler(os.Stderr, nil))}
 	if p.controls {
 		fl, err := eventlog.Open(p.log)
 		if err != nil {

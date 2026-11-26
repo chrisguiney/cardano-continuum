@@ -457,3 +457,37 @@ func TestServeStopsOnCancelAndEndsStreams(t *testing.T) {
 		t.Logf("stream ended: %v", err)
 	}
 }
+
+func TestCapabilitiesReportControls(t *testing.T) {
+	for name, tt := range map[string]struct {
+		ctl  Controls
+		want string
+	}{
+		"without": {nil, `{"controls":false}`},
+		"with":    {&fakeControls{}, `{"controls":true}`},
+	} {
+		srv, _ := newServer(t, tt.ctl)
+		code, body := get(t, srv.URL+"/api/capabilities")
+		if code != http.StatusOK || strings.TrimSpace(string(body)) != tt.want {
+			t.Errorf("%s: %d %s", name, code, body)
+		}
+	}
+}
+
+func TestUIServedBesideAPI(t *testing.T) {
+	ui := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, "ui:"+r.URL.Path) })
+	src := &fakeSource{hub: NewHub(16, 2, 4)}
+	t.Cleanup(src.hub.Close)
+	srv := httptest.NewServer(NewHandler(Config{Source: src, UI: ui, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}))
+	t.Cleanup(srv.Close)
+
+	if code, body := get(t, srv.URL+"/actors/3"); code != 200 || string(body) != "ui:/actors/3" {
+		t.Errorf("client route: %d %s", code, body)
+	}
+	if code, body := get(t, srv.URL+"/api/nope"); code != http.StatusNotFound {
+		t.Errorf("unknown api path reached the UI: %d %s", code, body)
+	}
+	if code, _ := get(t, srv.URL+"/api/overview"); code != 200 {
+		t.Errorf("overview: %d", code)
+	}
+}

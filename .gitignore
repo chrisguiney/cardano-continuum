@@ -12,3 +12,6 @@
 *.test
 *.out
 coverage.txt
+
+# Web UI dependencies; web/dist is committed on purpose.
+web/node_modules/

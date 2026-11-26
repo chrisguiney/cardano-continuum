@@ -15,7 +15,7 @@ GOLANGCI_LINT_VERSION := v2.15.0
 CONTROLLER_GEN_VERSION := v0.23.0
 CONTROLLER_GEN := go run sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_GEN_VERSION)
 
-.PHONY: help build test test-race vet fmt-check lint check check-manifests manifests generate determinism models models-install
+.PHONY: web web-test help build test test-race vet fmt-check lint check check-manifests manifests generate determinism models models-install
 
 help: ## Show this list
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-16s %s\n", $$1, $$2}'
@@ -37,6 +37,15 @@ fmt-check: ## Fail if any Go file is not gofmt-formatted
 
 lint: ## Run golangci-lint (CI installs $(GOLANGCI_LINT_VERSION))
 	golangci-lint run ./...
+
+# The built app in web/dist is committed so `make check` and `go build` need
+# no Node toolchain. Run this after changing anything under web/src and
+# commit the result.
+web: ## Rebuild the web UI into web/dist (needs Node and npm)
+	cd web && npm ci && npm run build
+
+web-test: ## Typecheck and run the web UI's unit tests (needs Node and npm)
+	cd web && npm ci && npm run typecheck && npm test
 
 check: build vet fmt-check test-race lint check-manifests ## Everything CI runs
 
@@ -122,7 +131,7 @@ test-envtest: $(SETUP_ENVTEST) ## Run the operator tests against envtest's API s
 
 # Stubs for targets that need components landing in later steps. Each prints
 # "not yet implemented" and exits 0 so that the target names stay reserved.
-STUBS := web images ident vectors harvest \
+STUBS := images ident vectors harvest \
 	fuzz-smoke bisect tools
 .PHONY: $(STUBS)
 $(STUBS): ; @echo "$@: not yet implemented"

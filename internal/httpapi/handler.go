@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -20,7 +21,10 @@ const (
 type Config struct {
 	Source   Source
 	Controls Controls
-	Logger   *slog.Logger
+	// UI serves every GET path outside /api and /healthz, normally the
+	// embedded single-page app; nil leaves those paths 404.
+	UI     http.Handler
+	Logger *slog.Logger
 	// Heartbeat is the SSE comment interval; zero means 15s.
 	Heartbeat time.Duration
 	// WriteTimeout bounds each SSE write, so a client that stops reading
@@ -35,6 +39,7 @@ type api struct {
 // NewHandler returns the API's routes:
 //
 //	GET  /healthz
+//	GET  /api/capabilities
 //	GET  /api/overview
 //	GET  /api/actors?limit&offset&sort&dir&profile&state&role
 //	GET  /api/actors/{id}/timeline
@@ -59,6 +64,9 @@ func NewHandler(cfg Config) http.Handler {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		a.json(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
+	mux.HandleFunc("GET /api/capabilities", func(w http.ResponseWriter, _ *http.Request) {
+		a.json(w, http.StatusOK, map[string]bool{"controls": a.Controls != nil})
+	})
 	mux.HandleFunc("GET /api/overview", a.overview)
 	mux.HandleFunc("GET /api/actors", a.actors)
 	mux.HandleFunc("GET /api/actors/{id}/timeline", a.timeline)
@@ -69,7 +77,24 @@ func NewHandler(cfg Config) http.Handler {
 	})
 	mux.HandleFunc("GET /api/decisions", a.decisions)
 	mux.HandleFunc("POST /api/control", a.control)
-	return mux
+	if cfg.UI == nil {
+		return mux
+	}
+	// Anything outside the API goes to the UI. Routing here rather than
+	// registering "/" keeps an unknown /api path a 404 instead of HTML, and
+	// leaves the mux's 405 for a wrong method on a real endpoint.
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/healthz" {
+			mux.ServeHTTP(w, r)
+			return
+		}
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			w.Header().Set("Allow", "GET, HEAD")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		cfg.UI.ServeHTTP(w, r)
+	})
 }
 
 func (a *api) json(w http.ResponseWriter, code int, v any) {
