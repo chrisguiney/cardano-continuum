@@ -105,6 +105,8 @@ type actor struct {
 	// excite is the self-excitation of the actor's wake-ups when its
 	// profile has Hawkes parameters.
 	excite sched.Excitation
+	// paid are the actor's payees, most recent last, at most maxPaid.
+	paid []population.ActorID
 }
 
 type birth struct {

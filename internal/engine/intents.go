@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/big"
 	"math/rand/v2"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -367,11 +368,40 @@ func (e *Engine) prepareSend(a population.Actor, p *pendingRec, r *rand.Rand) (*
 	if len(targets) == 0 {
 		return nil, "no payee"
 	}
-	p.Kind, p.To = "", uint64(targets[r.IntN(len(targets))])
+	p.Kind, p.To = "", uint64(e.payee(a, targets, r))
 	bal := e.Spendable(uint64(a.ID))
 	floor := e.builder.MinPayment(e.walletOf(population.ActorID(p.To)).Address())
 	p.Amount = paymentSize(e.actors[a.ID].prof.Amount, bal, floor, r)
 	return p, ""
+}
+
+// maxPaid bounds the payees an actor remembers.
+const maxPaid = 32
+
+// payee picks whom a payment goes to. With probability the actor's care it
+// pays one of the counterparties it paid before, if one is still around:
+// the fitted care is the share of a unit's outputs that pay an address it
+// paid before (lab/population_fit.py). Otherwise anyone in targets.
+func (e *Engine) payee(a population.Actor, targets []population.ActorID, r *rand.Rand) population.ActorID {
+	var known []population.ActorID
+	for _, id := range e.actors[a.ID].paid {
+		if _, ok := slices.BinarySearch(targets, id); ok {
+			known = append(known, id)
+		}
+	}
+	if len(known) > 0 && r.Float64() < a.Traits.Care {
+		return known[r.IntN(len(known))]
+	}
+	return targets[r.IntN(len(targets))]
+}
+
+// remember records a payee as the actor's most recent.
+func (st *actor) remember(to population.ActorID) {
+	st.paid = slices.DeleteFunc(st.paid, func(id population.ActorID) bool { return id == to })
+	st.paid = append(st.paid, to)
+	if len(st.paid) > maxPaid {
+		st.paid = slices.Delete(st.paid, 0, len(st.paid)-maxPaid)
+	}
 }
 
 // prepareScript unlocks the actor's oldest locked output not already being
@@ -457,6 +487,11 @@ func (e *Engine) start(ctx context.Context, at sched.Time, p *pendingRec) (strin
 		return "", err
 	}
 	e.addPending(p)
+	if p.Kind == "" && !p.Refill {
+		if st, ok := e.actors[population.ActorID(p.Actor)]; ok {
+			st.remember(population.ActorID(p.To))
+		}
+	}
 	e.market.excite(at)
 	e.emitSubmitted(at, p, built, inputs)
 	return "", e.react(ctx, at, p, built.Fee)

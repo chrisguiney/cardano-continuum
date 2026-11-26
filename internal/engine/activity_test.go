@@ -55,3 +55,47 @@ func TestHawkesActivityIsBursty(t *testing.T) {
 		t.Errorf("excited rate %.3f against calm %.3f: the mean moved", r1, r0)
 	}
 }
+
+// reuse is the share of payments whose payee the paying actor paid before.
+func reuse(t *testing.T, care string) float64 {
+	t.Helper()
+	y := strings.Replace(testProfileYAML, "care: beta(2, 2)", "care: "+care, 1)
+	cfg := testConfig(t, 9, 30)
+	ps, err := profile.Parse(strings.NewReader(y))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Profiles, err = profile.NewRegistry(ps); err != nil {
+		t.Fatal(err)
+	}
+	w := newWorld(t, cfg)
+	w.run(600_000, 50, nil)
+	pays := readPayments(t, w.log)
+	paid := map[[2]uint64]bool{}
+	seen := map[uint64]bool{}
+	var n, again float64
+	for _, s := range pays.submitted {
+		if s.Kind != "" || seen[s.Intent] {
+			continue
+		}
+		seen[s.Intent] = true
+		k := [2]uint64{pays.actor[s.Intent], s.To}
+		n++
+		if paid[k] {
+			again++
+		}
+		paid[k] = true
+	}
+	return again / n
+}
+
+// Payee choice follows the care trait, the fitted share of a unit's
+// outputs that go to addresses it paid before: a careful actor pays its
+// known counterparties again, a careless one anybody.
+func TestCarePrefersKnownPayees(t *testing.T) {
+	lo, hi := reuse(t, "const(0)"), reuse(t, "const(0.9)")
+	t.Logf("reuse at care 0: %.2f, at care 0.9: %.2f", lo, hi)
+	if hi < lo+0.3 || hi < 0.6 {
+		t.Fatalf("reuse %.2f at care 0.9 against %.2f at care 0", hi, lo)
+	}
+}

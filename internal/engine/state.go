@@ -35,7 +35,7 @@ func (e *Engine) Snapshot() ([]byte, error) {
 		s.Actors = append(s.Actors, actorRec{
 			ID: uint64(id), Profile: a.Profile, State: string(a.State), Born: a.Born, Changed: a.Changed,
 			Frustration: a.Frustration, Competence: a.Competence, HazardAt: st.hazardAt, HazardTo: string(st.hazardTo), ActAt: st.actAt, Draws: st.draws, Booting: st.booting,
-			Excess: st.excite.Excess, Since: st.excite.Since,
+			Excess: st.excite.Excess, Since: st.excite.Since, Paid: idList(st.paid),
 		})
 	}
 	for _, b := range e.births {
@@ -234,6 +234,9 @@ func (e *Engine) restoreActor(r actorRec) error {
 	st.hazardAt, st.hazardTo, st.actAt, st.draws = r.HazardAt, population.State(r.HazardTo), r.ActAt, r.Draws
 	st.booting = r.Booting
 	st.excite = sched.Excitation{Excess: r.Excess, Since: r.Since}
+	for _, id := range r.Paid {
+		st.paid = append(st.paid, population.ActorID(id))
+	}
 	if st.hazardAt != population.Never {
 		st.hazardH = e.queue.Push(st.hazardAt, qev{kind: evHazard, actor: a.ID})
 	}
@@ -410,6 +413,14 @@ func (e *Engine) ActorRows() []store.ActorRow {
 	for _, id := range e.order {
 		a, _ := e.census.Get(id)
 		out = append(out, store.ActorRow{ID: uint64(id), Name: fmt.Sprintf("%s-%d", a.Profile, id), Role: string(a.State), Profile: a.Profile})
+	}
+	return out
+}
+
+func idList(ids []population.ActorID) []uint64 {
+	out := make([]uint64, len(ids))
+	for i, id := range ids {
+		out[i] = uint64(id)
 	}
 	return out
 }

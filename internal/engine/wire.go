@@ -371,6 +371,8 @@ type actorRec struct {
 	// Excess and Since are the actor's Hawkes excitation.
 	Excess float64    `cbor:"13,keyasint,omitempty"`
 	Since  sched.Time `cbor:"14,keyasint,omitempty"`
+	// Paid are the actor's known payees, most recent last.
+	Paid []uint64 `cbor:"15,keyasint,omitempty"`
 }
 
 type birthRec struct {
