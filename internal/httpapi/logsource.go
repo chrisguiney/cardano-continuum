@@ -39,6 +39,9 @@ type LogSourceConfig struct {
 	Kube       Kube
 	Slots      *sched.Slots
 	Now        func() time.Time
+	// Findings, when set, serves the findings page (a live engine's
+	// oracle.Set); without it the page is the findings the log holds.
+	Findings Findings
 }
 
 // LogSource is the read-only Source over an event log's projection, the
@@ -87,7 +90,10 @@ func (s *LogSource) ActorTimeline(ctx context.Context, id uint64) (Timeline, err
 
 // Findings implements Source.
 func (s *LogSource) Findings(_ context.Context, p Page) (FindingPage, error) {
-	return FindingPage{Offset: p.Offset, Limit: p.Limit, Rows: []Finding{}}, nil
+	if s.cfg.Findings != nil {
+		return FindingsPage(s.cfg.Findings, p), nil
+	}
+	return FindingsPage(s.cfg.Projection.findings, p), nil
 }
 
 // Subscribe implements Source.

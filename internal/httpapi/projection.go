@@ -9,6 +9,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
+	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 )
 
@@ -50,13 +51,16 @@ type Projection struct {
 	intents    map[uint64]*intentInfo
 	byState    map[string]int
 	bodyErrors int
+	// findings are the log's oracle findings, deduplicated by ID. The set
+	// has its own lock, taken inside mu.
+	findings *oracle.Set
 }
 
 // NewProjection returns an empty projection.
 func NewProjection() *Projection {
 	return &Projection{
 		actors: map[uint64]*actorInfo{}, intents: map[uint64]*intentInfo{},
-		byState: map[string]int{},
+		byState: map[string]int{}, findings: oracle.NewSet(),
 	}
 }
 
@@ -180,6 +184,8 @@ func (p *Projection) note(id uint64, r eventlog.Record, detail string, intent *u
 func (p *Projection) applyDecision(r eventlog.Record) error {
 	id := uint64(r.Actor)
 	switch r.Kind {
+	case oracle.KindFinding:
+		return p.findings.Load(r)
 	case engine.KindSpawned:
 		var s engine.Spawned
 		if err := eventlog.Decode(r.Body, &s); err != nil {

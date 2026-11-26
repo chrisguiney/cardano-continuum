@@ -8,6 +8,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
+	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/store"
 )
@@ -88,6 +89,30 @@ func TestLogSourceSnapshotEpochAndPoolsWithoutKube(t *testing.T) {
 	f, err := src.Findings(context.Background(), Page{Limit: 10})
 	if err != nil || f.Total != 0 || f.Rows == nil {
 		t.Fatalf("findings %+v %v", f, err)
+	}
+}
+
+// Findings in the log are served once each, in order of first occurrence;
+// a configured set (a live engine's) is served instead.
+func TestLogSourceFindingsFromLog(t *testing.T) {
+	f := oracle.Finding{ID: "f1", Kind: oracle.ValueNotConserved, Severity: oracle.Fatal, Seq: 9, Summary: "off by 7"}
+	rec, err := f.Record(100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tl, p, h := newTail(t, writeLog(t, append(fixture(t), rec, rec)))
+	if _, err := tl.Poll(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	page, err := NewLogSource(LogSourceConfig{Projection: p, Hub: h}).Findings(context.Background(), Page{Limit: 10})
+	if err != nil || page.Total != 1 || len(page.Rows) != 1 || page.Rows[0].ID != "f1" || page.Rows[0].Summary != "fatal value_not_conserved: off by 7" {
+		t.Fatalf("findings %+v %v", page, err)
+	}
+	live := oracle.NewSet()
+	live.Add(oracle.Finding{ID: "f2", Kind: oracle.PaidTwice, Severity: oracle.Fatal})
+	page, err = NewLogSource(LogSourceConfig{Projection: p, Hub: h, Findings: live}).Findings(context.Background(), Page{Limit: 10})
+	if err != nil || page.Total != 1 || page.Rows[0].ID != "f2" {
+		t.Fatalf("live findings %+v %v", page, err)
 	}
 }
 
