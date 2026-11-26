@@ -14,10 +14,9 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/operator"
 )
 
-// MaxPools is the largest pool count `make up` accepts. It is the most the
-// measurements in docs/single-machine.md show a 48 GiB machine carrying with
-// headroom.
-const MaxPools = 12
+// MaxPools is the largest pool count `make up` accepts: the default budget's
+// pool count, which docs/single-machine.md sizes for a 48 GiB machine.
+const MaxPools = v1alpha1.DefaultMaxPools
 
 // CheckMemory reports whether the node's allocatable memory, a Kubernetes
 // quantity, is at least minGiB gibibytes.
@@ -58,16 +57,12 @@ type list struct {
 }
 
 // Render returns a v1 List of the ContinuumNetwork named devnet and one
-// forging ContinuumPool per genesis pool. The budget is the pools' requests
-// plus one pool's worth of room.
+// forging ContinuumPool per genesis pool, under the default budget.
 func Render(p Plan) (string, error) {
 	if err := p.Check(); err != nil {
 		return "", err
 	}
 	total := p.Nodes + p.Dingo
-	n, d := operator.CardanoNode{}.Requests(), operator.Dingo{}.Requests()
-	cpu := int64(p.Nodes)*n.CPUMillis + int64(p.Dingo)*d.CPUMillis + n.CPUMillis
-	mem := int64(p.Nodes)*n.MemoryMiB + int64(p.Dingo)*d.MemoryMiB + n.MemoryMiB
 	items := []any{v1alpha1.ContinuumNetwork{
 		TypeMeta:   metav1.TypeMeta{APIVersion: v1alpha1.GroupVersion.String(), Kind: "ContinuumNetwork"},
 		ObjectMeta: metav1.ObjectMeta{Name: "devnet"},
@@ -75,7 +70,9 @@ func Render(p Plan) (string, error) {
 			Magic: p.Magic, EpochLength: p.EpochLength, SecurityParam: p.SecurityParam,
 			GenesisRef: "devnet-genesis",
 			Topology:   v1alpha1.TopologyPolicy{Policy: v1alpha1.TopologyMesh},
-			Budget:     v1alpha1.BudgetSpec{CPUMillis: cpu, MemoryMiB: mem, MaxPools: int32(total) + 1},
+			Budget: v1alpha1.BudgetSpec{
+				MaxPools: v1alpha1.DefaultMaxPools, CPUMillis: v1alpha1.DefaultCPUMillis, MemoryMiB: v1alpha1.DefaultMemoryMiB,
+			},
 		},
 	}}
 	for i := range total {

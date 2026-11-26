@@ -71,7 +71,7 @@ func TestRender(t *testing.T) {
 	if err := json.Unmarshal(list.Items[0], &net); err != nil {
 		t.Fatal(err)
 	}
-	if net.Spec.Budget.MaxPools != 6 || net.Spec.Magic != 42 || net.Spec.GenesisRef != "devnet-genesis" {
+	if net.Spec.Budget != (v1alpha1.BudgetSpec{MaxPools: v1alpha1.DefaultMaxPools, CPUMillis: v1alpha1.DefaultCPUMillis, MemoryMiB: v1alpha1.DefaultMemoryMiB}) || net.Spec.Magic != 42 || net.Spec.GenesisRef != "devnet-genesis" {
 		t.Errorf("network spec = %+v", net.Spec)
 	}
 	var impls []v1alpha1.Implementation

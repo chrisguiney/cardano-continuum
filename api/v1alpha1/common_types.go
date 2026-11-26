@@ -96,22 +96,36 @@ type TopologyPolicy struct {
 	Policy TopologyMode `json:"policy"`
 }
 
+// The default budget of a ContinuumNetwork that sets none: sixteen pools
+// requesting the drivers' 250m and 1 GiB each. It fits a 48 GiB machine with
+// room to spare; docs/single-machine.md has the measurements behind it. The
+// kubebuilder default markers on BudgetSpec repeat these values, and
+// TestBudgetDefaults fails if they drift.
+const (
+	DefaultMaxPools  = 16
+	DefaultCPUMillis = 4000
+	DefaultMemoryMiB = 16384
+)
+
 // BudgetSpec caps the resources a network's pools may request in total.
 // The operator refuses an over-budget pool rather than scheduling it.
 type BudgetSpec struct {
 	// MaxPools is the largest number of pool workloads the network may run.
 	//
 	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:default=16
 	MaxPools int32 `json:"maxPools"`
 
 	// CPUMillis is the total CPU request budget in millicores.
 	//
 	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:default=4000
 	CPUMillis int64 `json:"cpuMillis"`
 
 	// MemoryMiB is the total memory request budget in mebibytes.
 	//
 	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:default=16384
 	MemoryMiB int64 `json:"memoryMiB"`
 }
 

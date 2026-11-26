@@ -41,21 +41,26 @@ spec:
             description: ContinuumNetworkSpec describes a simulated Cardano network.
             properties:
               budget:
-                description: Budget caps the total resources the network's pools may
-                  request.
+                default: {}
+                description: |-
+                  Budget caps the total resources the network's pools may request. Left
+                  out, it is the single-machine default (see DefaultMaxPools).
                 properties:
                   cpuMillis:
+                    default: 4000
                     description: CPUMillis is the total CPU request budget in millicores.
                     format: int64
                     minimum: 0
                     type: integer
                   maxPools:
+                    default: 16
                     description: MaxPools is the largest number of pool workloads
                       the network may run.
                     format: int32
                     minimum: 0
                     type: integer
                   memoryMiB:
+                    default: 16384
                     description: MemoryMiB is the total memory request budget in mebibytes.
                     format: int64
                     minimum: 0

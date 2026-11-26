@@ -24,9 +24,10 @@ type ContinuumNetworkSpec struct {
 	// +kubebuilder:validation:Required
 	Topology TopologyPolicy `json:"topology"`
 
-	// Budget caps the total resources the network's pools may request.
+	// Budget caps the total resources the network's pools may request. Left
+	// out, it is the single-machine default (see DefaultMaxPools).
 	//
-	// +kubebuilder:validation:Required
+	// +kubebuilder:default={}
 	Budget BudgetSpec `json:"budget"`
 
 	// Images sets the default image per implementation. A ContinuumPool's

@@ -178,3 +178,20 @@ func TestStatusSubresourceAndPrinterColumns(t *testing.T) {
 		}
 	}
 }
+
+// TestBudgetDefaults pins the CRD's budget defaults to the exported
+// constants, so an omitted budget is the single-machine budget.
+func TestBudgetDefaults(t *testing.T) {
+	spec := schemaOf(t, loadCRD(t, "ContinuumNetwork"), "spec")
+	b := at(t, spec, "properties", "budget").(map[string]any)
+	if d, ok := b["default"].(map[string]any); !ok || len(d) != 0 {
+		t.Errorf("budget default = %v, want {}", b["default"])
+	}
+	want := map[string]int{"maxPools": DefaultMaxPools, "cpuMillis": DefaultCPUMillis, "memoryMiB": DefaultMemoryMiB}
+	for field, n := range want {
+		got := at(t, b, "properties", field, "default")
+		if got != n {
+			t.Errorf("budget.%s default = %v, want %d", field, got, n)
+		}
+	}
+}
