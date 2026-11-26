@@ -6,7 +6,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/plan"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
@@ -126,44 +125,30 @@ func (e *Engine) refuse(ctx context.Context, at sched.Time, p *pendingRec, tx pl
 	return nil
 }
 
-// rebuild builds the next attempt of the payment through Reserve, so it
-// conflicts with every unfinished earlier attempt and cannot pay twice. It
+// rebuild builds the next attempt of the intent through Reserve, so it
+// conflicts with every unfinished earlier attempt and cannot land twice. It
 // reports BuildFailed, and the machine gives up, when there is nothing to
-// spend or Reserve refuses.
+// spend, the builder refuses, or Reserve does.
 func (e *Engine) rebuild(ctx context.Context, at sched.Time, p *pendingRec) (submit.Event, error) {
-	id := population.ActorID(p.Actor)
-	st := e.actors[id]
-	payee, ok := e.actors[population.ActorID(p.To)]
-	if !ok {
-		return submit.BuildFailed{}, nil
-	}
-	coins := e.sel.Select(e.coins(id, plan.IntentID(p.ID)), p.Amount+feeHeadroom)
-	if coins == nil {
-		return submit.BuildFailed{}, nil
-	}
-	inputs := make([]Ref, len(coins))
-	for i, c := range coins {
-		inputs[i] = c.Ref
-	}
-	ttl := e.cfg.Slots.SlotAt(at) + e.cfg.TTL
-	built, err := e.builder.Pay(ctx, st.wallet, build.Payment{
-		Inputs: e.ledgerUtxos(st.wallet, coins), To: payee.wallet.Address(), Amount: p.Amount, TTL: ttl,
-	})
-	if err != nil {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
+	if p.Kind == "" {
+		if _, ok := e.actors[population.ActorID(p.To)]; !ok {
+			return submit.BuildFailed{}, nil
 		}
+	}
+	built, inputs, ttl, why, err := e.attemptOf(ctx, at, p)
+	if err != nil {
+		return nil, err
+	}
+	if why != "" {
 		return submit.BuildFailed{}, nil
 	}
-	if err := e.led.Reserve(ctx, plan.IntentID(p.ID), attempt(id, TxID(built.ID), inputs, ttl)); err != nil {
+	if err := e.led.Reserve(ctx, plan.IntentID(p.ID), attempt(population.ActorID(p.Actor), TxID(built.ID), inputs, ttl)); err != nil {
 		return submit.BuildFailed{}, nil
 	}
 	p.Tx, p.TTL, p.Cbor = TxID(built.ID), ttl, built.Tx
 	p.Txs = append(p.Txs, p.Tx)
 	e.byTx[p.Tx] = p.ID
-	e.emit(at, KindSubmitted, id, Submitted{
-		Intent: p.ID, ID: p.Tx, To: p.To, Amount: p.Amount, Fee: built.Fee, TTL: ttl, Inputs: inputs, Tx: built.Tx,
-	})
+	e.emitSubmitted(at, p, built, inputs)
 	return submit.Built{Tx: plan.TxID(built.ID)}, nil
 }
 

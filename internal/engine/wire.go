@@ -130,6 +130,9 @@ type Submitted struct {
 	TTL    uint64 `cbor:"6,keyasint"`
 	Inputs []Ref  `cbor:"7,keyasint"`
 	Tx     []byte `cbor:"8,keyasint"`
+	// Kind is the intent kind; empty for a payment. To is then the pool,
+	// DRep or nobody the intent names, Amount its quantity.
+	Kind string `cbor:"9,keyasint,omitempty"`
 }
 
 // Refill is the body of a Refill decision: the faucet pays To[i]
@@ -208,6 +211,8 @@ type snapshot struct {
 	Ledger     ledgerBlob          `cbor:"11,keyasint"`
 	// RefillAt is the faucet's next round; zero without a faucet.
 	RefillAt sched.Time `cbor:"12,keyasint,omitempty"`
+	Deposits uint64     `cbor:"14,keyasint,omitempty"`
+	Market   market     `cbor:"15,keyasint"`
 	// View is the chain view at the confirmed point; the window is replayed
 	// onto it on restore.
 	View viewRec `cbor:"13,keyasint"`
@@ -267,6 +272,21 @@ type pendingRec struct {
 	NotBefore sched.Time `cbor:"11,keyasint,omitempty"`
 	// Refill marks the faucet's refill, which M does not drive.
 	Refill bool `cbor:"12,keyasint,omitempty"`
+	// Kind is the intent's builder (intents.go); empty is a payment. To is
+	// the payee, pool or DRep it names, Amount what a payment pays, a lock
+	// locks, a mint or burn moves, or an unlock frees.
+	Kind string `cbor:"13,keyasint,omitempty"`
+	// Action is the governance action a vote is on, Choice the vote.
+	Action *Ref  `cbor:"14,keyasint,omitempty"`
+	Choice uint8 `cbor:"15,keyasint,omitempty"`
+	// Locked is the script output an unlock spends.
+	Locked *Ref `cbor:"16,keyasint,omitempty"`
+	// Epoch is the epoch a retirement takes effect.
+	Epoch uint64 `cbor:"17,keyasint,omitempty"`
+	// Register makes a delegation also register the stake key; Update
+	// makes a pool registration a re-registration.
+	Register bool `cbor:"18,keyasint,omitempty"`
+	Update   bool `cbor:"19,keyasint,omitempty"`
 }
 
 func samePoint(a, b eventlog.ChainPoint) bool {

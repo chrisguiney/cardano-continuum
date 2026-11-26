@@ -49,8 +49,6 @@ const (
 	feeHeadroom  = 1_000_000
 	minFraction  = 0.05
 	fracSpread   = 0.25
-	idleKind     = string(agenda.Idle)
-	sendKind     = string(profile.IntentSend)
 	censusStream = "census"
 )
 
@@ -137,6 +135,12 @@ type Engine struct {
 	nextID   uint64
 	fees     uint64
 	foreign  uint64
+	// deposits is the lovelace the engine's settled certificates and
+	// proposals hold in the ledger's deposit pot.
+	deposits uint64
+	market   market
+	// pools maps each pool actor to the pool it operates.
+	pools map[population.ActorID][28]byte
 
 	out []eventlog.Record
 }
@@ -212,6 +216,10 @@ func newEmpty(cfg Config) (*Engine, error) {
 		retry: cfg.retry(), diag: diag,
 		actors: map[population.ActorID]*actor{}, byAddr: map[string]population.ActorID{},
 		pending: map[uint64]*pendingRec{}, byTx: map[TxID]uint64{}, book: chain.NewBook(),
+		pools: map[population.ActorID][28]byte{},
+	}
+	if err := e.book.AddAddress(build.AlwaysSucceeds.Address(cfg.NetworkID), scriptActor); err != nil {
+		return nil, fmt.Errorf("engine: book: %w", err)
 	}
 	for _, n := range cfg.Profiles.Names() {
 		p, _ := cfg.Profiles.Get(n)
@@ -359,6 +367,11 @@ func (e *Engine) spawn(p profile.Profile, at sched.Time) population.Actor {
 	a := e.census.Spawn(p, e.root, at)
 	st := e.register(a, p)
 	e.nextHazard(a, st, at)
+	// Pools and DReps have no hazard clock to wake them: they act from
+	// birth, registering first.
+	if p.Kind != profile.Wallet {
+		e.nextAct(a, st, at)
+	}
 	return a
 }
 
@@ -450,78 +463,16 @@ func (e *Engine) act(ctx context.Context, at sched.Time, id population.ActorID) 
 	r := e.draw(a, st, "act")
 	d := agenda.Decide(a, r, view{e: e}, st.policy, st.prof.Weights)
 	e.emit(at, KindIntentChosen, id, d)
-	switch string(d.Intent.Kind) {
-	case idleKind:
-	case sendKind:
-		if err := e.pay(ctx, at, a, st, r); err != nil {
+	switch d.Intent.Kind {
+	case agenda.Idle:
+	case agenda.GoDark, agenda.GoLive:
+		e.emit(at, KindSkipped, id, Skipped{Kind: string(d.Intent.Kind), Why: "no pod plan"})
+	default:
+		if err := e.intend(ctx, at, a, st, d.Intent, r); err != nil {
 			return err
 		}
-	default:
-		e.emit(at, KindSkipped, id, Skipped{Kind: string(d.Intent.Kind), Why: "intent kind not supported in M1"})
 	}
 	e.nextAct(a, st, at)
-	return nil
-}
-
-// pay builds a payment to another live wallet, reserves its inputs and
-// queues it for submission.
-func (e *Engine) pay(ctx context.Context, at sched.Time, a population.Actor, st *actor, r *rand.Rand) error {
-	skip := func(why string) { e.emit(at, KindSkipped, a.ID, Skipped{Kind: sendKind, Why: why}) }
-	var targets []population.ActorID
-	for _, id := range e.order {
-		if id == a.ID {
-			continue
-		}
-		if t, _ := e.census.Get(id); t.State != population.Abandoned {
-			targets = append(targets, id)
-		}
-	}
-	if len(targets) == 0 {
-		skip("no payee")
-		return nil
-	}
-	to := targets[r.IntN(len(targets))]
-	id := e.nextID + 1
-	avail := e.coins(a.ID, plan.IntentID(id))
-	bal := sumCoins(avail)
-	amount := max(uint64(float64(bal)*(minFraction+fracSpread*r.Float64())), minPayment)
-	coins := e.sel.Select(avail, amount+feeHeadroom)
-	if coins == nil {
-		skip(fmt.Sprintf("spendable %d below %d", bal, amount+feeHeadroom))
-		return nil
-	}
-	inputs := make([]Ref, len(coins))
-	for i, c := range coins {
-		inputs[i] = c.Ref
-	}
-	ttl := e.cfg.Slots.SlotAt(at) + e.cfg.TTL
-	built, err := e.builder.Pay(ctx, st.wallet, build.Payment{
-		Inputs: e.ledgerUtxos(st.wallet, coins), To: e.actors[to].wallet.Address(), Amount: amount, TTL: ttl,
-	})
-	if err != nil {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		skip("build: " + err.Error())
-		return nil
-	}
-	// The reservation is part of this decision. It is durable once the input
-	// that caused it is, since replaying the input repeats it; the Runner
-	// also syncs the Submitted record before the transaction leaves.
-	if err := e.led.Reserve(ctx, plan.IntentID(id), attempt(a.ID, TxID(built.ID), inputs, ttl)); err != nil {
-		skip("reserve: " + err.Error())
-		return nil
-	}
-	e.nextID = id
-	p := &pendingRec{ID: id, Actor: uint64(a.ID), Tx: TxID(built.ID), TTL: ttl, Cbor: built.Tx, Awaiting: true,
-		To: uint64(to), Amount: amount, Txs: []TxID{TxID(built.ID)}}
-	if err := e.begin(p); err != nil {
-		return err
-	}
-	e.addPending(p)
-	e.emit(at, KindSubmitted, a.ID, Submitted{
-		Intent: p.ID, ID: p.Tx, To: uint64(to), Amount: amount, Fee: built.Fee, TTL: ttl, Inputs: inputs, Tx: built.Tx,
-	})
 	return nil
 }
 
@@ -648,15 +599,24 @@ func (e *Engine) applyBlock(ctx context.Context, at sched.Time, b blockRec) erro
 		return fmt.Errorf("engine: view: %w", err)
 	}
 	e.window = append(e.window, b)
+	was := e.cfg.Slots.EpochOfSlot(e.conf.Slot)
 	for uint64(len(e.window)) > e.cfg.K {
 		e.confirm(e.window[0])
 		e.window = slices.Delete(e.window, 0, 1)
+	}
+	if ep := e.cfg.Slots.EpochOfSlot(e.conf.Slot); ep > was {
+		if err := e.epochApplied(at, ep); err != nil {
+			return err
+		}
 	}
 	for _, tx := range res.Settled {
 		if id, ok := e.byTx[TxID(tx)]; ok {
 			p := e.pending[id]
 			e.dropPending(id)
 			e.emit(at, KindConfirmed, population.ActorID(p.Actor), Confirmed{Intent: id, ID: p.Tx})
+			if err := e.settle(at, p, TxID(tx)); err != nil {
+				return err
+			}
 		}
 	}
 	e.release(at, res.Dead, "")

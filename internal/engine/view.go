@@ -35,6 +35,7 @@ func (e *Engine) bookActor(id population.ActorID, p profile.Profile, st *actor) 
 	case profile.Pool:
 		if pool, ok := e.poolID(id); ok {
 			e.book.AddPool(pool, id)
+			e.pools[id] = pool
 		}
 	case profile.DRep:
 		e.book.AddDRep(common.Blake2b224(e.keys.DRep(keysID(id))), id)
@@ -203,7 +204,10 @@ func (v view) DReps() []population.ActorID { return v.e.view.DReps() }
 // VoteDelegated implements agenda.Governance.
 func (v view) VoteDelegated(a population.ActorID) bool { return v.e.view.VoteDelegated(a) }
 
-var _ agenda.Governance = view{}
+var (
+	_ agenda.Governance = view{}
+	_ agenda.Market     = view{}
+)
 
 func keysID(id population.ActorID) keys.ActorID { return keys.ActorID(id) }
 

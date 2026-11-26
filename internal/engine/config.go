@@ -134,10 +134,10 @@ func (c *Config) validate() error {
 	}
 	for _, n := range c.Profiles.Names() {
 		p, _ := c.Profiles.Get(n)
-		if p.Kind != profile.Wallet {
-			// Pools, DReps and contracts need certificates and scripts
-			// the M1 builder and fake chain do not support.
-			return fmt.Errorf("%w: profile %q has kind %s; only wallets are supported", ErrConfig, n, p.Kind)
+		if p.Kind != profile.Wallet && p.Kind != profile.Pool && p.Kind != profile.DRep {
+			// A contract is deployed by another actor's lock; it is not
+			// an actor of its own here.
+			return fmt.Errorf("%w: profile %q has kind %s; wallets, pools and DReps are supported", ErrConfig, n, p.Kind)
 		}
 	}
 	if c.Faucet > 0 && c.RefillEvery == 0 {

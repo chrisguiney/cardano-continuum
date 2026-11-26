@@ -1,0 +1,439 @@
+package engine
+
+import (
+	"bytes"
+	"context"
+	"encoding/hex"
+	"fmt"
+	"math/big"
+	"math/rand/v2"
+	"strconv"
+	"strings"
+
+	"github.com/blinklabs-io/gouroboros/cbor"
+	"github.com/blinklabs-io/gouroboros/ledger/common"
+	"github.com/blinklabs-io/plutigo/data"
+
+	"github.com/chrisguiney/cardano-continuum/internal/agenda"
+	"github.com/chrisguiney/cardano-continuum/internal/build"
+	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/keys"
+	"github.com/chrisguiney/cardano-continuum/internal/plan"
+	"github.com/chrisguiney/cardano-continuum/internal/population"
+	"github.com/chrisguiney/cardano-continuum/internal/profile"
+	"github.com/chrisguiney/cardano-continuum/internal/sched"
+)
+
+// Every agenda intent with a transaction goes the same way: prepare fills
+// in what the intent names only by kind (payee, pool, proposal, locked
+// output), the planner reserves the inputs, the builder for the kind signs
+// the attempt, and the retry machine drives it. A spec is a kind's builder
+// and what its inputs must cover.
+
+// Intent kinds that are not agenda kinds: script_call is a lock or an
+// unlock, decided by whether the actor has something locked.
+const (
+	lockKind   = "lock"
+	unlockKind = "unlock"
+)
+
+const (
+	// scriptHeadroom covers a script transaction's fee and collateral, which
+	// must come from one pure-ada input.
+	scriptHeadroom = 6_000_000
+	lockAmount     = 5_000_000
+	mintQuantity   = 1000
+)
+
+// tokenName is what every mint names under build.FreeMint.
+var tokenName = []byte("continuum")
+
+// scriptActor owns the always-succeeds address in the view's book, so the
+// view tracks locked outputs. It is above maxActors and below the faucet.
+const scriptActor = population.ActorID(keys.FaucetID - 1)
+
+type spec struct {
+	// need is the lovelace the inputs cover besides headroom.
+	need     func(e *Engine, p *pendingRec) uint64
+	headroom uint64
+	build    func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error)
+	// deposit is the lovelace a settled attempt moves into the ledger's
+	// deposits (negative: refunded), for the supply check.
+	deposit func(e *Engine, p *pendingRec) int64
+	// guarded kinds can lower forging stake: their TTL ends inside the
+	// current epoch (stake-floor rule 10).
+	guarded bool
+}
+
+func none(*Engine, *pendingRec) uint64 { return 0 }
+
+func noDeposit(*Engine, *pendingRec) int64 { return 0 }
+
+var specs = map[string]spec{
+	string(profile.IntentSend): {need: func(_ *Engine, p *pendingRec) uint64 { return p.Amount }, headroom: feeHeadroom, deposit: noDeposit,
+		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
+			return e.builder.Pay(ctx, w, build.Payment{Inputs: sp.Inputs, TTL: sp.TTL, To: e.walletOf(population.ActorID(p.To)).Address(), Amount: p.Amount})
+		}},
+	string(profile.IntentRegisterStake): {need: func(e *Engine, _ *pendingRec) uint64 { return e.cfg.Build.KeyDeposit }, headroom: feeHeadroom,
+		deposit: func(e *Engine, _ *pendingRec) int64 { return int64(e.cfg.Build.KeyDeposit) },
+		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, _ *pendingRec) (build.Built, error) {
+			return e.builder.RegisterStake(ctx, w, sp)
+		}},
+	string(profile.IntentDelegate): {need: registerNeed, headroom: feeHeadroom, guarded: true, deposit: registerDeposit,
+		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
+			pool, _ := e.poolOf(population.ActorID(p.To))
+			return e.builder.Delegate(ctx, w, build.Delegation{Spend: sp, Pool: pool, Register: p.Register})
+		}},
+	string(profile.IntentUndelegate): {need: none, headroom: feeHeadroom, guarded: true,
+		deposit: func(e *Engine, _ *pendingRec) int64 { return -int64(e.cfg.Build.KeyDeposit) },
+		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, _ *pendingRec) (build.Built, error) {
+			return e.builder.DeregisterStake(ctx, w, sp)
+		}},
+	string(profile.IntentWithdraw): {need: none, headroom: feeHeadroom, deposit: noDeposit,
+		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
+			return e.builder.Withdraw(ctx, w, build.Withdrawal{Spend: sp, Amount: p.Amount})
+		}},
+	string(profile.IntentDelegateDRep): {need: none, headroom: feeHeadroom, deposit: noDeposit,
+		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
+			cred := e.keys.DRep(keysID(population.ActorID(p.To)))
+			d := common.Drep{Type: common.DrepTypeAddrKeyHash, Credential: cred[:]}
+			return e.builder.DelegateVote(ctx, w, build.VoteDelegation{Spend: sp, DRep: d})
+		}},
+	string(profile.IntentRegisterDRep): {need: func(e *Engine, _ *pendingRec) uint64 { return e.cfg.Build.DRepDeposit }, headroom: feeHeadroom,
+		deposit: func(e *Engine, _ *pendingRec) int64 { return int64(e.cfg.Build.DRepDeposit) },
+		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
+			return e.builder.RegisterDRep(ctx, w, build.DRepRegistration{Spend: sp, DRep: e.keys.DRepSigner(keysID(population.ActorID(p.Actor)))})
+		}},
+	string(profile.IntentVote): {need: none, headroom: feeHeadroom, deposit: noDeposit, build: buildVote},
+	string(profile.IntentPropose): {need: func(e *Engine, _ *pendingRec) uint64 { return e.cfg.Build.GovActionDeposit }, headroom: feeHeadroom,
+		deposit: func(e *Engine, _ *pendingRec) int64 { return int64(e.cfg.Build.GovActionDeposit) },
+		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, _ *pendingRec) (build.Built, error) {
+			return e.builder.Propose(ctx, w, build.Proposal{Spend: sp})
+		}},
+	string(profile.IntentMint): {need: none, headroom: scriptHeadroom, deposit: noDeposit, build: buildMint},
+	string(profile.IntentBurn): {need: none, headroom: scriptHeadroom, deposit: noDeposit, build: buildMint},
+	lockKind: {need: func(_ *Engine, p *pendingRec) uint64 { return p.Amount }, headroom: feeHeadroom,
+		deposit: func(_ *Engine, p *pendingRec) int64 { return 0 },
+		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
+			return e.builder.Lock(ctx, w, build.Lock{Spend: sp, Script: build.AlwaysSucceeds, Amount: p.Amount, Datum: actorDatum(population.ActorID(p.Actor))})
+		}},
+	unlockKind:                         {need: none, headroom: scriptHeadroom, deposit: noDeposit, build: buildUnlock},
+	string(profile.IntentRegisterPool): {need: poolNeed, headroom: feeHeadroom, deposit: poolDeposit, build: buildPool},
+	string(profile.IntentRetirePool): {need: none, headroom: feeHeadroom, guarded: true, deposit: noDeposit,
+		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
+			cold, err := e.poolSigner(population.ActorID(p.Actor))
+			if err != nil {
+				return build.Built{}, err
+			}
+			return e.builder.RetirePool(ctx, w, build.PoolRetirement{Spend: sp, Cold: cold, Epoch: p.Epoch, CurrentEpoch: p.Epoch - 1})
+		}},
+}
+
+func registerNeed(e *Engine, p *pendingRec) uint64 {
+	if p.Register {
+		return e.cfg.Build.KeyDeposit
+	}
+	return 0
+}
+
+func registerDeposit(e *Engine, p *pendingRec) int64 { return int64(registerNeed(e, p)) }
+
+func poolNeed(e *Engine, p *pendingRec) uint64 {
+	if p.Update {
+		return 0
+	}
+	return e.cfg.Build.PoolDeposit
+}
+
+func poolDeposit(e *Engine, p *pendingRec) int64 { return int64(poolNeed(e, p)) }
+
+func buildVote(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
+	act := common.GovActionId{TransactionId: common.Blake2b256(p.Action.Tx), GovActionIdx: p.Action.Index}
+	v := build.Vote{Spend: sp, Voter: e.keys.DRepSigner(keysID(population.ActorID(p.Actor))), Role: build.RoleDRep, Action: act, Choice: p.Choice}
+	return e.builder.Vote(ctx, w, v)
+}
+
+func buildMint(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
+	q := int64(p.Amount)
+	if p.Kind == string(profile.IntentBurn) {
+		q = -q
+	}
+	return e.builder.Mint(ctx, w, build.Mint{Spend: sp, Policy: build.FreeMint, Name: tokenName, Quantity: q, Redeemer: unitDatum()})
+}
+
+func buildUnlock(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
+	u, ok := e.view.Utxo(chain.Ref{Tx: chain.TxID(p.Locked.Tx), Index: p.Locked.Index})
+	if !ok {
+		return build.Built{}, fmt.Errorf("locked output %x#%d not in the view", p.Locked.Tx[:4], p.Locked.Index)
+	}
+	return e.builder.Unlock(ctx, w, build.Unlock{Spend: sp, Script: build.AlwaysSucceeds, Locked: u, Redeemer: unitDatum()})
+}
+
+func buildPool(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
+	id := population.ActorID(p.Actor)
+	cold, err := e.poolSigner(id)
+	if err != nil {
+		return build.Built{}, err
+	}
+	pk, err := e.keys.Pool(keysID(id), 0)
+	if err != nil {
+		return build.Built{}, err
+	}
+	reg := build.PoolRegistration{
+		Spend: sp, Cold: cold, VRFKeyHash: pk.VRFVKeyHash, Pledge: 1_000_000,
+		Cost: e.cfg.Build.MinPoolCost, Margin: big.NewRat(1, 100),
+	}
+	if p.Update {
+		return e.builder.UpdatePool(ctx, w, reg)
+	}
+	return e.builder.RegisterPool(ctx, w, reg)
+}
+
+func unitDatum() common.Datum { return common.Datum{Data: data.NewConstr(0)} }
+
+// actorDatum marks a locked output with the actor that locked it, so the
+// actor unlocks only its own.
+func actorDatum(id population.ActorID) common.Datum {
+	return common.Datum{Data: data.NewConstr(0, data.NewInteger(new(big.Int).SetUint64(uint64(id))))}
+}
+
+func datumKey(d common.Datum) []byte {
+	raw, err := cbor.Encode(d)
+	if err != nil {
+		return nil
+	}
+	return raw
+}
+
+// kindOf is the spec key of a pending intent; a payment has none.
+func (p *pendingRec) kindOf() string {
+	if p.Kind == "" {
+		return string(profile.IntentSend)
+	}
+	return p.Kind
+}
+
+// intend turns the chosen intent into a pending record and starts it. A
+// kind with no transaction (idle, go_dark, go_live) never reaches it.
+func (e *Engine) intend(ctx context.Context, at sched.Time, a population.Actor, st *actor, in agenda.Intent, r *rand.Rand) error {
+	p, why := e.prepare(at, a, in, r)
+	if why == "" {
+		var err error
+		if why, err = e.start(ctx, at, p); err != nil {
+			return err
+		}
+	}
+	if why != "" {
+		e.emit(at, KindSkipped, a.ID, Skipped{Kind: string(in.Kind), Why: why})
+	}
+	return nil
+}
+
+// prepare fills in a pending record for in, or says why it cannot be made.
+func (e *Engine) prepare(at sched.Time, a population.Actor, in agenda.Intent, r *rand.Rand) (*pendingRec, string) {
+	p := &pendingRec{Actor: uint64(a.ID), Kind: string(in.Kind), To: uint64(in.Target)}
+	switch in.Kind {
+	case profile.IntentSend:
+		return e.prepareSend(a, p, r)
+	case profile.IntentDelegate:
+		if _, ok := e.poolOf(in.Target); !ok {
+			return nil, fmt.Sprintf("actor %d operates no pool", in.Target)
+		}
+		p.Register = !e.view.StakeRegistered(a.ID)
+	case profile.IntentDelegateDRep:
+		if !e.view.DRepRegistered(in.Target) {
+			return nil, fmt.Sprintf("actor %d is no registered DRep", in.Target)
+		}
+	case profile.IntentVote:
+		ref, err := parseProposal(in.Proposal)
+		if err != nil {
+			return nil, err.Error()
+		}
+		p.Action, p.Choice = &ref, voteChoice(r)
+	case profile.IntentMint:
+		p.Amount = mintQuantity
+	case profile.IntentBurn:
+		if p.Amount = e.tokens(a.ID); p.Amount == 0 {
+			return nil, "nothing to burn"
+		}
+	case profile.IntentScriptCall:
+		e.prepareScript(a.ID, p)
+	case profile.IntentRegisterPool:
+		if _, ok := e.poolOf(a.ID); !ok {
+			return nil, "actor operates no pool"
+		}
+		p.Update = e.view.PoolRegistered(a.ID)
+	case profile.IntentRetirePool:
+		p.Epoch = e.cfg.Slots.EpochAt(at) + 1
+	}
+	if _, ok := specs[p.kindOf()]; !ok {
+		return nil, "no builder for " + string(in.Kind)
+	}
+	return p, ""
+}
+
+func (e *Engine) prepareSend(a population.Actor, p *pendingRec, r *rand.Rand) (*pendingRec, string) {
+	var targets []population.ActorID
+	for _, id := range e.order {
+		if id == a.ID {
+			continue
+		}
+		if t, _ := e.census.Get(id); t.State != population.Abandoned {
+			targets = append(targets, id)
+		}
+	}
+	if len(targets) == 0 {
+		return nil, "no payee"
+	}
+	p.Kind, p.To = "", uint64(targets[r.IntN(len(targets))])
+	bal := e.Spendable(uint64(a.ID))
+	p.Amount = max(uint64(float64(bal)*(minFraction+fracSpread*r.Float64())), minPayment)
+	return p, ""
+}
+
+// prepareScript unlocks the actor's oldest locked output not already being
+// unlocked, or locks a new one.
+func (e *Engine) prepareScript(id population.ActorID, p *pendingRec) {
+	busy := map[Ref]bool{}
+	for _, q := range e.pending {
+		if q.Locked != nil {
+			busy[*q.Locked] = true
+		}
+	}
+	want := datumKey(actorDatum(id))
+	for _, u := range e.view.UtxosAt(build.AlwaysSucceeds.Address(e.cfg.NetworkID)) {
+		d := u.Output.Datum()
+		ref := Ref{Tx: TxID(u.Id.Id()), Index: u.Id.Index()}
+		if d == nil || busy[ref] || !bytes.Equal(datumKey(*d), want) {
+			continue
+		}
+		p.Kind, p.Locked, p.Amount = unlockKind, &ref, u.Output.Amount().Uint64()
+		return
+	}
+	p.Kind, p.Amount = lockKind, lockAmount
+}
+
+// tokens is the quantity of the mint token the actor holds at the tip.
+func (e *Engine) tokens(id population.ActorID) uint64 {
+	policy := build.FreeMint.Hash()
+	var sum uint64
+	for _, u := range e.view.UtxosAt(e.walletOf(id).Address()) {
+		if as := u.Output.Assets(); as != nil {
+			if q := as.Asset(common.Blake2b224(policy), tokenName); q != nil {
+				sum += q.Uint64()
+			}
+		}
+	}
+	return sum
+}
+
+// voteChoice is an honest voter's choice: mostly yes.
+func voteChoice(r *rand.Rand) uint8 {
+	switch x := r.Float64(); {
+	case x < 0.7:
+		return common.GovVoteYes
+	case x < 0.9:
+		return common.GovVoteNo
+	}
+	return common.GovVoteAbstain
+}
+
+// parseProposal reads agenda.ProposalID's "txhash#index".
+func parseProposal(id agenda.ProposalID) (Ref, error) {
+	h, idx, ok := strings.Cut(string(id), "#")
+	raw, err := hex.DecodeString(h)
+	if !ok || err != nil || len(raw) != len(TxID{}) {
+		return Ref{}, fmt.Errorf("malformed proposal id %q", id)
+	}
+	n, err := strconv.ParseUint(idx, 10, 32)
+	if err != nil {
+		return Ref{}, fmt.Errorf("malformed proposal id %q", id)
+	}
+	return Ref{Tx: TxID(raw), Index: uint32(n)}, nil
+}
+
+// start builds and reserves the first attempt of p and starts its retry
+// machine. It returns why the intent was skipped, if it was.
+func (e *Engine) start(ctx context.Context, at sched.Time, p *pendingRec) (string, error) {
+	id := e.nextID + 1
+	p.ID = id
+	built, inputs, ttl, why, err := e.attemptOf(ctx, at, p)
+	if why != "" || err != nil {
+		return why, err
+	}
+	if err := e.led.Reserve(ctx, plan.IntentID(id), attempt(population.ActorID(p.Actor), TxID(built.ID), inputs, ttl)); err != nil {
+		return "reserve: " + err.Error(), nil
+	}
+	e.nextID = id
+	p.Tx, p.TTL, p.Cbor, p.Awaiting, p.Txs = TxID(built.ID), ttl, built.Tx, true, []TxID{TxID(built.ID)}
+	if err := e.begin(p); err != nil {
+		return "", err
+	}
+	e.addPending(p)
+	e.market.excite(at)
+	e.emitSubmitted(at, p, built, inputs)
+	return "", nil
+}
+
+func (e *Engine) emitSubmitted(at sched.Time, p *pendingRec, built build.Built, inputs []Ref) {
+	e.emit(at, KindSubmitted, population.ActorID(p.Actor), Submitted{
+		Intent: p.ID, ID: p.Tx, To: p.To, Amount: p.Amount, Fee: built.Fee, TTL: p.TTL, Inputs: inputs, Tx: built.Tx, Kind: p.Kind,
+	})
+}
+
+// attemptOf builds one attempt of p on inputs the planner offers its
+// intent. A failed build is a skip reason, not an error.
+func (e *Engine) attemptOf(ctx context.Context, at sched.Time, p *pendingRec) (build.Built, []Ref, uint64, string, error) {
+	sp := specs[p.kindOf()]
+	a := population.ActorID(p.Actor)
+	avail := e.coins(a, plan.IntentID(p.ID))
+	need := sp.need(e, p) + sp.headroom
+	coins := e.sel.Select(avail, need)
+	if coins == nil {
+		return build.Built{}, nil, 0, fmt.Sprintf("spendable %d below %d", sumCoins(avail), need), nil
+	}
+	ttl := e.ttl(at, sp.guarded)
+	if ttl == 0 {
+		return build.Built{}, nil, 0, "too close to the epoch boundary", nil
+	}
+	w := e.walletOf(a)
+	built, err := sp.build(ctx, e, w, build.Spend{Inputs: e.ledgerUtxos(w, coins), TTL: ttl}, p)
+	if err != nil {
+		if ctx.Err() != nil {
+			return build.Built{}, nil, 0, "", ctx.Err()
+		}
+		return build.Built{}, nil, 0, "build: " + err.Error(), nil
+	}
+	inputs := make([]Ref, len(coins))
+	for i, c := range coins {
+		inputs[i] = c.Ref
+	}
+	return built, inputs, ttl, "", nil
+}
+
+// ttl is an attempt's invalid-hereafter slot. A guarded step's ends with
+// the current epoch, so the epoch its effect reaches is known when the
+// guard runs; zero means too little of the epoch is left.
+func (e *Engine) ttl(at sched.Time, guarded bool) uint64 {
+	slot := e.cfg.Slots.SlotAt(at)
+	ttl := slot + e.cfg.TTL
+	if !guarded {
+		return ttl
+	}
+	end := e.cfg.Slots.SlotAt(e.cfg.Slots.EpochStart(e.cfg.Slots.EpochAt(at) + 1))
+	ttl = min(ttl, end)
+	if ttl <= slot+1 {
+		return 0
+	}
+	return ttl
+}
+
+// poolOf is the pool a pool actor operates.
+func (e *Engine) poolOf(id population.ActorID) ([28]byte, bool) {
+	p, ok := e.pools[id]
+	return p, ok
+}
+
+func (e *Engine) poolSigner(id population.ActorID) (keys.Signer, error) {
+	return e.keys.PoolSigner(keysID(id))
+}

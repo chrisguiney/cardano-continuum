@@ -24,7 +24,7 @@ func blake2b256(b []byte) common.Blake2b256 { return common.Blake2b256Hash(b) }
 // Snapshot implements eventlog.Engine: the whole state in canonical CBOR,
 // the ledger's blob included.
 func (e *Engine) Snapshot() ([]byte, error) {
-	s := snapshot{Version: snapshotVersion, Now: e.now, NextIntent: e.nextID, Conf: e.conf, Fees: e.fees, Foreign: e.foreign, RefillAt: e.refillAt}
+	s := snapshot{Version: snapshotVersion, Now: e.now, NextIntent: e.nextID, Conf: e.conf, Fees: e.fees, Foreign: e.foreign, RefillAt: e.refillAt, Deposits: e.deposits, Market: e.market}
 	for _, id := range e.order {
 		a, _ := e.census.Get(id)
 		st := e.actors[id]
@@ -76,7 +76,8 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
-	e.now, e.nextID, e.conf, e.fees, e.foreign = s.Now, s.NextIntent, s.Conf, s.Fees, s.Foreign
+	e.now, e.nextID, e.conf, e.fees, e.foreign, e.deposits = s.Now, s.NextIntent, s.Conf, s.Fees, s.Foreign, s.Deposits
+	e.market = s.Market
 	for _, r := range s.Actors {
 		if err := e.restoreActor(r); err != nil {
 			return nil, err
@@ -170,21 +171,8 @@ func (e *Engine) restoreActor(r actorRec) error {
 	if uint64(a.ID) != r.ID {
 		return fmt.Errorf("engine: snapshot actor %d out of order (got %d)", r.ID, a.ID)
 	}
-	// Walk the lifecycle to the recorded state. Every wallet state is
-	// reachable from born through active, and none of the edges is
-	// chain-gated.
-	to := population.State(r.State)
-	path := []population.State{}
-	if to != population.Born {
-		path = append(path, population.Active)
-	}
-	if to != population.Born && to != population.Active {
-		path = append(path, to)
-	}
-	for _, s := range path {
-		if err := e.census.Apply(population.Transition{ID: a.ID, To: s, At: r.Changed, Cause: population.Timer{}}); err != nil {
-			return fmt.Errorf("engine: restore actor %d: %w", r.ID, err)
-		}
+	if err := e.walk(a, population.State(r.State), r.Changed); err != nil {
+		return err
 	}
 	if err := e.census.SetFrustration(a.ID, r.Frustration); err != nil {
 		return err
@@ -290,15 +278,16 @@ func (e *Engine) Balances() map[uint64]uint64 {
 	return out
 }
 
-// Supply is everything the settled state accounts for: owned outputs, fees
-// and outputs to addresses outside the population. It equals the genesis
-// total while value is conserved.
+// Supply is everything the settled state accounts for: owned outputs, fees,
+// outputs to addresses outside the population (locked script outputs among
+// them) and the deposits the engine's certificates and proposals hold. It
+// equals the genesis total while value is conserved.
 func (e *Engine) Supply() uint64 {
 	var sum uint64
 	for _, u := range e.led.Settled() {
 		sum += u.Lovelace
 	}
-	return sum + e.fees + e.foreign
+	return sum + e.fees + e.foreign + e.deposits
 }
 
 // Reservations is the ledger's blob, for store.Checkpoint.Reservations. The
