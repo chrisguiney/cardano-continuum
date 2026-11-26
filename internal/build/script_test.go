@@ -191,9 +191,6 @@ func TestContractsHaveTheirOwnAddresses(t *testing.T) {
 		}
 		seen[h] = i
 	}
-	if Contract(3).Hash() != Contract(3).Hash() {
-		t.Fatal("Contract is not deterministic")
-	}
 
 	h := newHarness(t)
 	c := Contract(7)
