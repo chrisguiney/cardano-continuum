@@ -36,10 +36,6 @@ type Follower struct {
 	read []common.Blake2b256
 }
 
-// Follow returns a follower starting at the origin that stays lag blocks
-// behind the tip.
-func (c *Chain) Follow(lag int) *Follower { return &Follower{c: c, lag: max(lag, 0)} }
-
 // Next returns the next event, or false when the follower is caught up. A
 // follower that has read a block a rollback removed is first rolled back to
 // the deepest block it shares with the chain.
@@ -48,10 +44,11 @@ func (f *Follower) Next() (Event, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	visible := max(len(c.blocks)-f.lag, 0)
-	tip := c.tip(visible)
+	fl := follow{c.world}
+	tip := fl.tip(visible)
 	if j := f.intersect(); j < len(f.read) {
 		f.read = f.read[:j]
-		return Event{Kind: RollBackward, Point: c.tip(j), Tip: tip}, true
+		return Event{Kind: RollBackward, Point: fl.tip(j), Tip: tip}, true
 	}
 	n := len(f.read)
 	if n >= visible {
@@ -78,34 +75,41 @@ func (f *Follower) intersect() int {
 // ErrNoIntersect: none of the offered points is on the chain.
 var ErrNoIntersect = errors.New("fakechain: no intersection")
 
-// FollowFrom is chain-sync's FindIntersect: it returns a follower positioned
-// after the first of points that is on the chain, and that point. Clients
-// offer points newest first, so the answer can be older than their cursor
-// when the chain rolled back while they were away.
-func (c *Chain) FollowFrom(points []ocommon.Point, lag int) (*Follower, ocommon.Point, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+// follow resolves chain-sync positions over the world. Its methods assume the
+// caller holds world.mu.
+type follow struct{ w *world }
+
+// from is Chain.FollowFrom's body: a follower for c positioned after the
+// first of points that is on the chain.
+func (f follow) from(c *Chain, points []ocommon.Point, lag int) (*Follower, ocommon.Point, error) {
 	for _, p := range points {
-		n, ok := c.height(p)
+		n, ok := f.height(p)
 		if !ok {
 			continue
 		}
-		f := &Follower{c: c, lag: max(lag, 0)}
-		for _, r := range c.blocks[:n] {
-			f.read = append(f.read, r.Hash)
+		fl := &Follower{c: c, lag: max(lag, 0)}
+		for _, r := range f.w.blocks[:n] {
+			fl.read = append(fl.read, r.Hash)
 		}
-		return f, c.tip(n), nil
+		return fl, f.tip(n), nil
 	}
 	return nil, ocommon.Point{}, ErrNoIntersect
 }
 
-// height returns the height of the block at p (0 for the origin). The caller
-// holds c.mu.
-func (c *Chain) height(p ocommon.Point) (int, bool) {
+// tip returns the point of the block at height n (origin for 0).
+func (f follow) tip(n int) ocommon.Point {
+	if n == 0 {
+		return ocommon.NewPointOrigin()
+	}
+	return f.w.blocks[n-1].Point()
+}
+
+// height returns the height of the block at p (0 for the origin).
+func (f follow) height(p ocommon.Point) (int, bool) {
 	if p.Slot == 0 && len(p.Hash) == 0 {
 		return 0, true
 	}
-	for i, r := range c.blocks {
+	for i, r := range f.w.blocks {
 		if r.Slot == p.Slot && bytes.Equal(r.Hash[:], p.Hash) {
 			return i + 1, true
 		}

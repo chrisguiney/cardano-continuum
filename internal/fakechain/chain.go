@@ -38,16 +38,12 @@ package fakechain
 import (
 	"context"
 	"fmt"
-	"slices"
-	"sync"
-	"time"
 
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 	"github.com/blinklabs-io/gouroboros/ledger/conway"
 	ocommon "github.com/blinklabs-io/gouroboros/protocol/common"
 	mockledger "github.com/blinklabs-io/ouroboros-mock/ledger"
 
-	"github.com/chrisguiney/cardano-continuum/internal/check"
 	"github.com/chrisguiney/cardano-continuum/internal/genesis"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 )
@@ -171,33 +167,18 @@ type Eviction struct {
 }
 
 // Chain is the fake ledger. It is safe for concurrent use; calls are
-// serialised, so determinism needs only a deterministic caller.
+// serialised by world.mu, so determinism needs only a deterministic caller.
+//
+// The state lives in world, behind one lock. Behaviour is split across
+// unlocked parts that each take the world and assume the caller holds its
+// lock: txpool (mempool validation and eviction), producer (blocks and
+// rollbacks), follow (chain-sync positions) and reader (the read-only
+// queries, whose methods Chain gains by embedding it and which take the
+// lock themselves). Exported methods that mutate take the lock and forward
+// to a part.
 type Chain struct {
-	cfg      Config
-	pp       *conway.ConwayProtocolParameters
-	ls       *ledgerView
-	capBytes uint64
-
-	mu sync.Mutex
-	// protects everything below
-	slot      uint64
-	nextBlock uint64
-	faults    []Scheduled
-	utxo      utxoSet
-	certs     *certState
-	fees      uint64
-	supply    uint64
-	blocks    []record
-	// immutable is the number of leading blocks that can never be rolled
-	// back. It only grows, so after a rollback of depth d the next one reaches
-	// at most k-d further back until new blocks arrive; blocks[immutable:]
-	// keep their undo records.
-	immutable int
-	pool      mempool
-	include   []TxID
-	overfull  bool
-	evicted   []Eviction
-	view      func(Ref) (common.Utxo, bool)
+	*world
+	reader
 }
 
 // New returns a chain at slot 0 holding the genesis outputs and no blocks.
@@ -209,7 +190,7 @@ func New(cfg Config) (*Chain, error) {
 		pp := DefaultParams()
 		cfg.Params = &pp
 	}
-	c := &Chain{
+	w := &world{
 		cfg:       cfg,
 		pp:        cfg.Params,
 		capBytes:  cfg.MempoolBytes,
@@ -217,83 +198,21 @@ func New(cfg Config) (*Chain, error) {
 		utxo:      utxoSet{},
 		certs:     newCertState(cfg.Committee),
 	}
-	c.certs.stake(cfg.Staking)
-	if c.capBytes == 0 {
-		c.capBytes = 2 * uint64(cfg.Params.MaxBlockBodySize)
+	w.certs.stake(cfg.Staking)
+	if w.capBytes == 0 {
+		w.capBytes = 2 * uint64(cfg.Params.MaxBlockBodySize)
 	}
-	if err := c.loadGenesis(cfg.Genesis); err != nil {
+	if err := loadGenesis(w, cfg.Genesis); err != nil {
 		return nil, err
 	}
-	c.pool = newMempool(c.utxo, c.certs)
+	w.pool = newMempool(w.utxo, w.certs)
 	faults, err := sortFaults(cfg.Faults)
 	if err != nil {
 		return nil, err
 	}
-	c.faults = faults
-	c.ls = c.ledgerState()
-	return c, nil
-}
-
-func (c *Chain) loadGenesis(gs []GenesisOutput) error {
-	for _, g := range gs {
-		if g.Address.NetworkId() != uint(c.cfg.NetworkID) {
-			return fmt.Errorf("fakechain: genesis address %s is not on network %d", g.Address, c.cfg.NetworkID)
-		}
-		u, err := genesisUtxo(g)
-		if err != nil {
-			return err
-		}
-		r := refOf(u.Id)
-		if _, dup := c.utxo[r]; dup {
-			return fmt.Errorf("fakechain: genesis address %s appears twice", g.Address)
-		}
-		c.utxo[r] = u
-		c.supply += g.Lovelace
-	}
-	return nil
-}
-
-// ledgerState adapts the fake to the common.LedgerState the gouroboros rules
-// read: UTxO lookup, network id and slot arithmetic here, delegation and
-// governance state in ledgerView.
-func (c *Chain) ledgerState() *ledgerView {
-	g := c.cfg.Slots
-	start := time.Unix(0, 0).UTC()
-	ls := mockledger.NewLedgerStateBuilder().
-		WithNetworkId(uint(c.cfg.NetworkID)).
-		WithUtxoById(func(in common.TransactionInput) (common.Utxo, error) {
-			if u, ok := c.view(refOf(in)); ok {
-				return u, nil
-			}
-			return common.Utxo{}, errNoUtxo
-		}).
-		WithEpochForSlot(func(slot uint64) (uint64, error) { return g.EpochOfSlot(slot), nil }).
-		WithSlotToTime(func(slot uint64) (time.Time, error) {
-			return start.Add(time.Duration(g.SlotStart(slot)) * time.Millisecond), nil
-		}).
-		WithTimeToSlot(func(t time.Time) (uint64, error) {
-			return g.SlotAt(sched.Time(t.Sub(start).Milliseconds())), nil
-		}).
-		WithConstitutionValue(&common.Constitution{}).
-		WithGovPurposeRootsValue(&common.GovPurposeRoots{}).
-		Build()
-	return &ledgerView{MockLedgerState: ls}
-}
-
-// effects returns what certState.apply needs. A proposal can be voted on up to
-// the end of the epoch govActionLifetime epochs after the one it was made in.
-func (c *Chain) effects() effects {
-	g, life := c.cfg.Slots, uint64(c.pp.GovActionValidityPeriod)
-	return effects{pp: c.pp, expiry: func(slot uint64) uint64 {
-		return g.SlotAt(g.EpochStart(g.EpochOfSlot(slot)+life+1)) - 1
-	}}
-}
-
-// check runs the rule list against view at slot. The caller holds c.mu.
-func (c *Chain) check(tx *conway.ConwayTransaction, slot uint64, view *overlay) []Failure {
-	c.view, c.ls.certs = view.get, view.certs
-	defer func() { c.view, c.ls.certs = nil, nil }()
-	return validate(tx, slot, c.ls, c.pp)
+	w.faults = faults
+	w.ls = newLedgerView(w)
+	return &Chain{world: w, reader: reader{w}}, nil
 }
 
 // Name implements the submitter's target interface.
@@ -317,25 +236,7 @@ func (c *Chain) Submit(ctx context.Context, era uint, txCbor []byte) error {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	size := uint64(len(tx.Cbor()))
-	if c.pool.bytes+size > c.capBytes {
-		return fmt.Errorf("%w: %d + %d bytes over %d", ErrMempoolFull, c.pool.bytes, size, c.capBytes)
-	}
-	slot := c.mempoolSlot()
-	if fs := c.check(tx, slot, c.pool.view); len(fs) > 0 {
-		return &RejectError{Tx: tx.Hash(), Failures: fs}
-	}
-	c.pool.push(tx, slot, c.effects())
-	return nil
-}
-
-// mempoolSlot is the slot a mempool validates at: the one after the tip, as
-// the node's mempool ticks its ledger state.
-func (c *Chain) mempoolSlot() uint64 {
-	if len(c.blocks) == 0 {
-		return 0
-	}
-	return c.blocks[len(c.blocks)-1].Slot + 1
+	return txpool{c.world}.submit(tx)
 }
 
 // AdvanceTo moves the clock to slot, firing scheduled faults and producing
@@ -346,6 +247,7 @@ func (c *Chain) AdvanceTo(slot uint64) error {
 	if slot < c.slot {
 		return fmt.Errorf("fakechain: clock at slot %d cannot move back to %d", c.slot, slot)
 	}
+	p := producer{c.world}
 	for {
 		next := c.nextBlock
 		if len(c.faults) > 0 && c.faults[0].Slot <= next {
@@ -356,7 +258,7 @@ func (c *Chain) AdvanceTo(slot uint64) error {
 			return nil
 		}
 		c.slot = next
-		if err := c.step(); err != nil {
+		if err := p.step(); err != nil {
 			return err
 		}
 	}
@@ -365,146 +267,23 @@ func (c *Chain) AdvanceTo(slot uint64) error {
 // AdvanceToTime moves the clock to the slot containing t.
 func (c *Chain) AdvanceToTime(t sched.Time) error { return c.AdvanceTo(c.cfg.Slots.SlotAt(t)) }
 
-// step fires the faults due at c.slot, then the block if one is due.
-func (c *Chain) step() error {
-	for len(c.faults) > 0 && c.faults[0].Slot == c.slot {
-		f := c.faults[0]
-		c.faults = c.faults[1:]
-		if err := f.Fault.apply(c); err != nil {
-			return fmt.Errorf("fakechain: fault %T at slot %d: %w", f.Fault, f.Slot, err)
-		}
-	}
-	if c.nextBlock != c.slot {
-		return nil
-	}
-	c.nextBlock += c.cfg.BlockEvery
-	return c.produce()
+// Follow returns a follower starting at the origin that stays lag blocks
+// behind the tip.
+func (c *Chain) Follow(lag int) *Follower { return &Follower{c: c, lag: max(lag, 0)} }
+
+// FollowFrom is chain-sync's FindIntersect: it returns a follower positioned
+// after the first of points that is on the chain, and that point. Clients
+// offer points newest first, so the answer can be older than their cursor
+// when the chain rolled back while they were away.
+func (c *Chain) FollowFrom(points []ocommon.Point, lag int) (*Follower, ocommon.Point, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return follow{c.world}.from(c, points, lag)
 }
 
-// produce assembles, applies and records the block at c.slot.
-func (c *Chain) produce() error {
-	txs := c.assemble()
-	u := undo{certs: c.certs.clone()}
-	r := c.effects()
-	newEpoch(c.certs, c.cfg.Slots.EpochOfSlot(c.slot), len(c.blocks) == 0, c.utxo.stakeByCred())
-	for _, tx := range txs {
-		c.utxo.applyTx(tx, &u)
-		c.certs.apply(tx, c.slot, r)
-	}
-	c.fees += u.fees
-	b, err := c.encode(txs)
-	if err != nil {
-		return err
-	}
-	c.blocks = append(c.blocks, record{Block: b, txs: txs, undo: u})
-	c.settle()
-	c.revalidate()
-	check.PostFn(c.conserved, "fakechain: supply conserved")
-	return nil
-}
-
-// assemble chooses the block's transactions: the Include list if one is
-// pending, otherwise the mempool in order. Each is revalidated at the block
-// slot against the block so far; failures are evicted. Assembly stops at the
-// first transaction that does not fit the body size or the execution
-// budget, as the node takes the longest mempool prefix within the block
-// capacity (ouroboros-consensus Mempool/Impl/Common.hs, splitAfterTxSize
-// over blockCapacityTxMeasure, at 136122cc). So a transaction within the
-// per-transaction budget but over the per-block one is never forged and
-// holds back every later one until it leaves the mempool.
-func (c *Chain) assemble() []*conway.ConwayTransaction {
-	cands, overfull := c.pool.txs, c.overfull
-	c.overfull = false
-	if c.include != nil {
-		cands = c.pool.pick(c.include)
-		c.include = nil
-	}
-	view := newOverlay(c.utxo, c.certs)
-	r := c.effects()
-	var chosen []*conway.ConwayTransaction
-	var used blockUse
-	for _, tx := range cands {
-		if fs := c.check(tx, c.slot, view); len(fs) > 0 {
-			c.evict(tx, ReasonInvalid, fs)
-			continue
-		}
-		next := used.add(tx)
-		if !overfull && !next.fits(c.pp) {
-			break
-		}
-		used = next
-		view.apply(tx, c.slot, r)
-		chosen = append(chosen, tx)
-	}
-	c.pool.remove(chosen)
-	return chosen
-}
-
-func (c *Chain) evict(tx *conway.ConwayTransaction, why Reason, fs []Failure) {
-	c.pool.remove([]*conway.ConwayTransaction{tx})
-	c.evicted = append(c.evicted, Eviction{Tx: tx.Hash(), Slot: c.slot, Reason: why, Failures: fs})
-}
-
-// revalidate rebuilds the mempool against the current tip, in order,
-// evicting what no longer applies.
-func (c *Chain) revalidate() {
-	old := c.pool.txs
-	c.pool = newMempool(c.utxo, c.certs)
-	slot := c.mempoolSlot()
-	r := c.effects()
-	for _, tx := range old {
-		if fs := c.check(tx, slot, c.pool.view); len(fs) > 0 {
-			c.evicted = append(c.evicted, Eviction{Tx: tx.Hash(), Slot: c.slot, Reason: ReasonInvalid, Failures: fs})
-			continue
-		}
-		c.pool.push(tx, slot, r)
-	}
-}
-
-// settle makes the block k deep immutable, if the chain is long enough, and
-// forgets the undo records of the blocks it newly covers.
-func (c *Chain) settle() {
-	n := len(c.blocks)
-	if n <= int(c.cfg.K) {
-		return
-	}
-	to := n - int(c.cfg.K)
-	for i := c.immutable; i < to; i++ {
-		c.blocks[i].undo = undo{}
-		c.blocks[i].txs = nil
-	}
-	c.immutable = max(c.immutable, to)
-}
-
-func (c *Chain) conserved() bool {
-	var sum uint64
-	for _, u := range c.utxo {
-		sum += u.Output.Amount().Uint64()
-	}
-	return sum+c.fees+c.certs.deposits() == c.supply
-}
-
-// rollback removes the last depth blocks. It refuses, changing nothing, a
-// depth that would remove an immutable block.
-func (c *Chain) rollback(depth uint64, readd bool) error {
-	if depth == 0 || depth > uint64(len(c.blocks)-c.immutable) {
-		return fmt.Errorf("%w: depth %d, height %d, immutable %d", ErrTooDeep, depth, len(c.blocks), c.immutable)
-	}
-	cut := len(c.blocks) - int(depth)
-	var back []*conway.ConwayTransaction
-	for i := len(c.blocks) - 1; i >= cut; i-- {
-		c.utxo.revert(c.blocks[i].undo)
-		c.fees -= c.blocks[i].undo.fees
-		c.certs = c.blocks[i].undo.certs
-	}
-	for _, r := range c.blocks[cut:] {
-		back = append(back, r.txs...)
-	}
-	c.blocks = slices.Clip(c.blocks[:cut])
-	if readd {
-		c.pool.txs = append(back, c.pool.txs...)
-	}
-	c.revalidate()
-	check.PostFn(c.conserved, "fakechain: supply conserved")
-	return nil
+// Inject applies f now, at the current slot.
+func (c *Chain) Inject(f Fault) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return f.apply(c.world)
 }

@@ -2,7 +2,6 @@ package fakechain
 
 import (
 	"maps"
-	"slices"
 
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 )
@@ -132,64 +131,4 @@ type Ledger struct {
 	DReps     []common.Blake2b224
 	Proposals []ProposalStatus
 	Votes     []Vote
-}
-
-// Ledger returns the state at the tip, in a fixed order.
-func (c *Chain) Ledger() Ledger {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	s := c.certs
-	l := Ledger{
-		Label: s.epoch.label, Frozen: s.epoch.frozen,
-		Mark: slices.Clone(s.epoch.mark), Set: slices.Clone(s.epoch.set),
-	}
-	for _, k := range sortedCreds(s.accounts) {
-		a := s.accounts[k]
-		acc := Account{Cred: k.hash}
-		if a.pool != nil {
-			p := common.Blake2b224(*a.pool)
-			acc.Pool = &p
-		}
-		if a.drep != nil {
-			d := *a.drep
-			acc.DRep = &d
-		}
-		l.Accounts = append(l.Accounts, acc)
-	}
-	for id, p := range s.pools {
-		l.Pools = append(l.Pools, PoolStatus{ID: common.Blake2b224(id), RetireAt: p.retire})
-	}
-	slices.SortFunc(l.Pools, func(a, b PoolStatus) int { return slices.Compare(a.ID[:], b.ID[:]) })
-	for id := range s.epoch.retired {
-		l.Retired = append(l.Retired, common.Blake2b224(id))
-	}
-	slices.SortFunc(l.Retired, func(a, b common.Blake2b224) int { return slices.Compare(a[:], b[:]) })
-	for _, k := range sortedCreds(s.dreps) {
-		l.DReps = append(l.DReps, k.hash)
-	}
-	for id, p := range s.proposals {
-		l.Proposals = append(l.Proposals, ProposalStatus{ID: id, ExpirySlot: p.state.ExpirySlot})
-	}
-	slices.SortFunc(l.Proposals, func(a, b ProposalStatus) int {
-		if c := slices.Compare(a.ID.TransactionId[:], b.ID.TransactionId[:]); c != 0 {
-			return c
-		}
-		return int(a.ID.GovActionIdx) - int(b.ID.GovActionIdx)
-	})
-	for k, v := range s.votes {
-		l.Votes = append(l.Votes, Vote{Action: k.action, Kind: k.kind, Hash: k.hash, Choice: v})
-	}
-	slices.SortFunc(l.Votes, func(a, b Vote) int {
-		if c := slices.Compare(a.Action.TransactionId[:], b.Action.TransactionId[:]); c != 0 {
-			return c
-		}
-		if c := int(a.Action.GovActionIdx) - int(b.Action.GovActionIdx); c != 0 {
-			return c
-		}
-		if c := int(a.Kind) - int(b.Kind); c != 0 {
-			return c
-		}
-		return slices.Compare(a.Hash[:], b.Hash[:])
-	})
-	return l
 }

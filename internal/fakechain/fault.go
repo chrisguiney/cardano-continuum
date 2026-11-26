@@ -8,7 +8,7 @@ import (
 // Fault is an environment event the fake applies only when told to: through
 // Config.Faults at a slot, or Chain.Inject at once. The set is closed.
 type Fault interface {
-	apply(c *Chain) error
+	apply(w *world) error
 }
 
 // Scheduled is a fault due at a slot.
@@ -45,42 +45,35 @@ type Include struct{ Txs []TxID }
 // oracle's block-budget monitor to catch.
 type Overfill struct{}
 
-// Inject applies f now, at the current slot.
-func (c *Chain) Inject(f Fault) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return f.apply(c)
-}
-
-func (d Drop) apply(c *Chain) error {
-	tx := c.pool.find(d.Tx)
+func (d Drop) apply(w *world) error {
+	tx := w.pool.find(d.Tx)
 	if tx == nil {
 		return fmt.Errorf("%w: drop %s", ErrNotInMempool, d.Tx)
 	}
-	c.evict(tx, ReasonDropped, nil)
-	c.revalidate()
+	txpool{w}.evict(tx, ReasonDropped, nil)
+	txpool{w}.revalidate()
 	return nil
 }
 
-func (r Rollback) apply(c *Chain) error { return c.rollback(r.Depth, r.Readd) }
+func (r Rollback) apply(w *world) error { return producer{w}.rollback(r.Depth, r.Readd) }
 
-func (d Delay) apply(c *Chain) error {
-	c.nextBlock += d.Slots
+func (d Delay) apply(w *world) error {
+	w.nextBlock += d.Slots
 	return nil
 }
 
-func (in Include) apply(c *Chain) error {
+func (in Include) apply(w *world) error {
 	for _, id := range in.Txs {
-		if c.pool.find(id) == nil {
+		if w.pool.find(id) == nil {
 			return fmt.Errorf("%w: include %s", ErrNotInMempool, id)
 		}
 	}
-	c.include = append([]TxID{}, in.Txs...)
+	w.include = append([]TxID{}, in.Txs...)
 	return nil
 }
 
-func (Overfill) apply(c *Chain) error {
-	c.overfull = true
+func (Overfill) apply(w *world) error {
+	w.overfull = true
 	return nil
 }
 

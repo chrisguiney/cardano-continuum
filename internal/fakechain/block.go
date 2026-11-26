@@ -8,7 +8,6 @@ import (
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 	"github.com/blinklabs-io/gouroboros/ledger/conway"
 	"github.com/blinklabs-io/gouroboros/ledger/shelley"
-	"github.com/blinklabs-io/ouroboros-mock/fixtures"
 )
 
 // blockUse is what a block's transactions take of its capacity: body bytes
@@ -35,41 +34,6 @@ func (u blockUse) add(tx *conway.ConwayTransaction) blockUse {
 func (u blockUse) fits(pp *conway.ConwayProtocolParameters) bool {
 	return u.bytes <= uint64(pp.MaxBlockBodySize) &&
 		u.units.Memory <= pp.MaxBlockExUnits.Memory && u.units.Steps <= pp.MaxBlockExUnits.Steps
-}
-
-// encode builds the Conway block at c.slot holding txs.
-func (c *Chain) encode(txs []*conway.ConwayTransaction) (Block, error) {
-	var prev common.Blake2b256
-	if n := len(c.blocks); n > 0 {
-		prev = c.blocks[n-1].Hash
-	}
-	number := uint64(len(c.blocks)) + 1
-	gtxs := make([]common.Transaction, len(txs))
-	ids := make([]TxID, len(txs))
-	for i, tx := range txs {
-		gtxs[i] = tx
-		ids[i] = tx.Hash()
-	}
-	pv := c.pp.ProtocolVersion
-	b, err := fixtures.NewBlockBuilder(conway.EraConway).
-		WithBlockNumber(number).
-		WithSlot(c.slot).
-		WithPreviousHash(prev).
-		WithIssuerVkey(c.cfg.Issuer).
-		WithProtocolVersion(uint64(pv.Major), uint64(pv.Minor)).
-		WithTransactions(gtxs...).
-		Build()
-	if err != nil {
-		return Block{}, fmt.Errorf("fakechain: build block %d at slot %d: %w", number, c.slot, err)
-	}
-	return Block{
-		Number:   number,
-		Slot:     c.slot,
-		Hash:     b.Hash(),
-		PrevHash: prev,
-		Cbor:     b.Cbor(),
-		Txs:      ids,
-	}, nil
 }
 
 // genesisUtxo builds the output for g by decoding its CBOR, so the output

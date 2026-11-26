@@ -21,7 +21,6 @@ members internal/engine pendingRec 32
 members internal/engine snapshot 31
 members internal/engine view 22
 members internal/explorer TxView 27
-members internal/fakechain Chain 59
 members internal/fakechain ledgerView 25
 members internal/forger Chain 25
 members internal/forger Node 34
@@ -61,7 +60,6 @@ stray-methods internal/engine Runner 2
 stray-methods internal/engine actor 1
 stray-methods internal/engine pendingRec 2
 stray-methods internal/engine view 9
-stray-methods internal/fakechain Chain 23
 stray-methods internal/forger Node 18
 stray-methods internal/httpapi ActorRow 1
 stray-methods internal/httpapi LogSource 7
