@@ -116,6 +116,16 @@ func (c *Census) SetFrustration(id ActorID, f float64) error {
 	return nil
 }
 
+// SetCompetence sets an actor's competence, clamped to [0, 1]: what
+// learning from its own fixes has made of its drawn trait.
+func (c *Census) SetCompetence(id ActorID, v float64) error {
+	if _, ok := c.Get(id); !ok {
+		return fmt.Errorf("%w: %d", ErrUnknownActor, id)
+	}
+	c.actors[id-1].Competence = min(max(v, 0), 1)
+	return nil
+}
+
 // Count returns how many actors of kind are in state st.
 func (c *Census) Count(kind profile.Kind, st State) int {
 	return len(c.index[bucket{kind, st}])

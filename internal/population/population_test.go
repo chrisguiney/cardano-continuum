@@ -419,6 +419,22 @@ func TestSetFrustration(t *testing.T) {
 	}
 }
 
+func TestSetCompetence(t *testing.T) {
+	c := &Census{}
+	a := c.Spawn(walletProfile(), seed(1), 0)
+	for _, tt := range []struct{ in, want float64 }{{0.75, 0.75}, {-1, 0}, {3, 1}} {
+		if err := c.SetCompetence(a.ID, tt.in); err != nil {
+			t.Fatal(err)
+		}
+		if got := c.mustGet(a.ID); got.Competence != tt.want {
+			t.Fatalf("competence %v after setting %v, want %v", got.Competence, tt.in, tt.want)
+		}
+	}
+	if err := c.SetCompetence(77, 1); !errors.Is(err, ErrUnknownActor) {
+		t.Fatal(err)
+	}
+}
+
 type logEntry struct {
 	At sched.Time
 	ID ActorID
