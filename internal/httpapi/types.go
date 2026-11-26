@@ -33,6 +33,10 @@ type Page struct {
 	// Known filters findings by whether they match a known issue: KnownAll
 	// (the zero value), KnownHide or KnownOnly.
 	Known KnownFilter
+	// Kind and Severity, when set, keep only findings of that oracle.Kind
+	// and severity name.
+	Kind     string
+	Severity string
 }
 
 // KnownFilter selects findings by their known-issue tag.
@@ -113,6 +117,8 @@ type ActorFilter struct {
 	Profile string
 	State   string
 	Role    string
+	// Kind is the actor kind (profile.Kind).
+	Kind string
 	// Delegated, when set, keeps only actors that are (true) or are not
 	// (false) delegated to a pool.
 	Delegated *bool
@@ -277,6 +283,8 @@ type ImplVerdict struct {
 type Finding struct {
 	ID            string        `json:"id"`
 	Seq           uint64        `json:"seq"`
+	Kind          string        `json:"kind"`
+	Severity      string        `json:"severity"`
 	Summary       string        `json:"summary"`
 	TxCBORHex     string        `json:"tx_cbor_hex"`
 	Verdicts      []ImplVerdict `json:"verdicts"`
@@ -318,6 +326,8 @@ type Filter struct {
 	Actor   *uint64
 	Profile string
 	Kinds   []string
+	// Intent keeps decisions that chose this intent kind.
+	Intent string
 }
 
 // Match reports whether d passes the filter.
@@ -326,6 +336,9 @@ func (f Filter) Match(d Decision) bool {
 		return false
 	}
 	if f.Profile != "" && f.Profile != d.Profile {
+		return false
+	}
+	if f.Intent != "" && f.Intent != d.Intent {
 		return false
 	}
 	if len(f.Kinds) == 0 {

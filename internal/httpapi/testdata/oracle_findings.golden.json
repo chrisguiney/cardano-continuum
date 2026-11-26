@@ -6,6 +6,8 @@
     {
       "id": "d7984314924c39ac3fb37138be046f64",
       "seq": 42,
+      "kind": "verdict_split",
+      "severity": "fatal",
       "summary": "fatal verdict_split: tx abababab accepted by dingo, rejected by cardano-node",
       "tx_cbor_hex": "84a0",
       "verdicts": [
@@ -33,6 +35,8 @@
     {
       "id": "33116641140bc81484b8d5769c769fa9",
       "seq": 50,
+      "kind": "value_not_conserved",
+      "severity": "fatal",
       "summary": "fatal value_not_conserved: accounted lovelace differs from the genesis total 1000 by 3 at slot 0",
       "tx_cbor_hex": "",
       "verdicts": [],

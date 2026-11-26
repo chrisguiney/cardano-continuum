@@ -212,3 +212,14 @@ type TipStatus struct {
 	// +optional
 	Height int64 `json:"height,omitempty"`
 }
+
+// Implementations returns every Implementation the type accepts.
+func Implementations() []Implementation { return []Implementation{Dingo, CardanoNode, Amaru, Rogue} }
+
+// Tiers returns every Tier.
+func Tiers() []Tier { return []Tier{TierLogical, TierValidating, TierForging} }
+
+// Phases returns every PoolPhase.
+func Phases() []PoolPhase {
+	return []PoolPhase{PhasePending, PhaseSyncing, PhaseForging, PhaseFollowing, PhaseDark}
+}

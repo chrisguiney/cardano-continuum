@@ -3,6 +3,8 @@
 // io.Reader and randomness through a Source.
 package profile
 
+import "slices"
+
 // Kind is the type of actor a profile describes.
 type Kind string
 
@@ -176,4 +178,22 @@ func (p Profile) Eager() float64 {
 		return 1
 	}
 	return *p.Eagerness
+}
+
+// Kinds returns every actor kind, sorted.
+func Kinds() []Kind { return trueKeys(kinds) }
+
+// Agendas returns every agenda name, sorted.
+func Agendas() []AgendaName { return trueKeys(agendas) }
+
+// IntentKinds returns every intent kind, sorted.
+func IntentKinds() []IntentKind { return trueKeys(intents) }
+
+func trueKeys[K ~string](m map[K]bool) []K {
+	out := make([]K, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	slices.Sort(out)
+	return out
 }

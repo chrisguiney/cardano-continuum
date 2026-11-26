@@ -227,6 +227,7 @@ func pageActors(rows []ActorRow, q ActorQuery) ActorPage {
 		return (f.Profile != "" && r.Profile != f.Profile) ||
 			(f.State != "" && r.State != f.State) ||
 			(f.Role != "" && r.Role != f.Role) ||
+			(f.Kind != "" && r.Kind != f.Kind) ||
 			(f.Delegated != nil && r.Delegated != *f.Delegated)
 	})
 	slices.SortStableFunc(rows, func(a, b ActorRow) int {

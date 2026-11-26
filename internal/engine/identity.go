@@ -139,14 +139,31 @@ func bech32Of(hrp string, data []byte) string {
 	return s
 }
 
+// The actor kinds kindOf reports beyond the profile kinds.
+const (
+	kindAdversary = "adversary"
+	kindProposer  = "proposer"
+)
+
+// ActorKinds returns every value kindOf can report: the profile kinds plus
+// the proposer and adversary refinements.
+func ActorKinds() []string {
+	out := []string{kindAdversary, kindProposer}
+	for _, k := range profile.Kinds() {
+		out = append(out, string(k))
+	}
+	slices.Sort(out)
+	return out
+}
+
 // kindOf names an actor's role for the UI: a profile kind, refined for the
 // network proposer and for adversaries.
 func (e *Engine) kindOf(id population.ActorID, p profile.Profile) string {
 	switch {
 	case e.isAdversary(id):
-		return "adversary"
+		return kindAdversary
 	case p.Name == proposerName:
-		return "proposer"
+		return kindProposer
 	}
 	return string(p.Kind)
 }

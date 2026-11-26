@@ -265,3 +265,15 @@ func classList(cs []submit.Class) string {
 	}
 	return strings.Join(s, ",")
 }
+
+// Severities returns every severity, least severe first.
+func Severities() []Severity { return []Severity{Warn, Error, Fatal} }
+
+// Kinds returns every finding kind, verdict-oracle kinds first.
+func Kinds() []Kind {
+	return []Kind{
+		UnexpectedAccept, UnexpectedReject, WrongClass, Unclassified, VerdictSplit,
+		ValueNotConserved, PaidTwice, ReservationLeaked, ReservationDouble, Unreserved,
+		SettledBack, ViewMismatch, Frozen, DeepFork, FloorBreached, RogueAdopted,
+	}
+}

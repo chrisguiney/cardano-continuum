@@ -38,7 +38,8 @@ func FindingsPage(fs Findings, p Page) FindingPage {
 			}
 			out.KnownCounts[row.Known]++
 		}
-		if p.Known == KnownHide && row.Known != "" || p.Known == KnownOnly && row.Known == "" {
+		if p.Known == KnownHide && row.Known != "" || p.Known == KnownOnly && row.Known == "" ||
+			p.Kind != "" && row.Kind != p.Kind || p.Severity != "" && row.Severity != p.Severity {
 			continue
 		}
 		rows = append(rows, row)
@@ -55,7 +56,7 @@ func FindingsPage(fs Findings, p Page) FindingPage {
 // nodes it involves with verdict "involved".
 func FindingOf(f oracle.Finding) Finding {
 	out := Finding{
-		ID: f.ID, Seq: f.Seq,
+		ID: f.ID, Seq: f.Seq, Kind: string(f.Kind), Severity: f.Severity.String(),
 		Summary:      fmt.Sprintf("%s %s: %s", f.Severity, f.Kind, f.Summary),
 		TxCBORHex:    hex.EncodeToString(f.Tx),
 		Verdicts:     []ImplVerdict{},

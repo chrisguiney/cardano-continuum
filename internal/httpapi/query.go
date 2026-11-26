@@ -57,7 +57,7 @@ func parseActorQuery(r *http.Request) (ActorQuery, error) {
 	default:
 		return q, badf("dir must be asc or desc")
 	}
-	for name, dst := range map[string]*string{"profile": &q.Filter.Profile, "state": &q.Filter.State, "role": &q.Filter.Role} {
+	for name, dst := range map[string]*string{"profile": &q.Filter.Profile, "state": &q.Filter.State, "role": &q.Filter.Role, "kind": &q.Filter.Kind} {
 		if s := v.Get(name); s != "" {
 			if !reLabel.MatchString(s) {
 				return q, badf("%s must match %s", name, reLabel)
@@ -92,6 +92,12 @@ func parseFilter(v url.Values) (Filter, error) {
 		}
 		f.Profile = s
 	}
+	if s := v.Get("intent"); s != "" {
+		if !slices.Contains(BuildEnums().IntentKind, s) {
+			return f, badf("intent must be one of %s", strings.Join(BuildEnums().IntentKind, ", "))
+		}
+		f.Intent = s
+	}
 	for _, raw := range v["kind"] {
 		for _, k := range strings.Split(raw, ",") {
 			if !reKind.MatchString(k) {
@@ -104,6 +110,30 @@ func parseFilter(v url.Values) (Filter, error) {
 		return f, badf("at most %d kinds", maxKinds)
 	}
 	return f, nil
+}
+
+// parseFindingFilter validates the findings kind and severity parameters
+// against the oracle's own lists.
+func parseFindingFilter(r *http.Request) (Page, error) {
+	var p Page
+	v, err := queryOf(r)
+	if err != nil {
+		return p, err
+	}
+	e := BuildEnums()
+	if s := v.Get("kind"); s != "" {
+		if !slices.Contains(e.FindingKind, s) {
+			return p, badf("kind must be one of %s", strings.Join(e.FindingKind, ", "))
+		}
+		p.Kind = s
+	}
+	if s := v.Get("severity"); s != "" {
+		if !slices.Contains(e.Severity, s) {
+			return p, badf("severity must be one of %s", strings.Join(e.Severity, ", "))
+		}
+		p.Severity = s
+	}
+	return p, nil
 }
 
 // parseAfter reads the client's resume point from the Last-Event-ID header,

@@ -10,6 +10,7 @@ package population
 import (
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
@@ -166,3 +167,6 @@ func satisfies(g gate, c Cause) bool {
 	}
 	return true
 }
+
+// States returns every lifecycle state.
+func States() []State { return slices.Clone(allStates) }

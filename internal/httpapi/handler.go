@@ -40,15 +40,16 @@ type api struct {
 //
 //	GET  /healthz
 //	GET  /api/capabilities
+//	GET  /api/meta/enums
 //	GET  /api/overview
-//	GET  /api/actors?limit&offset&sort&dir&profile&state&role&delegated
+//	GET  /api/actors?limit&offset&sort&dir&profile&state&role&kind&delegated
 //	GET  /api/actors/{id}
 //	GET  /api/adversaries
 //	GET  /api/actors/{id}/timeline
 //	GET  /api/pools
-//	GET  /api/findings?limit&offset&known=true|false
+//	GET  /api/findings?limit&offset&known=true|false&kind&severity
 //	GET  /api/findings/{id}
-//	GET  /api/decisions?actor&profile&kind&last_event_id   (SSE)
+//	GET  /api/decisions?actor&profile&kind&intent&last_event_id   (SSE)
 //	POST /api/control
 func NewHandler(cfg Config) http.Handler {
 	if cfg.Logger == nil {
@@ -68,6 +69,9 @@ func NewHandler(cfg Config) http.Handler {
 	})
 	mux.HandleFunc("GET /api/capabilities", func(w http.ResponseWriter, _ *http.Request) {
 		a.json(w, http.StatusOK, map[string]bool{"controls": a.Controls != nil})
+	})
+	mux.HandleFunc("GET /api/meta/enums", func(w http.ResponseWriter, _ *http.Request) {
+		a.json(w, http.StatusOK, BuildEnums())
 	})
 	mux.HandleFunc("GET /api/overview", a.overview)
 	mux.HandleFunc("GET /api/actors", a.actors)
@@ -213,7 +217,12 @@ func (a *api) findings(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, err)
 		return
 	}
-	f, err := a.Source.Findings(r.Context(), Page{Limit: q.Limit, Offset: q.Offset, Known: known})
+	ff, err := parseFindingFilter(r)
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	f, err := a.Source.Findings(r.Context(), Page{Limit: q.Limit, Offset: q.Offset, Known: known, Kind: ff.Kind, Severity: ff.Severity})
 	if err != nil {
 		a.fail(w, err)
 		return
