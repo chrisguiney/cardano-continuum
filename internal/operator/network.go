@@ -12,7 +12,10 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
@@ -102,4 +105,20 @@ func (r *Networks) images(ctx context.Context, n *v1alpha1.ContinuumNetwork) (ma
 		return nil, nil
 	}
 	return out, nil
+}
+
+// SetupWithManager registers the network controller.
+func (r *Networks) SetupWithManager(mgr manager.Manager) error {
+	err := builder.ControllerManagedBy(mgr).
+		Named("continuumnetwork").
+		For(&v1alpha1.ContinuumNetwork{}).
+		Watches(&v1alpha1.ContinuumPool{}, handler.EnqueueRequestsFromMapFunc(func(_ context.Context, o client.Object) []reconcile.Request {
+			p := o.(*v1alpha1.ContinuumPool)
+			return []reconcile.Request{{NamespacedName: types.NamespacedName{Namespace: p.Namespace, Name: p.Spec.NetworkRef}}}
+		})).
+		Complete(r)
+	if err != nil {
+		return fmt.Errorf("set up network controller: %w", err)
+	}
+	return nil
 }

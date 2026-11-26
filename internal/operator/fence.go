@@ -11,7 +11,11 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -83,6 +87,20 @@ func (r *Release) release(ctx context.Context, pod *corev1.Pod) error {
 	}
 	if err := r.client.Patch(ctx, pod, client.RawPatch(types.MergePatchType, patch)); err != nil {
 		return fmt.Errorf("release pod %s uid %s: %w", pod.Name, pod.UID, err)
+	}
+	return nil
+}
+
+// SetupWithManager registers the release controller.
+func (r *Release) SetupWithManager(mgr manager.Manager) error {
+	fenced := predicate.NewPredicateFuncs(func(o client.Object) bool { return slices.Contains(o.GetFinalizers(), Finalizer) })
+	err := builder.ControllerManagedBy(mgr).
+		Named("fence").
+		For(&corev1.Pod{}, builder.WithPredicates(fenced)).
+		Watches(&corev1.Node{}, handler.EnqueueRequestsFromMapFunc(podsOnNode(mgr.GetClient()))).
+		Complete(r)
+	if err != nil {
+		return fmt.Errorf("set up release controller: %w", err)
 	}
 	return nil
 }

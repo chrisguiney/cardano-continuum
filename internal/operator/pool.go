@@ -9,12 +9,17 @@ import (
 	"sync"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
@@ -382,4 +387,24 @@ func (r *Pools) siblings(ctx context.Context, p *v1alpha1.ContinuumPool, net *v1
 		s.members = append(s.members, Member{Name: Name(o), PoolID: o.Spec.PoolID, Role: RoleOf(o)})
 	}
 	return s, nil
+}
+
+// SetupWithManager registers the pool controller.
+func (r *Pools) SetupWithManager(mgr manager.Manager) error {
+	c := mgr.GetClient()
+	err := builder.ControllerManagedBy(mgr).
+		Named("continuumpool").
+		For(&v1alpha1.ContinuumPool{}).
+		Owns(&appsv1.StatefulSet{}).
+		Watches(&corev1.Pod{}, handler.EnqueueRequestsFromMapFunc(poolOfObject)).
+		Watches(&v1alpha1.ContinuumPool{}, handler.EnqueueRequestsFromMapFunc(siblingsOf(c)),
+			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		Watches(&v1alpha1.ContinuumNetwork{}, handler.EnqueueRequestsFromMapFunc(poolsOfNetwork(c))).
+		Watches(&corev1.Node{}, handler.EnqueueRequestsFromMapFunc(poolsOnNode(c))).
+		WatchesMetadata(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(poolsOfSecret(c))).
+		Complete(r)
+	if err != nil {
+		return fmt.Errorf("set up pool controller: %w", err)
+	}
+	return nil
 }

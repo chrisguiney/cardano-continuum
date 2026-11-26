@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"slices"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -13,12 +12,10 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
-	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
@@ -91,56 +88,6 @@ func Index(ctx context.Context, mgr manager.Manager) error {
 	})
 	if err != nil {
 		return fmt.Errorf("index pods by node: %w", err)
-	}
-	return nil
-}
-
-// SetupWithManager registers the pool controller.
-func (r *Pools) SetupWithManager(mgr manager.Manager) error {
-	c := mgr.GetClient()
-	err := builder.ControllerManagedBy(mgr).
-		Named("continuumpool").
-		For(&v1alpha1.ContinuumPool{}).
-		Owns(&appsv1.StatefulSet{}).
-		Watches(&corev1.Pod{}, handler.EnqueueRequestsFromMapFunc(poolOfObject)).
-		Watches(&v1alpha1.ContinuumPool{}, handler.EnqueueRequestsFromMapFunc(siblingsOf(c)),
-			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Watches(&v1alpha1.ContinuumNetwork{}, handler.EnqueueRequestsFromMapFunc(poolsOfNetwork(c))).
-		Watches(&corev1.Node{}, handler.EnqueueRequestsFromMapFunc(poolsOnNode(c))).
-		WatchesMetadata(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(poolsOfSecret(c))).
-		Complete(r)
-	if err != nil {
-		return fmt.Errorf("set up pool controller: %w", err)
-	}
-	return nil
-}
-
-// SetupWithManager registers the release controller.
-func (r *Release) SetupWithManager(mgr manager.Manager) error {
-	fenced := predicate.NewPredicateFuncs(func(o client.Object) bool { return slices.Contains(o.GetFinalizers(), Finalizer) })
-	err := builder.ControllerManagedBy(mgr).
-		Named("fence").
-		For(&corev1.Pod{}, builder.WithPredicates(fenced)).
-		Watches(&corev1.Node{}, handler.EnqueueRequestsFromMapFunc(podsOnNode(mgr.GetClient()))).
-		Complete(r)
-	if err != nil {
-		return fmt.Errorf("set up release controller: %w", err)
-	}
-	return nil
-}
-
-// SetupWithManager registers the network controller.
-func (r *Networks) SetupWithManager(mgr manager.Manager) error {
-	err := builder.ControllerManagedBy(mgr).
-		Named("continuumnetwork").
-		For(&v1alpha1.ContinuumNetwork{}).
-		Watches(&v1alpha1.ContinuumPool{}, handler.EnqueueRequestsFromMapFunc(func(_ context.Context, o client.Object) []reconcile.Request {
-			p := o.(*v1alpha1.ContinuumPool)
-			return []reconcile.Request{{NamespacedName: types.NamespacedName{Namespace: p.Namespace, Name: p.Spec.NetworkRef}}}
-		})).
-		Complete(r)
-	if err != nil {
-		return fmt.Errorf("set up network controller: %w", err)
 	}
 	return nil
 }
