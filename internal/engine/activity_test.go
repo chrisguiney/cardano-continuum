@@ -15,6 +15,7 @@ import (
 // alpha/beta follow-ups on average, so the total is what the profile asks
 // for. Wake-ups drop, since follow-ups do not idle.
 func TestHawkesKeepsThePaymentRate(t *testing.T) {
+	t.Parallel()
 	hodl := strings.NewReplacer("      diurnal: 0.3\n", "", "    weights:\n      send: 0.9\n      delegate: 0.1\n", "").Replace(testProfileYAML)
 	burst := strings.Replace(hodl, "        delegate: 0.1\n", "        delegate: 0.1\n      hawkes: {alpha: 0.6, beta: 1}\n", 1)
 	_, n0 := shortTxGaps(t, hodl)
@@ -61,6 +62,7 @@ func reuse(t *testing.T, care string) float64 {
 // outputs that go to addresses it paid before: a careful actor pays its
 // known counterparties again, a careless one anybody.
 func TestCarePrefersKnownPayees(t *testing.T) {
+	t.Parallel()
 	lo, hi := reuse(t, "const(0)"), reuse(t, "const(0.9)")
 	t.Logf("reuse at care 0: %.2f, at care 0.9: %.2f", lo, hi)
 	if hi < lo+0.3 || hi < 0.6 {
@@ -117,6 +119,7 @@ func shortTxGapsOf(t *testing.T, yaml string, wallets int, until sched.Time) (fl
 // a follow-up and acts, so with a branching ratio of 0.6 and bursts of a
 // second, most of a hodler's payments come seconds after its last.
 func TestHawkesBurstsTransactions(t *testing.T) {
+	t.Parallel()
 	hodl := strings.NewReplacer("      diurnal: 0.3\n", "", "    weights:\n      send: 0.9\n      delegate: 0.1\n", "").Replace(testProfileYAML)
 	burst := strings.Replace(hodl, "        delegate: 0.1\n", "        delegate: 0.1\n      hawkes: {alpha: 0.6, beta: 1}\n", 1)
 	calm, n0 := shortTxGaps(t, hodl)
@@ -132,6 +135,7 @@ func TestHawkesBurstsTransactions(t *testing.T) {
 // than being lost: with one coin per wallet and bursts of a second, the
 // payment rate holds.
 func TestFollowUpsWaitForChange(t *testing.T) {
+	t.Parallel()
 	slow := strings.NewReplacer("      diurnal: 0.3\n", "", "    weights:\n      send: 0.9\n      delegate: 0.1\n", "",
 		"        send: 0.4\n        delegate: 0.1\n", "        send: 0.05\n").Replace(testProfileYAML)
 	burst := strings.Replace(slow, "        send: 0.05\n", "        send: 0.05\n      hawkes: {alpha: 1.5, beta: 2}\n", 1)

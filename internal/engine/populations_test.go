@@ -136,6 +136,7 @@ func submittedKinds(t testing.TB, r eventlog.Reader) (map[string]int, map[build.
 // contracts are deployed and script calls spread over them, and with pools
 // and DReps registered the stakers and citizens delegate.
 func TestPopulationsAct(t *testing.T) {
+	t.Parallel()
 	f := populationFile(t, populationYAML)
 	cfg := populationConfig(t, 4, f)
 	w := newWorld(t, cfg)
@@ -178,6 +179,7 @@ func TestPopulationsAct(t *testing.T) {
 // A fitted file's populations are in the log header's profile hash, and a
 // file without populations hashes as before.
 func TestProfileHashCoversPopulations(t *testing.T) {
+	t.Parallel()
 	f := populationFile(t, populationYAML)
 	h1 := headerHash(t, populationConfig(t, 1, f))
 	g := populationFile(t, populationYAML)
@@ -225,6 +227,7 @@ func profilesOf(reg *profile.Registry) []profile.Profile {
 // A population whose name is also a wallet profile's is refused: the
 // actors' profile names would be ambiguous.
 func TestPopulateRefusesNameClash(t *testing.T) {
+	t.Parallel()
 	f := populationFile(t, strings.Replace(populationYAML, "name: dreps", "name: citizen", 1))
 	cfg := testConfig(t, 1, 3)
 	var err error
@@ -264,6 +267,7 @@ func skipReasons(t testing.TB, r eventlog.Reader) map[string]int {
 // would give every actor one event at once. With rates of one event in
 // years, a few hours see no update and no retirement.
 func TestPopulationClocksStartAfterRegistering(t *testing.T) {
+	t.Parallel()
 	y := strings.NewReplacer("update_rate: 40", "update_rate: 0.001",
 		"retire_rate: 2, vote_rate: 100", "retire_rate: 0.001, vote_rate: 100").Replace(populationYAML)
 	cfg := populationConfig(t, 4, populationFile(t, y))

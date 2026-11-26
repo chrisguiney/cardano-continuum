@@ -107,6 +107,7 @@ func TestPaymentSizeCappedToBalance(t *testing.T) {
 // payee's output, about 1 ADA, not a fixed 2 ADA: a real chain has many
 // outputs at that floor.
 func TestPaymentFloorIsMinUtxo(t *testing.T) {
+	t.Parallel()
 	y := strings.Replace(amountProfileYAML, "lognormal(16.8, 0.4)", "lognormal(12, 0.3)", 1)
 	cfg := amountConfig(t, y, 5)
 	xs := submittedAmounts(t, cfg)
