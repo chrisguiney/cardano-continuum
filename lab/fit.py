@@ -280,7 +280,7 @@ def build(st: common.Stats, name: str) -> tuple[str, dict]:
 def header_lines(h: dict) -> list[str]:
     """The comment header of a clustered profile file."""
     out = ["# Fitted by lab/fit.py --clusters; see lab/README.md. Do not edit by hand."]
-    for k in ["network", "window", "seed", "k", "bic", "unit", "weighting", "sampled_units", "units",
+    for k in ["network", "window", "seed", "k", "k_gmm", "k_bic_min", "k_interior", "bic", "unit", "weighting", "sampled_units", "units",
               "mithril2pq_version", "mithril2pq_last_chunk"]:
         if k in h:
             v = h[k]
@@ -321,16 +321,8 @@ def fit_clusters(root: str, a: argparse.Namespace) -> tuple[str, dict]:
     first = last - window_slots
     con = common.prepare(root, first, last, units.unit_of(a.unit == "stake"), a.memory_limit)
     df = units.features(con, window_slots, a.slot_seconds)
-    x = cluster.transform(df)
-    idx = cluster.sample_rows(len(df), a.max_units, a.seed)
-    z_s, mean, std = cluster.standardise(x[idx])
-    f = cluster.fit_gmm(z_s, a.kmin, a.kmax, a.seed)
-    z = (x - mean) / np.where(std < 1e-9, 1.0, std)
-    labels = f.model.predict(z)
-    centers_z = f.model.means_
-    labels, order = cluster.relabel(labels, centers_z)
-    centers_z = centers_z[order]
-    names = cluster.name_clusters(centers_z, centers_z * np.where(std < 1e-9, 1.0, std) + mean)
+    res = cluster.cluster_units(df, a.kmin, a.kmax, a.seed, a.max_units, a.select)
+    names, labels = res.names, res.labels
     df["grp"] = [names[i] for i in labels]
     con.register("c_group_df", df[["unit", "grp"]])
     con.execute("CREATE OR REPLACE TEMP TABLE c_group AS SELECT * FROM c_group_df")
@@ -355,12 +347,15 @@ def fit_clusters(root: str, a: argparse.Namespace) -> tuple[str, dict]:
         "window_first_slot": first,
         "window_last_slot": last,
         "seed": a.seed,
-        "k": f.k,
-        "bic": {str(k): v for k, v in f.bic.items()},
+        "k": res.k,
+        "k_gmm": res.fit.k,
+        "k_bic_min": res.fit.k_min,
+        "k_interior": res.fit.interior,
+        "bic": {str(k): v for k, v in res.fit.bic.items()},
         "unit": "stake credential (address when none)" if a.unit == "stake" else "address",
         "weighting": a.weighting,
         "units": len(df),
-        "sampled_units": len(idx),
+        "sampled_units": min(int((cluster.segment(df) == cluster.GENERAL).sum()), a.max_units),
         "mithril2pq_version": a.m2pq_version or meta.get("version", "unknown"),
         "mithril2pq_last_chunk": meta.get("last_chunk", "unknown"),
     }
@@ -390,7 +385,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--unit", choices=["stake", "address"], default="stake")
     ap.add_argument("--weighting", choices=["addresses", "transactions"], default="addresses")
     ap.add_argument("--kmin", type=int, default=2)
-    ap.add_argument("--kmax", type=int, default=8)
+    ap.add_argument("--kmax", type=int, default=15)
+    ap.add_argument("--select", choices=["elbow", "min"], default="elbow", help="k from the BIC elbow or its minimum")
     ap.add_argument("--max-units", type=int, default=100_000, help="units sampled for the mixture fit")
     ap.add_argument("--memory-limit", default=None, help="DuckDB memory limit, e.g. 8GB")
     ap.add_argument("--m2pq-version", default=None)

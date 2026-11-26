@@ -73,23 +73,49 @@ mix is all plain and output value is the payment amount.
 ```sh
 python fit.py /data/chain --out /work/out --clusters --network preprod \
     [--window-days 90] [--seed 1] [--unit stake|address] [--weighting addresses|transactions] \
-    [--kmin 2 --kmax 8] [--max-units 100000] [--m2pq-version V]
+    [--kmin 2 --kmax 15] [--select elbow|min] [--max-units 100000] [--m2pq-version V]
 ```
 
 1. The window is the last `--window-days` before the newest block with a
    transaction (or `--window-end-slot`), pinned in the output.
 2. A unit is the stake credential of the sending address where it has one and
    the address otherwise (`--unit address` skips the credential).
-3. Per unit, ten features (`units.py`, `cluster.py`): tx/day, median gap,
-   median payment value, script share, stake-cert share, inputs and outputs
-   per tx, address reuse, active days, longest dormancy. Heavy-tailed ones are
-   log10-transformed; all are standardised.
-4. A diagonal Gaussian mixture with k in `--kmin..--kmax` chosen by BIC,
-   `n_init=3`, seeded. At most `--max-units` units (a seeded sample) are used
-   to fit; every unit is then assigned. The BIC curve goes in the header.
-5. Each cluster is fitted like a one-profile run, from its units' statistics,
-   and named from its centroid (`high-freq-small-value`, then `-script`,
-   `-staking`, and tie-breakers).
+3. Units that send mostly script calls (share of their txs at least 0.5) or
+   staking certificates (at least 0.5) are split off as their own clusters.
+   Shares of a unit with a few transactions sit exactly at 0 or 1, and a
+   Gaussian mixture explains such pinned dimensions with tiny-variance
+   components, so BIC never converged; script and staking use are categorical
+   segments instead, and address reuse is left out of the mixture (it is still
+   fitted per cluster as the `care` trait).
+4. The remaining units get seven continuous features (`units.py`,
+   `cluster.py`): tx/day, median gap, median payment value, inputs and outputs
+   per tx, active days, longest dormancy, all log10-transformed and
+   standardised.
+5. A diagonal Gaussian mixture with k in `--kmin..--kmax` (default 2..15),
+   `n_init=3`, `reg_covar=0.1` (a variance floor in standardised units),
+   seeded. k is the BIC elbow (`--select elbow`, the default): the smallest k
+   whose step to k+1 gains under 5% of the whole BIC drop across the range;
+   `--select min` takes the minimum. The whole curve, the BIC-minimum k
+   (`k_bic_min`) and whether it is interior to the range (`k_interior`) go in
+   the header. At most `--max-units` units (a seeded sample) are used to fit;
+   every unit is then assigned.
+6. Each cluster is fitted like a one-profile run, from its units' statistics.
+
+Cluster names use absolute thresholds in real units, from the median of the
+cluster's units (shares are means), so a name means the same on every network:
+
+| name | rule (first match) |
+|---|---|
+| `script-user` | at least 50% of the units' txs call scripts |
+| `staker` | at least 50% are staking certificates |
+| `frequent-trader` | median at least 1 tx per day |
+| `occasional-payer` | median from 0.05 (one tx per 20 days) up to 1 tx per day |
+| `holder` | median under 0.05 tx per day |
+
+Clusters that share a name get a payment-size suffix from the median payment:
+`-small` under 10 ADA, `-large` from 1,000 ADA, `-mid` between; any remaining
+repeat gets `-2`, `-3` in cluster order. Names are therefore unique and fixed
+by the seed. The thresholds are constants in `cluster.py`.
 
 Output is `NETWORK.yaml` and `NETWORK.target.json`. The YAML header records
 network, window, seed, k, BIC curve, unit, weighting, unit counts, and the
@@ -132,28 +158,45 @@ below that are out of reach of the amount fit.
 
 Fit: Preprod, immutable chunks 0 to 6477 (7.79M txs), a 90-day window ending
 at slot 139924767 (1.11M txs, 37,188 sending units), seed 1, stake-credential
-units, weighting by units. BIC kept falling to the top of the 2 to 8 range
-(the features include shares that sit at 0 or 1), so k = 8. `profiles/preview.yaml`
-is the same fit on Preview (8,529 units, k = 8).
+units, weighting by units. The mixture is fitted on the 15,809 units that are
+not script users or stakers. Its BIC curve falls from 253,299 at k = 2 to
+142,478 at k = 15 with the steepest gains by k = 5 and a long shallow tail, so
+the BIC minimum is at the top of the 2 to 15 range (not interior); the elbow
+picks k = 5, and with the script-user and staker segments that is 7 clusters.
+Real units are not Gaussian (payments pile on 2 ADA, counts are integers), so
+the curve does not turn upward. Preview (chunks 0 to 29859, 8,529 units) is
+the same fit: elbow k = 5, minimum at 15, 7 clusters.
+
+| preprod cluster | share of units |
+|---|---|
+| script-user | 57.2% |
+| occasional-payer-small | 25.0% |
+| holder-mid | 6.1% |
+| holder-small | 5.3% |
+| occasional-payer-mid | 3.4% |
+| holder-large | 2.7% |
+| staker | 0.3% |
 
 Grade: seed-7 fake run (`--profiles preprod`, 100 wallets, 2 epochs of
-3,888,000 slots, 90 simulated days, 2,413 payments), overall:
+3,888,000 slots via `--epoch-slots 3888000`, 90 simulated days, 1,317
+payments), overall:
 
 | statistic | verdict | detail |
 |---|---|---|
 | outputs_per_tx, inputs_per_tx | skipped | no devnet chain tables |
-| log10_output_value | FAIL | D=0.398, median 6.71 vs 6.30 |
-| activity_per_day | FAIL | D=0.170, median 0.172 vs 0.200 per unit per day |
-| log10_gap_seconds | FAIL | D=0.465, median 4.19 vs 2.72 |
+| log10_output_value | FAIL | D=0.398, median 6.56 vs 6.30 |
+| activity_per_day | FAIL | D=0.284, median 0.078 vs 0.200 per unit per day |
+| log10_gap_seconds | FAIL | D=0.474, median 4.30 vs 2.72 |
 | tx_type_mix | FAIL | TV=0.588; run is all plain, preprod 41% plain and 59% script |
-| address_reuse | PASS | 0.959 vs 0.976 |
+| address_reuse | PASS | 0.924 vs 0.976 |
 | change_to_sender | skipped | no devnet chain tables |
 
 The first fit (Preview chunks 0 to 1500, one profile, a 20-minute run) failed
 activity by three orders of magnitude (median 649 against 0.013 per day),
 which was a short span and a rate fit that ignored dormancy and the hodl
-agenda's 2% send score. Activity now lands within 15% of the chain's median;
-the cluster grades show the same. What is left:
+agenda's 2% send score. Activity now lands within a factor of 2.6 of the
+chain's median; the largest cluster (script-user) is the farthest off, with
+56 actors giving 0.084 against 0.311. What is left:
 
 - Payment value: the engine floors payments at 2 ADA, and the chain has many
   smaller outputs, so the low end cannot match. Clusters whose payments are
@@ -161,5 +204,7 @@ the cluster grades show the same. What is left:
 - Gaps: arrivals inside an active spell are exponential, the chain's are
   bursty, so engine gaps are longer.
 - Type mix: the engine only sends payments.
-- Clusters with a handful of actors (one actor in `mid-freq-large-value`)
-  have too few samples for KS to mean much.
+- Clusters with a handful of actors (none for `staker`, three for
+  `holder-large`) have too few samples for KS to mean much.
+- Script users are 57% of preprod units and the engine cannot send script
+  transactions, so their type-mix grade fails by construction.

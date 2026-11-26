@@ -70,21 +70,69 @@ def test_relabel_orders_by_first_feature():
     assert list(labels) == [2, 0, 1, 0]
 
 
-def test_cluster_names_come_from_centroids_and_are_unique():
-    n = len(cluster.FEATURES)
-    z = np.zeros((3, n))
-    raw = np.zeros((3, n))
-    ix = {f: i for i, f in enumerate(cluster.FEATURES)}
-    z[0, ix["log_tx_per_day"]], z[0, ix["log_med_value"]] = 1.5, -1.5
-    z[1, ix["log_tx_per_day"]], z[1, ix["log_med_value"]] = -1.5, 1.5
-    z[2, ix["log_tx_per_day"]], z[2, ix["log_med_value"]] = 1.5, -1.5
-    z[2, ix["log_dormancy"]] = 2.0
-    raw[1, ix["script_share"]] = 0.9
-    names = cluster.name_clusters(z, raw)
-    assert names[0] != names[2]
-    assert names[0].startswith("high-freq-small-value")
-    assert names[1] == "low-freq-large-value-script"
-    assert len(set(names)) == 3
+def pinned_units(n=1500, seed=0):
+    """Units from three behaviours whose share features sit exactly at 0 or 1,
+    as a single-transaction unit's do."""
+    rng = np.random.default_rng(seed)
+    rows = []
+    for tpd, val, script, reuse, size in [(2.0, 5e6, 0.0, 1.0, n), (0.01, 2e9, 0.0, 0.0, n),
+                                          (0.3, 3e7, 1.0, 0.0, n // 2), (0.1, 8e7, 0.0, 1.0, n)]:
+        m = size
+        rows.append(pd.DataFrame({
+            "tx_per_day": tpd * rng.lognormal(0, 0.5, m),
+            "med_gap_s": 86400 / tpd * rng.lognormal(0, 0.5, m),
+            "med_value": val * rng.lognormal(0, 0.5, m),
+            "script_share": np.where(rng.random(m) < 0.97, script, 1 - script),
+            "stake_share": np.zeros(m),
+            "in_per_tx": 1 + 2 * tpd * rng.lognormal(0, 0.4, m), "out_per_tx": 2 * rng.lognormal(0, 0.4, m),
+            "reuse": np.where(rng.random(m) < 0.97, reuse, 1 - reuse),
+            "active_days": 30 * tpd ** 0.3 * rng.lognormal(0, 0.4, m),
+            "max_dormancy_s": 1e5 / tpd * rng.lognormal(0, 0.5, m),
+            "n_tx": np.ceil(tpd * 90 * rng.lognormal(0, 0.4, m)),
+        }))
+    return pd.concat(rows, ignore_index=True)
+
+
+def test_pinned_shares_do_not_drive_k_to_the_top_of_the_range():
+    r = cluster.cluster_units(pinned_units(), kmin=2, kmax=10, seed=2)
+    assert r.fit.interior, r.fit.bic
+    assert sorted(r.fit.bic) == list(range(2, 11))
+    assert 3 <= r.fit.k <= 5  # three general behaviours; the script group is a segment
+    assert r.k == r.fit.k + 1
+
+
+def test_elbow_is_the_first_flat_step_and_min_is_reported():
+    bic = {2: 1000.0, 3: 500.0, 4: 200.0, 5: 190.0, 6: 150.0, 7: 160.0}
+    assert cluster.elbow(bic) == 4
+    assert cluster.elbow({2: 10.0, 3: 5.0, 4: 0.0}) == 4  # never flattens: top of range
+    f = cluster.fit_gmm(blobs(), kmin=2, kmax=6, seed=3, select="min")
+    assert f.k == f.k_min == 3 and f.interior
+    g = cluster.Fit(f.model, 2, {2: 3.0, 3: 2.0, 4: 1.0})
+    assert g.k_min == 4 and not g.interior
+
+
+def test_cluster_names_are_short_unique_and_stable_for_a_seed():
+    df = pinned_units()
+    a = cluster.cluster_units(df, kmin=2, kmax=8, seed=2)
+    b = cluster.cluster_units(df, kmin=2, kmax=8, seed=2)
+    assert a.names == b.names and (a.labels == b.labels).all()
+    assert len(a.names) == a.k == len(set(a.names))
+    assert all(len(n) <= 24 and n == n.lower() for n in a.names)
+    assert "script-user" in a.names and "holder" in a.names
+
+
+def test_names_use_absolute_thresholds_in_real_units():
+    base = dict(tx_per_day=0.31, med_gap_s=1e5, med_value=5e6, script_share=0.0, stake_share=0.0,
+                in_per_tx=1.0, out_per_tx=2.0, reuse=0.0, active_days=10, max_dormancy_s=0.0, n_tx=28)
+    mk = lambda **kw: pd.DataFrame([{**base, **kw}] * 5)
+    cases = [(dict(tx_per_day=0.31), "occasional-payer"), (dict(tx_per_day=3.0), "frequent-trader"),
+             (dict(tx_per_day=0.002), "holder"), (dict(script_share=0.9), "script-user"),
+             (dict(stake_share=0.9), "staker")]
+    for kw, want in cases:
+        assert cluster.name_clusters(mk(**kw), np.zeros(5, dtype=int)) == [want]
+    df = pd.concat([mk(), mk(tx_per_day=0.4, med_value=5e9)], ignore_index=True)
+    names = cluster.name_clusters(df, np.array([0] * 5 + [1] * 5))
+    assert len(set(names)) == 2
 
 
 def test_unit_is_the_stake_credential_when_there_is_one():
