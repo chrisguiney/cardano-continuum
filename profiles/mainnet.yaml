@@ -1,5 +1,6 @@
 # Fitted by lab/fit.py --clusters; see lab/README.md. Do not edit by hand.
 # network: mainnet
+# hawkes: alpha=0.520726 beta=0.693147 from the target's overall gaps (add_hawkes.py)
 # window: 90.0 days, slots 196279177..204055177
 # seed: 1
 # k: 9
@@ -38,6 +39,7 @@ profiles:
       base:
         send: 0.000590278
       activity_tail: 2
+      hawkes: {alpha: 0.520726, beta: 0.693147}
     weights:
       send: 1.000000
     hazards:
@@ -61,6 +63,7 @@ profiles:
       base:
         send: 0.000590278
       activity_tail: 2
+      hawkes: {alpha: 0.520726, beta: 0.693147}
     weights:
       send: 1.000000
     hazards:
@@ -84,6 +87,7 @@ profiles:
       base:
         send: 0.000590278
       activity_tail: 2
+      hawkes: {alpha: 0.520726, beta: 0.693147}
     weights:
       send: 1.000000
     hazards:
@@ -107,6 +111,7 @@ profiles:
       base:
         send: 0.00117675
       activity_tail: 2.03315
+      hawkes: {alpha: 0.520726, beta: 0.693147}
     weights:
       send: 0.929284
       script_call: 0.065655
@@ -132,6 +137,7 @@ profiles:
       base:
         send: 0.000440845
       activity_tail: 1.35764
+      hawkes: {alpha: 0.520726, beta: 0.693147}
     weights:
       send: 0.931399
       script_call: 0.063596
@@ -157,6 +163,7 @@ profiles:
       base:
         send: 0.000377241
       activity_tail: 1.05
+      hawkes: {alpha: 0.520726, beta: 0.693147}
     weights:
       send: 1.000000
     hazards:
@@ -180,6 +187,7 @@ profiles:
       base:
         send: 0.000261629
       activity_tail: 1.05
+      hawkes: {alpha: 0.520726, beta: 0.693147}
     weights:
       send: 0.127915
       script_call: 0.842150
@@ -205,6 +213,7 @@ profiles:
       base:
         delegate: 1.9504e-05
       activity_tail: 1.29032
+      hawkes: {alpha: 0.520726, beta: 0.693147}
     weights:
       delegate: 1.000000
     hazards:
@@ -228,6 +237,7 @@ profiles:
       base:
         delegate_drep: 1.98121e-05
       activity_tail: 1.26882
+      hawkes: {alpha: 0.520726, beta: 0.693147}
     weights:
       delegate_drep: 1.000000
     hazards:

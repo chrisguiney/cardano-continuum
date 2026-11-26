@@ -1,5 +1,6 @@
 # Fitted by lab/fit.py --clusters; see lab/README.md. Do not edit by hand.
 # network: preprod
+# hawkes: alpha=0.00607531 beta=0.0130782 from the target's overall gaps (add_hawkes.py)
 # window: 90.0 days, slots 132148767..139924767
 # seed: 1
 # k: 6
@@ -38,6 +39,7 @@ profiles:
       base:
         send: 0.000590278
       activity_tail: 2
+      hawkes: {alpha: 0.00607531, beta: 0.0130782}
     weights:
       send: 1.000000
     hazards:
@@ -61,6 +63,7 @@ profiles:
       base:
         send: 0.000283865
       activity_tail: 1.05
+      hawkes: {alpha: 0.00607531, beta: 0.0130782}
     weights:
       send: 0.944018
       script_call: 0.030094
@@ -86,6 +89,7 @@ profiles:
       base:
         send: 0.000493831
       activity_tail: 1.52262
+      hawkes: {alpha: 0.00607531, beta: 0.0130782}
     weights:
       send: 0.930781
       script_call: 0.004509
@@ -111,6 +115,7 @@ profiles:
       base:
         send: 0.000283498
       activity_tail: 1.05
+      hawkes: {alpha: 0.00607531, beta: 0.0130782}
     weights:
       send: 0.264706
       script_call: 0.163648
@@ -136,6 +141,7 @@ profiles:
       base:
         delegate: 1.37741e-05
       activity_tail: 1.05
+      hawkes: {alpha: 0.00607531, beta: 0.0130782}
     weights:
       delegate: 1.000000
     hazards:
@@ -159,6 +165,7 @@ profiles:
       base:
         delegate_drep: 6.7446e-06
       activity_tail: 1.05
+      hawkes: {alpha: 0.00607531, beta: 0.0130782}
     weights:
       delegate_drep: 1.000000
     hazards:
