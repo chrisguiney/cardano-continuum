@@ -24,11 +24,11 @@ func TestEpochTransition(t *testing.T) {
 	s.pools[id] = &pool{}
 	stake := map[common.Blake2b224]uint64{h(1): 70, h(2): 30}
 
-	s.newEpoch(0, true, stake) // first block: no earlier epoch to close
+	newEpoch(s, 0, true, stake) // first block: no earlier epoch to close
 	if s.epoch.label != 0 || s.epoch.mark != nil {
 		t.Fatalf("first block rotated: %+v", s.epoch)
 	}
-	s.newEpoch(1, false, stake)
+	newEpoch(s, 1, false, stake)
 	want := []Share{{Cred: h(1), Pool: h(9), Stake: 70}}
 	if len(s.epoch.mark) != 1 || s.epoch.mark[0] != want[0] || s.epoch.set != nil {
 		t.Fatalf("epoch 1: %+v", s.epoch)
@@ -36,7 +36,7 @@ func TestEpochTransition(t *testing.T) {
 	// Retirement applies at its epoch, after the snapshot took the stake.
 	e := uint64(2)
 	s.pools[id].retire = &e
-	s.newEpoch(2, false, stake)
+	newEpoch(s, 2, false, stake)
 	if len(s.epoch.mark) != 1 || len(s.epoch.set) != 1 {
 		t.Fatalf("epoch 2 snapshots: %+v", s.epoch)
 	}
@@ -44,7 +44,7 @@ func TestEpochTransition(t *testing.T) {
 		t.Fatal("pool not retired or wallet still delegated")
 	}
 	saved := s.clone()
-	s.newEpoch(4, false, stake) // epoch 3 had no block
+	newEpoch(s, 4, false, stake) // epoch 3 had no block
 	if !s.epoch.frozen || s.epoch.label != 2 {
 		t.Fatalf("not frozen: %+v", s.epoch)
 	}

@@ -46,6 +46,18 @@ func (s utxoSet) sorted() []common.Utxo {
 	return out
 }
 
+// stakeByCred is the lovelace per stake credential of the output addresses.
+func (u utxoSet) stakeByCred() map[common.Blake2b224]uint64 {
+	out := map[common.Blake2b224]uint64{}
+	for _, x := range u {
+		addr := x.Output.Address()
+		if h := addr.StakeKeyHash(); h != (common.Blake2b224{}) {
+			out[h] += x.Output.Amount().Uint64()
+		}
+	}
+	return out
+}
+
 // overlay is a UTxO set with a run of not-yet-confirmed transactions applied
 // on top of it: the view a mempool or a block under assembly validates
 // against.

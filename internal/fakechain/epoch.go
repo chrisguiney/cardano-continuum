@@ -44,7 +44,7 @@ func (e epochState) clone() epochState {
 // chain has no earlier epoch to close. This is written from the ledger's
 // NEWEPOCH, SNAP and POOLREAP rules, independently of the engine's view, so
 // the two can be compared.
-func (s *certState) newEpoch(ep uint64, first bool, stake map[common.Blake2b224]uint64) {
+func newEpoch(s *certState, ep uint64, first bool, stake map[common.Blake2b224]uint64) {
 	e := &s.epoch
 	if e.frozen || ep == e.label {
 		return
@@ -55,13 +55,13 @@ func (s *certState) newEpoch(ep uint64, first bool, stake map[common.Blake2b224]
 	case ep > e.label+1:
 		e.frozen = true
 	default:
-		e.set, e.mark = e.mark, s.distribution(stake)
+		e.set, e.mark = e.mark, distribution(s, stake)
 		e.label = ep
-		s.reap(ep)
+		reap(s, ep)
 	}
 }
 
-func (s *certState) distribution(stake map[common.Blake2b224]uint64) []Share {
+func distribution(s *certState, stake map[common.Blake2b224]uint64) []Share {
 	var out []Share
 	for _, k := range sortedCreds(s.accounts) {
 		a := s.accounts[k]
@@ -72,7 +72,7 @@ func (s *certState) distribution(stake map[common.Blake2b224]uint64) []Share {
 	return out
 }
 
-func (s *certState) reap(ep uint64) {
+func reap(s *certState, ep uint64) {
 	for id, p := range s.pools {
 		if p.retire == nil || *p.retire > ep {
 			continue
@@ -89,18 +89,6 @@ func (s *certState) reap(ep uint64) {
 			}
 		}
 	}
-}
-
-// stakeByCred is the lovelace per stake credential of the output addresses.
-func (u utxoSet) stakeByCred() map[common.Blake2b224]uint64 {
-	out := map[common.Blake2b224]uint64{}
-	for _, x := range u {
-		addr := x.Output.Address()
-		if h := addr.StakeKeyHash(); h != (common.Blake2b224{}) {
-			out[h] += x.Output.Amount().Uint64()
-		}
-	}
-	return out
 }
 
 // Account is a registered stake credential and what it is delegated to.

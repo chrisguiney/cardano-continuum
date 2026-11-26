@@ -62,8 +62,6 @@ stray-methods internal/engine actor 1
 stray-methods internal/engine pendingRec 2
 stray-methods internal/engine view 9
 stray-methods internal/fakechain Chain 23
-stray-methods internal/fakechain certState 3
-stray-methods internal/fakechain utxoSet 1
 stray-methods internal/forger Node 18
 stray-methods internal/httpapi ActorRow 1
 stray-methods internal/httpapi LogSource 7
