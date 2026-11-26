@@ -116,3 +116,18 @@ def test_births_are_not_members_at_start(tmp_path):
                     TO '{root}/actor_transition/part-0.parquet' (FORMAT parquet)""")
     m = engine_stats.actor_counts(root, os.path.join(os.path.dirname(root), "store.db"), TARGET_ACTORS)
     assert m.members["pools"] == 1 and m.events["pools.register_rate"] == 1
+
+
+def test_output_value_leaves_out_token_quantities(tmp_path):
+    """A mint's submitted amount is a token quantity, not lovelace, so the
+    payment sizes leave mints and burns out."""
+    root = str(tmp_path / "run" / "export")
+    os.makedirs(os.path.dirname(root))
+    write_export(root, [(1000, 5, "mint", "NULL", "NULL"), (2000, 5, "lock", "NULL", "NULL")], deployed=[], actors={5: "w"})
+    con = duckdb.connect()
+    con.execute(f"""COPY (SELECT * FROM (VALUES (0, 1000, 5, 0, 1, 'mint', 1000), (1, 2000, 5, 1, 1, 'lock', 5000000),
+                    (2, 3000, 5, 2, 1, NULL, 2000000)) t(seq, "at", actor, intent_id, attempt, kind, amount))
+                    TO '{root}/submission/part-0.parquet' (FORMAT parquet)""")
+    con = engine_stats._open_export(root, None)
+    values = sorted(engine_stats._column(con, engine_stats.LOVELACE_AMOUNT_SQL))
+    assert list(values) == [2000000, 5000000]

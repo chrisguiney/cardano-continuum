@@ -79,6 +79,12 @@ GROUP BY c.intent_kind ORDER BY c.intent_kind
 
 AMOUNT_SQL = "SELECT amount FROM submission WHERE amount > 0"
 
+# A mint's or burn's amount is a token quantity, not lovelace. Exports
+# from before the kind column cannot tell them apart.
+LOVELACE_AMOUNT_SQL = (
+    "SELECT amount FROM submission WHERE amount > 0 AND coalesce(kind, '') NOT IN ('mint', 'burn')"
+)
+
 SPAN_MS_SQL = 'SELECT max("at") - min("at") FROM submission'
 
 PAYMENTS_PER_ACTOR_SQL = "SELECT count(*) FROM submission GROUP BY actor"
@@ -207,7 +213,7 @@ def engine_stats(root: str, actors: set[int] | None = None) -> Stats:
     con = _open_export(root, actors)
     stats = Stats()
 
-    amounts = _column(con, AMOUNT_SQL)
+    amounts = _column(con, LOVELACE_AMOUNT_SQL if _has_column(con, "submission", "kind") else AMOUNT_SQL)
     stats.samples["output_value_lovelace"] = amounts
     stats.samples["log10_output_value"] = np.log10(amounts) if len(amounts) else amounts
 
