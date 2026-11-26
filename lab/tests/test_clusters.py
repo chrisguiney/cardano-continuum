@@ -337,3 +337,20 @@ def test_wakeup_rate_compensates_for_the_hodl_send_score():
     p = fit.send_probability(fit.mix_weights(st.shares["tx_type_mix"])["send"])
     assert abs(p - 0.02 * 0.9 / (1 + 0.02 * 0.9)) < 1e-12
     assert abs(fp["activity"]["base_per_sec"] * p - fit.fit_activity(st)["base_per_sec"]) < 1e-18
+
+
+def test_fallback_activity_keeps_the_payment_rate():
+    """A cluster with no per-unit counts borrows the overall activity. The
+    borrowed base rate is a wake-up rate, already divided by the overall send
+    probability, so it must be turned back into a payment rate before this
+    cluster's own send probability is applied; otherwise it is divided twice."""
+    overall = synthetic_stats(1, 16.0)
+    ofp = fit.fit_params(overall)
+    small = synthetic_stats(2, 16.0)
+    small.samples["tx_count_per_address"] = np.array([])
+    small.shares["tx_type_mix"] = {"plain": 0.5, "script": 0.5, "stake": 0.0, "pool": 0.0}
+    fp = fit.fit_params(small, ofp)
+    payments = fp["activity"]["base_per_sec"] * fp["activity"]["send_probability"]
+    want = ofp["activity"]["base_per_sec"] * ofp["activity"]["send_probability"]
+    assert fp["activity"]["send_probability"] != ofp["activity"]["send_probability"]
+    assert abs(payments / want - 1.0) < 1e-12

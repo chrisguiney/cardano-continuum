@@ -186,8 +186,14 @@ def fit_params(st: common.Stats, fallback: dict | None = None) -> dict:
         out["dormancy"] = {"mu": dmu, "sigma": dsig}
     else:
         out["gap"], out["dormancy"] = fb["gap"], fb["dormancy"]
-    out["activity"] = fit_activity(st) if len(st.samples["tx_count_per_address"]) else fb["activity"]
-    out["activity"] = dict(out["activity"])
+    if len(st.samples["tx_count_per_address"]):
+        out["activity"] = fit_activity(st)
+    else:
+        # The fallback's base rate is a wake-up rate: its payment rate already
+        # divided by the fallback's send probability. Undo that, so the
+        # division below applies this population's probability exactly once.
+        out["activity"] = dict(fb["activity"])
+        out["activity"]["base_per_sec"] *= fb["activity"].get("send_probability") or 1.0
     p_send = send_probability(mix_weights(st.shares["tx_type_mix"]).get("send", 0.0))
     out["activity"]["send_probability"] = p_send
     if p_send > 0:
