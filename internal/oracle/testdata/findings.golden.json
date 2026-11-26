@@ -1,0 +1,43 @@
+{
+  "total": 3,
+  "offset": 1,
+  "limit": 2,
+  "rows": [
+    {
+      "id": "d7984314924c39ac3fb37138be046f64",
+      "seq": 42,
+      "summary": "fatal verdict_split: tx abababab accepted by dingo, rejected by cardano-node",
+      "tx_cbor_hex": "84a0",
+      "verdicts": [
+        {
+          "impl": "expected",
+          "verdict": "reject naming only FeeTooSmallUTxO",
+          "dirty": false
+        },
+        {
+          "impl": "cardano-node",
+          "verdict": "rejected FeeTooSmallUTxO",
+          "build": "pool=p1 sha256:cardano-node cardano-node=abc123",
+          "dirty": false
+        },
+        {
+          "impl": "dingo",
+          "verdict": "accepted",
+          "build": "pool=p2 sha256:dingo dingo=abc123 gouroboros=def456",
+          "dirty": true
+        }
+      ],
+      "reproducible": false,
+      "replay_command": "continuum replay --seed 7 out/events.log"
+    },
+    {
+      "id": "33116641140bc81484b8d5769c769fa9",
+      "seq": 50,
+      "summary": "fatal value_not_conserved: accounted lovelace differs from the genesis total 1000 by 3 at slot 0",
+      "tx_cbor_hex": "",
+      "verdicts": [],
+      "reproducible": true,
+      "replay_command": "continuum replay --seed 7 out/events.log"
+    }
+  ]
+}
