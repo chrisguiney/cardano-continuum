@@ -1,14 +1,7 @@
 package httpapi
 
 import (
-	"context"
-	"slices"
-	"strings"
-
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
-	"github.com/chrisguiney/cardano-continuum/internal/engine"
-	"github.com/chrisguiney/cardano-continuum/internal/sched"
-	"github.com/chrisguiney/cardano-continuum/internal/store"
 )
 
 // EpochCost is lovelace an adversary spent in one epoch.
@@ -83,63 +76,6 @@ type AdversaryView struct {
 	Impact      []ImpactRow    `json:"impact"`
 }
 
-// Attacks returns the meter's tallies and metrics.
-func (p *Projection) Attacks() ([]engine.AttackStat, adversary.Metrics, int64) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.meter.Attacks(), p.meter.Metrics(), p.now
-}
-
-// attackOwner is the adversary that sent tx, by an Attack decision or by
-// its own Submitted record.
-func (p *Projection) attackOwner(tx []byte) (uint64, bool) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if id, ok := p.meter.AttackActor(tx); ok {
-		return id, true
-	}
-	if len(tx) != 32 {
-		return 0, false
-	}
-	id, ok := p.txOwner[[32]byte(tx)]
-	return id, ok
-}
-
-// Adversaries implements Source.
-func (s *LogSource) Adversaries(ctx context.Context) (AdversaryView, error) {
-	stats, cur, now := s.cfg.Projection.Attacks()
-	n, err := s.names(ctx)
-	if err != nil {
-		return AdversaryView{}, err
-	}
-	idents := s.identities()
-	ids := map[uint64]bool{}
-	for _, st := range stats {
-		ids[st.Actor] = true
-	}
-	for id, in := range idents {
-		if in.Kind == "adversary" {
-			ids[id] = true
-		}
-	}
-	var ctl adversary.Metrics
-	if s.cfg.Control != nil {
-		ctl = *s.cfg.Control
-	}
-	impact := impactRows(ctl, cur, s.cfg.Control != nil)
-	out := AdversaryView{HasControl: s.cfg.Control != nil, Adversaries: []AdversaryRow{}, Impact: impact}
-	for _, id := range slices.Sorted(mapKeys(ids)) {
-		var st engine.AttackStat
-		for _, x := range stats {
-			if x.Actor == id {
-				st = x
-			}
-		}
-		out.Adversaries = append(out.Adversaries, s.adversaryRow(id, st, n[id], idents[id], impact, now))
-	}
-	return out, nil
-}
-
 func mapKeys(m map[uint64]bool) func(func(uint64) bool) {
 	return func(yield func(uint64) bool) {
 		for k := range m {
@@ -158,67 +94,6 @@ func impactRows(ctl, cur adversary.Metrics, has bool) []ImpactRow {
 		if has {
 			c, d := r.Control, r.Delta()
 			out[i].Control, out[i].Delta = &c, &d
-		}
-	}
-	return out
-}
-
-func (s *LogSource) adversaryRow(id uint64, st engine.AttackStat, row store.ActorRow, in store.Identity, impact []ImpactRow, now int64) AdversaryRow {
-	r := AdversaryRow{ID: id, Name: row.Name, Profile: row.Profile, Attack: st.Name, Agenda: in.Agenda, Budget: in.Budget,
-		Attempted: st.Steps, Landed: st.Landed, Detected: st.Detected, Rejected: st.Rejected,
-		Recent: []AttackStepRow{}, Findings: s.adversaryFindings(id)}
-	if r.Attack == "" {
-		r.Attack = strings.TrimPrefix(row.Profile, "adversary-")
-	}
-	for _, x := range st.Recent {
-		r.Recent = append(r.Recent, AttackStepRow{Seq: x.Seq, At: x.At, Intent: x.Intent, Mutation: x.Mutation, Cost: x.Cost, Value: x.Value, Txs: x.Txs})
-	}
-	r.Cost = s.costView(st, in.CostCeiling, now)
-	r.Metric = SuccessView{Name: in.Metric}
-	if r.Metric.Name == "" {
-		r.Metric.Name = adversary.SuccessMetric(adversary.Name(r.Attack))
-	}
-	for _, i := range impact {
-		if i.Metric == r.Metric.Name {
-			r.Metric.Value, r.Metric.Control = i.Value, i.Control
-		}
-	}
-	return r
-}
-
-func (s *LogSource) costView(st engine.AttackStat, ceiling uint64, now int64) CostView {
-	c := CostView{Spent: st.Cost, Ceiling: ceiling, ByEpoch: []EpochCost{}}
-	epochOf := func(int64) uint64 { return 0 }
-	if s.cfg.Slots != nil {
-		epochOf = func(at int64) uint64 { return s.cfg.Slots.EpochAt(sched.Time(at)) }
-	}
-	c.Epoch = epochOf(now)
-	if n := len(st.Costs); n > 0 {
-		c.Epoch = epochOf(st.Costs[n-1].At)
-	}
-	for _, p := range st.Costs {
-		e := epochOf(p.At)
-		if n := len(c.ByEpoch); n > 0 && c.ByEpoch[n-1].Epoch == e {
-			c.ByEpoch[n-1].Spent += p.Cost
-		} else {
-			c.ByEpoch = append(c.ByEpoch, EpochCost{Epoch: e, Spent: p.Cost})
-		}
-		if e == c.Epoch {
-			c.EpochSpent += p.Cost
-		}
-	}
-	return c
-}
-
-// adversaryFindings lists the findings on transactions the adversary sent.
-func (s *LogSource) adversaryFindings(id uint64) []ActorFinding {
-	fs := s.findingsSet()
-	_, n := fs.Page(0, 0)
-	all, _ := fs.Page(0, n)
-	out := []ActorFinding{}
-	for _, f := range all {
-		if owner, ok := s.cfg.Projection.attackOwner(f.TxHash); ok && owner == id {
-			out = append(out, ActorFinding{ID: f.ID, Seq: f.Seq, Kind: string(f.Kind), Severity: f.Severity.String(), Summary: strings.TrimSpace(f.Summary)})
 		}
 	}
 	return out

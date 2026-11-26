@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
+	"github.com/chrisguiney/cardano-continuum/internal/store"
 )
 
 // Errors the handlers map to HTTP statuses. Wrap them with the detail.
@@ -368,4 +369,10 @@ type Subscription struct {
 	Gap    bool
 	C      <-chan Decision
 	Close  func()
+}
+
+// withIdentity fills the row's identity columns.
+func (r *ActorRow) withIdentity(in store.Identity) {
+	r.Kind, r.Address, r.Balance, r.Pending = in.Kind, shortAddr(in.PaymentAddr), in.Settled, in.Unconfirmed
+	r.Tokens, r.Delegated, r.Pool, r.DRep = len(in.Tokens), in.DelegatedPool != "", shortAddr(in.DelegatedPool), in.DelegatedDRep
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/store"
 )
@@ -304,3 +305,161 @@ var (
 	_ Source = (*LogSource)(nil)
 	_ Names  = (*store.DB)(nil)
 )
+
+// ActorDetail implements Source.
+func (s *LogSource) ActorDetail(ctx context.Context, id uint64) (ActorDetail, error) {
+	l, err := s.cfg.Projection.ActorLog(id)
+	if err != nil {
+		return ActorDetail{}, err
+	}
+	n, err := s.names(ctx)
+	if err != nil {
+		return ActorDetail{}, err
+	}
+	row := n[id]
+	d := ActorDetail{ID: id, Name: row.Name, Profile: l.info.profile, Timeline: l.timeline, Findings: s.actorFindings(id)}
+	if d.Profile == "" {
+		d.Profile = row.Profile
+	}
+	in, err := store.DecodeIdentity(row.Identity)
+	if err != nil {
+		return ActorDetail{}, fmt.Errorf("actor %d: %w", id, err)
+	}
+	d.HasIdentity = row.Identity != ""
+	d.Kind, d.Agenda = in.Kind, in.Agenda
+	d.Wallet = WalletIDs{in.PaymentAddr, in.StakeAddr, in.PaymentKeyHash, in.StakeKeyHash, in.DRepID, in.PoolID}
+	d.Holdings = Holdings{in.Settled, in.Reserved, in.Unconfirmed, in.UTxOs, in.InFlight, in.Tokens}
+	if d.Holdings.Tokens == nil {
+		d.Holdings.Tokens = []store.Token{}
+	}
+	d.Delegation = Delegation{in.StakeRegistered, in.DelegatedPool, in.DelegatedActor, in.DelegatedDRep}
+	d.Traits = Traits{in.Competence, in.Care, in.Patience, in.LearningRate}
+	d.Lifecycle = Lifecycle{State: l.info.state, BornMs: l.info.born, ChangedMs: l.info.changed, Frustration: in.Frustration, Hazard: in.Hazard}
+	i := l.info
+	d.Activity = Activity{Intents: i.intents, Submitted: i.txs, Confirmed: i.confirmed, Refused: i.refused, Released: i.released,
+		GaveUp: i.gaveUp, Retries: i.retries, LastMs: i.last, LostLovelace: i.lost, Recent: i.recent}
+	if d.Activity.Recent == nil {
+		d.Activity.Recent = []Decision{}
+	}
+	if in.CostCeiling > 0 {
+		d.Adversary = &AdversaryCost{in.CostSpent, in.CostCeiling, in.Metric}
+	}
+	return d, nil
+}
+
+// actorFindings lists the findings whose transaction the actor submitted.
+func (s *LogSource) actorFindings(id uint64) []ActorFinding {
+	fs := s.findingsSet()
+	_, n := fs.Page(0, 0)
+	all, _ := fs.Page(0, n)
+	out := []ActorFinding{}
+	for _, f := range all {
+		if owner, ok := s.cfg.Projection.TxOwner(f.TxHash); ok && owner == id {
+			out = append(out, ActorFinding{ID: f.ID, Seq: f.Seq, Kind: string(f.Kind), Severity: f.Severity.String(), Summary: strings.TrimSpace(f.Summary)})
+		}
+	}
+	return out
+}
+
+func (s *LogSource) findingsSet() Findings {
+	if s.cfg.Findings != nil {
+		return s.cfg.Findings
+	}
+	return s.cfg.Projection.findings
+}
+
+// Adversaries implements Source.
+func (s *LogSource) Adversaries(ctx context.Context) (AdversaryView, error) {
+	stats, cur, now := s.cfg.Projection.Attacks()
+	n, err := s.names(ctx)
+	if err != nil {
+		return AdversaryView{}, err
+	}
+	idents := s.identities()
+	ids := map[uint64]bool{}
+	for _, st := range stats {
+		ids[st.Actor] = true
+	}
+	for id, in := range idents {
+		if in.Kind == "adversary" {
+			ids[id] = true
+		}
+	}
+	var ctl adversary.Metrics
+	if s.cfg.Control != nil {
+		ctl = *s.cfg.Control
+	}
+	impact := impactRows(ctl, cur, s.cfg.Control != nil)
+	out := AdversaryView{HasControl: s.cfg.Control != nil, Adversaries: []AdversaryRow{}, Impact: impact}
+	for _, id := range slices.Sorted(mapKeys(ids)) {
+		var st engine.AttackStat
+		for _, x := range stats {
+			if x.Actor == id {
+				st = x
+			}
+		}
+		out.Adversaries = append(out.Adversaries, s.adversaryRow(id, st, n[id], idents[id], impact, now))
+	}
+	return out, nil
+}
+
+func (s *LogSource) adversaryRow(id uint64, st engine.AttackStat, row store.ActorRow, in store.Identity, impact []ImpactRow, now int64) AdversaryRow {
+	r := AdversaryRow{ID: id, Name: row.Name, Profile: row.Profile, Attack: st.Name, Agenda: in.Agenda, Budget: in.Budget,
+		Attempted: st.Steps, Landed: st.Landed, Detected: st.Detected, Rejected: st.Rejected,
+		Recent: []AttackStepRow{}, Findings: s.adversaryFindings(id)}
+	if r.Attack == "" {
+		r.Attack = strings.TrimPrefix(row.Profile, "adversary-")
+	}
+	for _, x := range st.Recent {
+		r.Recent = append(r.Recent, AttackStepRow{Seq: x.Seq, At: x.At, Intent: x.Intent, Mutation: x.Mutation, Cost: x.Cost, Value: x.Value, Txs: x.Txs})
+	}
+	r.Cost = s.costView(st, in.CostCeiling, now)
+	r.Metric = SuccessView{Name: in.Metric}
+	if r.Metric.Name == "" {
+		r.Metric.Name = adversary.SuccessMetric(adversary.Name(r.Attack))
+	}
+	for _, i := range impact {
+		if i.Metric == r.Metric.Name {
+			r.Metric.Value, r.Metric.Control = i.Value, i.Control
+		}
+	}
+	return r
+}
+
+func (s *LogSource) costView(st engine.AttackStat, ceiling uint64, now int64) CostView {
+	c := CostView{Spent: st.Cost, Ceiling: ceiling, ByEpoch: []EpochCost{}}
+	epochOf := func(int64) uint64 { return 0 }
+	if s.cfg.Slots != nil {
+		epochOf = func(at int64) uint64 { return s.cfg.Slots.EpochAt(sched.Time(at)) }
+	}
+	c.Epoch = epochOf(now)
+	if n := len(st.Costs); n > 0 {
+		c.Epoch = epochOf(st.Costs[n-1].At)
+	}
+	for _, p := range st.Costs {
+		e := epochOf(p.At)
+		if n := len(c.ByEpoch); n > 0 && c.ByEpoch[n-1].Epoch == e {
+			c.ByEpoch[n-1].Spent += p.Cost
+		} else {
+			c.ByEpoch = append(c.ByEpoch, EpochCost{Epoch: e, Spent: p.Cost})
+		}
+		if e == c.Epoch {
+			c.EpochSpent += p.Cost
+		}
+	}
+	return c
+}
+
+// adversaryFindings lists the findings on transactions the adversary sent.
+func (s *LogSource) adversaryFindings(id uint64) []ActorFinding {
+	fs := s.findingsSet()
+	_, n := fs.Page(0, 0)
+	all, _ := fs.Page(0, n)
+	out := []ActorFinding{}
+	for _, f := range all {
+		if owner, ok := s.cfg.Projection.attackOwner(f.TxHash); ok && owner == id {
+			out = append(out, ActorFinding{ID: f.ID, Seq: f.Seq, Kind: string(f.Kind), Severity: f.Severity.String(), Summary: strings.TrimSpace(f.Summary)})
+		}
+	}
+	return out
+}

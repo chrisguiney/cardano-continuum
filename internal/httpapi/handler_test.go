@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
-	"github.com/chrisguiney/cardano-continuum/internal/store"
 	"io"
 	"log/slog"
 	"net"
@@ -18,6 +17,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/chrisguiney/cardano-continuum/internal/store"
 )
 
 var update = flag.Bool("update", false, "rewrite the golden files")

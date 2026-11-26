@@ -6,6 +6,7 @@ import (
 	"slices"
 	"sync"
 
+	"github.com/chrisguiney/cardano-continuum/internal/adversary"
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
@@ -450,4 +451,65 @@ func (p *Projection) Timeline(id uint64) (Timeline, error) {
 		Actor: id, Profile: a.profile, State: a.state, BornMs: a.born,
 		Dropped: dropped, Entries: slices.Clone(entries),
 	}, nil
+}
+
+func (p *Projection) recordDecision(id uint64, r eventlog.Record, d agenda.Decision) {
+	a := p.actor(id)
+	a.recent = append(a.recent, Decision{ID: r.Seq, At: int64(r.At), Kind: r.Kind, Actor: id, Intent: string(d.Intent.Kind), Scores: d.Scores})
+	if len(a.recent) > maxRecent {
+		a.recent = slices.Delete(a.recent, 0, len(a.recent)-maxRecent)
+	}
+}
+
+// actorLog is what the log knows about one actor.
+type actorLog struct {
+	info     actorInfo
+	timeline []TimelineEntry
+}
+
+// ActorLog returns the log's view of one actor, or ErrNotFound.
+func (p *Projection) ActorLog(id uint64) (actorLog, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	a := p.actors[id]
+	if a == nil {
+		return actorLog{}, fmt.Errorf("%w: actor %d", ErrNotFound, id)
+	}
+	tl := a.tl[max(len(a.tl)-maxTimeline, 0):]
+	c := *a
+	c.recent, c.tl = slices.Clone(a.recent), nil
+	return actorLog{info: c, timeline: slices.Clone(tl)}, nil
+}
+
+// TxOwner is the actor that submitted the transaction, if the log shows it.
+func (p *Projection) TxOwner(tx []byte) (uint64, bool) {
+	if len(tx) != 32 {
+		return 0, false
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	id, ok := p.txOwner[[32]byte(tx)]
+	return id, ok
+}
+
+// Attacks returns the meter's tallies and metrics.
+func (p *Projection) Attacks() ([]engine.AttackStat, adversary.Metrics, int64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.meter.Attacks(), p.meter.Metrics(), p.now
+}
+
+// attackOwner is the adversary that sent tx, by an Attack decision or by
+// its own Submitted record.
+func (p *Projection) attackOwner(tx []byte) (uint64, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if id, ok := p.meter.AttackActor(tx); ok {
+		return id, true
+	}
+	if len(tx) != 32 {
+		return 0, false
+	}
+	id, ok := p.txOwner[[32]byte(tx)]
+	return id, ok
 }

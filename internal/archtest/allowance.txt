@@ -58,9 +58,6 @@ stray-methods internal/engine Runner 2
 stray-methods internal/engine actor 1
 stray-methods internal/engine pendingRec 2
 stray-methods internal/engine view 9
-stray-methods internal/httpapi ActorRow 1
-stray-methods internal/httpapi LogSource 7
-stray-methods internal/httpapi Projection 5
 stray-methods internal/httpapi api 5
 stray-methods internal/keys Store 5
 stray-methods internal/keys Wallet 2
