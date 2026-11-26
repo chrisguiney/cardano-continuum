@@ -11,17 +11,19 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-logr/logr"
+	"go.uber.org/goleak"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
+	kruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -43,7 +45,7 @@ import (
 // its own namespace with its own Node.
 var suite struct {
 	cfg    *rest.Config
-	scheme *runtime.Scheme
+	scheme *kruntime.Scheme
 	c      client.Client
 }
 
@@ -63,7 +65,7 @@ func runSuite(m *testing.M) int {
 		return 1
 	}
 	defer func() { _ = env.Stop() }()
-	s := runtime.NewScheme()
+	s := kruntime.NewScheme()
 	if err := errors.Join(clientgoscheme.AddToScheme(s), v1alpha1.AddToScheme(s)); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -74,7 +76,27 @@ func runSuite(m *testing.M) int {
 		return 1
 	}
 	suite.cfg, suite.scheme, suite.c = cfg, s, c
-	return m.Run()
+	before := goleak.IgnoreCurrent()
+	if code := m.Run(); code != 0 {
+		return code
+	}
+	// controller-runtime wraps a metadata-only informer's watch in
+	// watch.Filter (cache/internal/informers.go, newGVKFixupWatcher). When a
+	// manager stops, the reflector stops reading and Stop does not unblock
+	// the filter's pending send, so that goroutine outlives every manager.
+	// client-go shares one transport between every client built from the
+	// suite's config, so its pooled connections belong to the suite, not to
+	// a test, and stay open until the process exits.
+	if err := goleak.Find(before,
+		goleak.IgnoreTopFunction("k8s.io/apimachinery/pkg/watch.(*filteredWatch).loop"),
+		goleak.IgnoreAnyFunction("net/http/internal/http2.(*ClientConn).readLoop"),
+		goleak.IgnoreAnyFunction("net/http.(*persistConn).readLoop"),
+		goleak.IgnoreAnyFunction("net/http.(*persistConn).writeLoop"),
+	); err != nil {
+		fmt.Fprintln(os.Stderr, "goroutines left after the tests:", err)
+		return 1
+	}
+	return 0
 }
 
 // fakeResolver pins every reference to a digest derived from its text.
@@ -100,7 +122,13 @@ type harness struct {
 // starts the fake cluster. edit, if not nil, adjusts the network first.
 func newHarness(t *testing.T, edit func(*v1alpha1.ContinuumNetwork)) *harness {
 	t.Helper()
-	h := &harness{t: t, ctx: t.Context(), c: suite.c}
+	// h.ctx is not t.Context(): that is cancelled before any cleanup runs,
+	// so a goroutine started with run would see its API calls fail before
+	// run's cleanup has told it to stop. Registered first, this cancel runs
+	// last, after every run goroutine has been joined.
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	h := &harness{t: t, ctx: ctx, c: suite.c}
 	sum := sha256.Sum256([]byte(t.Name()))
 	h.ns = "t-" + hex.EncodeToString(sum[:6])
 	h.node = h.ns + "-node"
@@ -116,16 +144,60 @@ func newHarness(t *testing.T, edit func(*v1alpha1.ContinuumNetwork)) *harness {
 	return h
 }
 
-// run starts f in a goroutine and, at cleanup, cancels and joins it.
+// run starts f in a goroutine and, at cleanup, cancels and joins it. The
+// join is bounded: a goroutine that does not return within patience fails
+// the test with every goroutine's stack. f must not call t.FailNow (h.must,
+// t.Fatal): off the test goroutine that ends f without returning, which run
+// reports instead of waiting for.
 func (h *harness) run(what string, f func(context.Context) error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- f(ctx) }()
+	exited := make(chan struct{})
+	go func() {
+		defer close(exited)
+		done <- f(ctx)
+	}()
 	h.t.Cleanup(func() {
 		cancel()
-		if err := <-done; err != nil {
-			h.t.Errorf("%s: %v", what, err)
+		timer := time.NewTimer(patience)
+		defer timer.Stop()
+		select {
+		case <-exited:
+		case <-timer.C:
+			h.t.Errorf("%s still running %v after cancel:\n%s", what, patience, stacks())
+			return
 		}
+		select {
+		case err := <-done:
+			if err != nil {
+				h.t.Errorf("%s: %v", what, err)
+			}
+		default:
+			h.t.Errorf("%s exited without returning (runtime.Goexit, e.g. t.FailNow off the test goroutine)", what)
+		}
+	})
+}
+
+func stacks() []byte {
+	buf := make([]byte, 1<<20)
+	for {
+		n := runtime.Stack(buf, true)
+		if n < len(buf) {
+			return buf[:n]
+		}
+		buf = make([]byte, 2*len(buf))
+	}
+}
+
+// TestHarnessJoinsBeforeCancel: a goroutine started with run may call the
+// harness's API helpers until it is told to stop, including the call it is
+// making when teardown begins.
+func TestHarnessJoinsBeforeCancel(t *testing.T) {
+	h := newHarness(t, nil)
+	h.run("probe", func(ctx context.Context) error {
+		<-ctx.Done()
+		h.keyedPods(RoleForger)
+		return nil
 	})
 }
 

@@ -7,6 +7,7 @@ package operator
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"strings"
 	"sync"
@@ -112,9 +113,19 @@ func (h *harness) record(events *[]event, mu *sync.Mutex) {
 	for _, list := range []client.ObjectList{&corev1.PodList{}, &appsv1.StatefulSetList{}} {
 		w, err := wc.Watch(h.ctx, list, client.InNamespace(h.ns))
 		h.must(err)
-		h.t.Cleanup(w.Stop)
-		go func() {
-			for e := range w.ResultChan() {
+		h.run("watch", func(ctx context.Context) error {
+			defer w.Stop()
+			for {
+				var e watch.Event
+				var open bool
+				select {
+				case <-ctx.Done():
+					return nil
+				case e, open = <-w.ResultChan():
+				}
+				if !open {
+					return errors.New("watch closed early: the event record is incomplete")
+				}
 				obj, ok := e.Object.(client.Object)
 				if !ok {
 					continue
@@ -128,7 +139,7 @@ func (h *harness) record(events *[]event, mu *sync.Mutex) {
 				*events = append(*events, event{e.Type, kind, obj.GetName(), obj.GetUID(), obj.GetLabels()[LabelImpl], rv})
 				mu.Unlock()
 			}
-		}()
+		})
 	}
 }
 

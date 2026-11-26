@@ -99,11 +99,7 @@ func (k *Cluster) isLost() bool {
 // Run creates the Node, then steps every controller each tick until ctx is
 // cancelled. It returns nil on cancellation.
 func (k *Cluster) Run(ctx context.Context) error {
-	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: k.node}}
-	if err := k.c.Create(ctx, node); err != nil && !apierrors.IsAlreadyExists(err) {
-		return fmt.Errorf("create node %s: %w", k.node, err)
-	}
-	if err := SetReady(ctx, k.c, k.node, true); err != nil {
+	if err := k.register(ctx); err != nil && ctx.Err() == nil {
 		return err
 	}
 	t := time.NewTicker(k.tick)
@@ -118,6 +114,15 @@ func (k *Cluster) Run(ctx context.Context) error {
 			return err
 		}
 	}
+}
+
+// register creates the kubelet's Node and marks it Ready.
+func (k *Cluster) register(ctx context.Context) error {
+	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: k.node}}
+	if err := k.c.Create(ctx, node); err != nil && !apierrors.IsAlreadyExists(err) {
+		return fmt.Errorf("create node %s: %w", k.node, err)
+	}
+	return SetReady(ctx, k.c, k.node, true)
 }
 
 // SetReady sets Node name's Ready condition.
