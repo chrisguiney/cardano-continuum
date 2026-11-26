@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/blinklabs-io/gouroboros/ledger/common"
+	"github.com/blinklabs-io/gouroboros/ledger/conway"
 
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
@@ -111,4 +112,79 @@ func TestCommitteeHotKeyAuthAndVote(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.rejects(bad.Tx, fakechain.CommitteeIsUnknown)
+}
+
+func TestDRepRetirement(t *testing.T) {
+	h := newHarness(t)
+	drep := h.store.DRepSigner(1)
+	pay := h.alice.PaymentKeyHash()
+	reg, err := h.b.RegisterDRep(ctx, h.alice, DRepRegistration{Spend: h.spend(), DRep: drep})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.commit(reg)
+
+	sp := h.spend()
+	ret := DRepRetirement{Spend: sp, DRep: drep}
+	got, err := h.b.RetireDRep(ctx, h.alice, ret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.check(got, sp.Inputs, want{refund: h.pp.DRepDeposit, signers: []keys.Credential{pay, drep.KeyHash()}},
+		func() (Built, error) { return h.b.RetireDRep(ctx, h.alice, ret) })
+	h.commit(got)
+	if h.chain.Deposits() != 0 {
+		t.Fatalf("deposits %d after the DRep retired, want 0", h.chain.Deposits())
+	}
+
+	again, err := h.b.RetireDRep(ctx, h.alice, DRepRetirement{Spend: h.spend(), DRep: drep})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.rejects(again.Tx, fakechain.DRepNotRegistered)
+}
+
+// Every action type a fitted network proposes builds a proposal the
+// ledger accepts, holding the governance action deposit.
+func TestProposeActionTypes(t *testing.T) {
+	h := newHarness(t)
+	h.registerStake()
+	deposits := uint64(h.pp.KeyDeposit)
+	for _, a := range []ActionType{ActionInfo, ActionParameterChange, ActionTreasuryWithdrawals} {
+		sp := h.spend()
+		prop := Proposal{Spend: sp, Action: a}
+		got, err := h.b.Propose(ctx, h.alice, prop)
+		if err != nil {
+			t.Fatalf("%s: %v", a, err)
+		}
+		tx := h.check(got, sp.Inputs, want{deposit: h.pp.GovActionDeposit, signers: []keys.Credential{h.alice.PaymentKeyHash()}},
+			func() (Built, error) { return h.b.Propose(ctx, h.alice, prop) })
+		procs := tx.ProposalProcedures()
+		if len(procs) != 1 {
+			t.Fatalf("%s: %d proposals", a, len(procs))
+		}
+		if typ, ok := actionTypeOf(procs[0].GovAction()); !ok || typ != a {
+			t.Fatalf("%s: built a %v action", a, procs[0].GovAction())
+		}
+		h.commit(got)
+		deposits += h.pp.GovActionDeposit
+		if h.chain.Deposits() != deposits {
+			t.Fatalf("%s: deposits %d, want %d", a, h.chain.Deposits(), deposits)
+		}
+	}
+	if _, err := h.b.Propose(ctx, h.alice, Proposal{Spend: h.spend(), Action: "no_such_action"}); err == nil {
+		t.Fatal("an unknown action type built")
+	}
+}
+
+func actionTypeOf(a common.GovAction) (ActionType, bool) {
+	switch a.(type) {
+	case *common.InfoGovAction:
+		return ActionInfo, true
+	case *conway.ConwayParameterChangeGovAction:
+		return ActionParameterChange, true
+	case *common.TreasuryWithdrawalGovAction:
+		return ActionTreasuryWithdrawals, true
+	}
+	return "", false
 }

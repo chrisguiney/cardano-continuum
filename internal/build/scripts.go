@@ -1,7 +1,10 @@
 package build
 
 import (
+	"encoding/hex"
 	"fmt"
+	"strconv"
+	"sync"
 
 	"github.com/blinklabs-io/gouroboros/cbor"
 	"github.com/blinklabs-io/gouroboros/ledger/common"
@@ -31,6 +34,28 @@ var (
 	// FreeMint is a minting policy anyone can mint or burn under.
 	FreeMint = mustCompile("free-mint", "(program 1.1.0 [(lam salt (lam ctx (con unit ()))) (con integer 1)])")
 )
+
+// contracts caches Contract's compiled scripts by index: compiling parses
+// and flat-encodes, and the engine asks for a contract's address often.
+var contracts sync.Map // uint64 -> Script
+
+// Contract returns deployed contract i: AlwaysSucceeds for 0, and for
+// every other index the same validator applied to a salt naming i, so
+// each has its own hash and address. A run deploys contracts 0, 1, 2, ...
+// in order.
+func Contract(i uint64) Script {
+	if i == 0 {
+		return AlwaysSucceeds
+	}
+	if s, ok := contracts.Load(i); ok {
+		return s.(Script)
+	}
+	salt := hex.EncodeToString([]byte("contract-" + strconv.FormatUint(i, 10)))
+	s := mustCompile("contract-"+strconv.FormatUint(i, 10),
+		"(program 1.1.0 [(lam salt (lam ctx (con unit ()))) (con bytestring #"+salt+")])")
+	contracts.Store(i, s)
+	return s
+}
 
 func mustCompile(name, src string) Script {
 	s, err := compile(name, src)

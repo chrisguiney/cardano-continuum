@@ -174,3 +174,45 @@ func TestMint(t *testing.T) {
 	h.rejects(bad.Tx, fakechain.ValidationTagMismatch)
 	h.commit(got)
 }
+
+// Contract(i) is a family of always-succeeds validators, one address per
+// deployed contract: Contract(0) is AlwaysSucceeds, so a run with one
+// contract locks where it always did, and every other index has its own
+// hash and unlocks on the fake chain.
+func TestContractsHaveTheirOwnAddresses(t *testing.T) {
+	if Contract(0).Hash() != AlwaysSucceeds.Hash() {
+		t.Fatal("contract 0 is not AlwaysSucceeds")
+	}
+	seen := map[common.Blake2b224]uint64{FreeMint.Hash(): 1 << 40}
+	for i := range uint64(50) {
+		h := Contract(i).Hash()
+		if j, dup := seen[h]; dup {
+			t.Fatalf("contracts %d and %d share hash %x", i, j, h)
+		}
+		seen[h] = i
+	}
+	if Contract(3).Hash() != Contract(3).Hash() {
+		t.Fatal("Contract is not deterministic")
+	}
+
+	h := newHarness(t)
+	c := Contract(7)
+	got, err := h.b.Lock(ctx, h.alice, Lock{Spend: h.spend(), Script: c, Amount: 5_000_000, Datum: unitDatum()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.commit(got)
+	locked := h.chain.UtxosAt(c.Address(0))
+	if len(locked) != 1 {
+		t.Fatalf("%d outputs at contract 7, want 1", len(locked))
+	}
+	sp := h.spend()
+	un := Unlock{Spend: sp, Script: c, Locked: locked[0], Redeemer: unitDatum()}
+	got, err = h.b.Unlock(ctx, h.alice, un)
+	if err != nil {
+		t.Fatal(err)
+	}
+	all := append(append([]common.Utxo(nil), sp.Inputs...), locked[0])
+	h.checkExUnits(got, all)
+	h.commit(got)
+}

@@ -39,12 +39,37 @@ type Vote struct {
 	Anchor *common.GovAnchor
 }
 
-// Proposal submits an info action, paying the governance action deposit,
-// which is returned to the wallet's reward account. That account must be
-// registered.
+// Proposal submits a governance action of type Action (info when
+// empty), paying the governance action deposit, which is returned to the
+// wallet's reward account. That account must be registered.
 type Proposal struct {
 	Spend
+	Action ActionType
 	Anchor common.GovAnchor
+}
+
+// ActionType is a Conway governance action type, by the names profile
+// files use (profile.Network.Proposals).
+type ActionType string
+
+// The action types Propose builds. The others (hard fork, no confidence,
+// committee and constitution changes) need ancestry and state a devnet
+// does not have.
+const (
+	ActionInfo                ActionType = "info"
+	ActionParameterChange     ActionType = "parameter_change"
+	ActionTreasuryWithdrawals ActionType = "treasury_withdrawals"
+)
+
+// treasuryAsk is what a treasury withdrawal proposal asks for. The
+// proposal is never enacted, so the amount only has to be positive
+// (ZeroTreasuryWithdrawals rejects zero).
+const treasuryAsk = 1_000_000
+
+// DRepRetirement deregisters a key-hash DRep, refunding its deposit.
+type DRepRetirement struct {
+	Spend
+	DRep keys.Signer
 }
 
 // HotAuth authorises a hot key for committee member Cold.
@@ -65,6 +90,18 @@ func (b *Builder) RegisterDRep(ctx context.Context, w keys.Wallet, r DRepRegistr
 		certs: []common.Certificate{&common.RegistrationDrepCertificate{
 			CertType:       uint(common.CertificateTypeRegistrationDrep),
 			DrepCredential: keyCred(r.DRep.KeyHash()), Amount: b.params.DRepDeposit, Anchor: r.Anchor,
+		}},
+	})
+}
+
+// RetireDRep deregisters the DRep key; the deposit returns in the change.
+// The DRep key witnesses it.
+func (b *Builder) RetireDRep(ctx context.Context, w keys.Wallet, r DRepRetirement) (Built, error) {
+	return b.finish(ctx, w, spec{
+		sp: r.Spend, signers: []keys.Signer{r.DRep},
+		certs: []common.Certificate{&common.DeregistrationDrepCertificate{
+			CertType:       uint(common.CertificateTypeDeregistrationDrep),
+			DrepCredential: keyCred(r.DRep.KeyHash()), Amount: b.params.DRepDeposit,
 		}},
 	})
 }
@@ -104,20 +141,45 @@ func (b *Builder) Vote(ctx context.Context, w keys.Wallet, v Vote) (Built, error
 	})
 }
 
-// Propose submits an info action.
+// Propose submits a governance action. A parameter change re-states the
+// current maximum transaction size, so enacting it would change nothing;
+// a treasury withdrawal pays the wallet's own reward account. Neither
+// names a guardrail policy: the devnet constitution has none.
 func (b *Builder) Propose(ctx context.Context, w keys.Wallet, p Proposal) (Built, error) {
-	info, err := common.NewInfoGovAction()
+	act, err := b.govAction(w, p.Action)
 	if err != nil {
-		return Built{}, fmt.Errorf("build: info action: %w", err)
+		return Built{}, err
 	}
 	proc := conway.ConwayProposalProcedure{
 		PPDeposit:       b.params.GovActionDeposit,
 		PPRewardAccount: w.StakeAddress(),
-		PPGovAction:     conway.ConwayGovAction{Type: uint(common.GovActionTypeInfo), Action: info},
+		PPGovAction:     act,
 		PPAnchor:        p.Anchor,
 	}
 	return b.finish(ctx, w, spec{
 		sp: p.Spend, need: b.params.GovActionDeposit,
 		add: func(a *apollo.Apollo) (*apollo.Apollo, error) { return a.AddProposal(proc), nil },
 	})
+}
+
+func (b *Builder) govAction(w keys.Wallet, t ActionType) (conway.ConwayGovAction, error) {
+	switch t {
+	case "", ActionInfo:
+		info, err := common.NewInfoGovAction()
+		if err != nil {
+			return conway.ConwayGovAction{}, fmt.Errorf("build: info action: %w", err)
+		}
+		return conway.ConwayGovAction{Type: uint(common.GovActionTypeInfo), Action: info}, nil
+	case ActionParameterChange:
+		size := uint(b.params.MaxTxSize)
+		return conway.ConwayGovAction{Type: uint(common.GovActionTypeParameterChange), Action: &conway.ConwayParameterChangeGovAction{
+			Type: uint(common.GovActionTypeParameterChange), ParamUpdate: conway.ConwayProtocolParameterUpdate{MaxTxSize: &size},
+		}}, nil
+	case ActionTreasuryWithdrawals:
+		to := w.StakeAddress()
+		return conway.ConwayGovAction{Type: uint(common.GovActionTypeTreasuryWithdrawal), Action: &common.TreasuryWithdrawalGovAction{
+			Type: uint(common.GovActionTypeTreasuryWithdrawal), Withdrawals: map[*common.Address]uint64{&to: treasuryAsk},
+		}}, nil
+	}
+	return conway.ConwayGovAction{}, fmt.Errorf("build: unsupported governance action type %q", t)
 }
