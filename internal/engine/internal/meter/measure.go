@@ -1,4 +1,7 @@
-package engine
+// Package meter folds an engine log into analytics: the adversary comparison
+// metrics, per-attack tallies and the payment audit. It reads records only and
+// never touches an Engine.
+package meter
 
 import (
 	"cmp"
@@ -7,6 +10,7 @@ import (
 	"slices"
 
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
@@ -35,7 +39,7 @@ type meter struct {
 	// attack intent to its transactions, attackTx the reverse.
 	first    map[uint64]sched.Time
 	attacks  map[uint64]bool
-	attackTx map[TxID]uint64
+	attackTx map[wire.TxID]uint64
 	detected map[uint64]bool
 	// value is what each attack takes from an honest lock if it lands.
 	value map[uint64]uint64
@@ -55,7 +59,7 @@ type blockDelta struct {
 }
 
 func newMeter() *meter {
-	return &meter{first: map[uint64]sched.Time{}, attacks: map[uint64]bool{}, attackTx: map[TxID]uint64{}, detected: map[uint64]bool{}, value: map[uint64]uint64{},
+	return &meter{first: map[uint64]sched.Time{}, attacks: map[uint64]bool{}, attackTx: map[wire.TxID]uint64{}, detected: map[uint64]bool{}, value: map[uint64]uint64{},
 		by: map[uint64]*AttackStat{}, owner: map[uint64]uint64{}, rejected: map[uint64]bool{}}
 }
 
@@ -67,14 +71,14 @@ func (m *meter) add(rec eventlog.Record) error {
 		return nil
 	}
 	switch rec.Kind {
-	case KindSubmitted:
-		var s Submitted
+	case wire.KindSubmitted:
+		var s wire.Submitted
 		if err := eventlog.Decode(rec.Body, &s); err != nil {
 			return err
 		}
 		m.submitted(rec.At, s)
-	case KindAttack:
-		var a Attack
+	case wire.KindAttack:
+		var a wire.Attack
 		if err := eventlog.Decode(rec.Body, &a); err != nil {
 			return err
 		}
@@ -86,14 +90,14 @@ func (m *meter) add(rec eventlog.Record) error {
 		for _, tx := range a.Txs {
 			m.attackTx[tx] = a.Intent
 		}
-	case KindConfirmed:
-		var c Confirmed
+	case wire.KindConfirmed:
+		var c wire.Confirmed
 		if err := eventlog.Decode(rec.Body, &c); err != nil {
 			return err
 		}
 		m.ended(rec.At, c.Intent, false)
-	case KindReleased:
-		var rl Released
+	case wire.KindReleased:
+		var rl wire.Released
 		if err := eventlog.Decode(rec.Body, &rl); err != nil {
 			return err
 		}
@@ -104,7 +108,7 @@ func (m *meter) add(rec eventlog.Record) error {
 	return nil
 }
 
-func (m *meter) submitted(at sched.Time, s Submitted) {
+func (m *meter) submitted(at sched.Time, s wire.Submitted) {
 	if s.Attack != "" {
 		return
 	}
@@ -146,7 +150,7 @@ func (m *meter) finding(rec eventlog.Record) error {
 	if f.Severity == oracle.Fatal {
 		m.Fatal++
 	}
-	var id TxID
+	var id wire.TxID
 	if len(f.TxHash) == len(id) {
 		copy(id[:], f.TxHash)
 		if intent, ok := m.attackTx[id]; ok {
@@ -159,7 +163,7 @@ func (m *meter) finding(rec eventlog.Record) error {
 func (m *meter) input(rec eventlog.Record) error {
 	switch rec.Kind {
 	case eventlog.KindSubmitResult:
-		var r SubmitResult
+		var r wire.SubmitResult
 		if err := eventlog.Decode(rec.Body, &r); err != nil {
 			return err
 		}
@@ -169,7 +173,7 @@ func (m *meter) input(rec eventlog.Record) error {
 		if err := eventlog.Decode(rec.Body, &b); err != nil {
 			return err
 		}
-		var c BlockContent
+		var c wire.BlockContent
 		if len(b.Content) > 0 {
 			if err := eventlog.Decode(b.Content, &c); err != nil {
 				return err
@@ -194,13 +198,13 @@ func (m *meter) input(rec eventlog.Record) error {
 	return nil
 }
 
-func (m *meter) answers(r SubmitResult) {
+func (m *meter) answers(r wire.SubmitResult) {
 	rejected := 0
-	if r.Verdict == VerdictRejected {
+	if r.Verdict == wire.VerdictRejected {
 		rejected++
 	}
 	for _, a := range append(again(r), r.Rivals...) {
-		if a.Verdict == VerdictRejected {
+		if a.Verdict == wire.VerdictRejected {
 			rejected++
 		}
 	}
@@ -212,11 +216,11 @@ func (m *meter) answers(r SubmitResult) {
 }
 
 // again is a DoubleSubmit's second answer, if any.
-func again(r SubmitResult) []Answer {
+func again(r wire.SubmitResult) []wire.Answer {
 	if r.Again == nil {
 		return nil
 	}
-	return []Answer{*r.Again}
+	return []wire.Answer{*r.Again}
 }
 
 // AttackStep is one logged attack step.
@@ -251,7 +255,7 @@ type AttackStat struct {
 // maxRecentSteps bounds the steps kept per adversary.
 const maxRecentSteps = 10
 
-func (m *meter) tally(rec eventlog.Record, a Attack) {
+func (m *meter) tally(rec eventlog.Record, a wire.Attack) {
 	actor := uint64(rec.Actor)
 	st := m.by[actor]
 	if st == nil {
@@ -310,10 +314,10 @@ func (x *Meter) Attacks() []AttackStat {
 
 // AttackActor is the adversary that sent the transaction in an attack step.
 func (x *Meter) AttackActor(tx []byte) (uint64, bool) {
-	if len(tx) != len(TxID{}) {
+	if len(tx) != len(wire.TxID{}) {
 		return 0, false
 	}
-	var id TxID
+	var id wire.TxID
 	copy(id[:], tx)
 	intent, ok := x.m.attackTx[id]
 	if !ok {

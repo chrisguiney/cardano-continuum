@@ -1,10 +1,11 @@
-package engine
+package meter
 
 import (
 	"cmp"
 	"context"
 	"fmt"
 
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 )
@@ -71,35 +72,35 @@ func (a *Audit) Add(rec eventlog.Record) error {
 			a.Fatal++
 		}
 		return nil
-	case KindGuarded:
+	case wire.KindGuarded:
 		a.Guarded++
 		return nil
-	case KindIncident:
+	case wire.KindIncident:
 		a.Incidents++
 		return nil
 	}
-	if rec.Kind == KindSubmitted {
-		var s Submitted
+	if rec.Kind == wire.KindSubmitted {
+		var s wire.Submitted
 		if err := eventlog.Decode(rec.Body, &s); err != nil {
 			return fmt.Errorf("engine: audit seq %d: %w", rec.Seq, err)
 		}
 		a.kind[s.Intent] = cmp.Or(s.Kind, "send")
 	}
 	switch rec.Kind {
-	case KindSubmitted, KindRefill:
+	case wire.KindSubmitted, wire.KindRefill:
 		id, err := intentOf(rec)
 		if err != nil || a.seen[id] {
 			return err
 		}
 		a.seen[id] = true
-		if rec.Kind == KindRefill {
+		if rec.Kind == wire.KindRefill {
 			a.refills[id] = true
 			a.Refills++
 		} else {
 			a.Payments++
 		}
-	case KindConfirmed:
-		var c Confirmed
+	case wire.KindConfirmed:
+		var c wire.Confirmed
 		if err := eventlog.Decode(rec.Body, &c); err != nil {
 			return fmt.Errorf("engine: audit seq %d: %w", rec.Seq, err)
 		}
@@ -116,7 +117,7 @@ func (a *Audit) Add(rec eventlog.Record) error {
 			a.DoublePaid++
 		}
 		a.ended[id] = true
-	case KindReleased:
+	case wire.KindReleased:
 		id, err := intentOf(rec)
 		if err != nil {
 			return err
@@ -128,15 +129,15 @@ func (a *Audit) Add(rec eventlog.Record) error {
 }
 
 func (a *Audit) rejections(rec eventlog.Record) error {
-	var r SubmitResult
+	var r wire.SubmitResult
 	if err := eventlog.Decode(rec.Body, &r); err != nil {
 		return fmt.Errorf("engine: audit seq %d: %w", rec.Seq, err)
 	}
 	var cs []string
-	if r.Verdict == VerdictRejected {
+	if r.Verdict == wire.VerdictRejected {
 		cs = append(cs, r.Failures...)
 	}
-	if r.Again != nil && r.Again.Verdict == VerdictRejected {
+	if r.Again != nil && r.Again.Verdict == wire.VerdictRejected {
 		cs = append(cs, r.Again.Failures...)
 	}
 	for _, c := range cs {
@@ -154,14 +155,14 @@ func intentOf(rec eventlog.Record) (uint64, error) {
 	var id uint64
 	var err error
 	switch rec.Kind {
-	case KindSubmitted:
-		id, err = decodeIntent(rec.Body, func(b Submitted) uint64 { return b.Intent })
-	case KindRefill:
-		id, err = decodeIntent(rec.Body, func(b Refill) uint64 { return b.Intent })
-	case KindConfirmed:
-		id, err = decodeIntent(rec.Body, func(b Confirmed) uint64 { return b.Intent })
-	case KindReleased:
-		id, err = decodeIntent(rec.Body, func(b Released) uint64 { return b.Intent })
+	case wire.KindSubmitted:
+		id, err = decodeIntent(rec.Body, func(b wire.Submitted) uint64 { return b.Intent })
+	case wire.KindRefill:
+		id, err = decodeIntent(rec.Body, func(b wire.Refill) uint64 { return b.Intent })
+	case wire.KindConfirmed:
+		id, err = decodeIntent(rec.Body, func(b wire.Confirmed) uint64 { return b.Intent })
+	case wire.KindReleased:
+		id, err = decodeIntent(rec.Body, func(b wire.Released) uint64 { return b.Intent })
 	}
 	if err != nil {
 		return 0, fmt.Errorf("engine: audit seq %d %s: %w", rec.Seq, rec.Kind, err)
