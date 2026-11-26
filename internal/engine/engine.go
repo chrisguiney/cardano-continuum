@@ -105,6 +105,9 @@ type actor struct {
 	// excite is the self-excitation of the actor's wake-ups when its
 	// profile has Hawkes parameters.
 	excite sched.Excitation
+	// followUp marks a pending wake that the excitation, not the base
+	// rate, caused: a follow-up acts rather than idling.
+	followUp bool
 	// paid are the actor's payees, most recent last, at most maxPaid.
 	paid []population.ActorID
 }
@@ -598,7 +601,7 @@ func (e *Engine) nextAct(a population.Actor, st *actor, now sched.Time) {
 		// The base rate is cut so the excited process averages rate:
 		// mean = mu / (1 - alpha/beta).
 		mu := rate * (1 - h.Alpha/h.Beta)
-		st.actAt = sched.NextExcited(e.draw(a, st, "arrival"), mu, h.Beta, st.excite, mod, now)
+		st.actAt, st.followUp = sched.NextExcited(e.draw(a, st, "arrival"), mu, h.Beta, st.excite, mod, now)
 		st.actH = e.queue.Push(st.actAt, qev{kind: evAct, actor: a.ID})
 		return
 	}
@@ -613,16 +616,27 @@ func (e *Engine) act(ctx context.Context, at sched.Time, id population.ActorID) 
 		e.nextAct(a, st, at)
 		return nil
 	}
-	if h := st.prof.Rates.Hawkes; h.Alpha > 0 {
-		st.excite = st.excite.Excite(at, h.Alpha, h.Beta)
-	}
 	r := e.draw(a, st, "act")
 	var d agenda.Decision
 	var gov build.ActionType
-	if st.boot != "" {
+	switch {
+	case st.boot != "":
 		d, gov = e.decideClock(a, st, r)
-	} else {
+	case st.followUp:
+		// A burst is follow-up activity: the excited wake-up does
+		// something. Excitation counts acts, so a burst of idle wake-ups
+		// would leave transactions as spread out as without it.
+		w := maps.Clone(e.weightsOf(st.prof))
+		if w == nil {
+			w = map[profile.IntentKind]float64{}
+		}
+		w[agenda.Idle] = 0
+		d = agenda.Decide(a, r, view{e: e}, st.policy, w)
+	default:
 		d = agenda.Decide(a, r, view{e: e}, st.policy, e.weightsOf(st.prof))
+	}
+	if h := st.prof.Rates.Hawkes; h.Alpha > 0 && d.Intent.Kind != agenda.Idle {
+		st.excite = st.excite.Excite(at, h.Alpha, h.Beta)
 	}
 	e.emit(at, KindIntentChosen, id, d)
 	switch {

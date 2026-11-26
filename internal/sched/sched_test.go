@@ -325,7 +325,7 @@ func excitedRun(seed uint64, n int, mu, alpha, beta float64, mod sched.Modulatio
 	var out []sched.Time
 	now := sched.Time(0)
 	for range n {
-		now = sched.NextExcited(r, mu, beta, x, mod, now)
+		now, _ = sched.NextExcited(r, mu, beta, x, mod, now)
 		x = x.Excite(now, alpha, beta)
 		out = append(out, now)
 	}
@@ -384,5 +384,25 @@ func TestExcitationDecays(t *testing.T) {
 	}
 	if got := x.Excite(2000, 0.4, 2).At(2000, 2); math.Abs(got-(0.4*math.Exp(-2)+0.4)) > 1e-12 {
 		t.Fatalf("second excitation %v", got)
+	}
+}
+
+// The share of offspring among arrivals is the branching ratio
+// alpha/beta: each event begets that many on average.
+func TestNextExcitedOffspringShare(t *testing.T) {
+	r := rand.New(rand.NewPCG(5, 5))
+	var x sched.Excitation
+	now, kids := sched.Time(0), 0
+	const n = 20000
+	for range n {
+		var off bool
+		now, off = sched.NextExcited(r, 0.1, 1, x, nil, now)
+		x = x.Excite(now, 0.6, 1)
+		if off {
+			kids++
+		}
+	}
+	if got := float64(kids) / n; math.Abs(got-0.6) > 0.03 {
+		t.Fatalf("offspring share %.3f, want 0.6", got)
 	}
 }

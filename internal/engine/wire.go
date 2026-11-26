@@ -373,6 +373,8 @@ type actorRec struct {
 	Since  sched.Time `cbor:"14,keyasint,omitempty"`
 	// Paid are the actor's known payees, most recent last.
 	Paid []uint64 `cbor:"15,keyasint,omitempty"`
+	// FollowUp marks the pending wake as excited (engine.go, act).
+	FollowUp bool `cbor:"16,keyasint,omitempty"`
 }
 
 type birthRec struct {

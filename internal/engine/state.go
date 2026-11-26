@@ -35,7 +35,7 @@ func (e *Engine) Snapshot() ([]byte, error) {
 		s.Actors = append(s.Actors, actorRec{
 			ID: uint64(id), Profile: a.Profile, State: string(a.State), Born: a.Born, Changed: a.Changed,
 			Frustration: a.Frustration, Competence: a.Competence, HazardAt: st.hazardAt, HazardTo: string(st.hazardTo), ActAt: st.actAt, Draws: st.draws, Booting: st.booting,
-			Excess: st.excite.Excess, Since: st.excite.Since, Paid: idList(st.paid),
+			Excess: st.excite.Excess, Since: st.excite.Since, Paid: idList(st.paid), FollowUp: st.followUp,
 		})
 	}
 	for _, b := range e.births {
@@ -234,6 +234,7 @@ func (e *Engine) restoreActor(r actorRec) error {
 	st.hazardAt, st.hazardTo, st.actAt, st.draws = r.HazardAt, population.State(r.HazardTo), r.ActAt, r.Draws
 	st.booting = r.Booting
 	st.excite = sched.Excitation{Excess: r.Excess, Since: r.Since}
+	st.followUp = r.FollowUp
 	for _, id := range r.Paid {
 		st.paid = append(st.paid, population.ActorID(id))
 	}

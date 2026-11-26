@@ -225,7 +225,12 @@ func (x Excitation) Excite(t Time, alpha, beta float64) Excitation {
 // origin, which bounds what follows because the excess only decays
 // between events (Ogata). The caller records the arrival with Excite. The
 // long-run rate is mu / (1 - alpha/beta) times the modulation's mean.
-func NextExcited(r *rand.Rand, mu, beta float64, x Excitation, mod Modulation, now Time) Time {
+//
+// offspring reports that the arrival came from the excitation rather than
+// the base rate (with probability excess / (mu + excess) at its time):
+// in the branching view of a Hawkes process it is a follow-up of an
+// earlier event, not an immigrant.
+func NextExcited(r *rand.Rand, mu, beta float64, x Excitation, mod Modulation, now Time) (at Time, offspring bool) {
 	peak := 1.0
 	if mod != nil {
 		peak = mod.Max()
@@ -234,11 +239,11 @@ func NextExcited(r *rand.Rand, mu, beta float64, x Excitation, mod Modulation, n
 	for {
 		bound := peak * (mu + x.At(Time(t), beta))
 		if !(bound > 0) {
-			return never
+			return never, false
 		}
 		t += r.ExpFloat64() / bound * 1000
 		if t >= float64(never) {
-			return never
+			return never, false
 		}
 		f := 1.0
 		if mod != nil {
@@ -248,5 +253,9 @@ func NextExcited(r *rand.Rand, mu, beta float64, x Excitation, mod Modulation, n
 			break
 		}
 	}
-	return max(now+1, Time(math.Ceil(t)))
+	at = max(now+1, Time(math.Ceil(t)))
+	if ex := x.At(Time(t), beta); ex > 0 {
+		offspring = r.Float64()*(mu+ex) >= mu
+	}
+	return at, offspring
 }
