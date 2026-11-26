@@ -18,6 +18,11 @@ type CardanoNode struct{}
 
 const cardanoTopology = "topology.json"
 
+// cardanoReload makes cardano-node reread its topology: it does so on
+// SIGHUP. The node is PID 1 of its container, which has no shell and does
+// not share the pod's PID namespace.
+var cardanoReload = []string{"kill", "-HUP", "1"}
+
 // Impl is v1alpha1.CardanoNode.
 func (CardanoNode) Impl() v1alpha1.Implementation { return v1alpha1.CardanoNode }
 
@@ -64,6 +69,7 @@ func (CardanoNode) Node(s NodeSpec) (Node, error) {
 		// between pods, so the engine reaches this TCP bridge instead.
 		NtC: []string{"socat", fmt.Sprintf("TCP-LISTEN:%d,fork,reuseaddr", NtCPort),
 			"UNIX-CONNECT:" + DataMount + "/node.socket"},
+		Reload: cardanoReload,
 	}, nil
 }
 

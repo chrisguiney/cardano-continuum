@@ -63,6 +63,7 @@ type Pools struct {
 	client   client.Client
 	drivers  Registry
 	images   image.Resolver
+	exec     Exec
 	defaults v1alpha1.ImageSet
 	log      *slog.Logger
 	now      func() time.Time
@@ -72,12 +73,14 @@ type Pools struct {
 	seen map[types.UID]int64
 }
 
-// NewPools returns a pool reconciler that reads and writes through c.
-func NewPools(c client.Client, drivers Registry, images image.Resolver, log *slog.Logger) *Pools {
+// NewPools returns a pool reconciler that reads and writes through c. With
+// a nil exec running nodes are never told to reread their Config.
+func NewPools(c client.Client, drivers Registry, images image.Resolver, exec Exec, log *slog.Logger) *Pools {
 	return &Pools{
 		client:   c,
 		drivers:  drivers,
 		images:   images,
+		exec:     exec,
 		defaults: drivers.Defaults(),
 		log:      log.With("component", "pools"),
 		now:      time.Now,
@@ -168,7 +171,12 @@ func (r *Pools) converge(ctx context.Context, p *v1alpha1.ContinuumPool) (reconc
 		r.log.Info("image rolled", "pool", p.Name, "from", roll.From, "to", roll.To)
 	}
 	p.Status.Workload, p.Status.Image, p.Status.Build = w.StatefulSet.Name, img, img.Build
-	return res, r.observe(ctx, p, w.StatefulSet.Name)
+	live, err := r.observe(ctx, p, w.StatefulSet.Name)
+	if err != nil {
+		return res, err
+	}
+	wait, err := r.reload(ctx, live, w)
+	return sooner(res, wait), err
 }
 
 func (r *Pools) condition(p *v1alpha1.ContinuumPool, typ string, st metav1.ConditionStatus, reason, msg string) {

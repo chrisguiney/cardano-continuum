@@ -41,6 +41,13 @@ rules:
   - patch
   - watch
 - apiGroups:
+  - ""
+  resources:
+  - pods/exec
+  verbs:
+  - create
+  - get
+- apiGroups:
   - apps
   resources:
   - statefulsets

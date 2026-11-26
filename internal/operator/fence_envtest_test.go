@@ -72,7 +72,7 @@ func TestCreateIsTheFence(t *testing.T) {
 	held := h.running(PodName(set.Name), v1alpha1.CardanoNode)
 
 	c := &emptyCache{Client: h.c}
-	res, err := NewPools(c, Drivers(), fakeResolver{}, quiet()).Reconcile(h.ctx, request(p))
+	res, err := NewPools(c, Drivers(), fakeResolver{}, nil, quiet()).Reconcile(h.ctx, request(p))
 	if err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
@@ -343,7 +343,7 @@ func TestTwoReconcilersOneForger(t *testing.T) {
 	stale := h.manager()
 	h.must(Index(h.ctx, stale))
 	lag := &laggy{Client: stale.GetClient(), lag: time.Second, at: map[types.NamespacedName]time.Time{}, snap: map[types.NamespacedName]*v1alpha1.ContinuumPool{}}
-	h.must(NewPools(lag, Drivers(), fakeResolver{}, quiet()).SetupWithManager(stale))
+	h.must(NewPools(lag, Drivers(), fakeResolver{}, nil, quiet()).SetupWithManager(stale))
 	h.must(NewRelease(stale.GetClient(), stale.GetAPIReader(), quiet()).SetupWithManager(stale))
 	h.run("stale manager", stale.Start)
 
@@ -405,7 +405,7 @@ func TestStaleSpecDoesNotFlap(t *testing.T) {
 	if dark.Generation <= live.Generation {
 		t.Fatalf("generations %d then %d", live.Generation, dark.Generation)
 	}
-	r := NewPools(&scripted{Client: h.c, pools: []*v1alpha1.ContinuumPool{dark, live}}, Drivers(), fakeResolver{}, quiet())
+	r := NewPools(&scripted{Client: h.c, pools: []*v1alpha1.ContinuumPool{dark, live}}, Drivers(), fakeResolver{}, nil, quiet())
 	if _, err := r.Reconcile(h.ctx, request(dark)); err != nil {
 		t.Fatal(err)
 	}

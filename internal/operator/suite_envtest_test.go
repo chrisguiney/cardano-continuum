@@ -227,10 +227,13 @@ func (h *harness) manager() ctrl.Manager {
 }
 
 // startOperator runs the whole operator, as Setup wires it.
-func (h *harness) startOperator() {
+func (h *harness) startOperator() { h.startOperatorWith(nil) }
+
+// startOperatorWith runs the operator with exec into pods.
+func (h *harness) startOperatorWith(exec Exec) {
 	h.t.Helper()
 	mgr := h.manager()
-	h.must(Setup(h.ctx, mgr, Options{Drivers: Drivers(), Images: fakeResolver{}, Log: quiet()}))
+	h.must(Setup(h.ctx, mgr, Options{Drivers: Drivers(), Images: fakeResolver{}, Exec: exec, Log: quiet()}))
 	h.run("manager", mgr.Start)
 }
 

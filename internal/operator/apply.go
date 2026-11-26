@@ -270,11 +270,12 @@ func ignoreConflict(err error, kind, name string) error {
 	return fmt.Errorf("update %s %s: %w", kind, name, err)
 }
 
-// observe sets the phase and the fence condition from the pool's pods.
-func (r *Pools) observe(ctx context.Context, p *v1alpha1.ContinuumPool, workload string) error {
+// observe sets the phase and the fence condition from the pool's pods, and
+// returns the workload's live pod, or nil.
+func (r *Pools) observe(ctx context.Context, p *v1alpha1.ContinuumPool, workload string) (*corev1.Pod, error) {
 	var pods corev1.PodList
 	if err := r.client.List(ctx, &pods, client.InNamespace(p.Namespace), client.MatchingLabels{LabelOwner: string(p.UID)}); err != nil {
-		return fmt.Errorf("list pods of pool %s: %w", p.Name, err)
+		return nil, fmt.Errorf("list pods of pool %s: %w", p.Name, err)
 	}
 	var live *corev1.Pod
 	var held []string
@@ -288,7 +289,7 @@ func (r *Pools) observe(ctx context.Context, p *v1alpha1.ContinuumPool, workload
 		}
 		state, err := r.nodeState(ctx, pod.Spec.NodeName)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if state == NodeUnreachable {
 			held = append(held, fmt.Sprintf("pod %s on node %s", pod.Name, pod.Spec.NodeName))
@@ -297,11 +298,11 @@ func (r *Pools) observe(ctx context.Context, p *v1alpha1.ContinuumPool, workload
 	p.Status.Phase = PhaseOf(p, live)
 	if len(held) == 0 {
 		r.condition(p, CondFence, metav1.ConditionFalse, ReasonNoneHeld, "no keyed pod is held on an unreachable node")
-		return nil
+		return live, nil
 	}
 	r.condition(p, CondFence, metav1.ConditionTrue, ReasonNodeUnreachable,
 		fmt.Sprintf("%v: the node is not Ready, so the pod may still be forging; resolve the node, the operator will not", held))
-	return nil
+	return live, nil
 }
 
 // nodeState reads a Node. It is a report only here; Release reads live.

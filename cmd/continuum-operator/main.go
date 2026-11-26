@@ -93,10 +93,15 @@ func run(args []string, log *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("create manager: %w", err)
 	}
+	exec, err := operator.NewPodExec(cfg)
+	if err != nil {
+		return err
+	}
 	ctx := ctrl.SetupSignalHandler()
 	err = operator.Setup(ctx, mgr, operator.Options{
 		Drivers: operator.Drivers(),
 		Images:  image.NewResolver(rc, log),
+		Exec:    exec,
 		Log:     log,
 	})
 	if err != nil {

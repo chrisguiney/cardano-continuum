@@ -37,7 +37,7 @@ func applier(t *testing.T) (*Pools, *writes) {
 		t.Fatal(err)
 	}
 	c := &writes{Client: fake.NewClientBuilder().WithScheme(s).Build()}
-	return NewPools(c, Drivers(), nil, slog.New(slog.NewTextHandler(io.Discard, nil))), c
+	return NewPools(c, Drivers(), nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil))), c
 }
 
 func rendered(t *testing.T) Workload {

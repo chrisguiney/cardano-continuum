@@ -71,6 +71,11 @@ type Node struct {
 	// socket on NtCPort, run from the node's image with the data volume
 	// mounted; nil when the driver has no bridge.
 	NtC []string
+	// Reload is run, with no shell, in the running node container to make
+	// the node reread its Config; nil when the driver has none. A node
+	// reads its topology once at start, so without it a pod started before
+	// a peer existed never dials that peer.
+	Reload []string
 }
 
 // Demand is the resources one node requests.

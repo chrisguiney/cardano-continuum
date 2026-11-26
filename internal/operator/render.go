@@ -38,6 +38,8 @@ type Workload struct {
 	StatefulSet *appsv1.StatefulSet `json:"statefulSet,omitempty"`
 	Service     *corev1.Service     `json:"service,omitempty"`
 	Config      *corev1.ConfigMap   `json:"config,omitempty"`
+	// Reload is Node.Reload: what makes the running node reread Config.
+	Reload []string `json:"reload,omitempty"`
 }
 
 // Volume names inside the pod.
@@ -76,6 +78,7 @@ func Render(d NodeDriver, in Input) (Workload, error) {
 		StatefulSet: statefulSet(meta(), podTemplate(d, in, n, meta()), p.Spec.Dark),
 		Service:     service(meta(), len(n.NtC) > 0),
 		Config:      &corev1.ConfigMap{ObjectMeta: withName(meta(), configName(name)), Data: n.Config},
+		Reload:      n.Reload,
 	}
 	if pq := in.Network.Spec.Parquet; pq.Enabled && in.Sidecar {
 		w, err = WithSidecar(w, d, Sidecar{
@@ -169,7 +172,7 @@ func service(meta metav1.ObjectMeta, ntc bool) *corev1.Service {
 func podTemplate(d NodeDriver, in Input, n Node, meta metav1.ObjectMeta) corev1.PodTemplateSpec {
 	keyed := RoleOf(in.Pool).Keyed()
 	c := n.Container
-	c.Name = "node"
+	c.Name = nodeContainer
 	c.Image = in.Image.Name
 	c.ImagePullPolicy = in.Image.PullPolicy
 	c.Resources = requests(d.Requests())

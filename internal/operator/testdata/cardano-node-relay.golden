@@ -36,6 +36,10 @@ config:
       kind: ContinuumPool
       name: r
       uid: uid-0000
+reload:
+- kill
+- -HUP
+- "1"
 service:
   apiVersion: v1
   kind: Service

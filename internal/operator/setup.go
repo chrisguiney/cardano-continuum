@@ -29,6 +29,7 @@ import (
 // +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;delete
 // +kubebuilder:rbac:groups="",resources=services;configmaps,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;patch
+// +kubebuilder:rbac:groups="",resources=pods/exec,verbs=create;get
 // +kubebuilder:rbac:groups="",resources=nodes;secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
@@ -40,7 +41,9 @@ const nodeField = "spec.nodeName"
 type Options struct {
 	Drivers Registry
 	Images  image.Resolver
-	Log     *slog.Logger
+	// Exec tells running nodes to reread their Config; nil disables it.
+	Exec Exec
+	Log  *slog.Logger
 }
 
 // CacheOptions limits the manager's caches of pods, StatefulSets, Services
@@ -63,7 +66,7 @@ func Setup(ctx context.Context, mgr manager.Manager, o Options) error {
 	}
 	return errors.Join(
 		Index(ctx, mgr),
-		NewPools(mgr.GetClient(), o.Drivers, o.Images, o.Log).SetupWithManager(mgr),
+		NewPools(mgr.GetClient(), o.Drivers, o.Images, o.Exec, o.Log).SetupWithManager(mgr),
 		NewRelease(mgr.GetClient(), mgr.GetAPIReader(), o.Log).SetupWithManager(mgr),
 		NewNetworks(mgr.GetClient(), mgr.GetAPIReader(), o.Log).SetupWithManager(mgr),
 	)

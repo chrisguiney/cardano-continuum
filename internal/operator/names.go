@@ -26,6 +26,9 @@ const (
 	// object. It is an annotation because a resource name can exceed the
 	// 63 characters a label value allows.
 	AnnotationPoolName = ident.LabelPrefix + "/pool-name"
+	// AnnotationLoaded on a pod records the Config its node container has
+	// reloaded, as "<container instance> <config digest>".
+	AnnotationLoaded = ident.LabelPrefix + "/config-loaded"
 	// Finalizer holds a keyed pod object until its process is known to have
 	// stopped. See Releasable.
 	Finalizer = ident.LabelPrefix + "/fence"
