@@ -24,3 +24,6 @@ __pycache__/
 /scenarios/generated/
 /scenarios/seeds/
 /scenarios/vectors/
+
+# Jupyter notebook checkpoints.
+.ipynb_checkpoints/
