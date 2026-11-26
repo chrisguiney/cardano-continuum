@@ -14,6 +14,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
@@ -43,7 +44,7 @@ var (
 	ErrUnknownVerdict = errors.New("engine: submit result has no known verdict")
 	// ErrBadPoint: a block point that is neither the origin nor a 32-byte
 	// hash.
-	ErrBadPoint = errors.New("engine: malformed block point")
+	ErrBadPoint = wire.ErrBadPoint
 )
 
 // Payment sizing. A payment sends a drawn fraction of the actor's spendable

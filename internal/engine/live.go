@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/submit"
 )
@@ -145,7 +146,7 @@ func (f *liveFollower) Next() (ChainEvent, bool, error) {
 		}
 		switch ev.Kind {
 		case chain.Forward:
-			content, err := digestOf(ev.Block)
+			content, err := wire.DigestOf(ev.Block)
 			if err != nil {
 				return ChainEvent{}, false, err
 			}

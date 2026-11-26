@@ -15,20 +15,6 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/submit"
 )
 
-// ChainEvent is one chain-sync message as the loop reads it.
-type ChainEvent struct {
-	// Rollback is true for a roll-backward to Point, false for a block at
-	// Point whose digest is Content.
-	Rollback bool
-	Point    eventlog.ChainPoint
-	Content  []byte
-}
-
-// Follower delivers chain-sync messages. Next returns false when caught up.
-type Follower interface {
-	Next() (ChainEvent, bool, error)
-}
-
 // Node is the chain the loop submits to and follows.
 type Node interface {
 	// Submit returns nil when the node accepted tx. A refusal must be an

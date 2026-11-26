@@ -39,7 +39,7 @@ members internal/scenario txSpec 29
 members internal/store Identity 30
 nesting internal/build keptTokens 4
 nesting internal/engine Runner.Run 4
-nesting internal/engine digestOf 4
+nesting internal/engine/internal/wire DigestOf 4
 nesting internal/fakechain errAs 4
 nesting internal/fakechain validate 4
 nesting internal/httpapi Explorer.refresh 4
