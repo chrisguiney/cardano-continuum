@@ -432,6 +432,11 @@ func summarize(out io.Writer, cfg engine.Config, r *engine.Runner, chain *fakech
 	}
 	w.printf("mistakes %t: rejections %s; findings %d (fatal %d); lost %d lovelace\n",
 		cfg.Mistakes, classCounts(t.Rejections), t.Findings, t.Fatal, t.Lost)
+	gov, err := countGov(context.Background(), mem)
+	if err != nil {
+		return err
+	}
+	w.printf("%s", gov.line())
 	if err := summarizeAttacks(context.Background(), w, mem); err != nil {
 		return err
 	}

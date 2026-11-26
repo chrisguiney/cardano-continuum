@@ -180,6 +180,7 @@ populations:
       register_rate: 0.000403691
       retire_rate: 0.000134564
       update_rate: 0.00213379
+      spo_vote_rate: 0.00011534
       pledge:
         dist: lognormal(20.3185, 4.05249)
         point: 0

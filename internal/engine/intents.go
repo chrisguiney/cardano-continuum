@@ -179,9 +179,35 @@ func poolDeposit(e *Engine, p *pendingRec) int64 { return int64(poolNeed(e, p)) 
 
 func buildVote(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
 	act := common.GovActionId{TransactionId: common.Blake2b256(p.Action.Tx), GovActionIdx: p.Action.Index}
-	v := build.Vote{Spend: sp, Voter: e.keys.DRepSigner(keysID(population.ActorID(p.Actor))), Role: build.RoleDRep, Action: act, Choice: p.Choice}
+	id := population.ActorID(p.Actor)
+	v := build.Vote{Spend: sp, Voter: e.keys.DRepSigner(keysID(id)), Role: build.RoleDRep, Action: act, Choice: p.Choice}
+	if _, ok := e.poolOf(id); ok {
+		cold, err := e.poolSigner(id)
+		if err != nil {
+			return build.Built{}, err
+		}
+		v.Voter, v.Role = cold, build.RolePool
+	}
 	return e.builder.Vote(ctx, w, v)
 }
+
+// Voter classes as Submitted names them.
+const (
+	voterDRep = "drep"
+	voterSPO  = "spo"
+)
+
+// voterOf is the voter an actor votes as: its pool, as an SPO, when it
+// operates one, else its DRep key.
+func (e *Engine) voterOf(id population.ActorID) (chain.Voter, string) {
+	if pool, ok := e.poolOf(id); ok {
+		return chain.Voter{Kind: common.VoterTypeStakingPoolKeyHash, Hash: pool}, voterSPO
+	}
+	return chain.Voter{Kind: common.VoterTypeDRepKeyHash, Hash: common.Blake2b224(e.keys.DRep(keysID(id)))}, voterDRep
+}
+
+// choiceNames are a vote's choices by common.GovVote value.
+var choiceNames = map[uint8]string{common.GovVoteNo: "no", common.GovVoteYes: "yes", common.GovVoteAbstain: "abstain"}
 
 func buildMint(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
 	q := int64(p.Amount)
@@ -297,6 +323,8 @@ func (e *Engine) prepare(at sched.Time, a population.Actor, in agenda.Intent, r 
 			return nil, err.Error()
 		}
 		p.Action, p.Choice = &ref, voteChoice(r)
+		voter, _ := e.voterOf(a.ID)
+		p.Power = e.view.VotingPower(voter)
 	case profile.IntentMint:
 		p.Amount = mintQuantity
 	case profile.IntentBurn:
@@ -502,10 +530,16 @@ func (e *Engine) emitSubmitted(at sched.Time, p *pendingRec, built build.Built, 
 	if attack == "" && e.isAdversary(population.ActorID(p.Actor)) {
 		attack = coverTraffic
 	}
-	e.emit(at, KindSubmitted, population.ActorID(p.Actor), Submitted{
+	s := Submitted{
 		Intent: p.ID, ID: TxID(built.ID), To: p.To, Amount: p.Amount, Fee: built.Fee, TTL: p.TTL, Inputs: inputs, Tx: built.Tx, Kind: p.Kind,
 		Mistakes: p.Carried, Attack: attack, Action: p.GovType, Contract: p.Contract,
-	})
+	}
+	if p.Kind == string(profile.IntentVote) && p.Action != nil {
+		_, s.Voter = e.voterOf(population.ActorID(p.Actor))
+		s.Proposal = chain.GovID{Tx: chain.TxID(p.Action.Tx), Index: p.Action.Index}.String()
+		s.Choice, s.Power = choiceNames[p.Choice], p.Power
+	}
+	e.emit(at, KindSubmitted, population.ActorID(p.Actor), s)
 }
 
 // attemptOf builds one attempt of p on inputs the planner offers its

@@ -126,7 +126,7 @@ var choosable = map[profile.AgendaName][]profile.IntentKind{
 	"yield":       {profile.IntentDelegate, profile.IntentRegisterStake, profile.IntentWithdraw},
 	"profit":      {profile.IntentDelegate, profile.IntentRegisterStake, profile.IntentSend, profile.IntentWithdraw},
 	"civic":       {profile.IntentDelegateDRep, profile.IntentRegisterDRep, profile.IntentRegisterStake, profile.IntentRetireDRep, profile.IntentVote},
-	"operator":    {profile.IntentRegisterPool, profile.IntentRetirePool, profile.IntentUpdatePool, profile.IntentWithdraw},
+	"operator":    {profile.IntentRegisterPool, profile.IntentRetirePool, profile.IntentUpdatePool, profile.IntentVote, profile.IntentWithdraw},
 	"opportunist": {profile.IntentDelegate, profile.IntentMint, profile.IntentRegisterStake, profile.IntentScriptCall, profile.IntentSend},
 	"disrupt":     {profile.IntentSend},
 	"extract":     {profile.IntentSend, profile.IntentWithdraw},

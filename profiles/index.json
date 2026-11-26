@@ -1,14 +1,14 @@
 {
-  "0b83dd7bfdd95442963779ec1d6e6ecea5964ab2d8779a51c726f29e158da729": {
-    "profile": "mainnet",
-    "target": "mainnet.target.json"
+  "56f240a210d189e9ef1b11e8edcebeaf0b1caddec903b22efb9c8ba855c7be52": {
+    "profile": "preprod",
+    "target": "preprod.target.json"
   },
   "623381fa8be67cccffa0605758b15cf1890e2b57cb5bd016c8f8462c28e598d7": {
     "profile": "preview",
     "target": "preview.target.json"
   },
-  "863772f0540cd5a2bb7c1bc07d5dfecf734b5156b5eecf6a5f2f7261785c65d1": {
-    "profile": "preprod",
-    "target": "preprod.target.json"
+  "a1296e3299d996b2157580ddf54c04aea7c5291fd8185283b27e6e801243daa0": {
+    "profile": "mainnet",
+    "target": "mainnet.target.json"
   }
 }

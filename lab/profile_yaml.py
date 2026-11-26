@@ -130,6 +130,8 @@ def population_lines(actors: ActorFit) -> list[str]:
             f"      retire_rate: {number(p.retire_rate)}",
             f"      update_rate: {number(p.update_rate)}",
         ]
+        if p.vote_rate:
+            lines.append(f"      spo_vote_rate: {number(p.vote_rate)}")
         lines += _spike_lines("pledge", p.pledge) + _spike_lines("margin", p.margin) + _spike_lines("cost", p.cost)
     if actors.dreps:
         d = actors.dreps

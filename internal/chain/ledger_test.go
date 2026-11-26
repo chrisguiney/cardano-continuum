@@ -192,7 +192,7 @@ func TestGovernance(t *testing.T) {
 	b2 := nextAt(&chain[0], 101, 2,
 		certTx(70, &common.RegistrationDrepCertificate{DrepCredential: credOf(8)}),
 	)
-	b2.Txs[0].Proposals = []GovID{prop}
+	b2.Txs[0].Proposals = []Proposal{{ID: prop}}
 	b2.Txs[0].Votes = []Vote{
 		{Voter: Voter{Kind: common.VoterTypeDRepKeyHash, Hash: d}, Action: prop, Choice: common.GovVoteYes},
 		{Voter: Voter{Kind: common.VoterTypeDRepKeyHash, Hash: hash224(77)}, Action: prop, Choice: common.GovVoteNo}, // not ours

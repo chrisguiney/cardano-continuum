@@ -100,7 +100,7 @@ type Tx struct {
 	// Proposals are the governance actions the transaction proposes, and
 	// Votes its voting procedures. Like Certs, both are empty for a
 	// transaction that failed phase-2 validation.
-	Proposals []GovID
+	Proposals []Proposal
 	Votes     []Vote
 	// Fee is the lovelace the transaction moves to the fee pot: the body
 	// fee, or for an invalid transaction its forfeited total collateral.
@@ -116,8 +116,8 @@ func TxFrom(tx common.Transaction) Tx {
 	}
 	if tx.IsValid() {
 		out.Certs = tx.Certificates()
-		for i := range tx.ProposalProcedures() {
-			out.Proposals = append(out.Proposals, GovID{Tx: out.Hash, Index: uint32(i)})
+		for i, p := range tx.ProposalProcedures() {
+			out.Proposals = append(out.Proposals, proposalOf(GovID{Tx: out.Hash, Index: uint32(i)}, p))
 		}
 		out.Votes = votesOf(tx.VotingProcedures())
 		if f := tx.Fee(); f != nil {

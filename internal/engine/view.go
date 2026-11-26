@@ -84,7 +84,12 @@ func viewTx(d TxDigest) (chain.Tx, error) {
 		t.Certs = append(t.Certs, w.Certificate)
 	}
 	for i := range d.Proposals {
-		t.Proposals = append(t.Proposals, chain.GovID{Tx: t.Hash, Index: i})
+		p := chain.Proposal{ID: chain.GovID{Tx: t.Hash, Index: i}}
+		if int(i) < len(d.Gov) {
+			g := d.Gov[i]
+			p.Type, p.Pools, p.Deposit = g.Type, g.Pools, g.Deposit
+		}
+		t.Proposals = append(t.Proposals, p)
 	}
 	for _, v := range d.Votes {
 		t.Votes = append(t.Votes, chain.Vote{

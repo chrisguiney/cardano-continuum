@@ -427,7 +427,10 @@ func (p *par) comparePools(s State, l fakechain.Ledger, fail func(string, any, a
 
 func (p *par) compareGov(s State, l fakechain.Ledger, fail func(string, any, any)) {
 	var gotP, wantP []ProposalState
-	gotP = s.Proposals
+	// The fake's ledger knows no action type, so only ID and expiry compare.
+	for _, x := range s.Proposals {
+		gotP = append(gotP, ProposalState{ID: x.ID, Expires: x.Expires})
+	}
 	for _, x := range l.Proposals {
 		wantP = append(wantP, ProposalState{
 			ID:      GovID{Tx: x.ID.TransactionId, Index: x.ID.GovActionIdx},

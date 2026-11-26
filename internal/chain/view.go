@@ -66,7 +66,7 @@ type View struct {
 	// epoch state: see ledger.go
 	ep epochState
 	// governance state: see gov.go
-	props map[GovID]uint64
+	props map[GovID]proposal
 	votes map[voteKey]uint8
 	// window holds the blocks above the settled point, oldest first. It is
 	// never longer than K.
@@ -139,11 +139,11 @@ func New(cfg Config, s State) (*View, error) {
 		pools:   map[common.Blake2b224]PoolState{},
 		dreps:   map[common.Blake2b224]bool{},
 		ep:      epochState{label: s.Label, frozen: s.Frozen, mark: slices.Clone(s.Mark), set: slices.Clone(s.Set)},
-		props:   map[GovID]uint64{},
+		props:   map[GovID]proposal{},
 		votes:   map[voteKey]uint8{},
 	}
 	for _, p := range s.Proposals {
-		v.props[p.ID] = p.Expires
+		v.props[p.ID] = proposal{expires: p.Expires, typ: p.Type, pools: p.Pools, deposit: p.Deposit}
 	}
 	for _, x := range s.Votes {
 		v.votes[voteKey{x.Action, x.Voter}] = x.Choice

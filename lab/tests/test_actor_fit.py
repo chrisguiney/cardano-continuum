@@ -49,6 +49,18 @@ def test_pools_are_replayed_from_their_certificates():
     assert fit.cost.point == 170_000_000 and fit.cost.share == pytest.approx(0.75)
 
 
+def test_pool_vote_rate_counts_window_votes_per_live_pool():
+    """Two live pools; a votes twice in the window and once before it, and
+    c, retired by the window's end, voted in it: every window vote counts,
+    per live pool, as for DReps."""
+    first, last = 100 * DAY, 190 * DAY
+    rows = [register("a", 10), register("b", 11), register("c", 12), retire("c", 13, 0)]
+    votes = [("a", 5), ("a", first + 1), ("a", first + 2), ("c", first + 3)]
+    fit = actor_fit.fit_pools(rows, first, last, 90.0, "preview", votes)
+    assert fit.vote_rate == pytest.approx(3 / (2 * 90))
+    assert actor_fit.fit_pools(rows, first, last, 90.0, "preview").vote_rate == 0
+
+
 def test_pool_count_is_cut_to_one_machine_and_the_scale_recorded():
     rows = [register(f"p{i:03d}", i) for i in range(300)]
     fit = actor_fit.fit_pools(rows, 0, 90 * DAY, 90.0, "mainnet")

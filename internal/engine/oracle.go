@@ -14,6 +14,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
+	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/mistake"
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
@@ -121,6 +122,11 @@ func (e *Engine) judge(at sched.Time, p *pendingRec, r SubmitResult, out submit.
 	// An adversary racing for the same shared output may have spent it.
 	spent := p.M.Sent || len(p.Txs) > 1 || (p.Locked != nil && e.contested[*p.Locked])
 	want := expect(p.Carried, spent, specs[p.kindOf()].again)
+	if p.Probe {
+		// The probe's honest bytes break only the GOV rule's voter check.
+		want.Accept = false
+		want = withClasses(want, submit.Class(fakechain.DisallowedVoters))
+	}
 	want.Lost = p.Lost
 	// A rebuild waits out its backoff before its first send, which can
 	// outlast its TTL; the node's mempool validates one slot past its

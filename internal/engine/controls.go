@@ -2,6 +2,8 @@ package engine
 
 import (
 	"context"
+
+	"github.com/blinklabs-io/gouroboros/ledger/common"
 	"slices"
 	"strconv"
 	"strings"
@@ -41,6 +43,10 @@ const (
 	// scenarioHotKeys: the richest actor pays to authorise a hot key for
 	// every genesis committee member.
 	scenarioHotKeys = "hot_keys"
+	// scenarioSPOProbe: the richest registered pool votes on an open
+	// proposal stake pools may not vote on. The ledger must refuse it
+	// (DisallowedVoters); a node that accepts it is a fatal finding.
+	scenarioSPOProbe = "spo_vote_probe"
 	// scenarioUpgrade: "upgrade:<image>" or "upgrade:<epochs>:<image>"
 	// starts an upgrade wave over the pools, adopting along a logistic
 	// curve over that many epochs (one by default). An image reference
@@ -91,6 +97,8 @@ func (e *Engine) inject(ctx context.Context, at sched.Time, s string) (string, e
 		return e.injectGoDark(at, arg), nil
 	case scenarioHotKeys:
 		return e.injectHotKeys(ctx, at)
+	case scenarioSPOProbe:
+		return e.injectSPOProbe(ctx, at)
 	case scenarioUpgrade:
 		return e.startWave(at, arg), nil
 	}
@@ -103,6 +111,33 @@ func (e *Engine) injectPropose(ctx context.Context, at sched.Time) (string, erro
 		return "no actor with a registered stake key", nil
 	}
 	return e.start(ctx, at, &pendingRec{Actor: uint64(id), Kind: string(profile.IntentPropose)})
+}
+
+func (e *Engine) injectSPOProbe(ctx context.Context, at sched.Time) (string, error) {
+	var target agenda.ProposalInfo
+	for _, p := range e.view.OpenProposals() {
+		if !p.Pools && p.Type != "" {
+			target = p
+			break
+		}
+	}
+	if target.ID == "" {
+		return "no open proposal stake pools may not vote on", nil
+	}
+	ref, err := parseProposal(target.ID)
+	if err != nil {
+		return err.Error(), nil
+	}
+	id, ok := e.richest(func(id population.ActorID) bool {
+		_, pool := e.poolOf(id)
+		return pool && e.view.PoolRegistered(id)
+	})
+	if !ok {
+		return "no registered pool", nil
+	}
+	voter, _ := e.voterOf(id)
+	return e.start(ctx, at, &pendingRec{Actor: uint64(id), Kind: string(profile.IntentVote), Action: &ref,
+		Choice: common.GovVoteYes, Power: e.view.VotingPower(voter), Probe: true})
 }
 
 func (e *Engine) injectGoDark(at sched.Time, arg string) string {

@@ -461,6 +461,40 @@ func TestCivicVotesOnOpenProposal(t *testing.T) {
 	}
 }
 
+// A registered pool votes on the open proposals stake pools may vote on and
+// it has not voted on, never on one the ledger keeps from pools; a pool not
+// registered, or retiring, does not vote.
+func TestOperatorVotesOnlyWhereSPOsMay(t *testing.T) {
+	p := mustFor(t, "operator")
+	pool := actor(profile.Pool, 1)
+	v := ok(fakeView{balance: 1000 * ada, epoch: 10, poolReg: true})
+	v.proposals = []ProposalInfo{
+		{ID: "aa#0", Expires: 11, Type: "info", Pools: true},
+		{ID: "bb#0", Expires: 12, Type: "treasury_withdrawals"},
+		{ID: "cc#0", Expires: 12, Type: "hard_fork_initiation", Pools: true},
+		{ID: "dd#0", Expires: 12, Type: "no_confidence", Pools: true},
+	}
+	v.voted = map[ProposalID]bool{"dd#0": true}
+	votes := map[ProposalID]float64{}
+	for _, s := range p.Score(pool, v) {
+		if s.Kind == profile.IntentVote && s.Value > 0 {
+			votes[s.Proposal] = s.Value
+		}
+	}
+	if len(votes) != 2 || votes["aa#0"] == 0 || votes["cc#0"] == 0 {
+		t.Fatalf("votes %v: want aa#0 and cc#0 only", votes)
+	}
+	v.poolReg = false
+	if value(p.Score(pool, v), profile.IntentVote) > 0 {
+		t.Fatal("an unregistered pool votes")
+	}
+	v.poolReg = true
+	pool.State = population.Retiring
+	if value(p.Score(pool, v), profile.IntentVote) > 0 {
+		t.Fatal("a retiring pool votes")
+	}
+}
+
 func TestOpportunistFollowsBursts(t *testing.T) {
 	p := mustFor(t, "opportunist")
 	a := actor(profile.Wallet, 1)

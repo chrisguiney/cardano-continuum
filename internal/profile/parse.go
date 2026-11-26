@@ -397,7 +397,7 @@ func rawSpikeOf(s Spike) rawSpike {
 func rawPopulationOf(p Population) rawPopulation {
 	rp := rawPopulation{Name: p.Name, Kind: string(p.Kind), Count: p.Count, ChainCount: p.ChainCount}
 	if c := p.Pool; c != nil {
-		rp.Pool = &rawPool{Register: c.Register, Retire: c.Retire, Update: c.Update,
+		rp.Pool = &rawPool{Register: c.Register, Retire: c.Retire, Update: c.Update, Vote: c.Vote,
 			Pledge: rawSpikeOf(c.Pledge), Margin: rawSpikeOf(c.Margin), Cost: rawSpikeOf(c.Cost)}
 	}
 	if d := p.DRep; d != nil {

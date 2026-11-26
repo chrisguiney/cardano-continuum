@@ -58,6 +58,8 @@ class ActorEvents:
     drep_events: list[tuple] = field(default_factory=list)
     # (DRep credential hex, slot): one row per DRep vote.
     drep_votes: list[tuple] = field(default_factory=list)
+    # (pool id hex, slot): one row per vote cast by a stake pool.
+    pool_votes: list[tuple] = field(default_factory=list)
     # (action type, slot): one row per governance proposal.
     proposals: list[tuple] = field(default_factory=list)
     # Transactions paying each contract in the window, one count per contract.
@@ -117,6 +119,11 @@ ORDER BY e.slot, e.block_index, c.cert_index, 1, 3
 DREP_VOTES_SQL = """
 SELECT lower(hex(v.voter_hash)), e.slot FROM {vote} v JOIN event_slot e USING (tx_hash)
 WHERE v.voter_role IN ('drep_key', 'drep_script') ORDER BY 2, 1
+"""
+
+POOL_VOTES_SQL = """
+SELECT lower(hex(v.voter_hash)), e.slot FROM {vote} v JOIN event_slot e USING (tx_hash)
+WHERE v.voter_role = 'stake_pool' ORDER BY 2, 1
 """
 
 PROPOSALS_SQL = """
@@ -190,6 +197,7 @@ def actor_events(con: duckdb.DuckDBPyConnection, root: str, first_slot: int, las
     events.pool_events = _rows(con, POOL_EVENTS_SQL, root, ("pool_registration", "certificate"))
     events.drep_events = _rows(con, DREP_EVENTS_SQL, root, ("certificate", "certificate_credential"))
     events.drep_votes = _rows(con, DREP_VOTES_SQL, root, ("vote",))
+    events.pool_votes = _rows(con, POOL_VOTES_SQL, root, ("vote",))
     events.proposals = _rows(con, PROPOSALS_SQL, root, ("proposal",))
     con.execute(CONTRACT_USE_SQL)
     events.contract_use = sorted(int(row[0]) for row in con.execute("SELECT txs FROM contract_use").fetchall())

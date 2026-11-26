@@ -227,7 +227,7 @@ the engine uses, returns only the wallet profiles):
 | block | fitted from |
 |---|---|
 | `pool` count | pools registered at the window's end: replayed from every registration and retirement since genesis; a retirement counts from its epoch, a later registration cancels it |
-| `pool` rates | first registrations, re-registrations (parameter updates) and retirements in the window, per registered pool per day |
+| `pool` rates | first registrations, re-registrations (parameter updates), retirements and votes cast as a stake-pool voter (`spo_vote_rate`) in the window, per registered pool per day; as for DReps, every window vote counts, a pool's that retired by the end included |
 | `pool` pledge, margin, cost | each live pool's latest registration: the share on one value (pledge 0, margin 0, the most common cost) and a log-normal or beta over the rest |
 | `drep` | DReps registered at the end (expiry for inactivity is not modelled); registrations, retirements and votes per DRep per day; share of DReps that voted |
 | `contract` | a contract is a script payment credential (one validator at many stake parts is one contract); new contracts per active wallet unit per day, a Pareto index of transactions per contract above one, and the busiest 1%'s share |
@@ -241,11 +241,13 @@ are not run as actors and are not cut.
 
 The engine runs them (`engine.Populate`): each pool and DRep population is
 `count` actors on the operator and civic agendas, with one Poisson clock per
-fitted rate (pool updates and retirements, DRep votes and retirements;
-registrations are births), a pledge, margin and cost drawn per registration,
-and a vote rate over `voting_share` for the DReps that vote at all. A fake
-run makes the pools genesis pools, as a devnet's are. A proposer actor
-(`network`) submits each action type at its rate. Contracts are deployed at
+fitted rate (pool updates, retirements and SPO votes, DRep votes and
+retirements; registrations are births), a pledge, margin and cost drawn per
+registration, and a vote rate over `voting_share` for the DReps that vote at
+all. A pool votes only on the actions the ledger lets stake pools vote on. A
+fake run makes the pools genesis pools, as a devnet's are. A proposer actor
+(`network`) submits each action type at its rate, and at once whenever no
+proposal is open, so the voters always have one. Contracts are deployed at
 `new_rate` per genesis wallet per day and each lock picks its contract in
 proportion to a Pareto usage weight. `grade.py` grades the target's `actors`
 block (head counts; event counts against the 99% Poisson or binomial range
@@ -317,8 +319,9 @@ What is left:
   few units the run's 100 wallets do not reproduce; not yet traced.
 - Address reuse overall: the chain counts change outputs, nearly always to
   a known address; a run's payees alone cannot, and the clusters pass.
-- Actors block: DRep votes need open proposals, and a run starts with none
-  where mainnet always has many; born pools and DReps start unfunded on a
-  fake chain, so retirements outrun registrations; the busiest 1% of one or
-  two contracts is all of them.
+- Actors block: the proposer now opens a proposal whenever none is open,
+  so votes are no longer starved for the first epochs (not yet regraded);
+  born pools and DReps start unfunded on a fake chain, so retirements
+  outrun registrations; the busiest 1% of one or two contracts is all of
+  them.
 - Clusters with a handful of actors have too few samples for KS to mean much.

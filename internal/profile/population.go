@@ -47,6 +47,11 @@ type PoolParams struct {
 	Retire float64
 	// Update is re-registrations (parameter changes) per pool per day.
 	Update float64
+	// Vote is votes cast by the pool as an SPO voter per registered pool
+	// per day: spo_vote_rate, fitted from the chain's stake_pool votes in
+	// the window (lab/actor_fit.py). Zero, as in a file fitted before it
+	// existed, means the pools never vote.
+	Vote float64
 	// Pledge and Cost are in lovelace; Margin is a fraction in [0, 1].
 	Pledge, Margin, Cost Spike
 }
@@ -133,6 +138,7 @@ type rawPool struct {
 	Register float64  `yaml:"register_rate"`
 	Retire   float64  `yaml:"retire_rate"`
 	Update   float64  `yaml:"update_rate"`
+	Vote     float64  `yaml:"spo_vote_rate,omitempty"`
 	Pledge   rawSpike `yaml:"pledge"`
 	Margin   rawSpike `yaml:"margin"`
 	Cost     rawSpike `yaml:"cost"`
@@ -233,11 +239,11 @@ func countSet(bs ...bool) int {
 
 func (rp rawPool) validate() (*PoolParams, error) {
 	if err := rates("pool.", map[string]float64{
-		"register_rate": rp.Register, "retire_rate": rp.Retire, "update_rate": rp.Update,
+		"register_rate": rp.Register, "retire_rate": rp.Retire, "update_rate": rp.Update, "spo_vote_rate": rp.Vote,
 	}); err != nil {
 		return nil, err
 	}
-	p := &PoolParams{Register: rp.Register, Retire: rp.Retire, Update: rp.Update}
+	p := &PoolParams{Register: rp.Register, Retire: rp.Retire, Update: rp.Update, Vote: rp.Vote}
 	for _, f := range []struct {
 		name string
 		raw  rawSpike

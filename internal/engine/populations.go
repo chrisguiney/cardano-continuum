@@ -132,6 +132,7 @@ func populationProfiles(f profile.File, bp build.Params) []profile.Profile {
 			p.Agenda, p.Budget = "operator", profile.Lovelace(bp.PoolDeposit+feeBudget)
 			p.Rates.Base = perSecond(map[profile.IntentKind]float64{
 				profile.IntentUpdatePool: pop.Pool.Update, profile.IntentRetirePool: pop.Pool.Retire,
+				profile.IntentVote: pop.Pool.Vote,
 			})
 			p.Hazards.Birth = pop.Pool.Register * float64(pop.Count) / secondsPerDay
 		case pop.DRep != nil:
@@ -269,10 +270,28 @@ func (e *Engine) registered(id population.ActorID, boot profile.IntentKind) bool
 	return e.view.StakeRegistered(id)
 }
 
+// bootstrapping reports that the proposer is registered and the chain has
+// no open proposal, none of its own in flight. A fitted proposal rate
+// leaves governance empty for days on a fresh devnet (mainnet always has
+// some open), so the voters would have nothing to vote on: the proposer
+// then wakes at the boot rate and proposes at once, keeping at least one
+// proposal open. Which action type it proposes is drawn from the fitted
+// rates as any of its wakes, from the actor's seeded stream.
+func (e *Engine) bootstrapping(id population.ActorID, st *actor) bool {
+	return st.prof.Name == proposerName && len(e.cfg.Network.Proposals) > 0 && e.view != nil &&
+		e.registered(id, st.boot) && len(e.view.OpenProposals()) == 0 && !e.inFlight(id, string(profile.IntentPropose))
+}
+
+// ready reports that a population actor wakes at its fitted rates:
+// registered, and not bootstrapping governance.
+func (e *Engine) ready(id population.ActorID, st *actor) bool {
+	return e.registered(id, st.boot) && !e.bootstrapping(id, st)
+}
+
 // clockRate is a population actor's wake rate: the boot rate until it is
-// registered, then the sum of its clocks.
+// ready, then the sum of its clocks.
 func (e *Engine) clockRate(id population.ActorID, st *actor) float64 {
-	if !e.registered(id, st.boot) {
+	if !e.ready(id, st) {
 		return bootRate
 	}
 	var sum float64
@@ -285,10 +304,10 @@ func (e *Engine) clockRate(id population.ActorID, st *actor) float64 {
 // fire draws which clock woke the actor: the boot intent while it is
 // unregistered, else a clock in proportion to its rate.
 func (e *Engine) fire(id population.ActorID, st *actor, r *rand.Rand) clock {
-	switch reg := e.registered(id, st.boot); {
-	case !reg:
+	switch {
+	case !e.registered(id, st.boot):
 		return clock{kind: st.boot}
-	case st.booting || len(st.cs) == 0:
+	case len(st.cs) == 0, st.booting && !e.bootstrapping(id, st):
 		// Registered since this wake was drawn: the next one is drawn at
 		// the clocks' rate, which by memorylessness is the right wait.
 		return clock{kind: agenda.Idle}
@@ -324,6 +343,9 @@ func (e *Engine) decideClock(a population.Actor, st *actor, r *rand.Rand) (agend
 	}
 	if st.prof.Name == proposerName {
 		why := "network proposes " + string(c.action)
+		if e.bootstrapping(a.ID, st) {
+			why += ": no proposal open"
+		}
 		if c.kind == profile.IntentRegisterStake {
 			why = "proposal deposits return to a registered stake account"
 		}
@@ -473,7 +495,7 @@ func (e *Engine) nextClock(a population.Actor, st *actor, now sched.Time) {
 	if a.State == population.Retired || a.State == population.Expired {
 		return
 	}
-	st.booting = !e.registered(a.ID, st.boot)
+	st.booting = !e.ready(a.ID, st)
 	if at := sched.NextArrival(e.draw(a, st, "arrival"), e.clockRate(a.ID, st), nil, now); at != population.Never {
 		st.actAt = at
 		st.actH = e.queue.Push(at, qev{kind: evAct, actor: a.ID})

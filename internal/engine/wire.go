@@ -132,6 +132,18 @@ type TxDigest struct {
 	Certs     [][]byte     `cbor:"5,keyasint,omitempty"`
 	Proposals uint32       `cbor:"6,keyasint,omitempty"`
 	Votes     []VoteDigest `cbor:"7,keyasint,omitempty"`
+	// Gov describes each of the Proposals in order. A log written before
+	// it existed has the count alone; those proposals have no known type.
+	Gov []ProposalDigest `cbor:"8,keyasint,omitempty"`
+}
+
+// ProposalDigest is what a block says of one proposal: its action type as
+// profile files name it, whether stake pools may vote on it, and its
+// deposit.
+type ProposalDigest struct {
+	Type    string `cbor:"1,keyasint,omitempty"`
+	Pools   bool   `cbor:"2,keyasint,omitempty"`
+	Deposit uint64 `cbor:"3,keyasint,omitempty"`
 }
 
 // BlockContent is the Content of a BlockApplied input.
@@ -239,6 +251,13 @@ type Submitted struct {
 	// contract a lock or unlock calls.
 	Action   string `cbor:"12,keyasint,omitempty"`
 	Contract uint64 `cbor:"13,keyasint,omitempty"`
+	// A vote's proposal ("txhash#index"), choice (yes, no or abstain),
+	// voter class (drep, spo or committee) and voting power: the lovelace
+	// the engine's chain view puts behind the voter when it votes.
+	Proposal string `cbor:"14,keyasint,omitempty"`
+	Choice   string `cbor:"15,keyasint,omitempty"`
+	Voter    string `cbor:"16,keyasint,omitempty"`
+	Power    uint64 `cbor:"17,keyasint,omitempty"`
 }
 
 // Refill is the body of a Refill decision: the faucet pays To[i]
@@ -448,6 +467,11 @@ type pendingRec struct {
 	// contract a lock or unlock calls.
 	GovType  string `cbor:"27,keyasint,omitempty"`
 	Contract uint64 `cbor:"28,keyasint,omitempty"`
+	// Power is a vote's voting power when it was chosen. Probe marks a
+	// vote the ledger must refuse (an SPO vote on an action pools may not
+	// vote on): its expected verdict is DisallowedVoters.
+	Power uint64 `cbor:"29,keyasint,omitempty"`
+	Probe bool   `cbor:"30,keyasint,omitempty"`
 }
 
 func samePoint(a, b eventlog.ChainPoint) bool {

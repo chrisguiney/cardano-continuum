@@ -38,6 +38,10 @@ type ProposalInfo struct {
 	ID ProposalID
 	// Expires is the last epoch in which the action can be voted on.
 	Expires uint64
+	// Type is the action type as profile files name it, empty when unknown.
+	Type string
+	// Pools reports that stake pools may vote on the action.
+	Pools bool
 }
 
 // Governance is the Conway governance state the civic agenda reads.

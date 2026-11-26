@@ -12,7 +12,8 @@ import (
 // about once a year (lab/population_fit.py, update_rate).
 const poolUpdateScore = 0.05
 
-// operatorScores registers the pool once, then maintains it. Frustration
+// operatorScores registers the pool once, then maintains it, voting on the
+// open proposals stake pools may vote on. Frustration
 // raises the wish to leave, which runs dark first and then retire
 // (pool-forging rule 18): a live pool may go dark, a dark pool whose pod
 // is gone may retire, and a dark pool may come back. Going dark and
@@ -28,6 +29,7 @@ func operatorScores(a population.Actor, v View) []Score {
 			off(profile.IntentUpdatePool, "pool not registered"),
 			off(GoDark, "pool not registered"),
 			off(GoLive, "pool not registered"),
+			off(profile.IntentVote, "pool not registered"),
 		}
 	}
 	leave := min(0.5, 0.01*a.Frustration)
@@ -42,8 +44,10 @@ func operatorScores(a population.Actor, v View) []Score {
 		return append(ss,
 			off(GoDark, "retirement confirmed"),
 			off(GoLive, "retirement confirmed: a retiring pool stays dark"),
-			off(profile.IntentRetirePool, "retirement confirmed"))
+			off(profile.IntentRetirePool, "retirement confirmed"),
+			off(profile.IntentVote, "retirement confirmed"))
 	}
+	ss = append(ss, poolVotes(a, v, bal)...)
 	pods, ok := v.(Pods)
 	if !ok {
 		return append(ss,
@@ -66,4 +70,30 @@ func operatorScores(a population.Actor, v View) []Score {
 		off(GoDark, "pool already dark"),
 		Score{Kind: GoLive, Value: back, Why: fmt.Sprintf("dark pool, frustration %.2f", a.Frustration)},
 		retire)
+}
+
+// poolVotes scores a registered pool's votes: one per open proposal stake
+// pools may vote on (ProposalInfo.Pools) that it has not voted on, sooner
+// as the proposal nears expiry, as a DRep votes. A vote on any other
+// action the ledger refuses with DisallowedVoters, so it is never offered.
+func poolVotes(a population.Actor, v View, bal profile.Lovelace) []Score {
+	g, ok := v.(Governance)
+	if !ok {
+		return []Score{off(profile.IntentVote, "no governance state in view")}
+	}
+	var ss []Score
+	epoch := v.Epoch()
+	for _, p := range g.OpenProposals() {
+		if !p.Pools || p.Expires < epoch || g.Voted(a.ID, p.ID) {
+			continue
+		}
+		left := p.Expires - epoch
+		s := pick(profile.IntentVote, 1/float64(1+left), bal, fmt.Sprintf("%s proposal %s expires in %d epochs", p.Type, p.ID, left))
+		s.Proposal = p.ID
+		ss = append(ss, s)
+	}
+	if len(ss) == 0 {
+		return []Score{off(profile.IntentVote, "no open proposal a pool may vote on")}
+	}
+	return ss
 }

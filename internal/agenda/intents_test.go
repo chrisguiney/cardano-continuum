@@ -53,7 +53,7 @@ func views() []View {
 					for _, dark := range []bool{false, true} {
 						out = append(out, world{
 							fakeView: base, drep: drep, dark: dark, podGone: dark, burst: 3,
-							proposals: []ProposalInfo{{ID: "p#0", Expires: 5}},
+							proposals: []ProposalInfo{{ID: "p#0", Expires: 5, Type: "info", Pools: true}},
 							dreps:     []population.ActorID{3},
 						})
 					}

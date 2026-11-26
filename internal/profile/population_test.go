@@ -20,7 +20,7 @@ func TestParseFilePopulations(t *testing.T) {
 		{
 			Name: "pools", Kind: Pool, Count: 12, ChainCount: 3000,
 			Pool: &PoolParams{
-				Register: 0.0002, Retire: 0.0001, Update: 0.001,
+				Register: 0.0002, Retire: 0.0001, Update: 0.001, Vote: 0.004,
 				Pledge: Spike{Rest: LogNormal{Mu: 25, Sigma: 2}, Point: 0, Share: 0.1},
 				Margin: Spike{Rest: Beta{A: 1, B: 30}, Point: 0, Share: 0.2},
 				Cost:   Spike{Rest: LogNormal{Mu: 19.2, Sigma: 0.5}, Point: 170_000_000, Share: 0.8},

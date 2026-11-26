@@ -6,9 +6,9 @@ out, and profile_yaml writes it as the profile file's `populations` and
 
 What is fitted:
 
-    pools      head count at the window's end; registrations, retirements
-               and parameter updates per pool per day; pledge, margin and
-               fixed cost as a point mass plus a continuous rest
+    pools      head count at the window's end; registrations, retirements,
+               parameter updates and SPO votes per pool per day; pledge,
+               margin and fixed cost as a point mass plus a continuous rest
     DReps      head count; registrations and retirements per DRep per day;
                votes per DRep per day; share of DReps that voted
     contracts  new contracts per active wallet unit per day; transactions
@@ -71,6 +71,8 @@ class PoolFit:
     pledge: SpikeFit
     margin: SpikeFit
     cost: SpikeFit
+    # Votes cast as a stake-pool voter per live pool per day (spo_vote_rate).
+    vote_rate: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -150,7 +152,8 @@ class _Pool:
     retire_epoch: int | None = None
 
 
-def fit_pools(rows: list[tuple], first_slot: int, last_slot: int, days: float, network: str) -> PoolFit | None:
+def fit_pools(rows: list[tuple], first_slot: int, last_slot: int, days: float, network: str,
+              votes: list[tuple] = ()) -> PoolFit | None:
     """Pools registered at last_slot and their rates over the window.
 
     A pool is registered from its first registration until a retirement it
@@ -158,7 +161,10 @@ def fit_pools(rows: list[tuple], first_slot: int, last_slot: int, days: float, n
     it, as the ledger's POOL rule does. With no epoch schedule for the
     network every announced retirement counts as in effect. New pools are
     first registrations in the window, updates are later registrations of
-    a known pool, retirements are announcements in the window.
+    a known pool, retirements are announcements in the window. votes are
+    (pool id, slot) rows of the pools' votes; as for DReps, every vote in
+    the window counts, a pool's that retired by its end included, per pool
+    live at the end.
     """
     pools: dict[str, _Pool] = {}
     new = updates = retires = 0
@@ -179,6 +185,7 @@ def fit_pools(rows: list[tuple], first_slot: int, last_slot: int, days: float, n
             if p.retire_epoch is None or (end_epoch is not None and p.retire_epoch > end_epoch)]
     if not live:
         return None
+    window_votes = sum(1 for _, slot in votes if slot >= first_slot)
     params = np.array([p.last_params for p in live], dtype=float)
     count, scale = scaled_count(len(live), MAX_POOLS)
     return PoolFit(
@@ -191,6 +198,7 @@ def fit_pools(rows: list[tuple], first_slot: int, last_slot: int, days: float, n
         # Most pools charge exactly the protocol's minimum fixed cost, so the
         # spike sits on the most common cost rather than on zero.
         cost=lognormal_spike(params[:, 1], mode(params[:, 1])),
+        vote_rate=_per_member_day(window_votes, len(live), days),
     )
 
 
@@ -260,7 +268,7 @@ def fit_actors(events: ActorEvents, first_slot: int, last_slot: int, days: float
                network: str) -> ActorFit:
     """Every non-wallet population of one chain window."""
     return ActorFit(
-        pools=fit_pools(events.pool_events, first_slot, last_slot, days, network),
+        pools=fit_pools(events.pool_events, first_slot, last_slot, days, network, events.pool_votes),
         dreps=fit_dreps(events.drep_events, events.drep_votes, first_slot, days),
         contracts=fit_contracts(events.contract_use, events.new_contracts, units, days),
         proposal_rate=proposal_rates(events.proposals, first_slot, days),
