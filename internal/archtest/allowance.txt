@@ -22,9 +22,6 @@ members internal/engine snapshot 31
 members internal/engine view 22
 members internal/explorer TxView 27
 members internal/fakechain ledgerView 25
-members internal/httpapi Explorer 26
-members internal/httpapi LogSource 21
-members internal/httpapi Projection 38
 members internal/keys Store 22
 members internal/mistake mutant 24
 members internal/operator harness 32
@@ -38,9 +35,6 @@ nesting internal/engine Runner.Run 4
 nesting internal/engine/internal/wire DigestOf 4
 nesting internal/fakechain errAs 4
 nesting internal/fakechain validate 4
-nesting internal/httpapi Explorer.refresh 4
-nesting internal/httpapi actorDir.load 5
-nesting internal/httpapi stubOf 4
 nesting internal/operator/fakekube SecretsGate 4
 nesting internal/operator/image parseBuild 4
 nesting internal/profile parseDist 4
@@ -58,7 +52,6 @@ stray-methods internal/engine Runner 2
 stray-methods internal/engine actor 1
 stray-methods internal/engine pendingRec 2
 stray-methods internal/engine view 9
-stray-methods internal/httpapi api 5
 stray-methods internal/keys Store 5
 stray-methods internal/keys Wallet 2
 stray-methods internal/mistake mutant 5

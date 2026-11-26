@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"strings"
+
 	"github.com/chrisguiney/cardano-continuum/internal/store"
 )
 
@@ -116,4 +118,18 @@ func shortAddr(a string) string {
 		return a
 	}
 	return a[:12] + "…" + a[len(a)-6:]
+}
+
+// ownedFindings lists the findings on transactions whose owner, as owner
+// resolves it, is the actor id.
+func ownedFindings(fs Findings, owner func([]byte) (uint64, bool), id uint64) []ActorFinding {
+	_, n := fs.Page(0, 0)
+	all, _ := fs.Page(0, n)
+	out := []ActorFinding{}
+	for _, f := range all {
+		if o, ok := owner(f.TxHash); ok && o == id {
+			out = append(out, ActorFinding{ID: f.ID, Seq: f.Seq, Kind: string(f.Kind), Severity: f.Severity.String(), Summary: strings.TrimSpace(f.Summary)})
+		}
+	}
+	return out
 }

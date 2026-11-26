@@ -11,7 +11,11 @@ import (
 
 var rePoolHex = regexp.MustCompile(`^[0-9a-f]{56}$`)
 
-// explorerRoutes registers the chain explorer's endpoints:
+// exRoutes serves the explorer endpoints over the API the explorer is
+// mounted on.
+type exRoutes struct{ *api }
+
+// register registers the chain explorer's endpoints:
 //
 //	GET /api/explorer/status
 //	GET /api/explorer/blocks?limit&offset&pool
@@ -21,7 +25,7 @@ var rePoolHex = regexp.MustCompile(`^[0-9a-f]{56}$`)
 //	GET /api/explorer/addresses/{addr}?limit&offset
 //	GET /api/explorer/epochs/{n}
 //	GET /api/explorer/search?q
-func (a *api) explorerRoutes(mux *http.ServeMux) {
+func (a exRoutes) register(mux *http.ServeMux) {
 	ex := a.Explorer
 	mux.HandleFunc("GET /api/explorer/status", func(w http.ResponseWriter, r *http.Request) {
 		if _, err := exQuery(r); err != nil {
@@ -84,7 +88,7 @@ func (a *api) explorerRoutes(mux *http.ServeMux) {
 }
 
 // reply writes f's result, or its error.
-func (a *api) reply(w http.ResponseWriter, f func() (any, error)) {
+func (a exRoutes) reply(w http.ResponseWriter, f func() (any, error)) {
 	v, err := f()
 	if err != nil {
 		a.fail(w, err)
@@ -93,7 +97,7 @@ func (a *api) reply(w http.ResponseWriter, f func() (any, error)) {
 	a.json(w, http.StatusOK, v)
 }
 
-func (a *api) txCbor(w http.ResponseWriter, r *http.Request) {
+func (a exRoutes) txCbor(w http.ResponseWriter, r *http.Request) {
 	if _, err := exQuery(r); err != nil {
 		a.fail(w, err)
 		return

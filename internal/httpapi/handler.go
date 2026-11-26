@@ -88,10 +88,10 @@ func NewHandler(cfg Config) http.Handler {
 	mux.HandleFunc("GET /api/findings/{id}", func(w http.ResponseWriter, _ *http.Request) {
 		a.fail(w, fmt.Errorf("%w: finding", ErrNotFound))
 	})
-	mux.HandleFunc("GET /api/decisions", a.decisions)
+	mux.HandleFunc("GET /api/decisions", sseFeed{a}.serve)
 	mux.HandleFunc("POST /api/control", a.control)
 	if a.Explorer != nil {
-		a.explorerRoutes(mux)
+		exRoutes{a}.register(mux)
 	}
 	if cfg.UI == nil {
 		return mux

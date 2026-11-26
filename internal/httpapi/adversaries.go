@@ -1,7 +1,12 @@
 package httpapi
 
 import (
+	"strings"
+
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
+	"github.com/chrisguiney/cardano-continuum/internal/engine"
+	"github.com/chrisguiney/cardano-continuum/internal/sched"
+	"github.com/chrisguiney/cardano-continuum/internal/store"
 )
 
 // EpochCost is lovelace an adversary spent in one epoch.
@@ -97,4 +102,51 @@ func impactRows(ctl, cur adversary.Metrics, has bool) []ImpactRow {
 		}
 	}
 	return out
+}
+
+func adversaryRow(id uint64, st engine.AttackStat, row store.ActorRow, in store.Identity, impact []ImpactRow, now int64, slots *sched.Slots, found []ActorFinding) AdversaryRow {
+	r := AdversaryRow{ID: id, Name: row.Name, Profile: row.Profile, Attack: st.Name, Agenda: in.Agenda, Budget: in.Budget,
+		Attempted: st.Steps, Landed: st.Landed, Detected: st.Detected, Rejected: st.Rejected,
+		Recent: []AttackStepRow{}, Findings: found}
+	if r.Attack == "" {
+		r.Attack = strings.TrimPrefix(row.Profile, "adversary-")
+	}
+	for _, x := range st.Recent {
+		r.Recent = append(r.Recent, AttackStepRow{Seq: x.Seq, At: x.At, Intent: x.Intent, Mutation: x.Mutation, Cost: x.Cost, Value: x.Value, Txs: x.Txs})
+	}
+	r.Cost = costView(slots, st, in.CostCeiling, now)
+	r.Metric = SuccessView{Name: in.Metric}
+	if r.Metric.Name == "" {
+		r.Metric.Name = adversary.SuccessMetric(adversary.Name(r.Attack))
+	}
+	for _, i := range impact {
+		if i.Metric == r.Metric.Name {
+			r.Metric.Value, r.Metric.Control = i.Value, i.Control
+		}
+	}
+	return r
+}
+
+func costView(slots *sched.Slots, st engine.AttackStat, ceiling uint64, now int64) CostView {
+	c := CostView{Spent: st.Cost, Ceiling: ceiling, ByEpoch: []EpochCost{}}
+	epochOf := func(int64) uint64 { return 0 }
+	if slots != nil {
+		epochOf = func(at int64) uint64 { return slots.EpochAt(sched.Time(at)) }
+	}
+	c.Epoch = epochOf(now)
+	if n := len(st.Costs); n > 0 {
+		c.Epoch = epochOf(st.Costs[n-1].At)
+	}
+	for _, p := range st.Costs {
+		e := epochOf(p.At)
+		if n := len(c.ByEpoch); n > 0 && c.ByEpoch[n-1].Epoch == e {
+			c.ByEpoch[n-1].Spent += p.Cost
+		} else {
+			c.ByEpoch = append(c.ByEpoch, EpochCost{Epoch: e, Spent: p.Cost})
+		}
+		if e == c.Epoch {
+			c.EpochSpent += p.Cost
+		}
+	}
+	return c
 }

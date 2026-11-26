@@ -61,32 +61,48 @@ func (d *actorDir) load(ctx context.Context) error {
 	if fresh {
 		return nil
 	}
-	byAddr, byID := map[string]ActorRef{}, map[uint64]ActorRef{}
-	for off := 0; ; off += store.MaxLimit {
-		page, err := d.names.Actors(ctx, store.ActorQuery{SortBy: "id", Offset: off, Limit: store.MaxLimit})
-		if err != nil {
-			return fmt.Errorf("read actor names: %w", err)
-		}
-		for _, r := range page {
-			ref := ActorRef{ID: r.ID, Name: r.Name, Role: r.Role}
-			byID[r.ID] = ref
-			if r.Identity == "" {
-				continue
-			}
-			if in, err := store.DecodeIdentity(r.Identity); err == nil {
-				for _, a := range []string{in.PaymentAddr, in.StakeAddr} {
-					if a != "" {
-						byAddr[a] = ref
-					}
-				}
-			}
-		}
-		if len(page) < store.MaxLimit {
-			break
-		}
+	byAddr, byID, err := d.read(ctx)
+	if err != nil {
+		return err
 	}
 	d.mu.Lock()
 	d.byAddr, d.byID, d.readAt = byAddr, byID, d.now()
 	d.mu.Unlock()
 	return nil
+}
+
+// read pages through the store's actor table.
+func (d *actorDir) read(ctx context.Context) (map[string]ActorRef, map[uint64]ActorRef, error) {
+	byAddr, byID := map[string]ActorRef{}, map[uint64]ActorRef{}
+	for off := 0; ; off += store.MaxLimit {
+		page, err := d.names.Actors(ctx, store.ActorQuery{SortBy: "id", Offset: off, Limit: store.MaxLimit})
+		if err != nil {
+			return nil, nil, fmt.Errorf("read actor names: %w", err)
+		}
+		for _, r := range page {
+			indexActor(r, byAddr, byID)
+		}
+		if len(page) < store.MaxLimit {
+			return byAddr, byID, nil
+		}
+	}
+}
+
+// indexActor records a row by id and, when its identity parses, by address. A
+// row whose identity does not parse is still found by id.
+func indexActor(r store.ActorRow, byAddr map[string]ActorRef, byID map[uint64]ActorRef) {
+	ref := ActorRef{ID: r.ID, Name: r.Name, Role: r.Role}
+	byID[r.ID] = ref
+	if r.Identity == "" {
+		return
+	}
+	in, err := store.DecodeIdentity(r.Identity)
+	if err != nil {
+		return
+	}
+	for _, a := range []string{in.PaymentAddr, in.StakeAddr} {
+		if a != "" {
+			byAddr[a] = ref
+		}
+	}
 }
