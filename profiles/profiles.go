@@ -38,6 +38,8 @@ func Named(name string) ([]byte, error) {
 	switch name {
 	case "m1":
 		return M1, nil
+	case "m3":
+		return M3, nil
 	case "preview":
 		return Preview, nil
 	case "preprod":
@@ -45,8 +47,15 @@ func Named(name string) ([]byte, error) {
 	case "mainnet":
 		return nil, fmt.Errorf("mainnet profiles are %w", ErrNotFitted)
 	}
-	return nil, fmt.Errorf("unknown profile set %q (shipped: %v, mainnet)", name, slices.Concat([]string{"m1"}, Fitted))
+	return nil, fmt.Errorf("unknown profile set %q (shipped: %v, mainnet)", name, slices.Concat([]string{"m1", "m3"}, Fitted))
 }
 
 // TargetFile is the name of a fitted profile set's target file.
 func TargetFile(name string) string { return name + ".target.json" }
+
+// M3 is the honest population of every intent kind: stakers, traders and
+// citizens, DReps and pool operators. Run it with --pools at least the
+// devnet's genesis pools.
+//
+//go:embed m3.yaml
+var M3 []byte

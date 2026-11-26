@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/chrisguiney/cardano-continuum/internal/engine"
+	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/store"
 )
 
@@ -89,5 +91,41 @@ func TestHarvestRequiresFlags(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "--repo") {
 			t.Errorf("%s with no flags: err = %v", cmd, err)
 		}
+	}
+}
+
+// TestFakeRunM3: the shipped honest population runs on the fake chain with
+// its operators on genesis pools: stake delegates and value is conserved.
+func TestFakeRunM3(t *testing.T) {
+	ctx := context.Background()
+	dir := filepath.Join(t.TempDir(), "run")
+	var out bytes.Buffer
+	args := []string{"run", "--fake", "--epochs", "2", "--out", dir, "--profiles", "m3", "--pools", "3", "--wallets", "12", "--epoch-slots", "120", "--block-every", "4"}
+	if err := run(ctx, args, &out); err != nil {
+		t.Fatalf("run: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "value conserved: true") {
+		t.Fatalf("run summary: %s", out.String())
+	}
+	l, err := eventlog.Open(filepath.Join(dir, "events.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = l.Close() }()
+	kinds := map[string]int{}
+	if err := l.Scan(ctx, 1, func(r eventlog.Record) error {
+		if r.Kind == engine.KindSubmitted {
+			var s engine.Submitted
+			if err := eventlog.Decode(r.Body, &s); err != nil {
+				return err
+			}
+			kinds[s.Kind]++
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if kinds["delegate"] == 0 || kinds["register_stake"] == 0 {
+		t.Fatalf("submitted by kind: %v", kinds)
 	}
 }

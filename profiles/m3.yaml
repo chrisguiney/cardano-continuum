@@ -1,0 +1,81 @@
+version: 1
+profiles:
+  # Registers its stake key and delegates to the best-paying pool.
+  - name: staker
+    kind: wallet
+    agenda: yield
+    traits:
+      competence: beta(8, 2)
+      patience: const(5)
+      learning_rate: const(0.05)
+      care: beta(2, 2)
+    budget: 3000000000
+    rates:
+      base:
+        register_stake: 0.02
+        delegate: 0.02
+        send: 0.02
+    hazards: {}
+  # Pays, locks and unlocks script outputs and mints in bursts.
+  - name: trader
+    kind: wallet
+    agenda: opportunist
+    traits:
+      competence: beta(8, 2)
+      patience: const(5)
+      learning_rate: const(0.05)
+      care: beta(2, 2)
+    budget: 1000000000
+    rates:
+      base:
+        send: 0.04
+        script_call: 0.04
+        mint: 0.04
+        register_stake: 0.01
+        delegate: 0.01
+    hazards: {}
+  # Registers its stake key and delegates its vote to a DRep.
+  - name: citizen
+    kind: wallet
+    agenda: civic
+    traits:
+      competence: beta(8, 2)
+      patience: const(5)
+      learning_rate: const(0.05)
+      care: beta(2, 2)
+    budget: 1000000000
+    rates:
+      base:
+        register_stake: 0.02
+        delegate_drep: 0.02
+    hazards: {}
+  # Registers as a DRep and votes on open proposals.
+  - name: drep
+    kind: drep
+    agenda: civic
+    traits:
+      competence: beta(8, 2)
+      patience: const(5)
+      learning_rate: const(0.05)
+      care: beta(2, 2)
+    budget: 1000000000
+    rates:
+      base:
+        register_drep: 0.02
+        vote: 0.05
+    hazards: {}
+  # Operates a pool: registers it, then maintains it.
+  - name: operator
+    kind: pool
+    agenda: operator
+    traits:
+      competence: beta(8, 2)
+      patience: const(5)
+      learning_rate: const(0.05)
+      care: beta(2, 2)
+    budget: 1000000000
+    rates:
+      base:
+        register_pool: 0.02
+        withdraw_rewards: 0.005
+    hazards: {}

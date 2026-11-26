@@ -22,6 +22,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/genesis"
+	"github.com/chrisguiney/cardano-continuum/internal/policy"
 	"github.com/chrisguiney/cardano-continuum/internal/rng"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/store"
@@ -102,6 +103,7 @@ func liveConfig(sf simFlags, lf liveFlags, g chain.Genesis, np nodeParams, seed 
 		Seed: seed, Profiles: reg, Fitted: fitted, Scale: sf.scale, Cohorts: cohorts, Slots: slots, K: g.SecurityParam, TTL: sf.ttl,
 		Build: bp, BinaryVersion: version, Faucet: lf.faucet, RefillEvery: lf.refillEvery,
 		NOpt: np.nOpt, GovLifetime: np.govLifetime, GenesisPoolStake: lf.poolStake, GenesisPools: gpools,
+		Floor: policy.Config{Floor: sf.floor, Margin: 1}, Committee: genesis.Default().Committee,
 	}, nil
 }
 

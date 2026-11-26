@@ -32,6 +32,8 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
+	"github.com/chrisguiney/cardano-continuum/internal/genesis"
+	"github.com/chrisguiney/cardano-continuum/internal/policy"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/store"
@@ -95,18 +97,20 @@ type simFlags struct {
 	blockEvery uint64
 	ttl        uint64
 	pools      int
+	floor      uint64
 }
 
 func (s *simFlags) register(fs *flag.FlagSet) {
 	fs.Uint64Var(&s.seed, "seed", 1, "root seed of the run")
 	fs.IntVar(&s.wallets, "wallets", 100, "wallets at genesis, spread evenly over the profiles")
-	fs.StringVar(&s.profiles, "profiles", "", "shipped profile set (m1, preview, preprod) or a profile file (default: m1)")
+	fs.StringVar(&s.profiles, "profiles", "", "shipped profile set (m1, m3, preview, preprod) or a profile file (default: m1)")
 	fs.Float64Var(&s.scale, "scale", 1, "multiply every profile's base rates by this factor")
 	fs.Int64Var(&s.slotMs, "slot-ms", 1000, "slot length in milliseconds")
 	fs.Uint64Var(&s.epochSlots, "epoch-slots", 600, "slots per epoch")
 	fs.Uint64Var(&s.k, "k", 5, "security parameter: blocks until a block is durable")
 	fs.Uint64Var(&s.blockEvery, "block-every", 10, "slots between fake-chain blocks")
 	fs.Uint64Var(&s.ttl, "ttl", 120, "slots a payment stays valid")
+	fs.Uint64Var(&s.floor, "floor", 50, "stake floor: the percentage of each schedule's stake forging pools must hold, one pool's loss included")
 	fs.IntVar(&s.pools, "pools", 0, "pool operators at genesis, spread over the pool profiles; on a live run the first --genesis-pools operate the genesis pools")
 }
 
@@ -131,6 +135,10 @@ func (s *simFlags) config() (engine.Config, error) {
 		Seed: engine.SeedFromInt(s.seed), Profiles: reg, Fitted: fitted, Scale: s.scale, Cohorts: cohorts, Slots: slots,
 		K: s.k, BlockEvery: s.blockEvery, TTL: s.ttl, BinaryVersion: version, Build: bp,
 		NOpt: uint64(pp.NOpt), GovLifetime: pp.GovActionValidityPeriod, SimulatedPods: true,
+		Floor: policy.Config{Floor: s.floor, Margin: 1},
+		// The fake chain's genesis registers a pool for every operator and
+		// seats internal/genesis's committee, as a devnet's does.
+		GenesisPools: s.pools, GenesisPoolStake: genesis.Default().PoolStake, Committee: genesis.Default().Committee,
 	}, nil
 }
 
@@ -311,7 +319,17 @@ func summarize(out io.Writer, cfg engine.Config, r *engine.Runner, chain *fakech
 	e := r.Engine()
 	recs := mem.LastSeq()
 	w := &writer{out: out}
-	conserved := e.Supply() == genesis && chain.UnspentLovelace()+chain.Fees() == genesis
+	// The chain also holds the genesis pools' owners' stake, which no
+	// actor owns, and the deposits certificates and proposals hold.
+	owners, _, err := engine.GenesisStaking(&cfg)
+	if err != nil {
+		return err
+	}
+	onChain := genesis
+	for _, o := range owners {
+		onChain += o.Lovelace
+	}
+	conserved := e.Supply() == genesis && chain.UnspentLovelace()+chain.Fees()+chain.Deposits() == onChain
 	w.printf("epochs %d, actors %d (genesis %d), blocks %d, records %d\n",
 		epochs, e.Actors(), len(funds), len(chain.Blocks()), recs)
 	w.printf("payments: submitted %d, confirmed %d, released %d, skipped %d, pending %d\n",

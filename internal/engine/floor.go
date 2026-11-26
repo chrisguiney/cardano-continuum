@@ -23,14 +23,18 @@ import (
 // epoch transition after that, so the run stops (contract rule 14).
 var ErrStalled = errors.New("engine: an epoch passed with no block")
 
-// defaultFloor is the guard's configuration when Config.Floor is zero.
+// defaultFloor fills the fields of Config.Floor left zero.
 var defaultFloor = policy.Config{Floor: 50, Margin: 1}
 
 func (c *Config) floor() policy.Config {
-	if c.Floor == (policy.Config{}) {
-		return defaultFloor
+	f := c.Floor
+	if f.Floor == 0 {
+		f.Floor = defaultFloor.Floor
 	}
-	return c.Floor
+	if f.Margin == 0 {
+		f.Margin = defaultFloor.Margin
+	}
+	return f
 }
 
 // podsView is the plan and the observed pod health, as agenda.Pods.
