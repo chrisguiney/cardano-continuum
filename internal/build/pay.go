@@ -18,13 +18,15 @@ type Payment struct {
 	Amount uint64
 	// TTL is the absolute slot after which the transaction is invalid.
 	TTL uint64
+	// Tip is paid in fee above the minimum (Spend.Tip).
+	Tip uint64
 }
 
 // Pay builds and signs a payment, returning change to w's own address.
 // Change below min-UTxO is folded into the fee. All Inputs are spent.
 func (b *Builder) Pay(ctx context.Context, w keys.Wallet, p Payment) (Built, error) {
 	return b.finish(ctx, w, spec{
-		sp:   Spend{Inputs: p.Inputs, TTL: p.TTL},
+		sp:   Spend{Inputs: p.Inputs, TTL: p.TTL, Tip: p.Tip},
 		need: p.Amount,
 		add: func(a *apollo.Apollo) (*apollo.Apollo, error) {
 			return a.PayToAddress(p.To, int64(p.Amount)), nil

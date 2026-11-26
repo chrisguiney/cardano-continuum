@@ -110,6 +110,10 @@ type Built struct {
 type Spend struct {
 	Inputs []common.Utxo
 	TTL    uint64
+	// Tip is lovelace paid in fee above the ledger's minimum, taken from
+	// the change: an adversary outbidding a transaction it races. Without
+	// change the fee stays as built.
+	Tip uint64
 }
 
 // InsufficientError reports that the offered inputs cannot cover the request.
@@ -226,7 +230,7 @@ func (b *Builder) apollo(w keys.Wallet, s spec, fee int64) (*apollo.Apollo, erro
 }
 
 // finish checks the offered value, builds s, then pins the fee to the
-// ledger's exact minimum.
+// ledger's exact minimum plus the spend's Tip.
 //
 // Apollo prices the transaction with len(cbor), which counts the IsValid byte
 // the ledger leaves out of the fee-relevant size, so its fee is a*1 too high.
@@ -253,10 +257,11 @@ func (b *Builder) finish(ctx context.Context, w keys.Wallet, s spec) (Built, err
 		if err != nil {
 			return Built{}, err
 		}
-		if built.Fee == exact || !hasChange(built, w) {
+		want := exact + s.sp.Tip
+		if built.Fee == want || !hasChange(built, w) {
 			return built, nil
 		}
-		if built, err = b.sign(ctx, w, s, int64(exact)); err != nil {
+		if built, err = b.sign(ctx, w, s, int64(want)); err != nil {
 			return Built{}, err
 		}
 	}

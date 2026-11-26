@@ -236,3 +236,16 @@ func TestPayAcceptedByFakeChain(t *testing.T) {
 		t.Fatalf("fake chain rejected the payment: %v", err)
 	}
 }
+
+func TestPayTipRaisesTheFee(t *testing.T) {
+	base, alice, bob, us := buildPay(t, 2_000_000, 50_000_000)
+	got, err := New(testParams()).Pay(context.Background(), alice, Payment{
+		Inputs: us, To: bob.Address(), Amount: 2_000_000, TTL: 5000, Tip: 300_000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Fee != base.Fee+300_000 {
+		t.Fatalf("fee %d, want the minimum %d plus the tip", got.Fee, base.Fee)
+	}
+}
