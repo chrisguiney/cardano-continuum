@@ -1,11 +1,13 @@
 package engine
 
 import (
+	"fmt"
 	"math"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 )
 
@@ -69,15 +71,28 @@ func TestPaymentSizesDefaultWithoutAmount(t *testing.T) {
 }
 
 // A drawn size above the balance is capped to what the wallet can pay, so a
-// heavy tail never wedges a wallet or breaks conservation.
+// heavy tail never wedges a wallet or breaks conservation. Every draw here
+// is far above any balance: uncapped, each payment would be skipped as
+// unaffordable although the wallet could pay the minimum.
 func TestPaymentSizeCappedToBalance(t *testing.T) {
 	y := strings.Replace(amountProfileYAML, "lognormal(16.8, 0.4)", "lognormal(30, 0.1)", 1)
 	cfg := amountConfig(t, y, 6)
-	xs := submittedAmounts(t, cfg)
-	if len(xs) == 0 {
+	w := newWorld(t, cfg)
+	w.run(600_000, 25, nil)
+	if len(readPayments(t, w.log).submitted) == 0 {
 		t.Fatal("no payments: an oversize draw must be capped, not skipped")
 	}
-	if hi := xs[len(xs)-1]; hi > 5_000_000_000_000 {
-		t.Errorf("payment %.0f is not capped to a balance", hi)
+	for _, rec := range logRecords(t, w.log) {
+		if rec.Kind != KindSkipped {
+			continue
+		}
+		var s Skipped
+		if err := eventlog.Decode(rec.Body, &s); err != nil {
+			t.Fatal(err)
+		}
+		var have, need uint64
+		if _, err := fmt.Sscanf(s.Why, "spendable %d below %d", &have, &need); err == nil && have >= minPayment+feeHeadroom {
+			t.Fatalf("actor %d skipped a payment of %d holding %d: the draw was not capped", rec.Actor, need-feeHeadroom, have)
+		}
 	}
 }
