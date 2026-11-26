@@ -80,7 +80,11 @@ func bootNetworkWith(t *testing.T, spec genesis.Spec, pool func(int) v1alpha1.Co
 	})
 	prepullNodeImage(t, ns)
 	kube(t, genesisResources, "-n", ns, "apply", "-f", "-")
-	deployGenesis(t, ns, 90*time.Second)
+	var args []string
+	if spec.Pools != genesis.Default().Pools {
+		args = append(args, fmt.Sprintf("-pools=%d", spec.Pools))
+	}
+	deployGenesis(t, ns, 90*time.Second, args...)
 	read := genesisReader(t, ns)
 
 	publishGenesis(t, ns, read, spec)

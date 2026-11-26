@@ -50,7 +50,7 @@ const startDelayArg = "-start-delay=60s"
 // ns with deploy/genesis/job.yaml and waits for the Job to finish. The job's
 // start delay is replaced by delay. The Job qualifies pool host names with
 // its own namespace.
-func deployGenesis(t *testing.T, ns string, delay time.Duration) {
+func deployGenesis(t *testing.T, ns string, delay time.Duration, args ...string) {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join(repoRoot(t), "deploy", "genesis", "job.yaml"))
 	if err != nil {
@@ -65,6 +65,14 @@ func deployGenesis(t *testing.T, ns string, delay time.Duration) {
 			t.Fatalf("deploy/genesis/job.yaml: want exactly one %q", from)
 		}
 		job = strings.Replace(job, from, to, 1)
+	}
+	// Extra continuum-genesis flags go after -out, the Job's first argument.
+	const out = "            - -out=/genesis\n"
+	if len(args) > 0 && strings.Count(job, out) != 1 {
+		t.Fatalf("deploy/genesis/job.yaml: want exactly one %q", out)
+	}
+	for _, a := range args {
+		job = strings.Replace(job, out, out+"            - "+a+"\n", 1)
 	}
 	kube(t, genesisResources, "-n", ns, "apply", "-f", "-")
 	kube(t, job, "-n", ns, "apply", "-f", "-")
