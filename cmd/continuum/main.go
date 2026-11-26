@@ -138,7 +138,7 @@ func (s *simFlags) register(fs *flag.FlagSet) {
 }
 
 func (s *simFlags) config() (engine.Config, error) {
-	fitted, cohorts, err := s.population()
+	fitted, cohorts, file, err := s.population()
 	if err != nil {
 		return engine.Config{}, err
 	}
@@ -158,7 +158,7 @@ func (s *simFlags) config() (engine.Config, error) {
 	bp := build.ParamsFromConway(&pp, 0)
 	// The fake chain's slot 0 is the Unix epoch.
 	bp.SystemStart, bp.SlotLength = time.UnixMilli(0).UTC(), time.Duration(s.slotMs)*time.Millisecond
-	return engine.Config{
+	cfg := engine.Config{
 		Seed: engine.SeedFromInt(s.seed), Profiles: reg, Fitted: fitted, Scale: s.scale, Cohorts: cohorts, Slots: slots,
 		K: s.k, BlockEvery: s.blockEvery, TTL: s.ttl, BinaryVersion: version, Build: bp,
 		NOpt: uint64(pp.NOpt), GovLifetime: pp.GovActionValidityPeriod, SimulatedPods: true,
@@ -167,7 +167,20 @@ func (s *simFlags) config() (engine.Config, error) {
 		// seats internal/genesis's committee, as a devnet's does.
 		GenesisPools: s.pools, GenesisPoolStake: genesis.Default().PoolStake, Committee: genesis.Default().Committee,
 		Mistakes: mistakes, Run: s.run(mistakes),
-	}, nil
+	}
+	if err := engine.Populate(&cfg, file); err != nil {
+		return engine.Config{}, err
+	}
+	// A fitted file's pools are genesis pools of the fake chain, as a
+	// devnet's pools are: the stake floor needs stake on forging pools
+	// from the first epoch, which pools registering from nothing cannot
+	// give it.
+	for _, p := range file.Populations {
+		if p.Kind == profile.Pool {
+			cfg.GenesisPools += p.Count
+		}
+	}
+	return cfg, nil
 }
 
 // mistakesOn resolves --mistakes. Unset, mistakes are on when some
@@ -236,24 +249,24 @@ func spread(names []string, n int) []engine.Cohort {
 
 // population reads the profile set, spreads the pools evenly over it and the
 // wallets by profile weight.
-func (s *simFlags) population() (*profile.Registry, []engine.Cohort, error) {
+func (s *simFlags) population() (*profile.Registry, []engine.Cohort, profile.File, error) {
 	raw, name, err := resolveProfiles(s.profiles)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, profile.File{}, err
 	}
-	ps, err := profile.ParseNamed(name, bytes.NewReader(raw))
+	file, err := profile.ParseFile(bytes.NewReader(raw))
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, profile.File{}, fmt.Errorf("%s: %w", name, err)
 	}
-	reg, err := profile.NewRegistry(ps)
+	reg, err := profile.NewRegistry(file.Profiles)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, profile.File{}, err
 	}
 	if s.wallets < 0 {
-		return nil, nil, fmt.Errorf("--wallets %d", s.wallets)
+		return nil, nil, profile.File{}, fmt.Errorf("--wallets %d", s.wallets)
 	}
 	if s.pools < 0 {
-		return nil, nil, fmt.Errorf("--pools %d", s.pools)
+		return nil, nil, profile.File{}, fmt.Errorf("--pools %d", s.pools)
 	}
 	// Pool profiles take the --pools actors and come first, so the first
 	// pool actors are the genesis pools' operators; every other profile
@@ -267,21 +280,21 @@ func (s *simFlags) population() (*profile.Registry, []engine.Cohort, error) {
 		}
 	}
 	if s.pools > 0 && len(pools) == 0 {
-		return nil, nil, fmt.Errorf("--pools %d: the profile set has no pool profile", s.pools)
+		return nil, nil, profile.File{}, fmt.Errorf("--pools %d: the profile set has no pool profile", s.pools)
 	}
 	cohorts := spread(pools, s.pools)
 	wallets, err := cohortsOf(reg, others, s.wallets)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, profile.File{}, err
 	}
-	ps, cohorts, err = s.withAdversaries(ps, append(cohorts, wallets...))
+	ps, cohorts, err := s.withAdversaries(file.Profiles, append(cohorts, wallets...))
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, profile.File{}, err
 	}
 	if reg, err = profile.NewRegistry(ps); err != nil {
-		return nil, nil, err
+		return nil, nil, profile.File{}, err
 	}
-	return reg, cohorts, nil
+	return reg, cohorts, file, nil
 }
 
 func cmdRun(ctx context.Context, args []string, out io.Writer) error {

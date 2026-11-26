@@ -30,7 +30,15 @@ const (
 	KindIncident     = "Incident"
 	KindControlled   = "Controlled"
 	KindImageChange  = "ImageChange"
+	KindDeployed     = "Deployed"
 )
+
+// Deployed is the body of a Deployed decision: contract Contract
+// (build.Contract) is open for locks. Address names its script.
+type Deployed struct {
+	Contract uint64 `cbor:"1,keyasint"`
+	Address  string `cbor:"2,keyasint"`
+}
 
 // Controlled is the body of a Controlled decision: a Control input was
 // applied, or not when Why says why.
@@ -225,6 +233,10 @@ type Submitted struct {
 	// Attack names the attack an adversary's attempt makes, or "cover"
 	// for its ordinary traffic; empty for an honest actor.
 	Attack string `cbor:"11,keyasint,omitempty"`
+	// Action is a proposal's governance action type, Contract the
+	// contract a lock or unlock calls.
+	Action   string `cbor:"12,keyasint,omitempty"`
+	Contract uint64 `cbor:"13,keyasint,omitempty"`
 }
 
 // Refill is the body of a Refill decision: the faucet pays To[i]
@@ -282,12 +294,12 @@ type Confirmed struct {
 }
 
 // snapshotVersion is bumped whenever snapshot's shape changes.
-const snapshotVersion = 6
+const snapshotVersion = 7
 
 // logFormat is the version of the engine's input and decision bodies. It is
 // part of the log header's genesis fingerprint, so a log written in another
 // format is refused at the header rather than failing on its first body.
-const logFormat = 4
+const logFormat = 5
 
 // snapshot is the engine state in canonical form: every slice sorted, so
 // equal states encode to equal bytes.
@@ -329,6 +341,11 @@ type snapshot struct {
 	// outputs they tried to spend, ascending.
 	Charges   []adversary.Charge `cbor:"27,keyasint,omitempty"`
 	Contested []Ref              `cbor:"28,keyasint,omitempty"`
+	// Contracts is how many contracts are deployed; DeployAt and DeployN
+	// are the next deployment and its draw.
+	Contracts uint64     `cbor:"29,keyasint,omitempty"`
+	DeployAt  sched.Time `cbor:"30,keyasint,omitempty"`
+	DeployN   uint64     `cbor:"31,keyasint,omitempty"`
 }
 
 // ledgerBlob is the planner ledger's store.Blob.
@@ -349,6 +366,8 @@ type actorRec struct {
 	ActAt       sched.Time `cbor:"9,keyasint"`
 	Draws       uint64     `cbor:"10,keyasint"`
 	Competence  float64    `cbor:"11,keyasint"`
+	// Booting marks a population actor's wake drawn at the boot rate.
+	Booting bool `cbor:"12,keyasint,omitempty"`
 }
 
 type birthRec struct {
@@ -415,6 +434,10 @@ type pendingRec struct {
 	Want   *wantRec `cbor:"24,keyasint,omitempty"`
 	Rivals []Rival  `cbor:"25,keyasint,omitempty"`
 	Jump   bool     `cbor:"26,keyasint,omitempty"`
+	// GovType is a proposal's governance action type; Contract the
+	// contract a lock or unlock calls.
+	GovType  string `cbor:"27,keyasint,omitempty"`
+	Contract uint64 `cbor:"28,keyasint,omitempty"`
 }
 
 func samePoint(a, b eventlog.ChainPoint) bool {

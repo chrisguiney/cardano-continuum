@@ -25,6 +25,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 
@@ -131,6 +133,12 @@ type Config struct {
 	// Adversaries is the proof (adversary.Clear) that the node is on the
 	// run's devnet. Without it New refuses any adversary actor.
 	Adversaries adversary.Clearance
+
+	// Populations and Network are a fitted file's non-wallet populations
+	// and chain-wide rates, as Populate set them. The log header's profile
+	// hash covers them.
+	Populations []profile.Population
+	Network     profile.Network
 }
 
 // Fund is one genesis output.
@@ -225,16 +233,39 @@ func (c *Config) Genesis() ([]Fund, error) {
 // ProfileHash is the fingerprint of a profile set: SHA-256 of its canonical
 // marshalled form, profiles in name order.
 func ProfileHash(reg *profile.Registry) ([32]byte, error) {
-	var ps []profile.Profile
-	for _, n := range reg.Names() {
-		p, _ := reg.Get(n)
-		ps = append(ps, p)
-	}
-	raw, err := profile.Marshal(ps)
+	return FileHash(profile.File{Profiles: profilesIn(reg)})
+}
+
+// FileHash is the fingerprint of a whole profile file: SHA-256 of its
+// canonical form (profile.MarshalFile), profiles in name order. A file
+// with no populations and no network rates hashes as ProfileHash of its
+// profiles, so logs and targets of such files keep their hash.
+func FileHash(f profile.File) ([32]byte, error) {
+	f.Profiles = slices.Clone(f.Profiles)
+	slices.SortFunc(f.Profiles, func(a, b profile.Profile) int { return strings.Compare(a.Name, b.Name) })
+	raw, err := profile.MarshalFile(f)
 	if err != nil {
 		return [32]byte{}, fmt.Errorf("engine: marshal profiles: %w", err)
 	}
 	return sha256.Sum256(raw), nil
+}
+
+// fileHash is the header's profile hash: the profiles before any rate
+// scale, less the ones Populate wrote, with the populations and network
+// rates they came from.
+func (c *Config) fileHash() ([32]byte, error) {
+	reg := c.Profiles
+	if c.Fitted != nil {
+		reg = c.Fitted
+	}
+	var ps []profile.Profile
+	for _, p := range profilesIn(reg) {
+		if _, written := c.population(p.Name); written || (p.Name == proposerName && len(c.Network.Proposals) > 0) {
+			continue
+		}
+		ps = append(ps, p)
+	}
+	return FileHash(profile.File{Profiles: ps, Populations: c.Populations, Network: c.Network})
 }
 
 // Header returns the log header for this config: fingerprints of the seed,
@@ -244,11 +275,7 @@ func (c *Config) Header() (eventlog.HeaderBody, error) {
 	if err != nil {
 		return eventlog.HeaderBody{}, err
 	}
-	reg := c.Profiles
-	if c.Fitted != nil {
-		reg = c.Fitted
-	}
-	ph, err := ProfileHash(reg)
+	ph, err := c.fileHash()
 	if err != nil {
 		return eventlog.HeaderBody{}, err
 	}

@@ -114,15 +114,11 @@ func cmdProfiles(args []string, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		ps, err := profile.ParseNamed(name+".yaml", bytes.NewReader(raw))
+		f, err := profile.ParseFile(bytes.NewReader(raw))
 		if err != nil {
-			return err
+			return fmt.Errorf("%s.yaml: %w", name, err)
 		}
-		reg, err := profile.NewRegistry(ps)
-		if err != nil {
-			return err
-		}
-		h, err := engine.ProfileHash(reg)
+		h, err := engine.FileHash(f)
 		if err != nil {
 			return err
 		}

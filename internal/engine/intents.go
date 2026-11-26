@@ -123,15 +123,22 @@ var specs = map[string]spec{
 	string(profile.IntentVote): {need: none, headroom: feeHeadroom, deposit: noDeposit, build: buildVote},
 	string(profile.IntentPropose): {need: func(e *Engine, _ *pendingRec) uint64 { return e.cfg.Build.GovActionDeposit }, headroom: feeHeadroom,
 		deposit: func(e *Engine, _ *pendingRec) int64 { return int64(e.cfg.Build.GovActionDeposit) },
-		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, _ *pendingRec) (build.Built, error) {
-			return e.builder.Propose(ctx, w, build.Proposal{Spend: sp})
+		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
+			return e.builder.Propose(ctx, w, build.Proposal{Spend: sp, Action: build.ActionType(p.GovType)})
 		}},
-	string(profile.IntentMint): {need: none, headroom: scriptHeadroom, deposit: noDeposit, build: buildMint, script: true},
-	string(profile.IntentBurn): {need: none, headroom: scriptHeadroom, deposit: noDeposit, build: buildMint, script: true},
+	string(profile.IntentRetireDRep): {need: none, headroom: feeHeadroom,
+		again:   []submit.Class{submit.Class(fakechain.DRepNotRegistered)},
+		deposit: func(e *Engine, _ *pendingRec) int64 { return -int64(e.cfg.Build.DRepDeposit) },
+		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
+			return e.builder.RetireDRep(ctx, w, build.DRepRetirement{Spend: sp, DRep: e.keys.DRepSigner(keysID(population.ActorID(p.Actor)))})
+		}},
+	string(profile.IntentUpdatePool): {need: none, headroom: feeHeadroom, deposit: noDeposit, build: buildPool},
+	string(profile.IntentMint):       {need: none, headroom: scriptHeadroom, deposit: noDeposit, build: buildMint, script: true},
+	string(profile.IntentBurn):       {need: none, headroom: scriptHeadroom, deposit: noDeposit, build: buildMint, script: true},
 	lockKind: {need: func(_ *Engine, p *pendingRec) uint64 { return p.Amount }, headroom: feeHeadroom,
 		deposit: func(_ *Engine, p *pendingRec) int64 { return 0 },
 		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
-			return e.builder.Lock(ctx, w, build.Lock{Spend: sp, Script: build.AlwaysSucceeds, Amount: p.Amount, Datum: actorDatum(population.ActorID(p.Actor))})
+			return e.builder.Lock(ctx, w, build.Lock{Spend: sp, Script: build.Contract(p.Contract), Amount: p.Amount, Datum: actorDatum(population.ActorID(p.Actor))})
 		}},
 	hotKind: {need: none, headroom: feeHeadroom, deposit: noDeposit, build: buildHot},
 	// A dust flood is one-shot: nothing rebuilds it.
@@ -188,7 +195,7 @@ func buildUnlock(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, 
 	if !ok {
 		return build.Built{}, fmt.Errorf("locked output %x#%d not in the view", p.Locked.Tx[:4], p.Locked.Index)
 	}
-	return e.builder.Unlock(ctx, w, build.Unlock{Spend: sp, Script: build.AlwaysSucceeds, Locked: u, Redeemer: unitDatum()})
+	return e.builder.Unlock(ctx, w, build.Unlock{Spend: sp, Script: build.Contract(p.Contract), Locked: u, Redeemer: unitDatum()})
 }
 
 func buildPool(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
@@ -202,11 +209,11 @@ func buildPool(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p 
 	if err != nil {
 		return build.Built{}, err
 	}
+	pledge, cost, margin := e.poolTerms(id, p.ID)
 	reg := build.PoolRegistration{
-		Spend: sp, Cold: cold, VRFKeyHash: pk.VRFVKeyHash, Pledge: 1_000_000,
-		Cost: e.cfg.Build.MinPoolCost, Margin: big.NewRat(1, 100),
+		Spend: sp, Cold: cold, VRFKeyHash: pk.VRFVKeyHash, Pledge: pledge, Cost: cost, Margin: margin,
 	}
-	if p.Update {
+	if p.Update || p.Kind == string(profile.IntentUpdatePool) {
 		return e.builder.UpdatePool(ctx, w, reg)
 	}
 	return e.builder.RegisterPool(ctx, w, reg)
@@ -238,8 +245,11 @@ func (p *pendingRec) kindOf() string {
 
 // intend turns the chosen intent into a pending record and starts it. A
 // kind with no transaction (idle, go_dark, go_live) never reaches it.
-func (e *Engine) intend(ctx context.Context, at sched.Time, a population.Actor, st *actor, in agenda.Intent, r *rand.Rand) error {
+func (e *Engine) intend(ctx context.Context, at sched.Time, a population.Actor, st *actor, in agenda.Intent, gov build.ActionType, r *rand.Rand) error {
 	p, why := e.prepare(at, a, in, r)
+	if p != nil {
+		p.GovType = string(gov)
+	}
 	if why == "" {
 		var err error
 		if why, err = e.start(ctx, at, p); err != nil {
@@ -292,13 +302,21 @@ func (e *Engine) prepare(at sched.Time, a population.Actor, in agenda.Intent, r 
 		if p.Amount = e.tokens(a.ID); p.Amount == 0 {
 			return nil, "nothing to burn"
 		}
-	case profile.IntentScriptCall:
-		e.prepareScript(a.ID, p)
 	case profile.IntentRegisterPool:
 		if _, ok := e.poolOf(a.ID); !ok {
 			return nil, "actor operates no pool"
 		}
 		p.Update = e.view.PoolRegistered(a.ID)
+	case profile.IntentUpdatePool:
+		if !e.view.PoolRegistered(a.ID) {
+			return nil, "pool not registered"
+		}
+	case profile.IntentRetireDRep:
+		if !e.view.DRepRegistered(a.ID) || e.inFlight(a.ID, string(profile.IntentRetireDRep)) {
+			return nil, "DRep not registered or retiring"
+		}
+	case profile.IntentScriptCall:
+		e.prepareScript(a.ID, p, r)
 	case profile.IntentRetirePool:
 		p.Epoch = e.cfg.Slots.EpochAt(at) + 1
 	case profile.IntentWithdraw:
@@ -356,8 +374,9 @@ func (e *Engine) prepareSend(a population.Actor, p *pendingRec, r *rand.Rand) (*
 }
 
 // prepareScript unlocks the actor's oldest locked output not already being
-// unlocked, or locks a new one.
-func (e *Engine) prepareScript(id population.ActorID, p *pendingRec) {
+// unlocked, contract by contract, or locks a new one at a contract drawn
+// by usage (pickContract).
+func (e *Engine) prepareScript(id population.ActorID, p *pendingRec, r *rand.Rand) {
 	busy := map[Ref]bool{}
 	for _, q := range e.pending {
 		// An honest actor knows its own unlocks, not an adversary's.
@@ -366,16 +385,18 @@ func (e *Engine) prepareScript(id population.ActorID, p *pendingRec) {
 		}
 	}
 	want := datumKey(actorDatum(id))
-	for _, u := range e.view.UtxosAt(build.AlwaysSucceeds.Address(e.cfg.NetworkID)) {
-		d := u.Output.Datum()
-		ref := Ref{Tx: TxID(u.Id.Id()), Index: u.Id.Index()}
-		if d == nil || busy[ref] || !bytes.Equal(datumKey(*d), want) {
-			continue
+	for c := range e.contracts {
+		for _, u := range e.view.UtxosAt(build.Contract(c).Address(e.cfg.NetworkID)) {
+			d := u.Output.Datum()
+			ref := Ref{Tx: TxID(u.Id.Id()), Index: u.Id.Index()}
+			if d == nil || busy[ref] || !bytes.Equal(datumKey(*d), want) {
+				continue
+			}
+			p.Kind, p.Locked, p.Amount, p.Contract = unlockKind, &ref, u.Output.Amount().Uint64(), c
+			return
 		}
-		p.Kind, p.Locked, p.Amount = unlockKind, &ref, u.Output.Amount().Uint64()
-		return
 	}
-	p.Kind, p.Amount = lockKind, lockAmount
+	p.Kind, p.Amount, p.Contract = lockKind, lockAmount, e.pickContract(r)
 }
 
 // tokens is the quantity of the mint token the actor holds at the tip.
@@ -447,7 +468,7 @@ func (e *Engine) emitSubmitted(at sched.Time, p *pendingRec, built build.Built, 
 	}
 	e.emit(at, KindSubmitted, population.ActorID(p.Actor), Submitted{
 		Intent: p.ID, ID: TxID(built.ID), To: p.To, Amount: p.Amount, Fee: built.Fee, TTL: p.TTL, Inputs: inputs, Tx: built.Tx, Kind: p.Kind,
-		Mistakes: p.Carried, Attack: attack,
+		Mistakes: p.Carried, Attack: attack, Action: p.GovType, Contract: p.Contract,
 	})
 }
 

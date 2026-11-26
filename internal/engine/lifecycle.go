@@ -45,6 +45,17 @@ func (e *Engine) settle(at sched.Time, p *pendingRec, tx TxID) error {
 		return e.move(at, a, population.Retiring, cause)
 	case profile.IntentRegisterDRep:
 		return e.move(at, a, population.Voting, cause)
+	case profile.IntentUpdatePool:
+		// A re-registration cancels a pending retirement.
+		return e.move(at, a, population.Active, cause)
+	case profile.IntentRetireDRep:
+		if err := e.move(at, a, population.Expired, cause); err != nil {
+			return err
+		}
+		if st := e.actors[id]; st.actAt != population.Never {
+			e.queue.Cancel(st.actH)
+			st.actAt = population.Never
+		}
 	}
 	return nil
 }

@@ -71,6 +71,8 @@ const (
 	// evAdopt is one pool's adoption in an upgrade wave; intent indexes
 	// the adoptions.
 	evAdopt
+	// evDeploy opens the next contract.
+	evDeploy
 )
 
 type qev struct {
@@ -91,6 +93,14 @@ type actor struct {
 	actAt    sched.Time
 	actH     sched.Handle
 	draws    uint64
+	// cs are a population actor's intent clocks and boot the intent it
+	// registers with (populations.go); boot is empty for every other actor.
+	cs   []clock
+	boot profile.IntentKind
+	// booting is set while the pending wake was drawn at the boot rate:
+	// it registers, and must not fire a fitted clock (a clock's first
+	// event would come at the boot rate, far too soon).
+	booting bool
 }
 
 type birth struct {
@@ -146,6 +156,11 @@ type Engine struct {
 	// proposals hold in the ledger's deposit pot.
 	deposits uint64
 	market   market
+	// contracts is how many contracts are deployed (contract 0 from
+	// genesis); deployAt is the next deployment, deployN its draw.
+	contracts uint64
+	deployAt  sched.Time
+	deployN   uint64
 
 	guard policy.Guard
 	// dark is the pool plan: pools the engine wants not forging. down are
@@ -249,6 +264,9 @@ func New(cfg Config) (*Engine, error) {
 	for _, b := range e.births {
 		e.scheduleBirth(b, 0)
 	}
+	if e.deployRate() > 0 {
+		e.scheduleDeploy(0)
+	}
 	e.out = nil // genesis spawns are configuration, not decisions
 	return e, nil
 }
@@ -279,8 +297,8 @@ func newEmpty(cfg Config) (*Engine, error) {
 		pending: map[uint64]*pendingRec{}, byTx: map[TxID]uint64{}, book: chain.NewBook(),
 		pools: map[population.ActorID][28]byte{},
 		dark:  map[population.ActorID]bool{}, down: map[population.ActorID]bool{}, repairs: map[population.ActorID]bool{},
-		images: map[population.ActorID]string{},
-		advs:   map[population.ActorID]adversary.Policy{}, costs: adversary.NewLedger(), contested: map[Ref]bool{},
+		images: map[population.ActorID]string{}, contracts: 1, deployAt: population.Never,
+		advs: map[population.ActorID]adversary.Policy{}, costs: adversary.NewLedger(), contested: map[Ref]bool{},
 	}
 	if e.guard, err = policy.New(cfg.floor()); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrConfig, err)
@@ -452,6 +470,8 @@ func (e *Engine) run(ctx context.Context, at sched.Time, ev qev) error {
 		return e.refill(ctx, at)
 	case evAdopt:
 		e.adopt(at, ev.intent)
+	case evDeploy:
+		return e.deploy(at)
 	}
 	return nil
 }
@@ -494,6 +514,7 @@ func (e *Engine) register(a population.Actor, p profile.Profile) *actor {
 	pol = e.arm(a.ID, p, pol)
 	st := &actor{prof: p, policy: pol, rate: baseRate(p), wallet: e.keys.Wallet(keys.ActorID(a.ID)),
 		hazardAt: population.Never, actAt: population.Never}
+	st.cs, st.boot, _ = e.clocks(a, p)
 	e.actors[a.ID] = st
 	e.order = append(e.order, a.ID)
 	if addr, err := st.wallet.Address().Bytes(); err == nil {
@@ -554,6 +575,10 @@ func (e *Engine) hazard(at sched.Time, id population.ActorID) error {
 }
 
 func (e *Engine) nextAct(a population.Actor, st *actor, now sched.Time) {
+	if st.boot != "" {
+		e.nextClock(a, st, now)
+		return
+	}
 	rate := st.rate * a.Traits.RateMult * float64(max(e.rateK, 1))
 	if rate <= 0 || st.policy == nil {
 		st.actAt = population.Never
@@ -575,7 +600,13 @@ func (e *Engine) act(ctx context.Context, at sched.Time, id population.ActorID) 
 		return nil
 	}
 	r := e.draw(a, st, "act")
-	d := agenda.Decide(a, r, view{e: e}, st.policy, e.weightsOf(st.prof))
+	var d agenda.Decision
+	var gov build.ActionType
+	if st.boot != "" {
+		d, gov = e.decideClock(a, st, r)
+	} else {
+		d = agenda.Decide(a, r, view{e: e}, st.policy, e.weightsOf(st.prof))
+	}
 	e.emit(at, KindIntentChosen, id, d)
 	switch {
 	case d.Intent.Kind == agenda.Idle:
@@ -587,7 +618,7 @@ func (e *Engine) act(ctx context.Context, at sched.Time, id population.ActorID) 
 			return err
 		}
 	default:
-		if err := e.intend(ctx, at, a, st, d.Intent, r); err != nil {
+		if err := e.intend(ctx, at, a, st, d.Intent, gov, r); err != nil {
 			return err
 		}
 	}

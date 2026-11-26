@@ -76,7 +76,7 @@ func (l *liveFlags) register(fs *flag.FlagSet) {
 // internal/genesis funded.
 func liveConfig(sf simFlags, lf liveFlags, g chain.Genesis, np nodeParams, seed rng.Seed) (engine.Config, error) {
 	bp := np.build
-	fitted, cohorts, err := sf.population()
+	fitted, cohorts, file, err := sf.population()
 	if err != nil {
 		return engine.Config{}, err
 	}
@@ -105,13 +105,19 @@ func liveConfig(sf simFlags, lf liveFlags, g chain.Genesis, np nodeParams, seed 
 		}
 		gpools = lf.gpools
 	}
-	return engine.Config{
+	cfg := engine.Config{
 		Seed: seed, Profiles: reg, Fitted: fitted, Scale: sf.scale, Cohorts: cohorts, Slots: slots, K: g.SecurityParam, TTL: sf.ttl,
 		Build: bp, BinaryVersion: version, Faucet: lf.faucet, RefillEvery: lf.refillEvery,
 		NOpt: np.nOpt, GovLifetime: np.govLifetime, GenesisPoolStake: lf.poolStake, GenesisPools: gpools,
 		Floor: policy.Config{Floor: sf.floor, Margin: 1}, Committee: genesis.Default().Committee,
 		Mistakes: mistakes, Horizon: g.StabilityWindow(), Run: sf.run(mistakes),
-	}, nil
+	}
+	// A live devnet's genesis pools are its own; a fitted file's pools
+	// register themselves.
+	if err := engine.Populate(&cfg, file); err != nil {
+		return engine.Config{}, err
+	}
+	return cfg, nil
 }
 
 func runLive(ctx context.Context, sf simFlags, lf liveFlags, epochs uint64) error {

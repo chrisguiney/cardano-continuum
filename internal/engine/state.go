@@ -27,13 +27,14 @@ func blake2b256(b []byte) common.Blake2b256 { return common.Blake2b256Hash(b) }
 // Snapshot implements eventlog.Engine: the whole state in canonical CBOR,
 // the ledger's blob included.
 func (e *Engine) Snapshot() ([]byte, error) {
-	s := snapshot{Version: snapshotVersion, Now: e.now, NextIntent: e.nextID, Conf: e.conf, Fees: e.fees, Foreign: e.foreign, RefillAt: e.refillAt, Deposits: e.deposits, Market: e.market, Lost: e.lost}
+	s := snapshot{Version: snapshotVersion, Now: e.now, NextIntent: e.nextID, Conf: e.conf, Fees: e.fees, Foreign: e.foreign, RefillAt: e.refillAt, Deposits: e.deposits, Market: e.market, Lost: e.lost,
+		Contracts: e.contracts, DeployAt: e.deployAt, DeployN: e.deployN}
 	for _, id := range e.order {
 		a, _ := e.census.Get(id)
 		st := e.actors[id]
 		s.Actors = append(s.Actors, actorRec{
 			ID: uint64(id), Profile: a.Profile, State: string(a.State), Born: a.Born, Changed: a.Changed,
-			Frustration: a.Frustration, Competence: a.Competence, HazardAt: st.hazardAt, HazardTo: string(st.hazardTo), ActAt: st.actAt, Draws: st.draws,
+			Frustration: a.Frustration, Competence: a.Competence, HazardAt: st.hazardAt, HazardTo: string(st.hazardTo), ActAt: st.actAt, Draws: st.draws, Booting: st.booting,
 		})
 	}
 	for _, b := range e.births {
@@ -92,6 +93,13 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 	e.now, e.nextID, e.conf, e.fees, e.foreign, e.deposits = s.Now, s.NextIntent, s.Conf, s.Fees, s.Foreign, s.Deposits
 	e.market, e.stalled, e.lost = s.Market, s.Stalled, s.Lost
 	e.paused, e.rateK, e.waves, e.adoptions = s.Paused, s.RateK, s.Waves, s.Adoptions
+	e.contracts, e.deployAt, e.deployN = max(s.Contracts, 1), s.DeployAt, s.DeployN
+	for i := uint64(1); i < e.contracts; i++ {
+		if err := e.bookContract(i); err != nil {
+			return nil, err
+		}
+	}
+	e.pushDeploy()
 	if len(s.Weights) > 0 {
 		e.weights = map[profile.IntentKind]float64{}
 		for _, w := range s.Weights {
@@ -223,6 +231,7 @@ func (e *Engine) restoreActor(r actorRec) error {
 	}
 	st := e.register(a, p)
 	st.hazardAt, st.hazardTo, st.actAt, st.draws = r.HazardAt, population.State(r.HazardTo), r.ActAt, r.Draws
+	st.booting = r.Booting
 	if st.hazardAt != population.Never {
 		st.hazardH = e.queue.Push(st.hazardAt, qev{kind: evHazard, actor: a.ID})
 	}
