@@ -102,6 +102,9 @@ type actor struct {
 	// it registers, and must not fire a fitted clock (a clock's first
 	// event would come at the boot rate, far too soon).
 	booting bool
+	// excite is the self-excitation of the actor's wake-ups when its
+	// profile has Hawkes parameters.
+	excite sched.Excitation
 }
 
 type birth struct {
@@ -589,6 +592,14 @@ func (e *Engine) nextAct(a population.Actor, st *actor, now sched.Time) {
 	if d := st.prof.Rates.Diurnal; d > 0 {
 		mod = sched.Daily{Amplitude: d}
 	}
+	if h := st.prof.Rates.Hawkes; h.Alpha > 0 {
+		// The base rate is cut so the excited process averages rate:
+		// mean = mu / (1 - alpha/beta).
+		mu := rate * (1 - h.Alpha/h.Beta)
+		st.actAt = sched.NextExcited(e.draw(a, st, "arrival"), mu, h.Beta, st.excite, mod, now)
+		st.actH = e.queue.Push(st.actAt, qev{kind: evAct, actor: a.ID})
+		return
+	}
 	st.actAt = sched.NextArrival(e.draw(a, st, "arrival"), rate, mod, now)
 	st.actH = e.queue.Push(st.actAt, qev{kind: evAct, actor: a.ID})
 }
@@ -599,6 +610,9 @@ func (e *Engine) act(ctx context.Context, at sched.Time, id population.ActorID) 
 	if e.paused {
 		e.nextAct(a, st, at)
 		return nil
+	}
+	if h := st.prof.Rates.Hawkes; h.Alpha > 0 {
+		st.excite = st.excite.Excite(at, h.Alpha, h.Beta)
 	}
 	r := e.draw(a, st, "act")
 	var d agenda.Decision

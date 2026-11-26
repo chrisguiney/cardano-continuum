@@ -368,6 +368,9 @@ type actorRec struct {
 	Competence  float64    `cbor:"11,keyasint"`
 	// Booting marks a population actor's wake drawn at the boot rate.
 	Booting bool `cbor:"12,keyasint,omitempty"`
+	// Excess and Since are the actor's Hawkes excitation.
+	Excess float64    `cbor:"13,keyasint,omitempty"`
+	Since  sched.Time `cbor:"14,keyasint,omitempty"`
 }
 
 type birthRec struct {

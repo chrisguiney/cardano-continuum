@@ -194,3 +194,59 @@ func (h *Hawkes) Next(r *rand.Rand, now Time) Time {
 	h.Excite(t)
 	return t
 }
+
+// Excitation is the self-excited part of a Hawkes intensity as a value:
+// Excess events per second above the base rate, as of time Since. It
+// decays at the process's beta and gains alpha per event. Two numbers are
+// the whole state of an exponential kernel, so it fits in a snapshot.
+type Excitation struct {
+	Excess float64
+	Since  Time
+}
+
+// At is the excess at t, decayed at beta per second; times before Since
+// read as Since.
+func (x Excitation) At(t Time, beta float64) float64 {
+	if x.Excess == 0 {
+		return 0
+	}
+	dt := max(0, float64(t-x.Since)/1000)
+	return x.Excess * math.Exp(-beta*dt)
+}
+
+// Excite records an event at t.
+func (x Excitation) Excite(t Time, alpha, beta float64) Excitation {
+	return Excitation{Excess: x.At(t, beta) + alpha, Since: max(t, x.Since)}
+}
+
+// NextExcited samples the next arrival strictly after now of a modulated
+// Hawkes process: intensity mod(t) * (mu + x.At(t)), mod nil meaning 1.
+// It thins against mod.Max() times the intensity at the candidate's
+// origin, which bounds what follows because the excess only decays
+// between events (Ogata). The caller records the arrival with Excite. The
+// long-run rate is mu / (1 - alpha/beta) times the modulation's mean.
+func NextExcited(r *rand.Rand, mu, beta float64, x Excitation, mod Modulation, now Time) Time {
+	peak := 1.0
+	if mod != nil {
+		peak = mod.Max()
+	}
+	t := float64(now)
+	for {
+		bound := peak * (mu + x.At(Time(t), beta))
+		if !(bound > 0) {
+			return never
+		}
+		t += r.ExpFloat64() / bound * 1000
+		if t >= float64(never) {
+			return never
+		}
+		f := 1.0
+		if mod != nil {
+			f = mod.Factor(Time(t))
+		}
+		if r.Float64()*bound < f*(mu+x.At(Time(t), beta)) {
+			break
+		}
+	}
+	return max(now+1, Time(math.Ceil(t)))
+}
