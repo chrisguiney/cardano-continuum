@@ -44,7 +44,7 @@ type api struct {
 //	GET  /api/actors?limit&offset&sort&dir&profile&state&role
 //	GET  /api/actors/{id}/timeline
 //	GET  /api/pools
-//	GET  /api/findings?limit&offset
+//	GET  /api/findings?limit&offset&known=true|false
 //	GET  /api/findings/{id}
 //	GET  /api/decisions?actor&profile&kind&last_event_id   (SSE)
 //	POST /api/control
@@ -181,7 +181,12 @@ func (a *api) findings(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, err)
 		return
 	}
-	f, err := a.Source.Findings(r.Context(), Page{Limit: q.Limit, Offset: q.Offset})
+	known, err := parseKnown(r)
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	f, err := a.Source.Findings(r.Context(), Page{Limit: q.Limit, Offset: q.Offset, Known: known})
 	if err != nil {
 		a.fail(w, err)
 		return
@@ -209,4 +214,19 @@ func (a *api) control(w http.ResponseWriter, r *http.Request) {
 		code = http.StatusOK
 	}
 	a.json(w, code, rc)
+}
+
+// parseKnown reads the known filter: known=false hides findings that match
+// a known issue, known=true lists only those, and absent lists all.
+func parseKnown(r *http.Request) (KnownFilter, error) {
+	switch v := r.URL.Query().Get("known"); v {
+	case "":
+		return KnownAll, nil
+	case "false":
+		return KnownHide, nil
+	case "true":
+		return KnownOnly, nil
+	default:
+		return KnownAll, fmt.Errorf("%w: known must be true or false, not %q", ErrBadRequest, v)
+	}
 }

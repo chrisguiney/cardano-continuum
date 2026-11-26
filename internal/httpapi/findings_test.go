@@ -73,3 +73,43 @@ func TestFindingsPageGolden(t *testing.T) {
 		t.Fatalf("offset past the end: %+v", past)
 	}
 }
+
+type sliceFindings []oracle.Finding
+
+func (s sliceFindings) Page(offset, limit int) ([]oracle.Finding, int) {
+	if offset >= len(s) {
+		return nil, len(s)
+	}
+	return s[offset:min(offset+limit, len(s))], len(s)
+}
+
+func unclassifiedFinding(id, expected string) oracle.Finding {
+	return oracle.Finding{ID: id, Kind: oracle.Unclassified, Facts: []oracle.Fact{
+		{Name: "verdict", Value: "rejected Unknown", Key: true}, {Name: "expected", Value: expected}}}
+}
+
+func TestFindingsKnownTagAndFilter(t *testing.T) {
+	known := "reject naming only MissingVKeyWitnessesUTXOW"
+	fs := sliceFindings{
+		unclassifiedFinding("k1", known),
+		unclassifiedFinding("new", "reject naming only BadInputsUTxO"),
+		unclassifiedFinding("k2", known),
+	}
+	all := FindingsPage(fs, Page{Limit: 10})
+	if all.Total != 3 || all.KnownTotal != 2 || all.KnownCounts["gouroboros#3347"] != 2 {
+		t.Fatalf("all %+v", all)
+	}
+	for _, r := range all.Rows {
+		if (r.ID == "new") != (r.Known == "") {
+			t.Fatalf("row %s known %q", r.ID, r.Known)
+		}
+	}
+	hide := FindingsPage(fs, Page{Limit: 10, Known: KnownHide})
+	if hide.Total != 1 || len(hide.Rows) != 1 || hide.Rows[0].ID != "new" || hide.KnownTotal != 2 {
+		t.Fatalf("hide %+v", hide)
+	}
+	only := FindingsPage(fs, Page{Limit: 1, Offset: 1, Known: KnownOnly})
+	if only.Total != 2 || len(only.Rows) != 1 || only.Rows[0].ID != "k2" {
+		t.Fatalf("only %+v", only)
+	}
+}

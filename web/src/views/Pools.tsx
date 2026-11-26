@@ -1,6 +1,6 @@
 import { useMemo } from "preact/hooks";
 import { implColors } from "../lib/colors";
-import { forkedImpls, forkedPools } from "../lib/forks";
+import { forkLine, forkedImpls, forkedPools } from "../lib/forks";
 import { count, short } from "../lib/format";
 import { usePoll } from "../lib/hooks";
 import { layout } from "../lib/layout";
@@ -71,15 +71,17 @@ export function Pools() {
       {v && (
         <>
           {(impls.length > 0 || v.forks.length > 0) && (
-            <p class="banner bad" role="status">
-              Fork: {impls.length > 0 ? `${impls.join(", ")} disagree on the tip` : "pools disagree on a block hash"}.
-            </p>
+            <div class="banner bad" role="status">
+              {v.forks.length > 0
+                ? v.forks.map((f) => <p key={`${f.reason}-${f.height ?? f.slot}`}>Fork: {forkLine(f)}.</p>)
+                : <p>Fork: {impls.join(", ")} disagree on the tip.</p>}
+            </div>
           )}
           <section class="card">
             <h2>Tip per implementation</h2>
             <ul class="tips">
               {v.tips.map((t) => (
-                <li key={t.impl}><strong>{t.impl}</strong> slot {count(t.slot)} <code>{short(t.hash, 12)}</code> ({t.pools} pools)</li>
+                <li key={t.impl}><strong>{t.impl}</strong> {t.height ? `block ${count(t.height)}, ` : ""}slot {count(t.slot)} <code>{short(t.hash, 12)}</code> ({t.pools} pools)</li>
               ))}
               {v.tips.length === 0 && <li class="muted">No tips reported yet.</li>}
             </ul>
@@ -100,11 +102,11 @@ export function Pools() {
                     <td>{p.impl}</td>
                     <td>{p.tier}</td>
                     <td>{p.phase}{p.dark ? " (dark)" : ""}</td>
-                    <td class="num">{p.stake === null ? "–" : count(p.stake)}</td>
+                    <td class="num">{p.stake === null ? <span title="the engine does not read pool stake from the chain view">–</span> : count(p.stake)}</td>
                     <td class="num">
-                      {p.blocks_made === null ? "–" : count(p.blocks_made)} / {p.blocks_expected === null ? "–" : p.blocks_expected.toFixed(1)}
+                      {p.blocks_made === null ? <span title="blocks are not attributed to pools by issuer key yet">–</span> : count(p.blocks_made)} / {p.blocks_expected === null ? "–" : p.blocks_expected.toFixed(1)}
                     </td>
-                    <td>{count(p.tip.slot)} <code>{short(p.tip.hash, 8)}</code></td>
+                    <td>{p.tip.height ? `${count(p.tip.height)} / ` : ""}{count(p.tip.slot)} <code>{short(p.tip.hash, 8)}</code></td>
                     <td>{forked.has(p.id) ? <span class="tag bad">fork</span> : ""}</td>
                   </tr>
                 ))}

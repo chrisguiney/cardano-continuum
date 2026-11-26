@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { forkedImpls, forkedPools } from "../src/lib/forks";
+import { forkLine, forkedImpls, forkedPools } from "../src/lib/forks";
 import type { PoolsView } from "../src/lib/types";
 
 const tip = (impl: string, slot: number, hash: string) => ({ impl, slot, hash, pools: 1 });
@@ -42,5 +42,18 @@ describe("fork detection from per-implementation tips", () => {
   it("keeps the server's own pool and group marks when tips agree", () => {
     const v = view({ tips: [tip("dingo", 5, "aa"), tip("haskell", 5, "aa")], forks: [{ slot: 5, groups: [{ hash: "x", pools: ["a"] }, { hash: "y", pools: ["b"] }] }] });
     expect([...forkedPools(v)].sort()).toEqual(["a", "b", "c"]);
+  });
+
+  it("marks only the lagging pools of a behind fork", () => {
+    const v = view({ forks: [{ slot: 0, reason: "behind", groups: [{ hash: "x", pools: ["b"] }, { hash: "y", pools: ["a"] }] }] });
+    expect([...forkedPools(v)].sort()).toEqual(["b", "c"]);
+  });
+
+  it("describes a diverged fork by height and depth, and a behind one", () => {
+    const f = { slot: 90, height: 9, depth: 3, reason: "diverged" as const, groups: [{ hash: "x", pools: ["p0"] }, { hash: "y", pools: ["p3"] }] };
+    expect(forkLine(f)).toBe("p0 vs p3 hold different blocks at height 9, 3 blocks deep");
+    expect(forkLine({ slot: 0, reason: "behind", groups: [{ hash: "x", pools: ["p3"] }, { hash: "y", pools: ["p0"] }] })).toBe(
+      "p3 behind the tip by more than k blocks",
+    );
   });
 });

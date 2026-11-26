@@ -270,6 +270,48 @@ func TestViewMismatchFinding(t *testing.T) {
 	}
 }
 
+// forkedTips reports two pools whose chains share a block and then differ
+// for more than K blocks each.
+type forkedTips struct{}
+
+func (forkedTips) Branches(context.Context) []oracle.Branch {
+	pt := func(slot uint64, tag byte) chain.Point {
+		p := chain.Point{Slot: slot}
+		p.Hash[0] = tag
+		return p
+	}
+	a := []chain.Point{pt(1, 0)}
+	b := []chain.Point{pt(1, 0)}
+	for i := uint64(2); i <= 8; i++ {
+		a = append(a, pt(i, 'a'))
+		b = append(b, pt(i, 'b'))
+	}
+	return []oracle.Branch{
+		{Node: oracle.Node{Impl: "cardano-node", Pool: "p0"}, Points: a},
+		{Node: oracle.Node{Impl: "dingo", Pool: "p3"}, Points: b},
+	}
+}
+
+// TestLiveTipsFileDeepFork: pools whose followed chains differ beyond K
+// are a fork_deeper_than_k finding.
+func TestLiveTipsFileDeepFork(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig(t, 23, 4)
+	w := newWorld(t, cfg)
+	w.tips = forkedTips{}
+	p, err := w.start(nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.r.Run(context.Background(), 60_000); err != nil {
+		t.Fatal(err)
+	}
+	fs := findings(t, w.log)
+	if !slices.ContainsFunc(fs, func(f oracle.Finding) bool { return f.Kind == oracle.DeepFork }) {
+		t.Fatalf("findings %+v, want fork_deeper_than_k", fs)
+	}
+}
+
 // TestResendMatchesRestart pins why the engine does not call submit.Restart:
 // a payment that was waiting for an answer when the process died is resent
 // as the same bytes and its answer is read with Sent set (SubmitResult's

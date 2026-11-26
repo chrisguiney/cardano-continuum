@@ -119,6 +119,9 @@ type Deps struct {
 	// simulated time (zero: at every new settled point).
 	Viewer    Viewer
 	ViewEvery sched.Time
+	// Tips is optional: it supplies the pools' followed chains to the fork
+	// monitor, asked every ViewEvery of simulated time.
+	Tips TipSource
 	// Findings, when set, is the set the engine logs its findings into,
 	// so an API can serve it while the loop runs. It must be empty: the
 	// runner loads what the log holds.
@@ -161,6 +164,8 @@ type Runner struct {
 	viewed  eventlog.ChainPoint
 	viewAt  sched.Time
 	queried bool
+	tipAt   sched.Time
+	tipped  bool
 	log     *slog.Logger
 }
 
@@ -631,6 +636,9 @@ func (r *Runner) Run(ctx context.Context, until sched.Time) error {
 			return err
 		}
 		if err := r.view(ctx); err != nil {
+			return err
+		}
+		if err := r.tips(ctx); err != nil {
 			return err
 		}
 		if err := r.pods(ctx); err != nil {

@@ -30,12 +30,27 @@ const (
 type Page struct {
 	Limit  int
 	Offset int
+	// Known filters findings by whether they match a known issue: KnownAll
+	// (the zero value), KnownHide or KnownOnly.
+	Known KnownFilter
 }
+
+// KnownFilter selects findings by their known-issue tag.
+type KnownFilter string
+
+// Known-issue filters.
+const (
+	KnownAll  KnownFilter = ""
+	KnownHide KnownFilter = "hide"
+	KnownOnly KnownFilter = "only"
+)
 
 // Point is a chain point: a slot and a hex block hash.
 type Point struct {
 	Slot uint64 `json:"slot"`
 	Hash string `json:"hash"`
+	// Height is the block number; zero when the source does not know it.
+	Height uint64 `json:"height,omitempty"`
 }
 
 // Snapshot is the Overview view.
@@ -173,10 +188,11 @@ type PoolRow struct {
 
 // ImplTip is the furthest tip among one implementation's pools.
 type ImplTip struct {
-	Impl  string `json:"impl"`
-	Slot  uint64 `json:"slot"`
-	Hash  string `json:"hash"`
-	Pools int    `json:"pools"`
+	Impl   string `json:"impl"`
+	Slot   uint64 `json:"slot"`
+	Hash   string `json:"hash"`
+	Height uint64 `json:"height,omitempty"`
+	Pools  int    `json:"pools"`
 }
 
 // ForkGroup is the pools that agree on one block hash.
@@ -185,9 +201,23 @@ type ForkGroup struct {
 	Pools []string `json:"pools"`
 }
 
-// Fork marks pools at one slot that disagree on the block hash.
+// Fork reasons.
+const (
+	// ReasonDiverged: pools hold different blocks at the same height.
+	ReasonDiverged = "diverged"
+	// ReasonBehind: a pool's tip is more than k blocks below the furthest.
+	ReasonBehind = "behind"
+)
+
+// Fork marks pools whose chains disagree. For ReasonDiverged, Height is
+// the common height compared and Depth the number of blocks, counting
+// down from it, on which the pools differ. Height and Depth are zero when
+// the source knows only slots, and the pools are compared at Slot.
 type Fork struct {
 	Slot   uint64      `json:"slot"`
+	Height uint64      `json:"height,omitempty"`
+	Depth  uint64      `json:"depth,omitempty"`
+	Reason string      `json:"reason"`
 	Groups []ForkGroup `json:"groups"`
 }
 
@@ -240,6 +270,9 @@ type Finding struct {
 	Reproducible  bool          `json:"reproducible"`
 	Provenance    string        `json:"provenance,omitempty"`
 	ReplayCommand string        `json:"replay_command,omitempty"`
+	// Known is the upstream issue (repo#number) whose defect explains the
+	// finding; empty for a finding nothing explains.
+	Known string `json:"known,omitempty"`
 }
 
 // FindingPage is one page of findings.
@@ -248,6 +281,9 @@ type FindingPage struct {
 	Offset int       `json:"offset"`
 	Limit  int       `json:"limit"`
 	Rows   []Finding `json:"rows"`
+	// KnownTotal and KnownCounts cover every finding, whatever the filter.
+	KnownTotal  int            `json:"known_total,omitempty"`
+	KnownCounts map[string]int `json:"known_counts,omitempty"`
 }
 
 // Decision is one engine decision on the live feed. ID is the log seq, so

@@ -183,7 +183,7 @@ func answerOutcome(a Answer) submit.Outcome {
 // value, the settled point's move since before it (from), the intents that
 // ended in it, the reservations and the stake floor, plus whatever the
 // nodes answered (views).
-func (e *Engine) watch(at sched.Time, from eventlog.ChainPoint, views []oracle.ViewCheck) error {
+func (e *Engine) watch(at sched.Time, from eventlog.ChainPoint, views []oracle.ViewCheck, tips []oracle.Branch) error {
 	before, _ := chain.PointFromLog(from)
 	conf, _ := chain.PointFromLog(e.conf)
 	res := oracle.ReservationsOf(e.led)
@@ -194,6 +194,7 @@ func (e *Engine) watch(at sched.Time, from eventlog.ChainPoint, views []oracle.V
 		Reservations: &res,
 		Settled:      &oracle.SettledMove{From: before, To: conf},
 		Views:        views,
+		Tips:         tips,
 	}
 	// Without pools there is no forging stake to hold a floor: the fake
 	// chain forges anyway, so the floor and liveness are not evaluable.
@@ -214,7 +215,7 @@ func (e *Engine) monitorSnapshot(at sched.Time, from eventlog.ChainPoint, m Moni
 	for i := range m.Views {
 		m.Views[i].At, m.Views[i].Engine = conf, bal
 	}
-	return e.watch(at, from, m.Views)
+	return e.watch(at, from, m.Views, m.Tips)
 }
 
 // report logs each finding the set has not seen.

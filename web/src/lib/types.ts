@@ -3,6 +3,7 @@
 export interface Point {
   slot: number;
   hash: string;
+  height?: number;
 }
 export interface Invariant {
   name: string;
@@ -75,10 +76,14 @@ export interface ImplTip {
   impl: string;
   slot: number;
   hash: string;
+  height?: number;
   pools: number;
 }
 export interface Fork {
   slot: number;
+  height?: number;
+  depth?: number;
+  reason?: "diverged" | "behind";
   groups: { hash: string; pools: string[] }[];
 }
 export interface TopoNode {
@@ -113,12 +118,16 @@ export interface Finding {
   reproducible: boolean;
   provenance?: string;
   replay_command?: string;
+  // known is the upstream issue (repo#number) that explains the finding.
+  known?: string;
 }
 export interface FindingPage {
   total: number;
   offset: number;
   limit: number;
   rows: Finding[];
+  known_total?: number;
+  known_counts?: Record<string, number>;
 }
 export interface Score {
   kind: string;

@@ -2,14 +2,21 @@ package httpapi
 
 import (
 	"context"
+	"encoding/hex"
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
+	"github.com/chrisguiney/cardano-continuum/internal/chain"
 )
 
 func pool(name, poolID string, impl v1alpha1.Implementation, tier v1alpha1.Tier, slot int64, hash string) v1alpha1.ContinuumPool {
+	if hash != "" {
+		var h chain.Mark
+		copy(h.Hash[:], hash)
+		hash = hex.EncodeToString(h.Hash[:])
+	}
 	return v1alpha1.ContinuumPool{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
 		Spec:       v1alpha1.ContinuumPoolSpec{PoolID: poolID, Implementation: impl, Tier: tier},
@@ -35,7 +42,7 @@ func TestBuildPoolsMeshForksAndTips(t *testing.T) {
 		pool("c", "p3", v1alpha1.Dingo, v1alpha1.TierValidating, 90, "cc"),
 		pool("d", "p4", v1alpha1.Dingo, v1alpha1.TierLogical, 0, ""),
 	}
-	v := buildPools(ps, v1alpha1.TopologyMesh)
+	v := buildPools(ps, v1alpha1.TopologyMesh, nil, 5, 2)
 	if len(v.Pools) != 4 || v.Pools[0].ID != "a" || v.Pools[1].ID != "b" {
 		t.Fatalf("rows %+v", v.Pools)
 	}
@@ -69,7 +76,7 @@ func TestBuildPoolsRelayed(t *testing.T) {
 		pool("bp2", "p2", v1alpha1.Dingo, v1alpha1.TierForging, 1, "x"),
 		pool("r2", "p2", v1alpha1.Dingo, v1alpha1.TierValidating, 1, "x"),
 	}
-	e := edgeSet(buildPools(ps, v1alpha1.TopologyRelayed))
+	e := edgeSet(buildPools(ps, v1alpha1.TopologyRelayed, nil, 5, 2))
 	// A keyed node dials only its own relays; relays dial each other.
 	if len(e) != 3 || !e["bp1~r1"] || !e["bp2~r2"] || !e["r1~r2"] {
 		t.Fatalf("edges %v", e)

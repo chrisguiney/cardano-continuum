@@ -98,14 +98,15 @@ type liveServer struct {
 // The findings page is the engine's own set, which the loop fills as it
 // logs each finding; findings may be nil, and the page then folds them
 // from the log.
-func newLiveServer(ctx context.Context, l engine.Log, db *store.DB, slots sched.Slots, findings *oracle.Set) (*liveServer, error) {
+func newLiveServer(ctx context.Context, l engine.Log, db *store.DB, slots sched.Slots, findings *oracle.Set, pv poolView) (*liveServer, error) {
 	proj, hub := httpapi.NewProjection(), httpapi.NewHub(4096, 64, 256)
 	feed := httpapi.NewFeed(proj, hub)
 	if err := l.Scan(ctx, 1, func(r eventlog.Record) error { feed.Apply(r); return nil }); err != nil {
 		hub.Close()
 		return nil, fmt.Errorf("read event log: %w", err)
 	}
-	cfg := httpapi.LogSourceConfig{Projection: proj, Hub: hub, Slots: &slots}
+	cfg := httpapi.LogSourceConfig{Projection: proj, Hub: hub, Slots: &slots,
+		Kube: pv.Kube, Tips: pv.Tips, K: pv.K, ForkDepth: pv.Depth}
 	if findings != nil {
 		cfg.Findings = findings
 	}
@@ -114,6 +115,14 @@ func newLiveServer(ctx context.Context, l engine.Log, db *store.DB, slots sched.
 	}
 	src := httpapi.NewLogSource(cfg)
 	return &liveServer{log: feedLog{Log: l, feed: feed}, controls: newControlQueue(), src: src, hub: hub}, nil
+}
+
+// poolView is what the Pools API reads: the cluster's pool objects, the
+// followed chains, and the fork thresholds. Any part may be nil.
+type poolView struct {
+	Kube     httpapi.Kube
+	Tips     httpapi.Tips
+	K, Depth uint64
 }
 
 // serve runs the API on addr until ctx ends.

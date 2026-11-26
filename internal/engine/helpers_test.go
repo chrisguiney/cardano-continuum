@@ -100,6 +100,7 @@ type world struct {
 	// monitor answers the view monitor's queries.
 	wrap    func(*FakeNode) Node
 	monitor Viewer
+	tips    TipSource
 	// mem, when set, replaces the SQLite store: the crash sweep starts
 	// hundreds of worlds and SQLite's fsyncs would dominate it.
 	mem *memStore
@@ -145,7 +146,7 @@ func (w *world) start(crash func(string) error, every int) (*proc, error) {
 		node = w.wrap(w.node)
 	}
 	p.r, err = Start(ctx, w.cfg, Deps{Clock: w.clock, Log: l, Store: cp, Node: node, Pacer: w.node,
-		CheckpointEvery: every, Crash: crash, Pods: w.pods, Controls: w.controls, Viewer: w.monitor})
+		CheckpointEvery: every, Crash: crash, Pods: w.pods, Controls: w.controls, Viewer: w.monitor, Tips: w.tips})
 	if err != nil {
 		p.kill(w.t)
 		return nil, err

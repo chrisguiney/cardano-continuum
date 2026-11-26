@@ -18,18 +18,36 @@ type Findings interface {
 	Page(offset, limit int) ([]oracle.Finding, int)
 }
 
-// FindingsPage is one page of fs in the API's shape. A page past the end is
-// empty, not an error.
+// FindingsPage is one page of fs in the API's shape, after p.Known filters
+// it. A page past the end is empty, not an error. Known findings are
+// counted, never dropped from the set.
 func FindingsPage(fs Findings, p Page) FindingPage {
 	if p.Limit <= 0 {
 		p.Limit = DefaultLimit
 	}
-	page, total := fs.Page(p.Offset, p.Limit)
-	rows := make([]Finding, 0, len(page))
-	for _, f := range page {
-		rows = append(rows, FindingOf(f))
+	_, n := fs.Page(0, 0)
+	all, _ := fs.Page(0, n)
+	out := FindingPage{Offset: p.Offset, Limit: p.Limit, Rows: []Finding{}}
+	var rows []Finding
+	for _, f := range all {
+		row := FindingOf(f)
+		if row.Known != "" {
+			out.KnownTotal++
+			if out.KnownCounts == nil {
+				out.KnownCounts = map[string]int{}
+			}
+			out.KnownCounts[row.Known]++
+		}
+		if p.Known == KnownHide && row.Known != "" || p.Known == KnownOnly && row.Known == "" {
+			continue
+		}
+		rows = append(rows, row)
 	}
-	return FindingPage{Total: total, Offset: p.Offset, Limit: p.Limit, Rows: rows}
+	out.Total = len(rows)
+	if p.Offset < len(rows) {
+		out.Rows = rows[p.Offset:min(p.Offset+p.Limit, len(rows))]
+	}
+	return out
 }
 
 // FindingOf converts a finding to the API's shape. The expected verdict set
@@ -45,6 +63,9 @@ func FindingOf(f oracle.Finding) Finding {
 	}
 	if f.Expected != nil {
 		out.Verdicts = append(out.Verdicts, ImplVerdict{Impl: "expected", Verdict: f.Expected.String()})
+	}
+	if k, ok := oracle.KnownIssueOf(f); ok {
+		out.Known = k.Ref
 	}
 	for _, v := range f.Verdicts {
 		text := v.Verdict

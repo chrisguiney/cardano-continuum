@@ -183,10 +183,14 @@ func runLive(ctx context.Context, sf simFlags, lf liveFlags, epochs uint64) erro
 	deps := engine.Deps{Clock: clock, Log: fl, Store: db, Node: live, CheckpointEvery: 200, Logger: log,
 		Viewer: liveViewer{q: q, node: oracle.Node{Impl: "node", Pool: lf.node}}, ViewEvery: viewEvery,
 		Findings: oracle.NewSet()}
-	if err := livePlan(&deps, cfg, lf, log); err != nil {
+	lt, err := livePlan(&deps, cfg, lf, want.Magic, log)
+	if err != nil {
 		return err
 	}
-	stop, err := liveServe(ctx, &deps, db, cfg, lf, log)
+	if lt != nil {
+		defer lt.start(ctx, log)()
+	}
+	stop, err := liveServe(ctx, &deps, db, cfg, lf, lt, log)
 	if err != nil {
 		return err
 	}
@@ -352,37 +356,43 @@ func readSeed(h string) (rng.Seed, error) {
 
 // livePlan connects the engine's pool plan and pod health to --network's
 // ContinuumPools.
-func livePlan(d *engine.Deps, cfg engine.Config, lf liveFlags, log *slog.Logger) error {
+//
+// It returns the pool tracker the run's API and fork monitor read, or nil
+// without --network. The caller starts it.
+func livePlan(d *engine.Deps, cfg engine.Config, lf liveFlags, magic uint32, log *slog.Logger) (*liveTips, error) {
 	if lf.kubeNetwork == "" {
-		return nil
+		return nil, nil
 	}
 	cl, err := openKube(lf.kubeconfig, lf.namespace)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	pc, ok := cl.(poolCluster)
 	if !ok {
-		return errors.New("run: the cluster client cannot patch pools")
+		return nil, errors.New("run: the cluster client cannot patch pools")
 	}
 	actors, err := cfg.GenesisPoolActors()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	lp := newLivePools(pc, lf.kubeNetwork, lf.poolFormat, actors, log)
 	d.Pools, d.Pods = lp, lp
-	return nil
+	lt := newLiveTips(pc, lf.kubeNetwork, magic, cfg.K, log)
+	lt.kube = kubeView{cl: cl, network: lf.kubeNetwork}
+	d.Tips, d.ViewEvery = lt, viewEvery
+	return lt, nil
 }
 
 // liveServe starts the live API when --serve is set, wrapping the engine's
 // log so the API follows it. The returned stop ends the server and waits.
-func liveServe(ctx context.Context, d *engine.Deps, db *store.DB, cfg engine.Config, lf liveFlags, log *slog.Logger) (func(), error) {
+func liveServe(ctx context.Context, d *engine.Deps, db *store.DB, cfg engine.Config, lf liveFlags, lt *liveTips, log *slog.Logger) (func(), error) {
 	if lf.serve == "" {
 		return func() {}, nil
 	}
 	if err := checkAddr(lf.serve, false); err != nil {
 		return nil, err
 	}
-	s, err := newLiveServer(ctx, d.Log, db, cfg.Slots, d.Findings)
+	s, err := newLiveServer(ctx, d.Log, db, cfg.Slots, d.Findings, lt.poolView(cfg.K))
 	if err != nil {
 		return nil, err
 	}

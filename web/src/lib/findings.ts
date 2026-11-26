@@ -16,3 +16,24 @@ export function reproBadge(f: Pick<Finding, "reproducible">): Badge | null {
     tone: "warn",
   };
 }
+
+export interface KnownGroup {
+  ref: string;
+  rows: Finding[];
+}
+
+// groupKnown collects the findings an upstream issue explains by issue,
+// largest group first, so they can sit collapsed beside what is new.
+export function groupKnown(rows: Finding[]): KnownGroup[] {
+  const by = new Map<string, Finding[]>();
+  for (const f of rows) if (f.known) by.set(f.known, [...(by.get(f.known) ?? []), f]);
+  return [...by].map(([ref, rs]) => ({ ref, rows: rs })).sort((a, b) => b.rows.length - a.rows.length || a.ref.localeCompare(b.ref));
+}
+
+// knownSummary is the one-line count of known findings by issue.
+export function knownSummary(counts: Record<string, number> | undefined): string {
+  return Object.entries(counts ?? {})
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([ref, n]) => `${ref}: ${n}`)
+    .join(", ");
+}

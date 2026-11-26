@@ -75,3 +75,33 @@ func (e *Engine) addresses() []common.Address {
 	}
 	return out
 }
+
+// TipSource reports each followed pool's newest blocks. A live run's is the
+// pool tracker; tests script one.
+type TipSource interface {
+	Branches(ctx context.Context) []oracle.Branch
+}
+
+// tips logs the pools' followed chains as a MonitorSnapshot input every
+// ViewEvery, for the fork monitor. Nothing is logged while no pool is
+// followed.
+func (r *Runner) tips(ctx context.Context) error {
+	if r.d.Tips == nil {
+		return nil
+	}
+	now := r.d.Clock.Now()
+	if r.tipped && now < r.tipAt+r.d.ViewEvery {
+		return nil
+	}
+	r.tipAt, r.tipped = now, true
+	bs := r.d.Tips.Branches(ctx)
+	if len(bs) == 0 {
+		return nil
+	}
+	body, err := eventlog.Encode(MonitorSnapshot{Tips: bs})
+	if err != nil {
+		return err
+	}
+	rec := eventlog.Record{At: r.eng.Now(), Kind: eventlog.KindMonitorSnapshot, Body: body}
+	return r.step(ctx, func() error { return r.sess.Feed(ctx, rec) })
+}

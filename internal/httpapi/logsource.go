@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
+	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/store"
 )
@@ -42,6 +43,18 @@ type LogSourceConfig struct {
 	// Findings, when set, serves the findings page (a live engine's
 	// oracle.Set); without it the page is the findings the log holds.
 	Findings Findings
+	// Tips, when set, gives each pool's followed chain; a pool it does not
+	// name falls back to the tip its ContinuumPool status records.
+	Tips Tips
+	// K is the network's security parameter and ForkDepth the number of
+	// blocks two pools must differ on to be reported as forked.
+	K, ForkDepth uint64
+}
+
+// Tips is what follows the pools' chains: each pool's newest blocks by
+// pool name, oldest first.
+type Tips interface {
+	Tips() map[string][]chain.Mark
 }
 
 // LogSource is the read-only Source over an event log's projection, the
@@ -104,7 +117,7 @@ func (s *LogSource) Subscribe(f Filter, after *uint64) (*Subscription, error) {
 // Pools implements Source.
 func (s *LogSource) Pools(ctx context.Context) (PoolsView, error) {
 	if s.cfg.Kube == nil {
-		return buildPools(nil, ""), nil
+		return buildPools(nil, "", nil, 0, 0), nil
 	}
 	mode, err := s.cfg.Kube.Topology(ctx)
 	if err != nil {
@@ -114,7 +127,11 @@ func (s *LogSource) Pools(ctx context.Context) (PoolsView, error) {
 	if err != nil {
 		return PoolsView{}, fmt.Errorf("list pools: %w", err)
 	}
-	return buildPools(ps, mode), nil
+	var tips map[string][]chain.Mark
+	if s.cfg.Tips != nil {
+		tips = s.cfg.Tips.Tips()
+	}
+	return buildPools(ps, mode, tips, s.cfg.K, s.cfg.ForkDepth), nil
 }
 
 // Actors implements Source. The log decides which actors exist; the store

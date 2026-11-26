@@ -378,7 +378,7 @@ func (e *Engine) Handle(ctx context.Context, in eventlog.Record) ([]eventlog.Rec
 			}
 		}
 		if err = e.applyBlock(ctx, in.At, blockRec{Point: b.Point, Txs: c.Txs, Number: c.Number}); err == nil {
-			err = e.watch(in.At, from, nil)
+			err = e.watch(in.At, from, nil, nil)
 		}
 	case eventlog.KindRolledBack:
 		var b eventlog.RolledBack
@@ -386,7 +386,7 @@ func (e *Engine) Handle(ctx context.Context, in eventlog.Record) ([]eventlog.Rec
 			return nil, fmt.Errorf("engine: decode rollback: %w", err)
 		}
 		if err = e.rollback(ctx, b.To); err == nil {
-			err = e.watch(in.At, from, nil)
+			err = e.watch(in.At, from, nil, nil)
 		}
 	case eventlog.KindControl:
 		var c control

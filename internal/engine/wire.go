@@ -199,6 +199,8 @@ type Answer struct {
 // (each view's At and Engine balances) when it handles the input.
 type MonitorSnapshot struct {
 	Views []oracle.ViewCheck `cbor:"1,keyasint,omitempty"`
+	// Tips are the pools' chains as followed, for the fork monitor.
+	Tips []oracle.Branch `cbor:"2,keyasint,omitempty"`
 }
 
 // Spawned is the body of a Spawned decision.
