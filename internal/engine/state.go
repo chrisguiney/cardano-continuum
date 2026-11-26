@@ -27,7 +27,7 @@ func blake2b256(b []byte) common.Blake2b256 { return common.Blake2b256Hash(b) }
 // Snapshot implements eventlog.Engine: the whole state in canonical CBOR,
 // the ledger's blob included.
 func (e *Engine) Snapshot() ([]byte, error) {
-	s := snapshot{Version: snapshotVersion, Now: e.now, NextIntent: e.nextID, Conf: e.conf, Fees: e.fees, Foreign: e.foreign, RefillAt: e.refillAt, Deposits: e.deposits, Market: e.market, Lost: e.lost,
+	s := snapshot{Version: snapshotVersion, Now: e.clk.Now(), NextIntent: e.nextID, Conf: e.conf, Fees: e.fees, Foreign: e.foreign, RefillAt: e.refillAt, Deposits: e.deposits, Market: e.market, Lost: e.lost,
 		Contracts: e.contracts, DeployAt: e.deployAt, DeployN: e.deployN}
 	for _, id := range e.order {
 		a, _ := e.census.Get(id)
@@ -91,9 +91,9 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
-	e.now, e.nextID, e.conf, e.fees, e.foreign, e.deposits = s.Now, s.NextIntent, s.Conf, s.Fees, s.Foreign, s.Deposits
+	e.nextID, e.conf, e.fees, e.foreign, e.deposits = s.NextIntent, s.Conf, s.Fees, s.Foreign, s.Deposits
 	// Between inputs the last Tick's time is the clock.
-	e.tickTo = s.Now
+	e.clk.Restore(s.Now)
 	e.market, e.stalled, e.lost = s.Market, s.Stalled, s.Lost
 	e.paused, e.rateK, e.waves, e.adoptions = s.Paused, s.RateK, s.Waves, s.Adoptions
 	e.contracts, e.deployAt, e.deployN = max(s.Contracts, 1), s.DeployAt, s.DeployN
@@ -117,7 +117,7 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 	}
 	for i, a := range e.adoptions {
 		if !a.Done {
-			e.queue.Push(a.At, qev{kind: evAdopt, intent: uint64(i)})
+			e.clk.Push(a.At, qev{kind: evAdopt, intent: uint64(i)})
 		}
 	}
 	for _, set := range []struct {
@@ -146,7 +146,7 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 	}
 	if cfg.Faucet > 0 {
 		e.refillAt = s.RefillAt
-		e.queue.Push(e.refillAt, qev{kind: evRefill})
+		e.clk.Push(e.refillAt, qev{kind: evRefill})
 	}
 	// After restoreActor: the actors' ceilings are set, the spends restored.
 	e.costs.Restore(s.Charges)
@@ -156,7 +156,7 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 	for i := range s.Pending {
 		p := &s.Pending[i]
 		e.addPending(p)
-		if p.Awaiting && p.NotBefore > e.now {
+		if p.Awaiting && p.NotBefore > e.clk.Now() {
 			e.wake(p)
 		}
 	}
@@ -241,10 +241,10 @@ func (e *Engine) restoreActor(r actorRec) error {
 		st.paid = append(st.paid, population.ActorID(id))
 	}
 	if st.hazardAt != population.Never {
-		st.hazardH = e.queue.Push(st.hazardAt, qev{kind: evHazard, actor: a.ID})
+		st.hazardH = e.clk.Push(st.hazardAt, qev{kind: evHazard, actor: a.ID})
 	}
 	if st.actAt != population.Never {
-		st.actH = e.queue.Push(st.actAt, qev{kind: evAct, actor: a.ID})
+		st.actH = e.clk.Push(st.actAt, qev{kind: evAct, actor: a.ID})
 	}
 	return nil
 }
@@ -305,10 +305,10 @@ func ownedUtxo(addr common.Address, r Ref, lovelace uint64) common.Utxo {
 }
 
 // Now is the engine's clock: the time of the last Tick.
-func (e *Engine) Now() sched.Time { return e.now }
+func (e *Engine) Now() sched.Time { return e.clk.Now() }
 
 // NextEvent is when the engine next wants a Tick.
-func (e *Engine) NextEvent() (sched.Time, bool) { return e.queue.Peek() }
+func (e *Engine) NextEvent() (sched.Time, bool) { return e.clk.Peek() }
 
 // Confirmed is the K-deep point durable state comes from.
 func (e *Engine) Confirmed() eventlog.ChainPoint { return e.conf }
@@ -401,7 +401,7 @@ func (e *Engine) InFlight() []Submission {
 	for _, jump := range []bool{true, false} {
 		for _, id := range e.awaiting {
 			p := e.pending[id]
-			if p.NotBefore > e.now || p.Jump != jump {
+			if p.NotBefore > e.clk.Now() || p.Jump != jump {
 				continue
 			}
 			out = append(out, Submission{Intent: id, Actor: p.Actor, ID: p.Tx, Tx: p.Cbor, Twice: p.Carried.Has(mistake.DoubleSubmit), Rivals: p.Rivals})

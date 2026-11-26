@@ -145,7 +145,7 @@ func (e *Engine) judge(at sched.Time, p *pendingRec, r SubmitResult, out submit.
 	if p.TTL <= e.Tip().Slot+1+e.cfg.BlockEvery {
 		want = withClasses(want, submit.OutsideValidityInterval)
 	}
-	a := oracle.Attempt{Seq: e.seq, Tx: p.Cbor, ID: chain.TxID(p.Tx), Expected: &want, Answers: []oracle.Answer{{Node: node, Outcome: out}}}
+	a := oracle.Attempt{Seq: e.jr.Seq(), Tx: p.Cbor, ID: chain.TxID(p.Tx), Expected: &want, Answers: []oracle.Answer{{Node: node, Outcome: out}}}
 	fs := oracle.Judge(a, e.cfg.Run)
 	if f, ok := oracle.Differential(a, e.cfg.Run); ok {
 		fs = append(fs, f)
@@ -205,9 +205,9 @@ func (e *Engine) watch(at sched.Time, from eventlog.ChainPoint, views []oracle.V
 	conf, _ := chain.PointFromLog(e.conf)
 	res := oracle.ReservationsOf(e.led)
 	s := oracle.Snapshot{
-		Seq: e.seq, Run: e.cfg.Run,
+		Seq: e.jr.Seq(), Run: e.cfg.Run,
 		Value:        &oracle.Value{Genesis: e.genesis, Utxo: e.Supply(), At: conf},
-		Ends:         e.ends,
+		Ends:         e.jr.Ends(),
 		Reservations: &res,
 		Settled:      &oracle.SettledMove{From: before, To: conf},
 		Views:        views,
@@ -261,15 +261,9 @@ func (e *Engine) report(at sched.Time, fs []oracle.Finding) error {
 		if err != nil {
 			return err
 		}
-		e.out = append(e.out, rec)
+		e.jr.Append(rec)
 	}
 	return nil
-}
-
-// ended notes an intent settling or written off in this input, for the
-// paid-once monitor.
-func (e *Engine) ended(id uint64, tx TxID, released bool) {
-	e.ends = append(e.ends, oracle.End{Intent: id, Tx: chain.TxID(tx), Released: released, Seq: e.seq})
 }
 
 // Findings is the set of findings this engine has logged. It is safe for

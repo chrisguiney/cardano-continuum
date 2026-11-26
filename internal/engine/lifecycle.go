@@ -53,7 +53,7 @@ func (e *Engine) settle(at sched.Time, p *pendingRec, tx TxID) error {
 			return err
 		}
 		if st := e.actors[id]; st.actAt != population.Never {
-			e.queue.Cancel(st.actH)
+			e.clk.Cancel(st.actH)
 			st.actAt = population.Never
 		}
 	}
@@ -70,7 +70,7 @@ func (e *Engine) move(at sched.Time, a population.Actor, to population.State, ca
 	if err := e.census.Apply(population.Transition{ID: a.ID, To: to, At: at, Cause: cause}); err != nil {
 		return fmt.Errorf("engine: actor %d: %w", a.ID, err)
 	}
-	e.emit(at, KindTransition, a.ID, Transition{From: string(a.State), To: string(to)})
+	e.jr.Emit(at, KindTransition, a.ID, Transition{From: string(a.State), To: string(to)})
 	return nil
 }
 
@@ -88,7 +88,7 @@ func (e *Engine) epochApplied(at sched.Time, epoch uint64) error {
 		}
 		st := e.actors[id]
 		if st.actAt != population.Never {
-			e.queue.Cancel(st.actH)
+			e.clk.Cancel(st.actH)
 			st.actAt = population.Never
 		}
 	}

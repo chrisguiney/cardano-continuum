@@ -431,7 +431,7 @@ func (e *Engine) scheduleDeploy(now sched.Time) {
 
 func (e *Engine) pushDeploy() {
 	if e.deployAt != population.Never && e.deployAt != 0 {
-		e.queue.Push(e.deployAt, qev{kind: evDeploy})
+		e.clk.Push(e.deployAt, qev{kind: evDeploy})
 	}
 }
 
@@ -442,7 +442,7 @@ func (e *Engine) deploy(at sched.Time) error {
 		return err
 	}
 	e.contracts++
-	e.emit(at, KindDeployed, 0, Deployed{Contract: i, Address: build.Contract(i).Name})
+	e.jr.Emit(at, KindDeployed, 0, Deployed{Contract: i, Address: build.Contract(i).Name})
 	e.scheduleDeploy(at)
 	return nil
 }
@@ -498,6 +498,6 @@ func (e *Engine) nextClock(a population.Actor, st *actor, now sched.Time) {
 	st.booting = !e.ready(a.ID, st)
 	if at := sched.NextArrival(e.draw(a, st, "arrival"), e.clockRate(a.ID, st), nil, now); at != population.Never {
 		st.actAt = at
-		st.actH = e.queue.Push(at, qev{kind: evAct, actor: a.ID})
+		st.actH = e.clk.Push(at, qev{kind: evAct, actor: a.ID})
 	}
 }

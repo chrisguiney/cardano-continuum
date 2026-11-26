@@ -189,7 +189,7 @@ func (v view) Balance(id population.ActorID) profile.Lovelace {
 	return profile.Lovelace(v.e.Spendable(uint64(id)))
 }
 func (v view) Pools() []agenda.PoolInfo { return v.e.view.Pools() }
-func (v view) Epoch() uint64            { return v.e.cfg.Slots.EpochAt(v.e.now) }
+func (v view) Epoch() uint64            { return v.e.cfg.Slots.EpochAt(v.e.clk.Now()) }
 func (v view) StakeRegistered(id population.ActorID) bool {
 	return v.e.view.StakeRegistered(id)
 }

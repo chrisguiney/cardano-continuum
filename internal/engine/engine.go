@@ -1,7 +1,6 @@
 package engine
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -58,32 +57,6 @@ const (
 	fracSpread   = 0.25
 	censusStream = "census"
 )
-
-type evKind uint8
-
-// Event kinds in the order same-time events run.
-const (
-	evBirth evKind = iota + 1
-	evHazard
-	evAct
-	// evRetry only wakes the loop at the end of a backoff; InFlight reads
-	// the payment's NotBefore against the clock.
-	evRetry
-	// evRefill is the faucet's round.
-	evRefill
-	// evAdopt is one pool's adoption in an upgrade wave; intent indexes
-	// the adoptions.
-	evAdopt
-	// evDeploy opens the next contract.
-	evDeploy
-)
-
-type qev struct {
-	kind   evKind
-	actor  population.ActorID
-	birth  int
-	intent uint64
-}
 
 type actor struct {
 	prof     profile.Profile
@@ -147,8 +120,8 @@ type Engine struct {
 	refillAt sched.Time
 
 	census population.Census
-	queue  sched.Queue
-	now    sched.Time
+	clk    evClock
+	jr     journal
 	actors map[population.ActorID]*actor
 	order  []population.ActorID // ascending
 	births []*birth             // by profile name
@@ -172,10 +145,6 @@ type Engine struct {
 	// proposals hold in the ledger's deposit pot.
 	deposits uint64
 	market   market
-	// tickTo is the time of the Tick being handled (or the last one):
-	// when the engine runs overdue events, their transactions still go
-	// to the node now, so validity intervals start from it (ttl).
-	tickTo sched.Time
 	// contracts is how many contracts are deployed (contract 0 from
 	// genesis); deployAt is the next deployment, deployN its draw.
 	contracts uint64
@@ -208,14 +177,11 @@ type Engine struct {
 
 	// findings are the oracle findings logged so far, monitors the
 	// invariant checks, genesis the lovelace value conservation counts
-	// from and lost what settled payments sent to wrong addresses. seq is
-	// the input being handled and ends the intents it ended.
+	// from and lost what settled payments sent to wrong addresses.
 	findings *oracle.Set
 	monitors []oracle.Monitor
 	genesis  uint64
 	lost     uint64
-	seq      uint64
-	ends     []oracle.End
 	// budget is the block the current input applied, for the block-budget
 	// monitor.
 	budget *oracle.BlockBudget
@@ -228,8 +194,6 @@ type Engine struct {
 	costs     *adversary.Ledger
 	contested map[Ref]bool
 	owners    map[string]population.ActorID
-
-	out []eventlog.Record
 }
 
 // New returns a fresh engine at time zero holding the genesis population and
@@ -253,7 +217,7 @@ func New(cfg Config) (*Engine, error) {
 	if cfg.Faucet > 0 {
 		owners = []population.ActorID{faucetActor}
 		e.refillAt = 0
-		e.queue.Push(0, qev{kind: evRefill})
+		e.clk.Push(0, qev{kind: evRefill})
 	}
 	var genesis []plan.Utxo
 	for i, f := range funds {
@@ -290,7 +254,7 @@ func New(cfg Config) (*Engine, error) {
 	if e.deployRate() > 0 {
 		e.scheduleDeploy(0)
 	}
-	e.out = nil // genesis spawns are configuration, not decisions
+	e.jr.Drop() // genesis spawns are configuration, not decisions
 	return e, nil
 }
 
@@ -369,7 +333,8 @@ func newEmpty(cfg Config) (*Engine, error) {
 // Handle implements eventlog.Engine: it applies one input and returns the
 // decisions it caused, in order.
 func (e *Engine) Handle(ctx context.Context, in eventlog.Record) ([]eventlog.Record, error) {
-	e.out, e.ends, e.seq, e.budget = nil, nil, in.Seq, nil
+	e.jr.Begin(in.Seq)
+	e.budget = nil
 	from := e.conf
 	var err error
 	switch in.Kind {
@@ -426,57 +391,28 @@ func (e *Engine) Handle(ctx context.Context, in eventlog.Record) ([]eventlog.Rec
 		err = fmt.Errorf("%w: %s", ErrUnknownInput, in.Kind)
 	}
 	if err != nil {
-		e.out = nil
+		e.jr.Drop()
 		return nil, err
 	}
-	out := e.out
-	e.out = nil
-	return out, nil
+	return e.jr.Take(), nil
 }
 
-func (e *Engine) emit(at sched.Time, kind string, a population.ActorID, body any) {
-	raw, err := eventlog.Encode(body)
-	if err != nil {
-		// Bodies are fixed structs of plain fields; encoding cannot fail.
-		panic(fmt.Sprintf("engine: encode %s: %v", kind, err))
-	}
-	e.out = append(e.out, eventlog.Record{At: at, Class: eventlog.Decision, Kind: kind, Actor: eventlog.ActorID(a), Body: raw})
-}
-
-// tick runs every scheduled event due at or before t. Events due at the same
-// time run sorted by (kind, actor, birth), not in push order, so a queue
-// rebuilt from a snapshot runs them in the same order as the live one.
+// tick runs every scheduled event due at or before t, in the clock's order.
 func (e *Engine) tick(ctx context.Context, t sched.Time) error {
-	if t < e.now {
-		return fmt.Errorf("%w: %d < %d", ErrTimeBackwards, t, e.now)
+	if err := e.clk.Open(t); err != nil {
+		return err
 	}
-	e.tickTo = t
 	for {
-		at, ok := e.queue.Peek()
-		if !ok || at > t {
-			break
+		at, batch, ok := e.clk.Next(t)
+		if !ok {
+			return nil
 		}
-		var batch []qev
-		for {
-			next, ok := e.queue.Peek()
-			if !ok || next != at {
-				break
-			}
-			_, ev, _ := e.queue.Pop()
-			batch = append(batch, ev.(qev))
-		}
-		slices.SortFunc(batch, func(a, b qev) int {
-			return cmp.Or(cmp.Compare(a.kind, b.kind), cmp.Compare(a.actor, b.actor), cmp.Compare(a.birth, b.birth))
-		})
-		e.now = at
 		for _, ev := range batch {
 			if err := e.run(ctx, at, ev); err != nil {
 				return err
 			}
 		}
 	}
-	e.now = t
-	return nil
 }
 
 func (e *Engine) run(ctx context.Context, at sched.Time, ev qev) error {
@@ -484,7 +420,7 @@ func (e *Engine) run(ctx context.Context, at sched.Time, ev qev) error {
 	case evBirth:
 		b := e.births[ev.birth]
 		a := e.spawn(b.prof, at)
-		e.emit(at, KindSpawned, a.ID, Spawned{Profile: b.prof.Name})
+		e.jr.Emit(at, KindSpawned, a.ID, Spawned{Profile: b.prof.Name})
 		e.scheduleBirth(b, at)
 	case evHazard:
 		return e.hazard(at, ev.actor)
@@ -513,7 +449,7 @@ func (e *Engine) pushBirth(b *birth) {
 		return
 	}
 	idx := slices.Index(e.births, b)
-	b.h = e.queue.Push(b.at, qev{kind: evBirth, birth: idx})
+	b.h = e.clk.Push(b.at, qev{kind: evBirth, birth: idx})
 }
 
 // spawn adds an actor and schedules its first hazard.
@@ -574,7 +510,7 @@ func (e *Engine) draw(a population.Actor, st *actor, purpose string) *rand.Rand 
 func (e *Engine) nextHazard(a population.Actor, st *actor, now sched.Time) {
 	st.hazardAt, st.hazardTo = population.NextHazard(a, st.prof, e.draw(a, st, "hazard"), now)
 	if st.hazardAt != population.Never {
-		st.hazardH = e.queue.Push(st.hazardAt, qev{kind: evHazard, actor: a.ID})
+		st.hazardH = e.clk.Push(st.hazardAt, qev{kind: evHazard, actor: a.ID})
 	}
 }
 
@@ -586,13 +522,13 @@ func (e *Engine) hazard(at sched.Time, id population.ActorID) error {
 	if err := e.census.Apply(population.Transition{ID: id, To: to, At: at, Cause: population.Timer{}}); err != nil {
 		return fmt.Errorf("engine: actor %d: %w", id, err)
 	}
-	e.emit(at, KindTransition, id, Transition{From: string(from), To: string(to)})
+	e.jr.Emit(at, KindTransition, id, Transition{From: string(from), To: string(to)})
 	a, _ = e.census.Get(id)
 	switch {
 	case to == population.Active:
 		e.nextAct(a, st, at)
 	case from == population.Active && st.actAt != population.Never:
-		e.queue.Cancel(st.actH)
+		e.clk.Cancel(st.actH)
 		st.actAt = population.Never
 	}
 	e.nextHazard(a, st, at)
@@ -627,11 +563,11 @@ func (e *Engine) nextAct(a population.Actor, st *actor, now sched.Time) {
 				st.actAt, st.followUp = at, true
 			}
 		}
-		st.actH = e.queue.Push(st.actAt, qev{kind: evAct, actor: a.ID})
+		st.actH = e.clk.Push(st.actAt, qev{kind: evAct, actor: a.ID})
 		return
 	}
 	st.actAt = sched.NextArrival(e.draw(a, st, "arrival"), rate, mod, now)
-	st.actH = e.queue.Push(st.actAt, qev{kind: evAct, actor: a.ID})
+	st.actH = e.clk.Push(st.actAt, qev{kind: evAct, actor: a.ID})
 }
 
 func (e *Engine) act(ctx context.Context, at sched.Time, id population.ActorID) error {
@@ -660,7 +596,7 @@ func (e *Engine) act(ctx context.Context, at sched.Time, id population.ActorID) 
 	default:
 		d = agenda.Decide(a, r, view{e: e}, st.policy, e.weightsOf(st.prof))
 	}
-	e.emit(at, KindIntentChosen, id, d)
+	e.jr.Emit(at, KindIntentChosen, id, d)
 	if st.followUp && d.Intent.Kind == agenda.Idle && st.waits < maxFollowWaits {
 		// Nothing to do yet, most often because the actor's coins are in
 		// the attempt this follows: the planner offers only settled
@@ -669,7 +605,7 @@ func (e *Engine) act(ctx context.Context, at sched.Time, id population.ActorID) 
 		// be more than one transaction.
 		st.waits++
 		st.actAt = at + e.blockMs()
-		st.actH = e.queue.Push(st.actAt, qev{kind: evAct, actor: a.ID})
+		st.actH = e.clk.Push(st.actAt, qev{kind: evAct, actor: a.ID})
 		return nil
 	}
 	st.waits = 0
@@ -829,8 +765,8 @@ func (e *Engine) release(ctx context.Context, at sched.Time, dead []plan.TxID, w
 			}
 		}
 		e.dropPending(id)
-		e.ended(id, TxID(tx), true)
-		e.emit(at, KindReleased, population.ActorID(p.Actor), Released{Intent: id, Why: w})
+		e.jr.End(id, TxID(tx), true)
+		e.jr.Emit(at, KindReleased, population.ActorID(p.Actor), Released{Intent: id, Why: w})
 	}
 	return nil
 }
@@ -897,8 +833,8 @@ func (e *Engine) applyBlock(ctx context.Context, at sched.Time, b blockRec) erro
 			// Every attempt carries a WrongAddress mistake (it has no
 			// fix), so the current one's loss is the settled one's.
 			e.lost += p.Lost
-			e.ended(id, TxID(tx), false)
-			e.emit(at, KindConfirmed, population.ActorID(p.Actor), Confirmed{Intent: id, ID: TxID(tx), Lost: p.Lost})
+			e.jr.End(id, TxID(tx), false)
+			e.jr.Emit(at, KindConfirmed, population.ActorID(p.Actor), Confirmed{Intent: id, ID: TxID(tx), Lost: p.Lost})
 			if err := e.settle(at, p, TxID(tx)); err != nil {
 				return err
 			}
@@ -978,7 +914,7 @@ func (e *Engine) rollback(ctx context.Context, p eventlog.ChainPoint) error {
 	}
 	gone := slices.Clone(e.window[keep:])
 	e.window = e.window[:keep]
-	return e.leftView(ctx, e.now, gone)
+	return e.leftView(ctx, e.clk.Now(), gone)
 }
 
 // walletOf is the wallet of a ledger owner: an actor or the faucet.

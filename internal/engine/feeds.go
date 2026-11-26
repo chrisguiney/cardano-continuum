@@ -123,7 +123,7 @@ func (e *Engine) frustrate(at sched.Time, id population.ActorID) error {
 	}
 	st := e.actors[id]
 	if st.hazardAt != population.Never {
-		e.queue.Cancel(st.hazardH)
+		e.clk.Cancel(st.hazardH)
 	}
 	a, _ = e.census.Get(id)
 	e.nextHazard(a, st, at)

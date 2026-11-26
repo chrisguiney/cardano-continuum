@@ -46,7 +46,7 @@ func (p podsView) PodRunning(pool population.ActorID) bool { return !p.e.down[po
 // floorState is the guard's input now. The epoch is the clock's, or the
 // block's when a block runs ahead of the last tick.
 func (e *Engine) floorState(at sched.Time) policy.State {
-	return e.view.PolicyState(e.cfg.Slots.EpochAt(max(at, e.now)), podsView{e}, e.inflight())
+	return e.view.PolicyState(e.cfg.Slots.EpochAt(max(at, e.clk.Now())), podsView{e}, e.inflight())
 }
 
 // inflight lists the engine's guarded transactions neither settled nor
@@ -102,7 +102,7 @@ func (e *Engine) allows(at sched.Time, in agenda.Intent) policy.Verdict {
 
 // Forging implements agenda.Floor.
 func (v view) Forging(pool population.ActorID) bool {
-	s := v.e.floorState(v.e.now)
+	s := v.e.floorState(v.e.clk.Now())
 	for _, in := range s.InFlight {
 		if in.Op == policy.Retire && in.Pool == pool {
 			return false
@@ -118,7 +118,7 @@ func (v view) Forging(pool population.ActorID) bool {
 
 // Allows implements agenda.Floor.
 func (v view) Allows(in agenda.Intent) (bool, string) {
-	vd := v.e.allows(v.e.now, in)
+	vd := v.e.allows(v.e.clk.Now(), in)
 	return vd.OK, vd.Why
 }
 
@@ -144,7 +144,7 @@ func (e *Engine) setTier(at sched.Time, pool population.ActorID, dark bool, why 
 	} else {
 		delete(e.dark, pool)
 	}
-	e.emit(at, KindPoolTier, pool, PoolTier{Dark: dark, Why: why})
+	e.jr.Emit(at, KindPoolTier, pool, PoolTier{Dark: dark, Why: why})
 }
 
 // poolStatus applies an observed pod state, then recovers.
@@ -172,7 +172,7 @@ func (e *Engine) recover(ctx context.Context, at sched.Time) error {
 	}
 	if s.Frozen() {
 		e.stalled = true
-		e.emit(at, KindIncident, 0, Incident{Kind: "stall", Epoch: s.Epoch, Label: s.Label})
+		e.jr.Emit(at, KindIncident, 0, Incident{Kind: "stall", Epoch: s.Epoch, Label: s.Label})
 		return nil
 	}
 	plan := e.guard.Recover(s)
@@ -196,7 +196,7 @@ func (e *Engine) repair(at sched.Time, pool population.ActorID) {
 	if e.repairs[pool] {
 		return
 	}
-	e.emit(at, KindRepair, pool, Repair{})
+	e.jr.Emit(at, KindRepair, pool, Repair{})
 	if e.cfg.SimulatedPods {
 		delete(e.down, pool)
 		return
@@ -217,7 +217,7 @@ func (e *Engine) move1(ctx context.Context, at sched.Time, mv policy.Intent) err
 		return err
 	}
 	if why != "" {
-		e.emit(at, KindSkipped, a.ID, Skipped{Kind: "recovery_move", Why: why})
+		e.jr.Emit(at, KindSkipped, a.ID, Skipped{Kind: "recovery_move", Why: why})
 	}
 	return nil
 }
@@ -246,7 +246,7 @@ func (e *Engine) Plan() []population.ActorID {
 func (e *Engine) checkFloor(at sched.Time, in agenda.Intent) bool {
 	vd := e.allows(at, in)
 	if !vd.OK {
-		e.emit(at, KindGuarded, in.Actor, Guarded{Kind: string(in.Kind), Target: uint64(in.Target), Why: vd.Why})
+		e.jr.Emit(at, KindGuarded, in.Actor, Guarded{Kind: string(in.Kind), Target: uint64(in.Target), Why: vd.Why})
 	}
 	return vd.OK
 }

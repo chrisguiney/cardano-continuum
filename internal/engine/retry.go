@@ -77,8 +77,8 @@ func (e *Engine) carry(ctx context.Context, at sched.Time, p *pendingRec, m subm
 	// A nested apply (a diagnosis) may have released the payment already.
 	if p.M.State == submit.GaveUp && len(p.Txs) == 0 && e.pending[p.ID] == p {
 		e.dropPending(p.ID)
-		e.ended(p.ID, p.Tx, true)
-		e.emit(at, KindReleased, population.ActorID(p.Actor), Released{Intent: p.ID, Why: "gave up"})
+		e.jr.End(p.ID, p.Tx, true)
+		e.jr.Emit(at, KindReleased, population.ActorID(p.Actor), Released{Intent: p.ID, Why: "gave up"})
 	}
 	return nil
 }
@@ -115,7 +115,7 @@ func (e *Engine) act1(ctx context.Context, at sched.Time, p *pendingRec, act sub
 	case submit.GiveUp:
 		p.Awaiting, p.Cbor = false, nil
 		e.stopAwaiting(p.ID)
-		e.emit(at, KindGaveUp, population.ActorID(p.Actor), GaveUp{Intent: p.ID})
+		e.jr.Emit(at, KindGaveUp, population.ActorID(p.Actor), GaveUp{Intent: p.ID})
 	case submit.Learn:
 		return e.learn(population.ActorID(p.Actor))
 	case submit.Frustrate:
@@ -130,7 +130,7 @@ func (e *Engine) refuse(ctx context.Context, at sched.Time, p *pendingRec, tx pl
 	if err != nil {
 		return fmt.Errorf("engine: refuse intent %d: %w", p.ID, err)
 	}
-	e.emit(at, KindRefused, population.ActorID(p.Actor), Refused{Intent: p.ID, ID: TxID(tx), Why: why})
+	e.jr.Emit(at, KindRefused, population.ActorID(p.Actor), Refused{Intent: p.ID, ID: TxID(tx), Why: why})
 	for _, d := range dead {
 		e.forgetTx(TxID(d))
 	}
@@ -188,7 +188,7 @@ func (e *Engine) setAwaiting(p *pendingRec) {
 // wake schedules a tick at the end of the payment's backoff, so the loop
 // comes back to send it.
 func (e *Engine) wake(p *pendingRec) {
-	e.queue.Push(p.NotBefore, qev{kind: evRetry, intent: p.ID})
+	e.clk.Push(p.NotBefore, qev{kind: evRetry, intent: p.ID})
 }
 
 // reasonOf joins the failure classes of a rejection for the Refused record.

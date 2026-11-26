@@ -25,7 +25,7 @@ const (
 // scheduleRefill queues the faucet's next round after now.
 func (e *Engine) scheduleRefill(now sched.Time) {
 	e.refillAt = e.cfg.Slots.SlotStart(e.cfg.Slots.SlotAt(now) + e.cfg.RefillEvery)
-	e.queue.Push(e.refillAt, qev{kind: evRefill})
+	e.clk.Push(e.refillAt, qev{kind: evRefill})
 }
 
 // refill runs one round at time at, then schedules the next.
@@ -39,7 +39,7 @@ func (e *Engine) refill(ctx context.Context, at sched.Time) error {
 		return nil
 	}
 	skip := func(why string) {
-		e.emit(at, KindSkipped, faucetActor, Skipped{Kind: refillKind, Why: why})
+		e.jr.Emit(at, KindSkipped, faucetActor, Skipped{Kind: refillKind, Why: why})
 	}
 	var total uint64
 	for _, o := range outs {
@@ -72,7 +72,7 @@ func (e *Engine) refill(ctx context.Context, at sched.Time) error {
 	e.nextID = id
 	e.addPending(&pendingRec{ID: id, Actor: uint64(faucetActor), Tx: TxID(built.ID), TTL: ttl, Cbor: built.Tx,
 		Awaiting: true, Txs: []TxID{TxID(built.ID)}, Refill: true})
-	e.emit(at, KindRefill, faucetActor, Refill{
+	e.jr.Emit(at, KindRefill, faucetActor, Refill{
 		Intent: id, ID: TxID(built.ID), To: to, Amounts: amounts, Fee: built.Fee, TTL: ttl, Inputs: inputs, Tx: built.Tx,
 	})
 	return nil

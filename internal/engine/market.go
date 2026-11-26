@@ -44,4 +44,4 @@ func (m market) burst(now sched.Time) float64 {
 }
 
 // Burst implements agenda.Market.
-func (v view) Burst() float64 { return v.e.market.burst(v.e.now) }
+func (v view) Burst() float64 { return v.e.market.burst(v.e.clk.Now()) }

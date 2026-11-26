@@ -284,7 +284,7 @@ func (e *Engine) intend(ctx context.Context, at sched.Time, a population.Actor, 
 		}
 	}
 	if why != "" {
-		e.emit(at, KindSkipped, a.ID, Skipped{Kind: string(in.Kind), Why: why})
+		e.jr.Emit(at, KindSkipped, a.ID, Skipped{Kind: string(in.Kind), Why: why})
 	}
 	return nil
 }
@@ -539,7 +539,7 @@ func (e *Engine) emitSubmitted(at sched.Time, p *pendingRec, built build.Built, 
 		s.Proposal = chain.GovID{Tx: chain.TxID(p.Action.Tx), Index: p.Action.Index}.String()
 		s.Choice, s.Power = choiceNames[p.Choice], p.Power
 	}
-	e.emit(at, KindSubmitted, population.ActorID(p.Actor), s)
+	e.jr.Emit(at, KindSubmitted, population.ActorID(p.Actor), s)
 }
 
 // attemptOf builds one attempt of p on inputs the planner offers its
@@ -599,7 +599,7 @@ func (e *Engine) ttl(at sched.Time, guarded, script bool) uint64 {
 	// An overdue event runs at its own time, but its attempt is sent at
 	// the Tick's (tickTo), so the interval starts there; a rebuild runs at
 	// a block's time, which can lag the block's own slot.
-	at = max(at, e.tickTo)
+	at = max(at, e.clk.TickTo())
 	slot := max(e.cfg.Slots.SlotAt(at), e.Tip().Slot)
 	ttl := slot + e.cfg.TTL
 	if script && e.cfg.Horizon > 1 {

@@ -144,7 +144,7 @@ func (e *Engine) attack(ctx context.Context, at sched.Time, a population.Actor, 
 		}
 	}
 	if why != "" {
-		e.emit(at, KindSkipped, a.ID, Skipped{Kind: string(n), Why: why})
+		e.jr.Emit(at, KindSkipped, a.ID, Skipped{Kind: string(n), Why: why})
 	}
 	return nil
 }
@@ -167,7 +167,7 @@ func (e *Engine) react(ctx context.Context, at sched.Time, p *pendingRec, fee ui
 		if err != nil || why == "" {
 			return err
 		}
-		e.emit(at, KindSkipped, id, Skipped{Kind: string(adversary.FrontRun), Why: why})
+		e.jr.Emit(at, KindSkipped, id, Skipped{Kind: string(adversary.FrontRun), Why: why})
 	}
 	return nil
 }
@@ -230,7 +230,7 @@ func (e *Engine) strike(ctx context.Context, at sched.Time, id population.ActorI
 	}
 	e.addPending(&p)
 	e.market.excite(at)
-	e.emit(at, KindAttack, id, body)
+	e.jr.Emit(at, KindAttack, id, body)
 	for _, b := range s.txs {
 		e.emitSubmitted(at, &p, b, s.inputs)
 	}
@@ -528,7 +528,7 @@ func (e *Engine) judgeAttack(at sched.Time, p *pendingRec, r SubmitResult, out s
 	if p.TTL <= e.Tip().Slot+1+e.cfg.BlockEvery {
 		want = withClasses(want, submit.OutsideValidityInterval)
 	}
-	a := oracle.Attempt{Seq: e.seq, Tx: p.Cbor, ID: chain.TxID(p.Tx), Expected: &want, Answers: []oracle.Answer{{Node: node, Outcome: out}}}
+	a := oracle.Attempt{Seq: e.jr.Seq(), Tx: p.Cbor, ID: chain.TxID(p.Tx), Expected: &want, Answers: []oracle.Answer{{Node: node, Outcome: out}}}
 	fs := oracle.Judge(a, e.cfg.Run)
 	taken := out.Verdict == submit.Accepted
 	for i, ans := range r.Rivals {
@@ -537,7 +537,7 @@ func (e *Engine) judgeAttack(at sched.Time, p *pendingRec, r SubmitResult, out s
 		}
 		rw := mistake.Expect(0, true)
 		rw.Accept = !taken
-		ra := oracle.Attempt{Seq: e.seq, Tx: p.Rivals[i].Tx, ID: chain.TxID(p.Rivals[i].ID), Expected: &rw,
+		ra := oracle.Attempt{Seq: e.jr.Seq(), Tx: p.Rivals[i].Tx, ID: chain.TxID(p.Rivals[i].ID), Expected: &rw,
 			Answers: []oracle.Answer{{Node: node, Outcome: answerOutcome(ans)}}}
 		fs = append(fs, oracle.Judge(ra, e.cfg.Run)...)
 		taken = taken || ans.Verdict == VerdictAccepted
@@ -624,7 +624,7 @@ func (v view) Victims() []adversary.Coin {
 
 // Remaining implements adversary.View.
 func (v view) Remaining(id population.ActorID) uint64 {
-	return v.e.costs.Remaining(id, v.e.cfg.Slots.EpochAt(v.e.now))
+	return v.e.costs.Remaining(id, v.e.cfg.Slots.EpochAt(v.e.clk.Now()))
 }
 
 var _ adversary.View = view{}

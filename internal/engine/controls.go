@@ -83,7 +83,7 @@ func (e *Engine) controlInput(ctx context.Context, at sched.Time, c control) err
 	default:
 		why = "unknown op"
 	}
-	e.emit(at, KindControlled, 0, Controlled{RequestID: c.RequestID, Op: c.Op, Scenario: c.Scenario, Why: why})
+	e.jr.Emit(at, KindControlled, 0, Controlled{RequestID: c.RequestID, Op: c.Op, Scenario: c.Scenario, Why: why})
 	return nil
 }
 
@@ -222,7 +222,7 @@ func (e *Engine) startWave(at sched.Time, arg string) string {
 	src := e.cfg.Seed.Derive("upgrade", strconv.FormatUint(e.waves, 10)).Rand()
 	for _, in := range upgrade.Plan(c, image, pools, src) {
 		e.adoptions = append(e.adoptions, adoption{At: in.At, Pool: in.Pool, Ref: in.Ref})
-		e.queue.Push(in.At, qev{kind: evAdopt, intent: uint64(len(e.adoptions) - 1)})
+		e.clk.Push(in.At, qev{kind: evAdopt, intent: uint64(len(e.adoptions) - 1)})
 	}
 	return ""
 }
@@ -237,7 +237,7 @@ func (e *Engine) adopt(at sched.Time, i uint64) {
 	n, _ := strconv.ParseUint(a.Pool, 10, 32)
 	pool := population.ActorID(n)
 	e.images[pool] = a.Ref
-	e.emit(at, KindImageChange, pool, ImageChange{Ref: a.Ref})
+	e.jr.Emit(at, KindImageChange, pool, ImageChange{Ref: a.Ref})
 }
 
 // adoption is one queued ImageChange of a wave.
