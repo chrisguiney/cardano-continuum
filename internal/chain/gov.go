@@ -88,6 +88,12 @@ func proposalOf(id GovID, p common.ProposalProcedure) Proposal {
 	return Proposal{ID: id, Type: typ, Pools: pools, Deposit: p.Deposit()}
 }
 
+// ActionTypes lists the action type names actionOf gives, sorted: the
+// values a proposal's Type takes besides empty.
+func ActionTypes() []string {
+	return []string{"hard_fork_initiation", "info", "new_constitution", "no_confidence", "parameter_change", "treasury_withdrawals", "update_committee"}
+}
+
 // actionOf names a governance action's type and reports whether stake
 // pools may vote on it. It is isStakePoolVotingAllowed of cardano-ledger
 // (eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Internal.hs lines

@@ -44,3 +44,20 @@ export function choiceLine(t: Tally): string {
 export function poolVotes(v: GovernanceView | null, actor: number): VoteRow[] {
   return v?.pools.find((p) => p.actor === actor)?.votes ?? [];
 }
+
+export interface GovFilter {
+  /** voter is a voter class (drep, spo, committee), or empty for all. */
+  voter: string;
+  /** type is an action type, or empty for all. */
+  type: string;
+}
+
+/** filterGov keeps the votes of one voter class and the proposals and votes of one action type. */
+export function filterGov(v: GovernanceView, f: GovFilter): GovernanceView {
+  if (!f.voter && !f.type) return v;
+  return {
+    ...v,
+    proposals: v.proposals.filter((p) => !f.type || p.type === f.type),
+    votes: v.votes.filter((x) => (!f.voter || x.voter === f.voter) && (!f.type || x.type === f.type)),
+  };
+}

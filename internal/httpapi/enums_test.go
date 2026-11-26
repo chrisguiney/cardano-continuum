@@ -9,6 +9,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
+	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
@@ -47,11 +48,14 @@ func TestEnumsMatchAllowlists(t *testing.T) {
 		"phase":         strs(v1alpha1.Phases()),
 		"attack":        strs(adversary.Names()),
 		"decision_kind": engine.DecisionKinds(),
+		"voter_class":   {"committee", "drep", "spo"},
+		"action_type":   chain.ActionTypes(),
 	}
 	got := map[string][]string{
 		"actor_kind": e.ActorKind, "agenda": e.Agenda, "state": e.State, "intent_kind": e.IntentKind,
 		"finding_kind": e.FindingKind, "severity": e.Severity, "impl": e.Impl, "tier": e.Tier,
 		"phase": e.Phase, "attack": e.Attack, "decision_kind": e.DecisionKind,
+		"voter_class": e.VoterClass, "action_type": e.ActionType,
 	}
 	for k, w := range want {
 		if len(w) == 0 || !slices.Equal(got[k], w) {

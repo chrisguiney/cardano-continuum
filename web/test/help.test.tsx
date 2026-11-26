@@ -14,6 +14,7 @@ const enums: Enums = {
   intent_kind: ["send", "vote"], finding_kind: ["wrong_class"], severity: ["warn", "error", "fatal"],
   impl: ["dingo", "cardano-node"], tier: ["logical", "forging"], phase: ["Pending", "Forging"],
   attack: ["dust-flood"], decision_kind: ["IntentChosen", "Submitted"],
+  voter_class: ["committee", "drep", "spo"], action_type: ["info"],
 };
 
 describe("select field", () => {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { feedUrl } from "../src/lib/feed";
-import { choiceLine, poolVotes, sortProposals, yesShare } from "../src/lib/governance";
+import { choiceLine, filterGov, poolVotes, sortProposals, yesShare } from "../src/lib/governance";
+import { FIELD_HELP, VIEW_BLURB } from "../src/lib/help";
 import { parseRoute } from "../src/lib/router";
 import type { GovernanceView, ProposalRow, Tally } from "../src/lib/types";
 
@@ -46,5 +47,22 @@ describe("governance view", () => {
     expect(poolVotes(v, 7)).toHaveLength(1);
     expect(poolVotes(v, 8)).toEqual([]);
     expect(poolVotes(null, 7)).toEqual([]);
+  });
+
+  it("filters votes by voter class and proposals by action type", () => {
+    const vote = (voter: string, type: string) => ({ slot: 1, at: 1, tx: voter + type, proposal: "a#0", type, voter, choice: "yes", power: 0 });
+    const v: GovernanceView = {
+      lifetime_epochs: 6, proposals: [prop("a#0", "open", 3), { ...prop("b#0", "open", 4), type: "treasury_withdrawals" }],
+      votes: [vote("spo", "info"), vote("drep", "info"), vote("drep", "treasury_withdrawals")], pools: [],
+    };
+    const f = filterGov(v, { voter: "drep", type: "info" });
+    expect(f.votes.map((x) => x.tx)).toEqual(["drepinfo"]);
+    expect(f.proposals.map((p) => p.id)).toEqual(["a#0"]);
+    expect(filterGov(v, { voter: "", type: "" })).toEqual(v);
+  });
+
+  it("explains the governance controls and view", () => {
+    for (const k of ["voter_class", "action_type"]) expect(FIELD_HELP[k], k).toBeTruthy();
+    expect(VIEW_BLURB.governance).toBeTruthy();
   });
 });

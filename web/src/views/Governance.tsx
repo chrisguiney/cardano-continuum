@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { Feed, appendDecision, type EventSourceLike, type FeedState } from "../lib/feed";
 import { ada, count, short, simTime } from "../lib/format";
-import { CLASSES, choiceLine, sortProposals, yesShare } from "../lib/governance";
+import { CLASSES, choiceLine, filterGov, sortProposals, yesShare, type GovFilter } from "../lib/governance";
+import { FIELD_HELP, VIEW_BLURB } from "../lib/help";
+import { optionsOf, useEnums } from "../lib/meta";
 import { usePoll } from "../lib/hooks";
 import type { Decision, GovernanceView, VoteRow } from "../lib/types";
 import { ErrorNote, Link, Stat } from "./common";
+import { Blurb, SelectField } from "./fields";
 
 const FEED_CAP = 100;
 
@@ -83,12 +86,20 @@ function Summary({ g }: { g: GovernanceView }) {
 }
 
 export function Governance() {
-  const { data: g, error } = usePoll<GovernanceView>("/api/governance", 3000);
+  const { data: all, error } = usePoll<GovernanceView>("/api/governance", 3000);
   const [feed, state] = useVoteFeed();
+  const enums = useEnums();
+  const [filt, setFilt] = useState<GovFilter>({ voter: "", type: "" });
+  const g = useMemo(() => (all ? filterGov(all, filt) : null), [all, filt]);
   const proposals = useMemo(() => (g ? sortProposals(g.proposals) : []), [g]);
   return (
     <>
       <h1>Governance</h1>
+      <Blurb text={VIEW_BLURB.governance!} />
+      <form class="filters" aria-label="Filter governance" onSubmit={(e) => e.preventDefault()}>
+        <SelectField id="g-voter" help={FIELD_HELP.voter_class!} value={filt.voter} options={optionsOf(enums?.voter_class ?? [])} onChange={(v) => setFilt((f) => ({ ...f, voter: v }))} />
+        <SelectField id="g-type" help={FIELD_HELP.action_type!} value={filt.type} options={optionsOf(enums?.action_type ?? [])} onChange={(v) => setFilt((f) => ({ ...f, type: v }))} />
+      </form>
       <ErrorNote error={error} />
       {!g && !error && <p class="muted">Loading…</p>}
       {g && (

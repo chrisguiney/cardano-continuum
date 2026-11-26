@@ -5,7 +5,7 @@ import type { FindingFilters } from "../lib/findings";
 import { SelectField, TextField } from "./fields";
 
 const H = FIELD_HELP as Record<string, { label: string; help: string }>;
-const EMPTY: Enums = { actor_kind: [], agenda: [], state: [], intent_kind: [], finding_kind: [], severity: [], impl: [], tier: [], phase: [], attack: [], decision_kind: [] };
+const EMPTY: Enums = { actor_kind: [], agenda: [], state: [], intent_kind: [], finding_kind: [], severity: [], impl: [], tier: [], phase: [], attack: [], decision_kind: [], voter_class: [], action_type: [] };
 
 const DELEGATED = [{ value: "true", label: "Delegated" }, { value: "false", label: "Not delegated" }];
 const ORDER = [{ value: "asc", label: "Ascending" }, { value: "desc", label: "Descending" }];

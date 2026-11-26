@@ -14,6 +14,8 @@ export interface Enums {
   phase: string[];
   attack: string[];
   decision_kind: string[];
+  voter_class: string[];
+  action_type: string[];
 }
 
 export interface Option {

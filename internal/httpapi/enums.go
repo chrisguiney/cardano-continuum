@@ -5,6 +5,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
+	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
@@ -28,6 +29,10 @@ type Enums struct {
 	Phase        []string `json:"phase"`
 	Attack       []string `json:"attack"`
 	DecisionKind []string `json:"decision_kind"`
+	// VoterClass and ActionType are the Governance view's voter classes
+	// and proposal types.
+	VoterClass []string `json:"voter_class"`
+	ActionType []string `json:"action_type"`
 }
 
 func strs[T ~string](xs []T) []string {
@@ -52,5 +57,6 @@ func BuildEnums() Enums {
 		IntentKind: intents, FindingKind: strs(oracle.Kinds()), Severity: sev,
 		Impl: strs(v1alpha1.Implementations()), Tier: strs(v1alpha1.Tiers()), Phase: strs(v1alpha1.Phases()),
 		Attack: strs(adversary.Names()), DecisionKind: engine.DecisionKinds(),
+		VoterClass: []string{classCommittee, classDRep, classSPO}, ActionType: chain.ActionTypes(),
 	}
 }

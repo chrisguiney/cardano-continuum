@@ -1,6 +1,7 @@
 package chain
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/blinklabs-io/gouroboros/ledger/common"
@@ -84,5 +85,13 @@ func TestVotingPower(t *testing.T) {
 	}
 	if p := v.VotingPower(Voter{Kind: common.VoterTypeConstitutionalCommitteeHotKeyHash}); p != 0 {
 		t.Errorf("committee power %d, want 0: one member, one vote", p)
+	}
+}
+
+// ActionTypes names every type actionOf can return, sorted.
+func TestActionTypes(t *testing.T) {
+	want := []string{"hard_fork_initiation", "info", "new_constitution", "no_confidence", "parameter_change", "treasury_withdrawals", "update_committee"}
+	if got := ActionTypes(); !slices.Equal(got, want) {
+		t.Fatalf("ActionTypes() = %v, want %v", got, want)
 	}
 }
