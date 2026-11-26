@@ -562,7 +562,10 @@ func (e *Engine) attemptOf(ctx context.Context, at sched.Time, p *pendingRec) (b
 // the current epoch, so the epoch its effect reaches is known when the
 // guard runs; zero means too little of the epoch is left.
 func (e *Engine) ttl(at sched.Time, guarded, script bool) uint64 {
-	// A rebuild runs at a block's time, which can lag the block's own slot.
+	// An overdue event runs at its own time, but its attempt is sent at
+	// the Tick's (tickTo), so the interval starts there; a rebuild runs at
+	// a block's time, which can lag the block's own slot.
+	at = max(at, e.tickTo)
 	slot := max(e.cfg.Slots.SlotAt(at), e.Tip().Slot)
 	ttl := slot + e.cfg.TTL
 	if script && e.cfg.Horizon > 1 {

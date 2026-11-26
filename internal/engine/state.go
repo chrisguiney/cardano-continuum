@@ -92,6 +92,8 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 		return nil, err
 	}
 	e.now, e.nextID, e.conf, e.fees, e.foreign, e.deposits = s.Now, s.NextIntent, s.Conf, s.Fees, s.Foreign, s.Deposits
+	// Between inputs the last Tick's time is the clock.
+	e.tickTo = s.Now
 	e.market, e.stalled, e.lost = s.Market, s.Stalled, s.Lost
 	e.paused, e.rateK, e.waves, e.adoptions = s.Paused, s.RateK, s.Waves, s.Adoptions
 	e.contracts, e.deployAt, e.deployN = max(s.Contracts, 1), s.DeployAt, s.DeployN

@@ -146,3 +146,35 @@ func TestFollowUpsWaitForChange(t *testing.T) {
 		t.Fatalf("%d payments with bursts, %d without: follow-ups were lost", n1, n0)
 	}
 }
+
+// An engine that starts behind the chain (a live run started after the
+// devnet, or a loop that fell behind) runs its overdue events at their
+// scheduled times, but their transactions go to a node at the Tick's
+// time: a TTL counted from the overdue time would already be past, and the
+// node refuses it with OutsideValidityIntervalUTxO.
+func TestOverdueEventsGetCurrentTTLs(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig(t, 3, 10)
+	e, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const late = 3_600_000
+	n := 0
+	for _, r := range mustHandle(t, e, tickInput(late)) {
+		if r.Kind != KindSubmitted {
+			continue
+		}
+		var s Submitted
+		if err := eventlog.Decode(r.Body, &s); err != nil {
+			t.Fatal(err)
+		}
+		n++
+		if now := cfg.Slots.SlotAt(late); s.TTL <= now {
+			t.Fatalf("an attempt made at the tick of slot %d has TTL %d", now, s.TTL)
+		}
+	}
+	if n == 0 {
+		t.Fatal("no overdue payment was submitted")
+	}
+}

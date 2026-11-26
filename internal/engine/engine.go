@@ -166,6 +166,10 @@ type Engine struct {
 	// proposals hold in the ledger's deposit pot.
 	deposits uint64
 	market   market
+	// tickTo is the time of the Tick being handled (or the last one):
+	// when the engine runs overdue events, their transactions still go
+	// to the node now, so validity intervals start from it (ttl).
+	tickTo sched.Time
 	// contracts is how many contracts are deployed (contract 0 from
 	// genesis); deployAt is the next deployment, deployN its draw.
 	contracts uint64
@@ -436,6 +440,7 @@ func (e *Engine) tick(ctx context.Context, t sched.Time) error {
 	if t < e.now {
 		return fmt.Errorf("%w: %d < %d", ErrTimeBackwards, t, e.now)
 	}
+	e.tickTo = t
 	for {
 		at, ok := e.queue.Peek()
 		if !ok || at > t {

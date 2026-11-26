@@ -287,3 +287,40 @@ func TestMinPaymentIsTheLedgerMinimum(t *testing.T) {
 	}
 	h.commit(got)
 }
+
+// No payment leaves change below the ledger's min-UTxO: Apollo's own
+// minimum for the change is a few hundred lovelace short of the ledger's,
+// so a payment whose change lands between the two would be refused with
+// BabbageOutputTooSmallUTxO. Sweeping the amount across that window from a
+// 2.2 ADA coin, every build either fails or has every output at or above
+// the ledger's minimum.
+func TestNoChangeBelowMinUtxo(t *testing.T) {
+	h := newHarness(t)
+	bob := h.store.Wallet(2)
+	fund, err := h.b.Pay(ctx, h.alice, Payment{Inputs: h.spend().Inputs, TTL: h.spend().TTL, To: bob.Address(), Amount: 2_200_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.commit(fund)
+	coins := h.chain.UtxosAt(bob.Address())
+	floor := h.b.MinPayment(h.alice.Address())
+	for amount := floor; amount < 2_200_000-floor; amount += 97 {
+		got, err := h.b.Pay(ctx, bob, Payment{Inputs: coins, TTL: h.chain.Slot() + 100, To: h.alice.Address(), Amount: amount})
+		if err != nil {
+			continue
+		}
+		tx, err := conway.NewConwayTransactionFromCbor(got.Tx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, o := range tx.Outputs() {
+			need, err := conway.MinCoinTxOut(o, &h.pp)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if o.Amount().Uint64() < need {
+				t.Fatalf("paying %d: output %d holds %d, the ledger needs %d", amount, i, o.Amount().Uint64(), need)
+			}
+		}
+	}
+}
