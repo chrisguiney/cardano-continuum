@@ -86,6 +86,17 @@ func newCertState(seats []CommitteeSeat) *certState {
 	return s
 }
 
+// stake registers the genesis pools and delegations.
+func (s *certState) stake(gs []GenesisStake) {
+	for _, g := range gs {
+		op := g.Pool.Operator
+		s.pools[op] = &pool{reg: g.Pool}
+		for _, d := range g.Delegators {
+			s.accounts[credKey{common.CredentialTypeAddrKeyHash, d}] = &account{pool: &op}
+		}
+	}
+}
+
 // clone returns a deep copy, so an overlay or an undo record can be mutated
 // or restored independently.
 func (s *certState) clone() *certState {

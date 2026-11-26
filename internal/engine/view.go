@@ -33,7 +33,10 @@ func (e *Engine) bookActor(id population.ActorID, p profile.Profile, st *actor) 
 	e.book.AddStake(common.Blake2b224(st.wallet.StakeKeyHash()), id)
 	switch p.Kind {
 	case profile.Pool:
-		if pool, ok := e.poolID(id); ok {
+		if g, ok := e.genesisOf(id); ok {
+			e.book.AddPool(common.Blake2b224(g.ID), id)
+			e.pools[id] = g.ID
+		} else if pool, ok := e.poolID(id); ok {
 			e.book.AddPool(pool, id)
 			e.pools[id] = pool
 		}

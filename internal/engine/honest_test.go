@@ -89,8 +89,9 @@ func honestConfig(t testing.TB, seed uint64) Config {
 	pp := fakechain.DefaultParams()
 	return Config{
 		Seed: SeedFromInt(seed), Profiles: reg, Slots: slots, K: 3, BlockEvery: 4, Build: fullParams(), TTL: 30,
-		BinaryVersion: "test", NOpt: uint64(pp.NOpt), GovLifetime: pp.GovActionValidityPeriod,
-		Cohorts: []Cohort{{"operator", 3}, {"drep", 2}, {"staker", 6}, {"trader", 4}, {"citizen", 4}},
+		BinaryVersion: "test", SimulatedPods: true, NOpt: uint64(pp.NOpt), GovLifetime: pp.GovActionValidityPeriod,
+		GenesisPools: 3, GenesisPoolStake: 10_000_000_000,
+		Cohorts: []Cohort{{"operator", 4}, {"drep", 2}, {"staker", 6}, {"trader", 4}, {"citizen", 4}},
 	}
 }
 
@@ -137,7 +138,7 @@ func TestHonestIntentsLand(t *testing.T) {
 	got := settledKinds(t, p.log)
 	t.Logf("settled: %v", got)
 
-	for _, k := range []string{"send", "register_stake", "register_pool", "register_drep",
+	for _, k := range []string{"send", "register_stake", "delegate", "register_pool", "register_drep",
 		"delegate_drep", "mint", lockKind, unlockKind} {
 		if got[k] == 0 {
 			t.Errorf("no %s settled", k)
@@ -147,8 +148,8 @@ func TestHonestIntentsLand(t *testing.T) {
 	if s, g := e.Supply(), genesisTotal(t, cfg); s != g {
 		t.Errorf("supply %d, genesis %d", s, g)
 	}
-	if n := e.census.Count(profile.Pool, "active"); n != 3 {
-		t.Errorf("%d active pools, want 3", n)
+	if n := e.census.Count(profile.Pool, "active"); n != 4 {
+		t.Errorf("%d active pools, want 4", n)
 	}
 	if n := e.census.Count(profile.DRep, "voting"); n != 2 {
 		t.Errorf("%d voting DReps, want 2", n)

@@ -175,7 +175,8 @@ func buildPool(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p 
 	if err != nil {
 		return build.Built{}, err
 	}
-	pk, err := e.keys.Pool(keysID(id), 0)
+	ks, i := e.poolKeys(id)
+	pk, err := ks.Pool(i, 0)
 	if err != nil {
 		return build.Built{}, err
 	}
@@ -265,6 +266,12 @@ func (e *Engine) prepare(at sched.Time, a population.Actor, in agenda.Intent, r 
 		p.Update = e.view.PoolRegistered(a.ID)
 	case profile.IntentRetirePool:
 		p.Epoch = e.cfg.Slots.EpochAt(at) + 1
+	case profile.IntentWithdraw:
+		// Conway refuses a withdrawal from an account with no vote
+		// delegation (ConwayWdrlNotDelegatedToDRep).
+		if !e.view.VoteDelegated(a.ID) {
+			return nil, "withdrawal needs a vote delegation"
+		}
 	}
 	if _, ok := specs[p.kindOf()]; !ok {
 		return nil, "no builder for " + string(in.Kind)
@@ -434,6 +441,16 @@ func (e *Engine) poolOf(id population.ActorID) ([28]byte, bool) {
 	return p, ok
 }
 
+// poolKeys is the keystore and index a pool actor's pool keys come from:
+// the root keystore for a genesis pool, the actors' own otherwise.
+func (e *Engine) poolKeys(id population.ActorID) (*keys.Store, keys.ActorID) {
+	if g, ok := e.genesisOf(id); ok {
+		return e.rootKeys, keys.ActorID(g.Index)
+	}
+	return e.keys, keysID(id)
+}
+
 func (e *Engine) poolSigner(id population.ActorID) (keys.Signer, error) {
-	return e.keys.PoolSigner(keysID(id))
+	ks, i := e.poolKeys(id)
+	return ks.PoolSigner(i)
 }

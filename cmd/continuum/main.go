@@ -91,6 +91,7 @@ type simFlags struct {
 	k          uint64
 	blockEvery uint64
 	ttl        uint64
+	pools      int
 }
 
 func (s *simFlags) register(fs *flag.FlagSet) {
@@ -102,6 +103,7 @@ func (s *simFlags) register(fs *flag.FlagSet) {
 	fs.Uint64Var(&s.k, "k", 5, "security parameter: blocks until a block is durable")
 	fs.Uint64Var(&s.blockEvery, "block-every", 10, "slots between fake-chain blocks")
 	fs.Uint64Var(&s.ttl, "ttl", 120, "slots a payment stays valid")
+	fs.IntVar(&s.pools, "pools", 0, "pool operators at genesis, spread over the pool profiles; on a live run the first --genesis-pools operate the genesis pools")
 }
 
 func (s *simFlags) config() (engine.Config, error) {
@@ -120,11 +122,28 @@ func (s *simFlags) config() (engine.Config, error) {
 	return engine.Config{
 		Seed: engine.SeedFromInt(s.seed), Profiles: reg, Cohorts: cohorts, Slots: slots,
 		K: s.k, BlockEvery: s.blockEvery, TTL: s.ttl, BinaryVersion: version, Build: bp,
-		NOpt: uint64(pp.NOpt), GovLifetime: pp.GovActionValidityPeriod,
+		NOpt: uint64(pp.NOpt), GovLifetime: pp.GovActionValidityPeriod, SimulatedPods: true,
 	}, nil
 }
 
-// population reads the profile set and spreads the wallets evenly over it.
+// spread divides n actors evenly over the profiles names.
+func spread(names []string, n int) []engine.Cohort {
+	var out []engine.Cohort
+	if len(names) == 0 {
+		return nil
+	}
+	for i, name := range names {
+		c := n / len(names)
+		if i < n%len(names) {
+			c++
+		}
+		out = append(out, engine.Cohort{Profile: name, Count: c})
+	}
+	return out
+}
+
+// population reads the profile set and spreads the pools and the wallets
+// evenly over it.
 func (s *simFlags) population() (*profile.Registry, []engine.Cohort, error) {
 	raw := profiles.M1
 	name := "m1.yaml"
@@ -146,15 +165,25 @@ func (s *simFlags) population() (*profile.Registry, []engine.Cohort, error) {
 	if s.wallets < 0 {
 		return nil, nil, fmt.Errorf("--wallets %d", s.wallets)
 	}
-	names := reg.Names()
-	var cohorts []engine.Cohort
-	for i, n := range names {
-		c := s.wallets / len(names)
-		if i < s.wallets%len(names) {
-			c++
-		}
-		cohorts = append(cohorts, engine.Cohort{Profile: n, Count: c})
+	if s.pools < 0 {
+		return nil, nil, fmt.Errorf("--pools %d", s.pools)
 	}
+	// Pool profiles take the --pools actors and come first, so the first
+	// pool actors are the genesis pools' operators; every other profile
+	// shares the --wallets.
+	var pools, others []string
+	for _, n := range reg.Names() {
+		if p, _ := reg.Get(n); p.Kind == profile.Pool {
+			pools = append(pools, n)
+		} else {
+			others = append(others, n)
+		}
+	}
+	if s.pools > 0 && len(pools) == 0 {
+		return nil, nil, fmt.Errorf("--pools %d: the profile set has no pool profile", s.pools)
+	}
+	cohorts := spread(pools, s.pools)
+	cohorts = append(cohorts, spread(others, s.wallets)...)
 	return reg, cohorts, nil
 }
 

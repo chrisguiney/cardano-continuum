@@ -25,8 +25,13 @@ func NewFakeChain(cfg *Config, faults ...fakechain.Scheduled) (*fakechain.Chain,
 	for i, f := range funds {
 		gs[i] = fakechain.GenesisOutput{Address: f.Address, Lovelace: f.Lovelace}
 	}
+	owners, staking, err := GenesisStaking(cfg)
+	if err != nil {
+		return nil, err
+	}
 	return fakechain.New(fakechain.Config{
-		Slots: cfg.Slots, NetworkID: cfg.NetworkID, K: cfg.K, BlockEvery: cfg.BlockEvery, Genesis: gs, Faults: faults,
+		Slots: cfg.Slots, NetworkID: cfg.NetworkID, K: cfg.K, BlockEvery: cfg.BlockEvery, Genesis: append(gs, owners...),
+		Faults: faults, Staking: staking,
 	})
 }
 

@@ -41,6 +41,8 @@ type liveFlags struct {
 	faucet      uint64
 	refillEvery uint64
 	report      time.Duration
+	gpools      int
+	poolStake   uint64
 }
 
 func (l *liveFlags) register(fs *flag.FlagSet) {
@@ -51,6 +53,8 @@ func (l *liveFlags) register(fs *flag.FlagSet) {
 	fs.Uint64Var(&l.faucet, "faucet", genesis.Default().FaucetLovelace, "lovelace the genesis faucet holds")
 	fs.Uint64Var(&l.refillEvery, "refill-every", 20, "slots between faucet refill rounds")
 	fs.DurationVar(&l.report, "report-every", 30*time.Second, "interval between progress records")
+	fs.IntVar(&l.gpools, "genesis-pools", genesis.Default().Pools, "pools the devnet genesis registers, operated by the first --pools operators")
+	fs.Uint64Var(&l.poolStake, "pool-stake", genesis.Default().PoolStake, "lovelace each genesis pool's owner holds delegated to it")
 }
 
 // liveConfig is the engine configuration of a live run: the population from
@@ -71,10 +75,19 @@ func liveConfig(sf simFlags, lf liveFlags, g chain.Genesis, np nodeParams, seed 
 		return engine.Config{}, err
 	}
 	bp.SystemStart, bp.SlotLength = g.Start, g.SlotLength
+	// The guard needs every genesis pool's stake, so a run with operators
+	// operates all of them; one without has no pools to guard.
+	gpools := 0
+	if sf.pools > 0 {
+		if sf.pools < lf.gpools {
+			return engine.Config{}, fmt.Errorf("--pools %d cannot operate the %d genesis pools", sf.pools, lf.gpools)
+		}
+		gpools = lf.gpools
+	}
 	return engine.Config{
 		Seed: seed, Profiles: reg, Cohorts: cohorts, Slots: slots, K: g.SecurityParam, TTL: sf.ttl,
 		Build: bp, BinaryVersion: version, Faucet: lf.faucet, RefillEvery: lf.refillEvery,
-		NOpt: np.nOpt, GovLifetime: np.govLifetime,
+		NOpt: np.nOpt, GovLifetime: np.govLifetime, GenesisPoolStake: lf.poolStake, GenesisPools: gpools,
 	}, nil
 }
 

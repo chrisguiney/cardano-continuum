@@ -31,6 +31,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
+	"github.com/chrisguiney/cardano-continuum/internal/policy"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/rng"
@@ -88,6 +89,20 @@ type Config struct {
 	// means none is known. GovLifetime is govActionLifetime in epochs.
 	// Both come from the node's (or the fake chain's) parameters.
 	NOpt, GovLifetime uint64
+
+	// Floor is the stake-floor guard's configuration; the zero value is a
+	// 50% floor with a margin of one pool.
+	Floor policy.Config
+	// SimulatedPods: no operator runs the pools (the fake chain), so every
+	// pod runs unless a PoolStatus input says otherwise, and a repair
+	// brings it back at once.
+	SimulatedPods bool
+
+	// GenesisPools is the number of pools the genesis registers
+	// (internal/genesis Spec.Pools), each owner holding GenesisPoolStake
+	// delegated to it. The first GenesisPools pool actors operate them.
+	GenesisPools     int
+	GenesisPoolStake uint64
 }
 
 // Fund is one genesis output.
@@ -214,7 +229,12 @@ func (c *Config) Header() (eventlog.HeaderBody, error) {
 		Refill     uint64        `cbor:"11,keyasint,omitempty"`
 		NOpt       uint64        `cbor:"12,keyasint,omitempty"`
 		GovLife    uint64        `cbor:"13,keyasint,omitempty"`
-	}{NOpt: c.NOpt, GovLife: c.GovLifetime, Format: logFormat, K: c.K, BlockEvery: c.BlockEvery, NetworkID: c.NetworkID, SlotMs: c.Slots.SlotStart(1),
+		Floor      uint64        `cbor:"14,keyasint"`
+		Margin     int           `cbor:"15,keyasint"`
+		SimPods    bool          `cbor:"16,keyasint,omitempty"`
+		GPools     int           `cbor:"17,keyasint,omitempty"`
+		GStake     uint64        `cbor:"18,keyasint,omitempty"`
+	}{GPools: c.GenesisPools, GStake: c.GenesisPoolStake, NOpt: c.NOpt, GovLife: c.GovLifetime, Floor: c.floor().Floor, Margin: c.floor().Margin, SimPods: c.SimulatedPods, Format: logFormat, K: c.K, BlockEvery: c.BlockEvery, NetworkID: c.NetworkID, SlotMs: c.Slots.SlotStart(1),
 		EpochMs: c.Slots.EpochStart(1), TTL: c.TTL, Build: c.Build, Retry: c.retry(), Refill: c.RefillEvery}
 	for _, f := range funds {
 		a, err := f.Address.Bytes()

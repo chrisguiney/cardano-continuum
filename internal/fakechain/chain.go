@@ -83,6 +83,17 @@ type Config struct {
 	Issuer common.IssuerVkey
 	// Committee is the genesis constitutional committee.
 	Committee []CommitteeSeat
+	// Staking is the genesis delegation, as Shelley genesis staking: the
+	// pools are registered and the delegators' stake credentials
+	// registered and delegated, all with no deposit.
+	Staking []GenesisStake
+}
+
+// GenesisStake is one genesis pool and the stake credentials delegated to
+// it.
+type GenesisStake struct {
+	Pool       common.PoolRegistrationCertificate
+	Delegators []common.Blake2b224
 }
 
 // DefaultParams returns ouroboros-mock's mainnet-like Conway parameters at
@@ -185,6 +196,7 @@ func New(cfg Config) (*Chain, error) {
 		utxo:      utxoSet{},
 		certs:     newCertState(cfg.Committee),
 	}
+	c.certs.stake(cfg.Staking)
 	if c.capBytes == 0 {
 		c.capBytes = 2 * uint64(cfg.Params.MaxBlockBodySize)
 	}

@@ -15,6 +15,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/plan"
+	"github.com/chrisguiney/cardano-continuum/internal/policy"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/rng"
@@ -139,6 +140,17 @@ type Engine struct {
 	// proposals hold in the ledger's deposit pot.
 	deposits uint64
 	market   market
+
+	guard policy.Guard
+	// dark is the pool plan: pools the engine wants not forging. down are
+	// pools whose pod is observed not running, repairs those a repair was
+	// asked for since. stalled is set by a stall incident.
+	dark, down, repairs map[population.ActorID]bool
+	stalled             bool
+	// rootKeys is the run seed's own keystore (genesis pools, faucet, committee);
+	// gpools are the genesis pools.
+	rootKeys *keys.Store
+	gpools   []genesisPool
 	// pools maps each pool actor to the pool it operates.
 	pools map[population.ActorID][28]byte
 
@@ -185,6 +197,15 @@ func New(cfg Config) (*Engine, error) {
 	for i, f := range funds {
 		gs.Utxos = append(gs.Utxos, ownedUtxo(f.Address, Ref{Tx: TxID(genesis[i].Ref.Tx)}, f.Lovelace))
 	}
+	if err := e.stakeGenesis(&gs); err != nil {
+		return nil, err
+	}
+	for _, g := range e.gpools {
+		// A genesis pool is registered by the genesis itself.
+		if err := e.census.Apply(population.Transition{ID: g.Actor, To: population.Active, Cause: population.Confirmed{Tx: "genesis"}}); err != nil {
+			return nil, fmt.Errorf("engine: genesis pool actor %d: %w", g.Actor, err)
+		}
+	}
 	if e.view, err = chain.New(e.viewConfig(), gs); err != nil {
 		return nil, fmt.Errorf("engine: view: %w", err)
 	}
@@ -217,9 +238,22 @@ func newEmpty(cfg Config) (*Engine, error) {
 		actors: map[population.ActorID]*actor{}, byAddr: map[string]population.ActorID{},
 		pending: map[uint64]*pendingRec{}, byTx: map[TxID]uint64{}, book: chain.NewBook(),
 		pools: map[population.ActorID][28]byte{},
+		dark:  map[population.ActorID]bool{}, down: map[population.ActorID]bool{}, repairs: map[population.ActorID]bool{},
+	}
+	if e.guard, err = policy.New(cfg.floor()); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrConfig, err)
 	}
 	if err := e.book.AddAddress(build.AlwaysSucceeds.Address(cfg.NetworkID), scriptActor); err != nil {
 		return nil, fmt.Errorf("engine: book: %w", err)
+	}
+	if e.rootKeys, err = keys.New(cfg.Seed, cfg.NetworkID); err != nil {
+		return nil, fmt.Errorf("engine: root keystore: %w", err)
+	}
+	if e.gpools, err = cfg.genesisPools(e.rootKeys); err != nil {
+		return nil, err
+	}
+	if err := e.bookGenesis(); err != nil {
+		return nil, err
 	}
 	for _, n := range cfg.Profiles.Names() {
 		p, _ := cfg.Profiles.Get(n)
@@ -267,6 +301,12 @@ func (e *Engine) Handle(ctx context.Context, in eventlog.Record) ([]eventlog.Rec
 			return nil, fmt.Errorf("engine: decode rollback: %w", err)
 		}
 		err = e.rollback(ctx, b.To)
+	case eventlog.KindPoolStatus:
+		var s PoolStatus
+		if err = eventlog.Decode(in.Body, &s); err != nil {
+			return nil, fmt.Errorf("engine: decode pool status: %w", err)
+		}
+		err = e.poolStatus(ctx, in.At, s)
 	case eventlog.KindSubmitResult:
 		var r SubmitResult
 		if err = eventlog.Decode(in.Body, &r); err != nil {
@@ -463,10 +503,11 @@ func (e *Engine) act(ctx context.Context, at sched.Time, id population.ActorID) 
 	r := e.draw(a, st, "act")
 	d := agenda.Decide(a, r, view{e: e}, st.policy, st.prof.Weights)
 	e.emit(at, KindIntentChosen, id, d)
-	switch d.Intent.Kind {
-	case agenda.Idle:
-	case agenda.GoDark, agenda.GoLive:
-		e.emit(at, KindSkipped, id, Skipped{Kind: string(d.Intent.Kind), Why: "no pod plan"})
+	switch {
+	case d.Intent.Kind == agenda.Idle:
+	case !e.checkFloor(at, d.Intent):
+	case d.Intent.Kind == agenda.GoDark, d.Intent.Kind == agenda.GoLive:
+		e.act1Pool(at, d.Intent)
 	default:
 		if err := e.intend(ctx, at, a, st, d.Intent, r); err != nil {
 			return err
@@ -620,7 +661,7 @@ func (e *Engine) applyBlock(ctx context.Context, at sched.Time, b blockRec) erro
 		}
 	}
 	e.release(at, res.Dead, "")
-	return nil
+	return e.recover(ctx, at)
 }
 
 func (e *Engine) confirm(b blockRec) {

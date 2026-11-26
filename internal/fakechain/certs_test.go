@@ -133,3 +133,28 @@ func TestMempoolSeesEarlierCertificates(t *testing.T) {
 		t.Fatalf("deposits %d after register and deregister", got)
 	}
 }
+
+// TestGenesisStaking: a genesis pool is registered and its delegators'
+// credentials are registered and delegated to it, with no deposit held.
+func TestGenesisStaking(t *testing.T) {
+	op := common.PoolKeyHash{9}
+	f := newFixture(t, func(c *Config) {
+		c.Staking = []GenesisStake{{
+			Pool:       common.PoolRegistrationCertificate{Operator: op},
+			Delegators: []common.Blake2b224{common.Blake2b224(c.Genesis[1].Address.StakeKeyHash())},
+		}}
+	})
+	l := f.chain.Ledger()
+	if len(l.Pools) != 1 || l.Pools[0].ID != common.Blake2b224(op) {
+		t.Fatalf("pools %+v", l.Pools)
+	}
+	if len(l.Accounts) != 1 || l.Accounts[0].Pool == nil || *l.Accounts[0].Pool != common.Blake2b224(op) {
+		t.Fatalf("accounts %+v", l.Accounts)
+	}
+	if !f.chain.StakeRegistered(common.Credential{Credential: common.Blake2b224(f.bob.StakeKeyHash())}) {
+		t.Fatal("delegator not registered")
+	}
+	if f.chain.Deposits() != 0 {
+		t.Fatalf("deposits %d", f.chain.Deposits())
+	}
+}

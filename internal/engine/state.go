@@ -45,6 +45,7 @@ func (e *Engine) Snapshot() ([]byte, error) {
 		return nil, fmt.Errorf("engine: ledger: %w", err)
 	}
 	s.Ledger = ledgerBlob{Version: blob.Version, Data: blob.Data}
+	s.Dark, s.Down, s.Repairs, s.Stalled = idSet(e.dark), idSet(e.down), idSet(e.repairs), e.stalled
 	if s.View, err = encodeView(e.view.Base()); err != nil {
 		return nil, err
 	}
@@ -77,7 +78,15 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 		return nil, err
 	}
 	e.now, e.nextID, e.conf, e.fees, e.foreign, e.deposits = s.Now, s.NextIntent, s.Conf, s.Fees, s.Foreign, s.Deposits
-	e.market = s.Market
+	e.market, e.stalled = s.Market, s.Stalled
+	for _, set := range []struct {
+		m   map[population.ActorID]bool
+		ids []uint64
+	}{{e.dark, s.Dark}, {e.down, s.Down}, {e.repairs, s.Repairs}} {
+		for _, id := range set.ids {
+			set.m[population.ActorID(id)] = true
+		}
+	}
 	for _, r := range s.Actors {
 		if err := e.restoreActor(r); err != nil {
 			return nil, err
@@ -330,5 +339,15 @@ func (e *Engine) ActorRows() []store.ActorRow {
 		a, _ := e.census.Get(id)
 		out = append(out, store.ActorRow{ID: uint64(id), Name: fmt.Sprintf("%s-%d", a.Profile, id), Role: string(a.State), Profile: a.Profile})
 	}
+	return out
+}
+
+// idSet is a set of actors, ascending.
+func idSet(m map[population.ActorID]bool) []uint64 {
+	out := make([]uint64, 0, len(m))
+	for id := range m {
+		out = append(out, uint64(id))
+	}
+	slices.Sort(out)
 	return out
 }

@@ -93,6 +93,8 @@ type world struct {
 	// db stays open across crashes: a committed SQLite transaction survives a
 	// kill, and reopening per crash would dominate the sweep's run time.
 	db *store.DB
+	// pods, when set, reports pod health to the engine.
+	pods PodSource
 	// mem, when set, replaces the SQLite store: the crash sweep starts
 	// hundreds of worlds and SQLite's fsyncs would dominate it.
 	mem *memStore
@@ -134,7 +136,7 @@ func (w *world) start(crash func(string) error, every int) (*proc, error) {
 	p := &proc{log: l, db: w.db}
 	var err error
 	p.r, err = Start(ctx, w.cfg, Deps{Clock: w.clock, Log: l, Store: cp, Node: w.node, Pacer: w.node,
-		CheckpointEvery: every, Crash: crash})
+		CheckpointEvery: every, Crash: crash, Pods: w.pods})
 	if err != nil {
 		p.kill(w.t)
 		return nil, err

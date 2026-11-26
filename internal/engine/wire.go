@@ -20,7 +20,46 @@ const (
 	KindRefused      = "Refused"
 	KindGaveUp       = "GaveUp"
 	KindRefill       = "Refill"
+	KindGuarded      = "Guarded"
+	KindPoolTier     = "PoolTier"
+	KindRepair       = "Repair"
+	KindIncident     = "Incident"
 )
+
+// PoolStatus is the body of a PoolStatus input: a pool actor's pod was
+// observed running or not (operator status).
+type PoolStatus struct {
+	Pool    uint64 `cbor:"1,keyasint"`
+	Running bool   `cbor:"2,keyasint"`
+}
+
+// Guarded is the body of a Guarded decision: the stake-floor guard refused
+// an intent. Target is the pool a delegation names.
+type Guarded struct {
+	Kind   string `cbor:"1,keyasint"`
+	Target uint64 `cbor:"2,keyasint,omitempty"`
+	Why    string `cbor:"3,keyasint"`
+}
+
+// PoolTier is the body of a PoolTier decision: the engine plans the pool
+// actor dark (not forging) or live. Why is "agenda" or "recovery".
+type PoolTier struct {
+	Dark bool   `cbor:"1,keyasint"`
+	Why  string `cbor:"2,keyasint"`
+}
+
+// Repair is the body of a Repair decision: the pool's pod is to be
+// rescheduled or given a new operational certificate.
+type Repair struct{}
+
+// Incident is the body of an Incident decision. Kind "stall": epoch Epoch
+// began with the ledger's last transition at Label, so an epoch passed
+// with no block and the run stops.
+type Incident struct {
+	Kind  string `cbor:"1,keyasint"`
+	Epoch uint64 `cbor:"2,keyasint"`
+	Label uint64 `cbor:"3,keyasint"`
+}
 
 // TxID is a transaction hash.
 type TxID [32]byte
@@ -213,6 +252,11 @@ type snapshot struct {
 	RefillAt sched.Time `cbor:"12,keyasint,omitempty"`
 	Deposits uint64     `cbor:"14,keyasint,omitempty"`
 	Market   market     `cbor:"15,keyasint"`
+	// Dark, Down and Repairs are the pool plan and pod state, ascending.
+	Dark    []uint64 `cbor:"16,keyasint,omitempty"`
+	Down    []uint64 `cbor:"17,keyasint,omitempty"`
+	Repairs []uint64 `cbor:"18,keyasint,omitempty"`
+	Stalled bool     `cbor:"19,keyasint,omitempty"`
 	// View is the chain view at the confirmed point; the window is replayed
 	// onto it on restore.
 	View viewRec `cbor:"13,keyasint"`

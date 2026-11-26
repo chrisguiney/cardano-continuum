@@ -50,6 +50,13 @@ type Pacer interface {
 	NextChange(now sched.Time) sched.Time
 }
 
+// PodSource reports the pool pods' observed health: the pools whose pod
+// started or stopped running since the last call. A live run reads the
+// operator's ContinuumPool status; tests script it.
+type PodSource interface {
+	Changes(ctx context.Context, now sched.Time) ([]PoolStatus, error)
+}
+
 // Log is the event log as the loop uses it.
 type Log interface {
 	eventlog.Writer
@@ -81,6 +88,8 @@ type Deps struct {
 	Node  Node
 	// Pacer is optional; the fake chain needs one.
 	Pacer Pacer
+	// Pods is optional: without it no pod is ever observed down.
+	Pods PodSource
 	// CheckpointEvery is the number of inputs between checkpoints; zero
 	// checkpoints only when Run returns.
 	CheckpointEvery int
@@ -280,6 +289,9 @@ func (r *Runner) step(ctx context.Context, feed func() error) error {
 	if err := r.crash(StageFed); err != nil {
 		return err
 	}
+	if r.eng.Stalled() {
+		return ErrStalled
+	}
 	if r.d.CheckpointEvery > 0 && r.since >= r.d.CheckpointEvery {
 		return r.Checkpoint(ctx)
 	}
@@ -385,6 +397,32 @@ func (r *Runner) drain(ctx context.Context) error {
 	}
 }
 
+// pods feeds every pod health change as a PoolStatus input.
+func (r *Runner) pods(ctx context.Context) error {
+	if r.d.Pods == nil {
+		return nil
+	}
+	now := r.d.Clock.Now()
+	ss, err := r.d.Pods.Changes(ctx, now)
+	if err != nil {
+		return fmt.Errorf("engine: pod status: %w", err)
+	}
+	for _, s := range ss {
+		body, err := eventlog.Encode(s)
+		if err != nil {
+			return err
+		}
+		rec := eventlog.Record{At: now, Kind: eventlog.KindPoolStatus, Actor: eventlog.ActorID(s.Pool), Body: body}
+		if err := r.step(ctx, func() error { return r.sess.Feed(ctx, rec) }); err != nil {
+			return err
+		}
+		if err := r.effects(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // pollEvery bounds a wait when nothing tells the loop when to wake.
 const pollEvery sched.Time = 1000
 
@@ -394,6 +432,13 @@ const pollEvery sched.Time = 1000
 func (r *Runner) Run(ctx context.Context, until sched.Time) error {
 	for ctx.Err() == nil {
 		if err := r.drain(ctx); err != nil {
+			return err
+		}
+		// A block can start the engine's recovery moves.
+		if err := r.effects(ctx); err != nil {
+			return err
+		}
+		if err := r.pods(ctx); err != nil {
 			return err
 		}
 		now := r.d.Clock.Now()
