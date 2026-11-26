@@ -134,6 +134,8 @@ var specs = map[string]spec{
 			return e.builder.Lock(ctx, w, build.Lock{Spend: sp, Script: build.AlwaysSucceeds, Amount: p.Amount, Datum: actorDatum(population.ActorID(p.Actor))})
 		}},
 	hotKind: {need: none, headroom: feeHeadroom, deposit: noDeposit, build: buildHot},
+	// A dust flood is one-shot: nothing rebuilds it.
+	dustKind: {need: none, headroom: feeHeadroom, deposit: noDeposit, build: oneShotBuild},
 	// A landed unlock's script input is gone, so its redeemer and script
 	// witness point at nothing.
 	unlockKind: {need: none, headroom: scriptHeadroom, deposit: noDeposit, build: buildUnlock, script: true,
@@ -336,7 +338,8 @@ func (e *Engine) inFlight(id population.ActorID, kind string) bool {
 func (e *Engine) prepareSend(a population.Actor, p *pendingRec, r *rand.Rand) (*pendingRec, string) {
 	var targets []population.ActorID
 	for _, id := range e.order {
-		if id == a.ID {
+		// Nobody pays an adversary.
+		if id == a.ID || e.isAdversary(id) {
 			continue
 		}
 		if t, _ := e.census.Get(id); t.State != population.Abandoned {
@@ -357,7 +360,8 @@ func (e *Engine) prepareSend(a population.Actor, p *pendingRec, r *rand.Rand) (*
 func (e *Engine) prepareScript(id population.ActorID, p *pendingRec) {
 	busy := map[Ref]bool{}
 	for _, q := range e.pending {
-		if q.Locked != nil {
+		// An honest actor knows its own unlocks, not an adversary's.
+		if q.Locked != nil && q.Attack == "" {
 			busy[*q.Locked] = true
 		}
 	}
@@ -433,13 +437,17 @@ func (e *Engine) start(ctx context.Context, at sched.Time, p *pendingRec) (strin
 	e.addPending(p)
 	e.market.excite(at)
 	e.emitSubmitted(at, p, built, inputs)
-	return "", nil
+	return "", e.react(ctx, at, p, built.Fee)
 }
 
 func (e *Engine) emitSubmitted(at sched.Time, p *pendingRec, built build.Built, inputs []Ref) {
+	attack := p.Attack
+	if attack == "" && e.isAdversary(population.ActorID(p.Actor)) {
+		attack = coverTraffic
+	}
 	e.emit(at, KindSubmitted, population.ActorID(p.Actor), Submitted{
-		Intent: p.ID, ID: p.Tx, To: p.To, Amount: p.Amount, Fee: built.Fee, TTL: p.TTL, Inputs: inputs, Tx: built.Tx, Kind: p.Kind,
-		Mistakes: p.Carried,
+		Intent: p.ID, ID: TxID(built.ID), To: p.To, Amount: p.Amount, Fee: built.Fee, TTL: p.TTL, Inputs: inputs, Tx: built.Tx, Kind: p.Kind,
+		Mistakes: p.Carried, Attack: attack,
 	})
 }
 

@@ -404,8 +404,17 @@ func (r *Runner) effects(ctx context.Context) error {
 // answer with internal/submit.
 func (r *Runner) send(ctx context.Context, s Submission) (SubmitResult, error) {
 	res, err := r.sendOnce(ctx, s)
-	if err != nil || !s.Twice {
+	if err != nil {
 		return res, err
+	}
+	for _, rv := range s.Rivals {
+		res.Rivals = append(res.Rivals, r.sendRival(ctx, rv))
+	}
+	if ctx.Err() != nil {
+		return res, ctx.Err()
+	}
+	if !s.Twice {
+		return res, nil
 	}
 	// The second send goes out whatever the first answered, as an actor
 	// pressing send twice would; HasTx would only hide its answer.
@@ -440,6 +449,19 @@ func (r *Runner) sendOnce(ctx context.Context, s Submission) (SubmitResult, erro
 		r.stats.Unreached++
 	}
 	return res, nil
+}
+
+// sendRival sends a race's further transaction. One the mempool already
+// holds was sent before a crash and is taken as accepted.
+func (r *Runner) sendRival(ctx context.Context, rv Rival) Answer {
+	if r.d.Node.HasTx(rv.ID) {
+		return Answer{Verdict: VerdictAccepted}
+	}
+	o := submit.Send(ctx, nodeTarget{r.d.Node}, 0, rv.Tx)
+	if o.Verdict == submit.Rejected {
+		r.stats.Rejections++
+	}
+	return Answer{Verdict: verdictOf(o), Failures: classesOf(o)}
 }
 
 func verdictOf(o submit.Outcome) Verdict {

@@ -56,6 +56,8 @@ func (e *Engine) Snapshot() ([]byte, error) {
 	for _, id := range slices.Sorted(mapKeys(e.images)) {
 		s.Images = append(s.Images, imageRec{Pool: uint64(id), Ref: e.images[id]})
 	}
+	s.Charges = e.costs.Entries()
+	s.Contested = slices.SortedFunc(maps.Keys(e.contested), cmpLogRef)
 	if s.View, err = encodeView(e.view.Base()); err != nil {
 		return nil, err
 	}
@@ -99,6 +101,9 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 	for _, r := range s.Images {
 		e.images[population.ActorID(r.Pool)] = r.Ref
 	}
+	for _, r := range s.Contested {
+		e.contested[r] = true
+	}
 	for i, a := range e.adoptions {
 		if !a.Done {
 			e.queue.Push(a.At, qev{kind: evAdopt, intent: uint64(i)})
@@ -132,6 +137,8 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 		e.refillAt = s.RefillAt
 		e.queue.Push(e.refillAt, qev{kind: evRefill})
 	}
+	// After restoreActor: the actors' ceilings are set, the spends restored.
+	e.costs.Restore(s.Charges)
 	if err := e.restoreLedger(s); err != nil {
 		return nil, err
 	}
@@ -364,19 +371,24 @@ type Submission struct {
 	ID     TxID
 	Tx     []byte
 	Twice  bool
+	// Rivals are sent right after Tx: a double-spend race.
+	Rivals []Rival
 }
 
 // InFlight returns the payments decided but not yet answered by the node,
-// oldest first, leaving out those still backing off. It is the loop's effect queue: derived from state, so a
-// restart resumes exactly the submissions a crash interrupted.
+// oldest first, leaving out those still backing off; a front-run goes
+// ahead of all of them. It is the loop's effect queue: derived from state,
+// so a restart resumes exactly the submissions a crash interrupted.
 func (e *Engine) InFlight() []Submission {
 	out := make([]Submission, 0, len(e.awaiting))
-	for _, id := range e.awaiting {
-		p := e.pending[id]
-		if p.NotBefore > e.now {
-			continue
+	for _, jump := range []bool{true, false} {
+		for _, id := range e.awaiting {
+			p := e.pending[id]
+			if p.NotBefore > e.now || p.Jump != jump {
+				continue
+			}
+			out = append(out, Submission{Intent: id, Actor: p.Actor, ID: p.Tx, Tx: p.Cbor, Twice: p.Carried.Has(mistake.DoubleSubmit), Rivals: p.Rivals})
 		}
-		out = append(out, Submission{Intent: id, Actor: p.Actor, ID: p.Tx, Tx: p.Cbor, Twice: p.Carried.Has(mistake.DoubleSubmit)})
 	}
 	return out
 }

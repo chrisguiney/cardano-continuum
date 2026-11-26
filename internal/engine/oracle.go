@@ -118,7 +118,8 @@ func (e *Engine) judge(at sched.Time, p *pendingRec, r SubmitResult, out submit.
 	if r.Node != nil {
 		node = *r.Node
 	}
-	spent := p.M.Sent || len(p.Txs) > 1
+	// An adversary racing for the same shared output may have spent it.
+	spent := p.M.Sent || len(p.Txs) > 1 || (p.Locked != nil && e.contested[*p.Locked])
 	want := expect(p.Carried, spent, specs[p.kindOf()].again)
 	want.Lost = p.Lost
 	// A rebuild waits out its backoff before its first send, which can

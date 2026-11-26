@@ -28,6 +28,7 @@ import (
 
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 
+	"github.com/chrisguiney/cardano-continuum/internal/adversary"
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
@@ -127,6 +128,9 @@ type Config struct {
 	// Run names the run in each oracle finding's replay command. Findings
 	// are decisions, so a replay must use the same Run.
 	Run oracle.Run
+	// Adversaries is the proof (adversary.Clear) that the node is on the
+	// run's devnet. Without it New refuses any adversary actor.
+	Adversaries adversary.Clearance
 }
 
 // Fund is one genesis output.

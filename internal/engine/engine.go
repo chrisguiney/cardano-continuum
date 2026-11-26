@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 
+	"github.com/chrisguiney/cardano-continuum/internal/adversary"
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
@@ -181,6 +182,15 @@ type Engine struct {
 	seq      uint64
 	ends     []oracle.End
 
+	// advs are the adversaries' attack policies and costs their cost
+	// account; contested are the shared outputs an adversary tried to
+	// spend, so an honest spend of one may meet "inputs spent". owners
+	// maps an actor's lock datum to the actor, derived on demand.
+	advs      map[population.ActorID]adversary.Policy
+	costs     *adversary.Ledger
+	contested map[Ref]bool
+	owners    map[string]population.ActorID
+
 	out []eventlog.Record
 }
 
@@ -247,6 +257,9 @@ func newEmpty(cfg Config) (*Engine, error) {
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}
+	if err := cfg.checkAdversaries(); err != nil {
+		return nil, err
+	}
 	ks, err := keys.New(cfg.Seed.Derive("keys"), cfg.NetworkID)
 	if err != nil {
 		return nil, fmt.Errorf("engine: keystore: %w", err)
@@ -267,6 +280,7 @@ func newEmpty(cfg Config) (*Engine, error) {
 		pools: map[population.ActorID][28]byte{},
 		dark:  map[population.ActorID]bool{}, down: map[population.ActorID]bool{}, repairs: map[population.ActorID]bool{},
 		images: map[population.ActorID]string{},
+		advs:   map[population.ActorID]adversary.Policy{}, costs: adversary.NewLedger(), contested: map[Ref]bool{},
 	}
 	if e.guard, err = policy.New(cfg.floor()); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrConfig, err)
@@ -477,6 +491,7 @@ func (e *Engine) register(a population.Actor, p profile.Profile) *actor {
 	if err != nil {
 		pol = nil // the actor scores nothing and stays idle
 	}
+	pol = e.arm(a.ID, p, pol)
 	st := &actor{prof: p, policy: pol, rate: baseRate(p), wallet: e.keys.Wallet(keys.ActorID(a.ID)),
 		hazardAt: population.Never, actAt: population.Never}
 	e.actors[a.ID] = st
@@ -567,6 +582,10 @@ func (e *Engine) act(ctx context.Context, at sched.Time, id population.ActorID) 
 	case !e.checkFloor(at, d.Intent):
 	case d.Intent.Kind == agenda.GoDark, d.Intent.Kind == agenda.GoLive:
 		e.act1Pool(at, d.Intent)
+	case isAttack(d.Intent.Kind):
+		if err := e.attack(ctx, at, a, d.Intent, r); err != nil {
+			return err
+		}
 	default:
 		if err := e.intend(ctx, at, a, st, d.Intent, r); err != nil {
 			return err
@@ -639,6 +658,9 @@ func (e *Engine) submitResult(ctx context.Context, at sched.Time, r SubmitResult
 	if r.Verdict == VerdictDropped {
 		return e.dropped(ctx, at, r)
 	}
+	if p.Attack != "" {
+		return e.attackResult(ctx, at, p, r)
+	}
 	if p.Refill {
 		out, err := outcomeOf(r)
 		if err != nil {
@@ -679,7 +701,7 @@ func (e *Engine) release(ctx context.Context, at sched.Time, dead []plan.TxID, w
 		if err := e.dead(ctx, at, p, TxID(tx)); err != nil {
 			return err
 		}
-		if e.pending[id] != p || len(p.Txs) > 0 || (!p.Refill && p.M.State != submit.GaveUp) {
+		if e.pending[id] != p || len(p.Txs) > 0 || (!p.oneShot() && p.M.State != submit.GaveUp) {
 			continue
 		}
 		w := why

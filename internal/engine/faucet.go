@@ -97,7 +97,8 @@ func (e *Engine) needy() ([]build.Output, []uint64, []uint64) {
 		if len(outs) == maxRefillOutputs {
 			break
 		}
-		if a, _ := e.census.Get(id); a.State == population.Abandoned {
+		// An adversary spends its own budget, never the faucet's.
+		if a, _ := e.census.Get(id); a.State == population.Abandoned || e.isAdversary(id) {
 			continue
 		}
 		st := e.actors[id]

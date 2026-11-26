@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/blinklabs-io/gouroboros/cbor"
 	"github.com/blinklabs-io/gouroboros/ledger/common"
@@ -46,6 +47,16 @@ func NewFakeChain(cfg *Config, faults ...fakechain.Scheduled) (*fakechain.Chain,
 		Slots:     cfg.Slots, NetworkID: cfg.NetworkID, K: cfg.K, BlockEvery: cfg.BlockEvery, Genesis: append(gs, owners...),
 		Faults: faults, Staking: staking,
 	})
+}
+
+// FakeGenesis is the genesis identity of cfg's fake chain, as a devnet
+// with network magic would answer it: what adversary.Clear compares for a
+// fake run.
+func FakeGenesis(cfg *Config, magic uint32) chain.Genesis {
+	return chain.Genesis{
+		Magic: magic, Start: time.UnixMilli(0).UTC(), EpochLength: cfg.Slots.SlotAt(cfg.Slots.EpochStart(1)),
+		SecurityParam: cfg.K, SlotLength: time.Duration(cfg.Slots.SlotStart(1)) * time.Millisecond,
+	}
 }
 
 // FakeNode adapts a fake chain to Node and Pacer for `continuum run --fake`

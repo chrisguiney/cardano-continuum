@@ -3,6 +3,8 @@ package engine
 import (
 	"bytes"
 
+	"github.com/chrisguiney/cardano-continuum/internal/adversary"
+
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/mistake"
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
@@ -173,6 +175,9 @@ type SubmitResult struct {
 	// mistake. The retry machine reads only the first answer; the oracle
 	// judges both.
 	Again *Answer `cbor:"8,keyasint,omitempty"`
+	// Rivals are the node's answers to a double-spend race's further
+	// transactions, sent in order after the first.
+	Rivals []Answer `cbor:"9,keyasint,omitempty"`
 }
 
 // Answer is one node answer to one send.
@@ -217,6 +222,9 @@ type Submitted struct {
 	Kind string `cbor:"9,keyasint,omitempty"`
 	// Mistakes are the honest mistakes the attempt carries.
 	Mistakes mistake.KindSet `cbor:"10,keyasint,omitempty"`
+	// Attack names the attack an adversary's attempt makes, or "cover"
+	// for its ordinary traffic; empty for an honest actor.
+	Attack string `cbor:"11,keyasint,omitempty"`
 }
 
 // Refill is the body of a Refill decision: the faucet pays To[i]
@@ -317,6 +325,10 @@ type snapshot struct {
 	View viewRec `cbor:"13,keyasint"`
 	// Lost is the lovelace settled payments sent to wrong addresses.
 	Lost uint64 `cbor:"26,keyasint,omitempty"`
+	// Charges are the adversaries' spends by epoch; Contested the shared
+	// outputs they tried to spend, ascending.
+	Charges   []adversary.Charge `cbor:"27,keyasint,omitempty"`
+	Contested []Ref              `cbor:"28,keyasint,omitempty"`
 }
 
 // ledgerBlob is the planner ledger's store.Blob.
@@ -395,6 +407,14 @@ type pendingRec struct {
 	Injected mistake.KindSet `cbor:"20,keyasint,omitempty"`
 	Carried  mistake.KindSet `cbor:"21,keyasint,omitempty"`
 	Lost     uint64          `cbor:"22,keyasint,omitempty"`
+	// Attack names the attack of an adversary's step (attack.go), which
+	// no retry machine drives; Want is the verdict its first send calls
+	// for, Rivals a race's further transactions still to send, and Jump
+	// sends it ahead of every other submission (a front-run).
+	Attack string   `cbor:"23,keyasint,omitempty"`
+	Want   *wantRec `cbor:"24,keyasint,omitempty"`
+	Rivals []Rival  `cbor:"25,keyasint,omitempty"`
+	Jump   bool     `cbor:"26,keyasint,omitempty"`
 }
 
 func samePoint(a, b eventlog.ChainPoint) bool {

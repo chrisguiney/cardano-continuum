@@ -32,7 +32,7 @@ const frustration = 1.0
 // for in its state (an attempt in a block while a resend is unanswered)
 // tells it nothing and is dropped.
 func (e *Engine) observe(ctx context.Context, at sched.Time, p *pendingRec, ev submit.Event) error {
-	if p.Refill || p.M.State == submit.GaveUp || p.M.State == submit.Done {
+	if p.oneShot() || p.M.State == submit.GaveUp || p.M.State == submit.Done {
 		return nil
 	}
 	err := e.apply(ctx, at, p, ev, "")
