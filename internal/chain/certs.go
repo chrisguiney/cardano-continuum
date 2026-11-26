@@ -38,16 +38,16 @@ func (v *View) applyCert(c common.Certificate, u *undo) bool {
 	case *common.PoolRegistrationCertificate:
 		return v.editPool(c.Operator, u, func(p *PoolState) {
 			// Re-registering a pool cancels a pending retirement.
-			p.Retiring, p.RetireAt = false, 0
+			p.Retiring, p.RetireAt, p.Retired = false, 0, false
 		})
 	case *common.PoolRetirementCertificate:
 		return v.editPool(c.PoolKeyHash, u, func(p *PoolState) {
 			p.Retiring, p.RetireAt = true, c.Epoch
 		})
 	case *common.RegistrationDrepCertificate:
-		return v.editDRep(c.DrepCredential.Credential, u, true)
+		return v.editDRep(c.DrepCredential, u, true)
 	case *common.DeregistrationDrepCertificate:
-		return v.editDRep(c.DrepCredential.Credential, u, false)
+		return v.editDRep(c.DrepCredential, u, false)
 	}
 	return false
 }
@@ -104,15 +104,28 @@ func (v *View) editPool(id common.Blake2b224, u *undo, edit func(*PoolState)) bo
 	return true
 }
 
-func (v *View) editDRep(cred common.Blake2b224, u *undo, registered bool) bool {
-	if _, ok := v.cfg.Book.dreps[cred]; !ok {
+// editDRep registers or deregisters a DRep. Deregistering also drops every
+// vote delegation to it, as the GOVCERT rule does at protocol version 10 and
+// later.
+func (v *View) editDRep(cred common.Credential, u *undo, registered bool) bool {
+	k := cred.Credential
+	if _, ok := v.cfg.Book.dreps[k]; !ok {
 		return false
 	}
-	remember(&u.dreps, v.dreps, cred)
+	remember(&u.dreps, v.dreps, k)
 	if registered {
-		v.dreps[cred] = true
-	} else {
-		delete(v.dreps, cred)
+		v.dreps[k] = true
+		return true
+	}
+	delete(v.dreps, k)
+	for _, sc := range sortedKeys(v.stake) {
+		s := v.stake[sc]
+		if !s.Votes || s.DRep.Cred != k || s.DRep.Kind != int(cred.CredType) {
+			continue
+		}
+		remember(&u.stake, v.stake, sc)
+		s.Votes, s.DRep = false, DRep{}
+		v.stake[sc] = s
 	}
 	return true
 }

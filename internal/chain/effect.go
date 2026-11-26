@@ -29,9 +29,12 @@ const (
 	Restored
 	// Removed: a rollback took away the output Ref.
 	Removed
+	// GovSeen: Tx carried a proposal, or a vote on a tracked proposal by a
+	// voter the book names.
+	GovSeen
 )
 
-var effectNames = [...]string{"", "Confirmed", "Spent", "Created", "CertSeen", "Settled", "RolledBack", "Restored", "Removed"}
+var effectNames = [...]string{"", "Confirmed", "Spent", "Created", "CertSeen", "Settled", "RolledBack", "Restored", "Removed", "GovSeen"}
 
 func (k EffectKind) String() string {
 	if int(k) < len(effectNames) && k > 0 {

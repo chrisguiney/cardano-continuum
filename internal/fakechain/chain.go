@@ -348,6 +348,7 @@ func (c *Chain) produce() error {
 	txs := c.assemble()
 	u := undo{certs: c.certs.clone()}
 	r := c.effects()
+	c.certs.newEpoch(c.cfg.Slots.EpochOfSlot(c.slot), len(c.blocks) == 0, c.utxo.stakeByCred())
 	for _, tx := range txs {
 		c.utxo.applyTx(tx, &u)
 		c.certs.apply(tx, c.slot, r)

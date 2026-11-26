@@ -3,6 +3,7 @@ package chain
 import (
 	"bytes"
 	"cmp"
+	"slices"
 
 	"github.com/blinklabs-io/gouroboros/ledger"
 	"github.com/blinklabs-io/gouroboros/ledger/common"
@@ -96,6 +97,11 @@ type Tx struct {
 	Spends  []Ref
 	Creates []common.Utxo
 	Certs   []common.Certificate
+	// Proposals are the governance actions the transaction proposes, and
+	// Votes its voting procedures. Like Certs, both are empty for a
+	// transaction that failed phase-2 validation.
+	Proposals []GovID
+	Votes     []Vote
 }
 
 // TxFrom converts a ledger transaction through gouroboros' Consumed and
@@ -107,7 +113,32 @@ func TxFrom(tx common.Transaction) Tx {
 	}
 	if tx.IsValid() {
 		out.Certs = tx.Certificates()
+		for i := range tx.ProposalProcedures() {
+			out.Proposals = append(out.Proposals, GovID{Tx: out.Hash, Index: uint32(i)})
+		}
+		out.Votes = votesOf(tx.VotingProcedures())
 	}
+	return out
+}
+
+// votesOf flattens a transaction's voting procedures into a fixed order.
+func votesOf(vps common.VotingProcedures) []Vote {
+	var out []Vote
+	for voter, acts := range vps {
+		for id, vp := range acts {
+			out = append(out, Vote{
+				Voter:  Voter{Kind: voter.Type, Hash: voter.Hash},
+				Action: GovID{Tx: id.TransactionId, Index: id.GovActionIdx},
+				Choice: vp.Vote,
+			})
+		}
+	}
+	slices.SortFunc(out, func(a, b Vote) int {
+		if c := a.Action.compare(b.Action); c != 0 {
+			return c
+		}
+		return a.Voter.compare(b.Voter)
+	})
 	return out
 }
 

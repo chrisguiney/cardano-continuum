@@ -11,6 +11,15 @@
 // models/specs/planner-reservations requires; rebuilding from the origin
 // would let the planner offer outputs it already settled as spent.
 //
+// Beyond UTxOs the View folds the delegation, pool, DRep, proposal and vote
+// state from certificates and the governance fields of each block, and the
+// epoch transition: the first block of an epoch rotates the mark and set
+// stake snapshots and applies pool retirements (ledger.go). It answers the
+// agendas' Governance and pool stake questions, and PolicyState builds the
+// stake-floor guard's input (policy.go). The Querier asks the node for what
+// blocks cannot give (lsq.go lists what gouroboros lacks); the fold stays
+// the source of per-wallet schedules.
+//
 // The Follower does not touch the View. It sends each chain-sync message
 // to the engine, which logs it before applying it (models/specs/
 // engine-recovery, design A). After every (re)connect the first event is

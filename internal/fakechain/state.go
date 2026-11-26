@@ -26,6 +26,7 @@ func keyOf(c common.Credential) credKey { return credKey{c.CredType, c.Credentia
 type account struct {
 	deposit uint64
 	drep    *common.Drep
+	pool    *common.PoolKeyHash
 }
 
 type pool struct {
@@ -46,15 +47,23 @@ type seat struct {
 // (ledger/common/block_state.go, applyCertificate and applyLevel), applied
 // permanently.
 //
-// Effects that happen at an epoch boundary are not modelled: pool
-// retirements stay pending, proposals are never ratified, enacted or
-// expired, and no rewards accrue, so every reward balance is zero.
+// At an epoch boundary (epoch.go) the snapshots rotate and retiring pools
+// retire. Proposals are never ratified, enacted or expired, and no rewards
+// accrue, so every reward balance is zero.
 type certState struct {
 	accounts  map[credKey]*account
 	pools     map[common.PoolKeyHash]*pool
 	dreps     map[credKey]common.DRepRegistration
 	committee map[credKey]*seat
 	proposals map[common.GovActionId]proposal
+	votes     map[voteKey]uint8
+	epoch     epochState
+}
+
+type voteKey struct {
+	action common.GovActionId
+	kind   uint8
+	hash   common.Blake2b224
 }
 
 type proposal struct {
@@ -69,6 +78,7 @@ func newCertState(seats []CommitteeSeat) *certState {
 		dreps:     map[credKey]common.DRepRegistration{},
 		committee: map[credKey]*seat{},
 		proposals: map[common.GovActionId]proposal{},
+		votes:     map[voteKey]uint8{},
 	}
 	for _, m := range seats {
 		s.committee[credKey{common.CredentialTypeAddrKeyHash, m.Cold}] = &seat{expiry: m.Expiry}
@@ -85,6 +95,8 @@ func (s *certState) clone() *certState {
 		dreps:     maps.Clone(s.dreps),
 		committee: make(map[credKey]*seat, len(s.committee)),
 		proposals: maps.Clone(s.proposals),
+		votes:     maps.Clone(s.votes),
+		epoch:     s.epoch.clone(),
 	}
 	for k, a := range s.accounts {
 		c := *a
@@ -101,7 +113,8 @@ func (s *certState) clone() *certState {
 	return out
 }
 
-// deposits is the lovelace held in deposits: stake, pool, DRep and proposal.
+// deposits is the lovelace held in deposits: stake, pool, DRep and proposal,
+// and pool deposits refunded to reward accounts.
 func (s *certState) deposits() uint64 {
 	var sum uint64
 	for _, a := range s.accounts {
@@ -118,7 +131,7 @@ func (s *certState) deposits() uint64 {
 	for _, p := range s.proposals {
 		sum += p.deposit
 	}
-	return sum
+	return sum + s.epoch.refunded
 }
 
 // effects gives apply what it needs from the protocol parameters and clock.
@@ -143,6 +156,11 @@ func (s *certState) apply(tx common.Transaction, slot uint64, r effects) {
 			deposit: p.Deposit(),
 		}
 	}
+	for voter, acts := range tx.VotingProcedures() {
+		for id, vp := range acts {
+			s.votes[voteKey{*id, voter.Type, voter.Hash}] = vp.Vote
+		}
+	}
 }
 
 func (s *certState) applyCert(cert common.Certificate, r effects) {
@@ -151,12 +169,14 @@ func (s *certState) applyCert(cert common.Certificate, r effects) {
 		s.accounts[keyOf(c.StakeCredential)] = &account{deposit: uint64(r.pp.KeyDeposit)}
 	case *common.RegistrationCertificate:
 		s.accounts[keyOf(c.StakeCredential)] = &account{deposit: c.Amount}
+	case *common.StakeDelegationCertificate:
+		s.delegatePool(*c.StakeCredential, c.PoolKeyHash)
 	case *common.StakeRegistrationDelegationCertificate:
-		s.accounts[keyOf(c.StakeCredential)] = &account{deposit: c.Amount}
+		s.accounts[keyOf(c.StakeCredential)] = &account{deposit: c.Amount, pool: &c.PoolKeyHash}
 	case *common.VoteRegistrationDelegationCertificate:
 		s.accounts[keyOf(c.StakeCredential)] = &account{deposit: c.Amount, drep: &c.Drep}
 	case *common.StakeVoteRegistrationDelegationCertificate:
-		s.accounts[keyOf(c.StakeCredential)] = &account{deposit: c.Amount, drep: &c.Drep}
+		s.accounts[keyOf(c.StakeCredential)] = &account{deposit: c.Amount, drep: &c.Drep, pool: &c.PoolKeyHash}
 	case *common.StakeDeregistrationCertificate:
 		delete(s.accounts, keyOf(c.StakeCredential))
 	case *common.DeregistrationCertificate:
@@ -164,6 +184,7 @@ func (s *certState) applyCert(cert common.Certificate, r effects) {
 	case *common.VoteDelegationCertificate:
 		s.delegateVote(c.StakeCredential, c.Drep)
 	case *common.StakeVoteDelegationCertificate:
+		s.delegatePool(c.StakeCredential, c.PoolKeyHash)
 		s.delegateVote(c.StakeCredential, c.Drep)
 	case *common.PoolRegistrationCertificate:
 		s.registerPool(c, r)
@@ -209,6 +230,12 @@ func (s *certState) applyGovCert(cert common.Certificate) {
 	}
 }
 
+func (s *certState) delegatePool(cred common.Credential, p common.PoolKeyHash) {
+	if a, ok := s.accounts[keyOf(cred)]; ok {
+		a.pool = &p
+	}
+}
+
 func (s *certState) delegateVote(cred common.Credential, d common.Drep) {
 	if a, ok := s.accounts[keyOf(cred)]; ok {
 		a.drep = &d
@@ -224,6 +251,7 @@ func (s *certState) registerPool(c *common.PoolRegistrationCertificate, r effect
 		p.reg, p.retire = *c, nil
 		return
 	}
+	delete(s.epoch.retired, c.Operator)
 	s.pools[c.Operator] = &pool{reg: *c, deposit: uint64(r.pp.PoolDeposit)}
 }
 

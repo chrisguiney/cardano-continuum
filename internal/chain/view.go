@@ -30,6 +30,12 @@ type Config struct {
 	K     uint64
 	Slots sched.Slots
 	Book  *Book
+	// NOpt is the protocol parameter nOpt (desired number of pools). Zero
+	// means no saturation cap is known.
+	NOpt uint64
+	// GovLifetime is govActionLifetime in epochs: a proposal made in epoch e
+	// can be voted on through epoch e + GovLifetime.
+	GovLifetime uint64
 }
 
 // View is the engine's knowledge of the chain: the UTxOs, stake, pools and
@@ -57,6 +63,11 @@ type View struct {
 	stake   map[common.Blake2b224]StakeState
 	pools   map[common.Blake2b224]PoolState
 	dreps   map[common.Blake2b224]bool
+	// epoch state: see ledger.go
+	ep epochState
+	// governance state: see gov.go
+	props map[GovID]uint64
+	votes map[voteKey]uint8
 	// window holds the blocks above the settled point, oldest first. It is
 	// never longer than K.
 	window []undo
@@ -88,6 +99,8 @@ type PoolState struct {
 	// Retiring means the pool retires at the start of epoch RetireAt.
 	Retiring bool
 	RetireAt uint64
+	// Retired is set by the epoch transition that applied the retirement.
+	Retired bool
 }
 
 // State is a view's content at one point, sorted, for starting a view and
@@ -100,6 +113,15 @@ type State struct {
 	Stake  []StakeState
 	Pools  []PoolState
 	DReps  []common.Blake2b224
+	// Label, Frozen, Mark and Set are the epoch state (see Label, Frozen
+	// and the snapshots in ledger.go).
+	Label  uint64
+	Frozen bool
+	Mark   Snapshot
+	Set    Snapshot
+	// Proposals and Votes are the tracked governance state.
+	Proposals []ProposalState
+	Votes     []VoteState
 }
 
 // New returns a view holding s, with s.At as both tip and settled point.
@@ -116,6 +138,15 @@ func New(cfg Config, s State) (*View, error) {
 		stake:   map[common.Blake2b224]StakeState{},
 		pools:   map[common.Blake2b224]PoolState{},
 		dreps:   map[common.Blake2b224]bool{},
+		ep:      epochState{label: s.Label, frozen: s.Frozen, mark: slices.Clone(s.Mark), set: slices.Clone(s.Set)},
+		props:   map[GovID]uint64{},
+		votes:   map[voteKey]uint8{},
+	}
+	for _, p := range s.Proposals {
+		v.props[p.ID] = p.Expires
+	}
+	for _, x := range s.Votes {
+		v.votes[voteKey{x.Action, x.Voter}] = x.Choice
 	}
 	for _, u := range s.Utxos {
 		v.add(u)
@@ -167,6 +198,7 @@ func (v *View) Apply(b Block) ([]Effect, error) {
 		return nil, fmt.Errorf("%w: block %d at slot %d", ErrNotConnected, b.Number, b.Point.Slot)
 	}
 	u := undo{point: b.Point, number: b.Number, prev: v.tip, prevH: v.height}
+	v.newEpoch(b, &u)
 	var eff []Effect
 	for _, tx := range b.Txs {
 		eff = append(eff, v.applyTx(tx, &u)...)
@@ -208,6 +240,9 @@ func (v *View) applyTx(tx Tx, u *undo) []Effect {
 		if v.applyCert(c, u) {
 			eff = append(eff, Effect{Kind: CertSeen, Tx: tx.Hash, Cert: c})
 		}
+	}
+	if v.applyGov(tx, u) {
+		eff = append(eff, Effect{Kind: GovSeen, Tx: tx.Hash})
 	}
 	if len(eff) == 0 {
 		return nil
@@ -261,6 +296,8 @@ func (v *View) unwind(u undo) []Effect {
 	restore(u.stake, v.stake)
 	restore(u.pools, v.pools)
 	restore(u.dreps, v.dreps)
+	v.restoreEpoch(u)
+	v.restoreGov(u)
 	v.tip, v.height = u.prev, u.prevH
 	return eff
 }
@@ -275,6 +312,9 @@ func (v *View) Snapshot() State {
 		s.Pools = append(s.Pools, v.pools[k])
 	}
 	s.DReps = sortedKeys(v.dreps)
+	s.Label, s.Frozen = v.ep.label, v.ep.frozen
+	s.Mark, s.Set = slices.Clone(v.ep.mark), slices.Clone(v.ep.set)
+	s.Proposals, s.Votes = v.govState()
 	return s
 }
 
@@ -282,14 +322,18 @@ func (v *View) Snapshot() State {
 // block above the settled point unwound. A restart starts a view from it
 // and has chain-sync intersect at its point, so no settled block is
 // replayed and none is missed.
-func (v *View) Base() State {
+func (v *View) Base() State { return v.Confirmed().Snapshot() }
+
+// Confirmed returns a copy of the view at its settled point: the tip with
+// every block above it unwound. It shares nothing with v.
+func (v *View) Confirmed() *View {
 	c := v.clone()
 	for len(c.window) > 0 {
 		u := c.window[len(c.window)-1]
 		c.window = c.window[:len(c.window)-1]
 		c.unwind(u)
 	}
-	return c.Snapshot()
+	return c
 }
 
 func (v *View) clone() *View {
@@ -300,6 +344,8 @@ func (v *View) clone() *View {
 	c.stake = maps.Clone(v.stake)
 	c.pools = maps.Clone(v.pools)
 	c.dreps = maps.Clone(v.dreps)
+	c.props = maps.Clone(v.props)
+	c.votes = maps.Clone(v.votes)
 	c.window = slices.Clone(v.window)
 	return &c
 }
@@ -361,6 +407,10 @@ type undo struct {
 	stake map[common.Blake2b224]prior[StakeState]
 	pools map[common.Blake2b224]prior[PoolState]
 	dreps map[common.Blake2b224]prior[bool]
+	// epoch is set when the block moved the epoch state, gov when it
+	// touched proposals or votes; each holds what to put back.
+	epoch *epochState
+	gov   *govUndo
 }
 
 type txUndo struct {

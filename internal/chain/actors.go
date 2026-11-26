@@ -57,13 +57,25 @@ func (v *View) DRepRegistered(id population.ActorID) bool {
 }
 
 // Pools lists the registered pools the book names, by actor ID, with the
-// returns last given to SetReturns.
+// returns last given to SetReturns. Stake is what is delegated to the pool
+// now; Saturation is the stake cap, the tracked delegated total over nOpt
+// (zero without Config.NOpt). The total counts only what the book names, so
+// on a devnet where the engine's population holds all stake it is the
+// network's.
 func (v *View) Pools() []agenda.PoolInfo {
+	per, total := v.poolStake()
+	var limit profile.Lovelace
+	if v.cfg.NOpt > 0 {
+		limit = profile.Lovelace(total / v.cfg.NOpt)
+	}
 	var out []agenda.PoolInfo
 	for id, st := range v.pools {
 		actor := v.cfg.Book.pools[id]
 		if v.poolLive(st.ID) {
-			out = append(out, agenda.PoolInfo{ID: actor, ROI: v.returns[actor]})
+			out = append(out, agenda.PoolInfo{
+				ID: actor, ROI: v.returns[actor],
+				Stake: profile.Lovelace(per[id]), Saturation: limit,
+			})
 		}
 	}
 	slices.SortFunc(out, func(a, b agenda.PoolInfo) int { return cmp.Compare(a.ID, b.ID) })
@@ -79,5 +91,5 @@ func (v *View) SetReturns(roi map[population.ActorID]float64) {
 
 func (v *View) poolLive(id common.Blake2b224) bool {
 	p, ok := v.pools[id]
-	return ok && (!p.Retiring || v.Epoch() < p.RetireAt)
+	return ok && !p.Retired && (!p.Retiring || v.Epoch() < p.RetireAt)
 }
