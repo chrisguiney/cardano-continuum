@@ -141,3 +141,21 @@ func GenesisStaking(cfg *Config) ([]fakechain.GenesisOutput, []fakechain.Genesis
 	}
 	return outs, stake, nil
 }
+
+// GenesisPoolActors maps each genesis pool's index to the pool actor that
+// operates it, so a live run can find the pool's ContinuumPool.
+func (c *Config) GenesisPoolActors() (map[int]uint64, error) {
+	root, err := keys.New(c.Seed, c.NetworkID)
+	if err != nil {
+		return nil, fmt.Errorf("engine: root keystore: %w", err)
+	}
+	gs, err := c.genesisPools(root)
+	if err != nil {
+		return nil, err
+	}
+	out := map[int]uint64{}
+	for _, g := range gs {
+		out[g.Index] = uint64(g.Actor)
+	}
+	return out, nil
+}

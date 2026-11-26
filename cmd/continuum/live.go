@@ -43,6 +43,11 @@ type liveFlags struct {
 	report      time.Duration
 	gpools      int
 	poolStake   uint64
+	serve       string
+	kubeNetwork string
+	namespace   string
+	kubeconfig  string
+	poolFormat  string
 }
 
 func (l *liveFlags) register(fs *flag.FlagSet) {
@@ -55,6 +60,11 @@ func (l *liveFlags) register(fs *flag.FlagSet) {
 	fs.DurationVar(&l.report, "report-every", 30*time.Second, "interval between progress records")
 	fs.IntVar(&l.gpools, "genesis-pools", genesis.Default().Pools, "pools the devnet genesis registers, operated by the first --pools operators")
 	fs.Uint64Var(&l.poolStake, "pool-stake", genesis.Default().PoolStake, "lovelace each genesis pool's owner holds delegated to it")
+	fs.StringVar(&l.serve, "serve", "", "serve the web UI and its API from the live engine on this loopback address")
+	fs.StringVar(&l.kubeNetwork, "network", "", "ContinuumNetwork whose pools the engine's pool plan patches and whose pod health it reads")
+	fs.StringVar(&l.namespace, "namespace", "default", "namespace of --network")
+	fs.StringVar(&l.kubeconfig, "kubeconfig", "", "kubeconfig path (default: KUBECONFIG rules, or in-cluster)")
+	fs.StringVar(&l.poolFormat, "pool-id-format", "continuum-pool-%d", "spec.poolId of genesis pool i's ContinuumPool, as a fmt pattern")
 }
 
 // liveConfig is the engine configuration of a live run: the population from
@@ -153,7 +163,16 @@ func runLive(ctx context.Context, sf simFlags, lf liveFlags, epochs uint64) erro
 		}
 	}()
 	clock := sched.NewWall(want.Start)
-	r, err := engine.Start(ctx, cfg, engine.Deps{Clock: clock, Log: fl, Store: db, Node: live, CheckpointEvery: 200, Logger: log})
+	deps := engine.Deps{Clock: clock, Log: fl, Store: db, Node: live, CheckpointEvery: 200, Logger: log}
+	if err := livePlan(&deps, cfg, lf, log); err != nil {
+		return err
+	}
+	stop, err := liveServe(ctx, &deps, db, cfg, lf, log)
+	if err != nil {
+		return err
+	}
+	defer stop()
+	r, err := engine.Start(ctx, cfg, deps)
 	if err != nil {
 		return err
 	}
@@ -287,4 +306,52 @@ func readSeed(h string) (rng.Seed, error) {
 	}
 	copy(s[:], raw)
 	return s, nil
+}
+
+// livePlan connects the engine's pool plan and pod health to --network's
+// ContinuumPools.
+func livePlan(d *engine.Deps, cfg engine.Config, lf liveFlags, log *slog.Logger) error {
+	if lf.kubeNetwork == "" {
+		return nil
+	}
+	cl, err := openKube(lf.kubeconfig, lf.namespace)
+	if err != nil {
+		return err
+	}
+	pc, ok := cl.(poolCluster)
+	if !ok {
+		return errors.New("run: the cluster client cannot patch pools")
+	}
+	actors, err := cfg.GenesisPoolActors()
+	if err != nil {
+		return err
+	}
+	lp := newLivePools(pc, lf.kubeNetwork, lf.poolFormat, actors, log)
+	d.Pools, d.Pods = lp, lp
+	return nil
+}
+
+// liveServe starts the live API when --serve is set, wrapping the engine's
+// log so the API follows it. The returned stop ends the server and waits.
+func liveServe(ctx context.Context, d *engine.Deps, db *store.DB, cfg engine.Config, lf liveFlags, log *slog.Logger) (func(), error) {
+	if lf.serve == "" {
+		return func() {}, nil
+	}
+	if err := checkAddr(lf.serve, false); err != nil {
+		return nil, err
+	}
+	s, err := newLiveServer(ctx, d.Log, db, cfg.Slots)
+	if err != nil {
+		return nil, err
+	}
+	d.Log, d.Controls = s.log, s.controls
+	ctx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if err := s.serve(ctx, lf.serve, log); err != nil {
+			log.Error("live api", "err", err)
+		}
+	}()
+	return func() { cancel(); <-done }, nil
 }

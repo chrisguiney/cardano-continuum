@@ -101,16 +101,30 @@ func (t *Tail) next(head []byte, end int64) (eventlog.Record, int64, error) {
 	return rec, size, nil
 }
 
-func (t *Tail) apply(rec eventlog.Record) {
-	t.proj.Apply(rec)
+func (t *Tail) apply(rec eventlog.Record) { NewFeed(t.proj, t.hub).Apply(rec) }
+
+// Feed applies records to a projection and publishes the decisions among
+// them to a hub, as a Tail does for a log file. A live engine feeds every
+// record it appends, in seq order, so its own Source needs no file.
+type Feed struct {
+	proj *Projection
+	hub  *Hub
+}
+
+// NewFeed returns a feed into p and h.
+func NewFeed(p *Projection, h *Hub) *Feed { return &Feed{proj: p, hub: h} }
+
+// Apply applies one record, which must carry its seq.
+func (f *Feed) Apply(rec eventlog.Record) {
+	f.proj.Apply(rec)
 	if rec.Class != eventlog.Decision {
 		return
 	}
-	d, err := toDecision(rec, t.proj.Profile(rec.Actor))
+	d, err := toDecision(rec, f.proj.Profile(rec.Actor))
 	if err != nil {
-		t.proj.NoteBodyError()
+		f.proj.NoteBodyError()
 	}
-	t.hub.Publish(d)
+	f.hub.Publish(d)
 }
 
 // Run polls until ctx is cancelled and returns the context's error, or the

@@ -233,3 +233,26 @@ func TestTailRunFollowsAppends(t *testing.T) {
 		t.Fatalf("Run returned %v", err)
 	}
 }
+
+// TestFeedProjectsAndPublishes: a record handed to a Feed reaches the
+// projection and, being a decision, the hub, with its seq as the id.
+func TestFeedProjectsAndPublishes(t *testing.T) {
+	p, h := NewProjection(), NewHub(16, 4, 16)
+	defer h.Close()
+	body, err := eventlog.Encode(engine.Spawned{Profile: "holder"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	NewFeed(p, h).Apply(eventlog.Record{Seq: 7, Class: eventlog.Decision, Kind: engine.KindSpawned, Actor: 3, Body: body})
+	if got := p.Snapshot(nil).LastSeq; got != 7 {
+		t.Fatalf("projection at seq %d, want 7", got)
+	}
+	zero := uint64(0)
+	sub, err := h.Subscribe(Filter{}, &zero)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sub.Replay) != 1 || sub.Replay[0].ID != 7 || sub.Replay[0].Kind != engine.KindSpawned {
+		t.Fatalf("hub replay %+v", sub.Replay)
+	}
+}
