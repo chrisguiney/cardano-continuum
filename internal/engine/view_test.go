@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/chrisguiney/cardano-continuum/internal/build"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/fakenode"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
@@ -29,7 +30,7 @@ func feedBlocks(t *testing.T, e *Engine, c *fakechain.Chain, n int) int {
 		if err != nil {
 			t.Fatal(err)
 		}
-		body, err := eventlog.Encode(eventlog.BlockApplied{Point: chainPoint(b.Point()), Content: content})
+		body, err := eventlog.Encode(eventlog.BlockApplied{Point: fakenode.ChainPoint(b.Point()), Content: content})
 		if err != nil {
 			t.Fatal(err)
 		}

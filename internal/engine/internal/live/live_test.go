@@ -1,6 +1,7 @@
-package engine
+package live
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"sync"
@@ -9,9 +10,13 @@ import (
 
 	"go.uber.org/goleak"
 
+	"github.com/blinklabs-io/gouroboros/ledger/babbage"
 	"github.com/blinklabs-io/gouroboros/ledger/common"
+	"github.com/blinklabs-io/gouroboros/ledger/mary"
+	"github.com/blinklabs-io/gouroboros/ledger/shelley"
 
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/rng"
@@ -86,7 +91,7 @@ func livePoint(slot uint64, b byte) chain.Point {
 
 // next polls f until it delivers an event: the follower goroutine sends
 // asynchronously, so caught up is momentary.
-func next(t *testing.T, f Follower) ChainEvent {
+func next(t *testing.T, f wire.Follower) wire.ChainEvent {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
@@ -100,7 +105,7 @@ func next(t *testing.T, f Follower) ChainEvent {
 		time.Sleep(time.Millisecond)
 	}
 	t.Fatal("no chain event within 5s")
-	return ChainEvent{}
+	return wire.ChainEvent{}
 }
 
 // Not parallel: goleak sees every goroutine in the process, and serial tests
@@ -115,7 +120,7 @@ func TestLiveFollowsAndResumes(t *testing.T) {
 	addr := ks.Wallet(1).Address()
 	p0, p1, p2 := livePoint(10, 1), livePoint(11, 2), livePoint(12, 3)
 	tx := chain.Tx{Hash: common.Blake2b256{9}, Spends: []chain.Ref{{Tx: common.Blake2b256{8}, Index: 1}},
-		Creates: []common.Utxo{ownedUtxo(addr, Ref{Tx: TxID{9}, Index: 0}, 5_000_000)}, Fee: 170_000}
+		Creates: []common.Utxo{ownedUtxo(addr, wire.Ref{Tx: wire.TxID{9}, Index: 0}, 5_000_000)}, Fee: 170_000}
 	d := &scriptDialer{srcs: []*scriptSource{
 		// The connection drops after a block and a rollback.
 		{at: p0, events: []chain.Event{
@@ -126,7 +131,7 @@ func TestLiveFollowsAndResumes(t *testing.T) {
 		{at: p0, events: []chain.Event{{Kind: chain.Forward, Block: chain.Block{Point: p2}, Point: p2}}},
 	}}
 	target := &recTarget{}
-	l := NewLive(d, target, 5, nil)
+	l := New(d, target, 5, nil)
 	l.backoff = func(int) time.Duration { return 0 }
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -143,12 +148,12 @@ func TestLiveFollowsAndResumes(t *testing.T) {
 	if ev.Rollback || !samePoint(ev.Point, p1.Log()) {
 		t.Fatalf("first event %+v, want block at %+v", ev, p1)
 	}
-	var c BlockContent
+	var c wire.BlockContent
 	if err := eventlog.Decode(ev.Content, &c); err != nil {
 		t.Fatal(err)
 	}
 	wa, _ := addr.Bytes()
-	if len(c.Txs) != 1 || c.Txs[0].Fee != 170_000 || c.Txs[0].Inputs[0] != (Ref{Tx: TxID{8}, Index: 1}) ||
+	if len(c.Txs) != 1 || c.Txs[0].Fee != 170_000 || c.Txs[0].Inputs[0] != (wire.Ref{Tx: wire.TxID{8}, Index: 1}) ||
 		string(c.Txs[0].Outputs[0].Address) != string(wa) || c.Txs[0].Outputs[0].Lovelace != 5_000_000 {
 		t.Fatalf("digest %+v", c)
 	}
@@ -167,7 +172,7 @@ func TestLiveFollowsAndResumes(t *testing.T) {
 	if err := l.Submit(ctx, []byte{1, 2}); err != nil || target.era != conwayEra || len(target.tx) != 2 {
 		t.Fatalf("submit: %v, era %d", err, target.era)
 	}
-	if l.HasTx(TxID{}) {
+	if l.HasTx(wire.TxID{}) {
 		t.Fatal("HasTx without a mempool query")
 	}
 	cancel()
@@ -185,7 +190,7 @@ func TestLiveFollowsAndResumes(t *testing.T) {
 func TestLiveNoIntersection(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	d := &noIntersect{}
-	l := NewLive(d, &recTarget{}, 5, nil)
+	l := New(d, &recTarget{}, 5, nil)
 	l.Start(context.Background())
 	if _, _, err := l.Intersect([]eventlog.ChainPoint{livePoint(3, 1).Log()}); !errors.Is(err, chain.ErrNoIntersect) {
 		t.Fatalf("intersect = %v, want ErrNoIntersect", err)
@@ -207,3 +212,15 @@ func (noIntersect) Next(context.Context) (chain.Event, error) {
 	return chain.Event{}, errors.New("unused")
 }
 func (noIntersect) Close() error { return nil }
+
+func samePoint(a, b eventlog.ChainPoint) bool {
+	return a.Slot == b.Slot && bytes.Equal(a.Hash, b.Hash)
+}
+
+func ownedUtxo(addr common.Address, r wire.Ref, lovelace uint64) common.Utxo {
+	o := babbage.BabbageTransactionOutput{
+		OutputAddress: addr,
+		OutputAmount:  mary.MaryTransactionOutputValue{Amount: lovelace},
+	}
+	return common.Utxo{Id: shelley.ShelleyTransactionInput{TxId: common.Blake2b256(r.Tx), OutputIndex: r.Index}, Output: &o}
+}
