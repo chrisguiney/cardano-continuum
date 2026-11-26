@@ -45,6 +45,26 @@ go run ./cmd/continuum replay --seed 7 --wallets 100 run1/events.log
 refuses a log recorded under different ones. `make determinism` runs the
 determinism tests under the race detector at `GOMAXPROCS=1` and `8`.
 
+`--attack` adds one adversary actor per named tier-1 attack (`dust-flood`,
+`utxo-contention`, `malformed-cbor`, `front-run`, `double-spend`), each with
+its own budget and a per-epoch cost ceiling. Adversaries run only on a devnet:
+the engine refuses them unless the node's genesis passes the network guard.
+Compare an attack run with a control run on the same seed:
+
+```sh
+go run ./cmd/continuum run --fake --seed 7 --wallets 100 --profiles m3 --out control
+go run ./cmd/continuum run --fake --seed 7 --wallets 100 --profiles m3 --attack front-run --out attack
+go run ./cmd/continuum compare control/events.log attack/events.log
+```
+
+The table puts honest failure rate, confirmation latency, retries, UTxO
+growth, node rejections and oracle findings beside each adversary's cost,
+landed steps and detected steps. A star marks the attack's success metric.
+On the fake chain a front-runner's transaction always reaches the node
+before the honest one it outbids. Cardano mempools keep the first
+transaction they see, whatever its fee, so this stands in for an adversary
+whose transaction reaches the block producer first.
+
 On a live devnet the same engine runs against a cardano-node's
 node-to-client endpoint, funding its wallets from the genesis faucet and
 resuming from `--state` after a restart:

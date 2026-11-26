@@ -17,6 +17,7 @@ import (
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 	"github.com/blinklabs-io/gouroboros/ledger/conway"
 
+	"github.com/chrisguiney/cardano-continuum/internal/adversary"
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
@@ -128,7 +129,8 @@ func runLive(ctx context.Context, sf simFlags, lf liveFlags, epochs uint64) erro
 	}
 	node := chain.Node{Network: lf.network, Address: lf.node, Magic: want.Magic, Log: log}
 	q := chain.NewQuerier(node)
-	if err := guard(ctx, log, q, want); err != nil {
+	cleared, err := guard(ctx, log, q, want)
+	if err != nil {
 		return err
 	}
 	np, err := queryParams(ctx, q)
@@ -139,6 +141,7 @@ func runLive(ctx context.Context, sf simFlags, lf liveFlags, epochs uint64) erro
 	if err != nil {
 		return err
 	}
+	cfg.Adversaries = cleared
 	if err := os.MkdirAll(lf.state, 0o750); err != nil {
 		return err
 	}
@@ -252,19 +255,20 @@ func report(ctx context.Context, log *slog.Logger, cfg engine.Config, r *engine.
 }
 
 // guard waits for the node to answer, then refuses a public network or a
-// node on another genesis than the file the run was deployed with.
-func guard(ctx context.Context, log *slog.Logger, q *chain.Querier, want chain.Genesis) error {
+// node on another genesis than the file the run was deployed with. The
+// clearance it returns is what lets the run's adversaries attack.
+func guard(ctx context.Context, log *slog.Logger, q *chain.Querier, want chain.Genesis) (adversary.Clearance, error) {
 	for {
 		got, err := q.Genesis(ctx)
 		if err == nil {
-			return chain.Guard(want, got)
+			return adversary.Clear(want, got)
 		}
 		log.Warn("node not answering yet", "err", err)
 		t := time.NewTimer(5 * time.Second)
 		select {
 		case <-ctx.Done():
 			t.Stop()
-			return ctx.Err()
+			return adversary.Clearance{}, ctx.Err()
 		case <-t.C:
 		}
 	}

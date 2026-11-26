@@ -2,6 +2,8 @@
 //
 //	continuum run --fake --seed N --out DIR [flags]
 //	continuum run --node HOST:PORT --state DIR --genesis FILE [flags]
+//	continuum run --fake --attack dust-flood,front-run ... (one adversary per attack)
+//	continuum compare CONTROL/events.log ATTACK/events.log
 //	continuum replay --seed N [flags] DIR/events.log
 //	continuum replay --image impl=ref [--live --network N --node HOST:PORT --genesis FILE] DIR/events.log
 //	continuum bisect --dep D <good>..<bad> --repo DIR --check KIND|COMMAND [--dingo DIR] [--seed N]
@@ -37,6 +39,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/chrisguiney/cardano-continuum/internal/adversary"
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
@@ -65,7 +68,7 @@ func main() {
 	}
 }
 
-var errUsage = errors.New("usage: continuum run|replay|export|image|build|bisect|serve|harvest|vectors|scenario|profiles [flags]")
+var errUsage = errors.New("usage: continuum run|replay|compare|export|image|build|bisect|serve|harvest|vectors|scenario|profiles [flags]")
 
 func run(ctx context.Context, args []string, out io.Writer) error {
 	if len(args) == 0 {
@@ -76,6 +79,8 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 		return cmdRun(ctx, args[1:], out)
 	case "replay":
 		return cmdReplay(ctx, args[1:], out)
+	case "compare":
+		return cmdCompare(ctx, args[1:], out)
 	case "export":
 		return cmdExport(ctx, args[1:], out)
 	case "image":
@@ -113,6 +118,7 @@ type simFlags struct {
 	pools      int
 	floor      uint64
 	mistakes   string
+	attacks    string
 }
 
 func (s *simFlags) register(fs *flag.FlagSet) {
@@ -127,6 +133,7 @@ func (s *simFlags) register(fs *flag.FlagSet) {
 	fs.Uint64Var(&s.ttl, "ttl", 120, "slots a payment stays valid")
 	fs.Uint64Var(&s.floor, "floor", 50, "stake floor: the percentage of each schedule's stake forging pools must hold, one pool's loss included")
 	fs.StringVar(&s.mistakes, "mistakes", "", "honest mistakes: on or off (default: on when a profile's competence can fall below 1)")
+	fs.StringVar(&s.attacks, "attack", "", "tier-1 attacks, comma-separated, one adversary actor each: "+joinNames(adversary.Names())+" (devnet only)")
 	fs.IntVar(&s.pools, "pools", 0, "pool operators at genesis, spread over the pool profiles; on a live run the first --genesis-pools operate the genesis pools")
 }
 
@@ -173,8 +180,9 @@ func (s *simFlags) mistakesOn(reg *profile.Registry) (bool, error) {
 	case "off":
 		return false, nil
 	case "":
+		// An adversary's competence says nothing about honest mistakes.
 		for _, n := range reg.Names() {
-			if p, _ := reg.Get(n); p.Traits.Competence.B > 0 {
+			if p, _ := reg.Get(n); p.Traits.Competence.B > 0 && p.Adversary == nil {
 				return true, nil
 			}
 		}
@@ -195,6 +203,9 @@ func (s *simFlags) run(mistakes bool) oracle.Run {
 		"--epoch-slots=" + strconv.FormatUint(s.epochSlots, 10), "--k=" + strconv.FormatUint(s.k, 10),
 		"--block-every=" + strconv.FormatUint(s.blockEvery, 10), "--ttl=" + strconv.FormatUint(s.ttl, 10),
 		"--floor=" + strconv.FormatUint(s.floor, 10), "--pools=" + strconv.Itoa(s.pools), "--mistakes=" + onOff[mistakes],
+	}
+	if s.attacks != "" {
+		flags = append(flags, "--attack="+s.attacks)
 	}
 	return oracle.Run{Seed: s.seed, Log: "events.log", Flags: flags}
 }
@@ -263,7 +274,14 @@ func (s *simFlags) population() (*profile.Registry, []engine.Cohort, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	return reg, append(cohorts, wallets...), nil
+	ps, cohorts, err = s.withAdversaries(ps, append(cohorts, wallets...))
+	if err != nil {
+		return nil, nil, err
+	}
+	if reg, err = profile.NewRegistry(ps); err != nil {
+		return nil, nil, err
+	}
+	return reg, cohorts, nil
 }
 
 func cmdRun(ctx context.Context, args []string, out io.Writer) error {
@@ -289,6 +307,9 @@ func cmdRun(ctx context.Context, args []string, out io.Writer) error {
 	}
 	cfg, err := sf.config()
 	if err != nil {
+		return err
+	}
+	if err := clearFake(&cfg); err != nil {
 		return err
 	}
 	path := filepath.Join(*dir, "events.log")
@@ -398,6 +419,9 @@ func summarize(out io.Writer, cfg engine.Config, r *engine.Runner, chain *fakech
 	}
 	w.printf("mistakes %t: rejections %s; findings %d (fatal %d); lost %d lovelace\n",
 		cfg.Mistakes, classCounts(t.Rejections), t.Findings, t.Fatal, t.Lost)
+	if err := summarizeAttacks(context.Background(), w, mem); err != nil {
+		return err
+	}
 	w.printf("elapsed %s, %.0f events/s\n", elapsed.Round(time.Millisecond), float64(recs)/elapsed.Seconds())
 	if w.err != nil {
 		return w.err
@@ -455,6 +479,9 @@ func cmdReplayWith(ctx context.Context, args []string, out io.Writer, deps repla
 	}
 	cfg, err := sf.config()
 	if err != nil {
+		return err
+	}
+	if err := clearFake(&cfg); err != nil {
 		return err
 	}
 	hdr, err := cfg.Header()
