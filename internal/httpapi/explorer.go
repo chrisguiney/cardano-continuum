@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/chrisguiney/cardano-continuum/internal/explorer"
+	"github.com/chrisguiney/cardano-continuum/internal/httpapi/view"
 )
 
 var rePoolHex = regexp.MustCompile(`^[0-9a-f]{56}$`)
@@ -143,8 +144,8 @@ func parseExPage(r *http.Request, extra ...string) (explorer.Page, error) {
 		}
 	}
 	if s := v.Get("offset"); s != "" {
-		if p.Offset, err = strconv.Atoi(s); err != nil || p.Offset < 0 || p.Offset > maxOffset {
-			return p, badf("offset must be an integer in 0..%d", maxOffset)
+		if p.Offset, err = strconv.Atoi(s); err != nil || p.Offset < 0 || p.Offset > view.MaxOffset {
+			return p, badf("offset must be an integer in 0..%d", view.MaxOffset)
 		}
 	}
 	return p, nil

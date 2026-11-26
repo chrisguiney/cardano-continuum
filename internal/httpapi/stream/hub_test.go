@@ -1,16 +1,17 @@
-package httpapi
+package stream
 
 import (
 	"errors"
 	"testing"
 	"time"
 
+	"github.com/chrisguiney/cardano-continuum/internal/httpapi/view"
 	"go.uber.org/goleak"
 )
 
 func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
 
-func recv(t *testing.T, c <-chan Decision) Decision {
+func recv(t *testing.T, c <-chan view.Decision) view.Decision {
 	t.Helper()
 	select {
 	case d, ok := <-c:
@@ -21,10 +22,10 @@ func recv(t *testing.T, c <-chan Decision) Decision {
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for a decision")
 	}
-	return Decision{}
+	return view.Decision{}
 }
 
-func ids(ds []Decision) []uint64 {
+func ids(ds []view.Decision) []uint64 {
 	var out []uint64
 	for _, d := range ds {
 		out = append(out, d.ID)
@@ -46,18 +47,18 @@ func eqIDs(a, b []uint64) bool {
 
 func TestFilterMatch(t *testing.T) {
 	two := uint64(2)
-	d := Decision{ID: 1, Actor: 2, Profile: "hodl", Kind: "Submitted"}
+	d := view.Decision{ID: 1, Actor: 2, Profile: "hodl", Kind: "Submitted"}
 	tests := []struct {
 		name string
-		f    Filter
+		f    view.Filter
 		want bool
 	}{
-		{"empty", Filter{}, true},
-		{"actor hit", Filter{Actor: &two}, true},
-		{"profile miss", Filter{Profile: "yield"}, false},
-		{"kind set hit", Filter{Kinds: []string{"Skipped", "Submitted"}}, true},
-		{"kind set miss", Filter{Kinds: []string{"Skipped"}}, false},
-		{"all must hold", Filter{Profile: "hodl", Kinds: []string{"Skipped"}}, false},
+		{"empty", view.Filter{}, true},
+		{"actor hit", view.Filter{Actor: &two}, true},
+		{"profile miss", view.Filter{Profile: "yield"}, false},
+		{"kind set hit", view.Filter{Kinds: []string{"Skipped", "Submitted"}}, true},
+		{"kind set miss", view.Filter{Kinds: []string{"Skipped"}}, false},
+		{"all must hold", view.Filter{Profile: "hodl", Kinds: []string{"Skipped"}}, false},
 	}
 	for _, tt := range tests {
 		if got := tt.f.Match(d); got != tt.want {
@@ -69,13 +70,13 @@ func TestFilterMatch(t *testing.T) {
 func TestHubFilteredDelivery(t *testing.T) {
 	h := NewHub(8, 4, 4)
 	two := uint64(2)
-	sub, err := h.Subscribe(Filter{Actor: &two}, nil)
+	sub, err := h.Subscribe(view.Filter{Actor: &two}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.Publish(Decision{ID: 1, Actor: 1})
-	h.Publish(Decision{ID: 2, Actor: 2})
-	h.Publish(Decision{ID: 3, Actor: 2})
+	h.Publish(view.Decision{ID: 1, Actor: 1})
+	h.Publish(view.Decision{ID: 2, Actor: 2})
+	h.Publish(view.Decision{ID: 3, Actor: 2})
 	if a, b := recv(t, sub.C), recv(t, sub.C); a.ID != 2 || b.ID != 3 {
 		t.Fatalf("got %d, %d", a.ID, b.ID)
 	}
@@ -89,7 +90,7 @@ func TestHubFilteredDelivery(t *testing.T) {
 func TestHubReplayFromLastEventID(t *testing.T) {
 	h := NewHub(3, 4, 8)
 	for i := uint64(1); i <= 5; i++ {
-		h.Publish(Decision{ID: i * 10, Actor: 1})
+		h.Publish(view.Decision{ID: i * 10, Actor: 1})
 	}
 	// Ring holds 30, 40, 50; 10 and 20 were evicted.
 	tests := []struct {
@@ -106,7 +107,7 @@ func TestHubReplayFromLastEventID(t *testing.T) {
 		{"caught up", ptr(50), nil, false},
 	}
 	for _, tt := range tests {
-		sub, err := h.Subscribe(Filter{}, tt.after)
+		sub, err := h.Subscribe(view.Filter{}, tt.after)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -121,13 +122,13 @@ func ptr(v uint64) *uint64 { return &v }
 
 func TestHubReplayThenLiveHasNoGapOrDuplicate(t *testing.T) {
 	h := NewHub(8, 4, 8)
-	h.Publish(Decision{ID: 1})
-	sub, err := h.Subscribe(Filter{}, ptr(0))
+	h.Publish(view.Decision{ID: 1})
+	sub, err := h.Subscribe(view.Filter{}, ptr(0))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer sub.Close()
-	h.Publish(Decision{ID: 2})
+	h.Publish(view.Decision{ID: 2})
 	if !eqIDs(ids(sub.Replay), []uint64{1}) {
 		t.Fatalf("replay %v", ids(sub.Replay))
 	}
@@ -138,11 +139,11 @@ func TestHubReplayThenLiveHasNoGapOrDuplicate(t *testing.T) {
 
 func TestHubSlowClientDroppedWithoutBlocking(t *testing.T) {
 	h := NewHub(4, 4, 2)
-	slow, err := h.Subscribe(Filter{}, nil)
+	slow, err := h.Subscribe(view.Filter{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fast, err := h.Subscribe(Filter{}, nil)
+	fast, err := h.Subscribe(view.Filter{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +153,7 @@ func TestHubSlowClientDroppedWithoutBlocking(t *testing.T) {
 	go func() {
 		defer close(done)
 		for i := uint64(1); i <= 10; i++ {
-			h.Publish(Decision{ID: i})
+			h.Publish(view.Decision{ID: i})
 			recv(t, fast.C)
 		}
 	}()
@@ -174,13 +175,13 @@ func TestHubSlowClientDroppedWithoutBlocking(t *testing.T) {
 
 func TestHubCapsClients(t *testing.T) {
 	h := NewHub(4, 2, 2)
-	a, _ := h.Subscribe(Filter{}, nil)
-	b, _ := h.Subscribe(Filter{}, nil)
-	if _, err := h.Subscribe(Filter{}, nil); !errors.Is(err, ErrTooManyClients) {
+	a, _ := h.Subscribe(view.Filter{}, nil)
+	b, _ := h.Subscribe(view.Filter{}, nil)
+	if _, err := h.Subscribe(view.Filter{}, nil); !errors.Is(err, view.ErrTooManyClients) {
 		t.Fatalf("got %v", err)
 	}
 	a.Close()
-	c, err := h.Subscribe(Filter{}, nil)
+	c, err := h.Subscribe(view.Filter{}, nil)
 	if err != nil {
 		t.Fatalf("slot not released: %v", err)
 	}
@@ -190,12 +191,12 @@ func TestHubCapsClients(t *testing.T) {
 
 func TestHubCloseEndsSubscribers(t *testing.T) {
 	h := NewHub(4, 2, 2)
-	sub, _ := h.Subscribe(Filter{}, nil)
+	sub, _ := h.Subscribe(view.Filter{}, nil)
 	h.Close()
 	if _, ok := <-sub.C; ok {
 		t.Fatal("channel still open")
 	}
-	if _, err := h.Subscribe(Filter{}, nil); !errors.Is(err, ErrClosed) {
+	if _, err := h.Subscribe(view.Filter{}, nil); !errors.Is(err, view.ErrClosed) {
 		t.Fatalf("got %v", err)
 	}
 }

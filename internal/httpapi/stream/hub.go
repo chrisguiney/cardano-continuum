@@ -1,6 +1,10 @@
-package httpapi
+package stream
 
-import "sync"
+import (
+	"sync"
+
+	"github.com/chrisguiney/cardano-continuum/internal/httpapi/view"
+)
 
 // Hub is the decision feed: a ring buffer of recent decisions and the
 // subscribers that want the next ones. Publish never blocks: a subscriber
@@ -11,7 +15,7 @@ type Hub struct {
 	buf        int
 
 	mu      sync.Mutex // protects ring, evicted, subs, next, dropped, closed
-	ring    []Decision
+	ring    []view.Decision
 	head    int // index of the oldest entry once the ring is full
 	cap     int
 	evicted uint64 // highest ID the ring has dropped; 0 if none
@@ -22,8 +26,8 @@ type Hub struct {
 }
 
 type sub struct {
-	f Filter
-	c chan Decision
+	f view.Filter
+	c chan view.Decision
 }
 
 // NewHub returns a hub that keeps ringSize decisions, serves at most
@@ -33,7 +37,7 @@ func NewHub(ringSize, maxClients, buf int) *Hub {
 }
 
 // Publish adds d to the ring and delivers it to matching subscribers.
-func (h *Hub) Publish(d Decision) {
+func (h *Hub) Publish(d view.Decision) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.closed {
@@ -65,20 +69,20 @@ func (h *Hub) Publish(d Decision) {
 // dropped decisions the client has not seen. With after nil the client gets
 // live decisions only. Replay and registration happen under one lock, so no
 // decision is missed or repeated between them.
-func (h *Hub) Subscribe(f Filter, after *uint64) (*Subscription, error) {
+func (h *Hub) Subscribe(f view.Filter, after *uint64) (*view.Subscription, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.closed {
-		return nil, ErrClosed
+		return nil, view.ErrClosed
 	}
 	if len(h.subs) >= h.maxClients {
-		return nil, ErrTooManyClients
+		return nil, view.ErrTooManyClients
 	}
-	s := &sub{f: f, c: make(chan Decision, h.buf)}
+	s := &sub{f: f, c: make(chan view.Decision, h.buf)}
 	id := h.next
 	h.next++
 	h.subs[id] = s
-	out := &Subscription{C: s.c}
+	out := &view.Subscription{C: s.c}
 	if after != nil {
 		out.Gap = *after < h.evicted
 		for i := range h.ring {

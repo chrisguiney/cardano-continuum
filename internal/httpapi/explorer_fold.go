@@ -6,6 +6,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
+	"github.com/chrisguiney/cardano-continuum/internal/httpapi/view"
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 )
 
@@ -55,7 +56,7 @@ func (f *txFold) apply(r eventlog.Record) {
 			return
 		}
 		f.mu.Lock()
-		f.verdicts[s.Intent] = verdict{name: verdictName(s.Verdict), reason: s.Reason}
+		f.verdicts[s.Intent] = verdict{name: view.VerdictName(s.Verdict), reason: s.Reason}
 		f.mu.Unlock()
 	case r.Class == eventlog.Decision && r.Kind == oracle.KindFinding:
 		_ = f.findings.Load(r)

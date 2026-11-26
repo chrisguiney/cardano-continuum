@@ -1,4 +1,4 @@
-package httpapi
+package view
 
 import (
 	"context"
@@ -29,15 +29,20 @@ type Kube interface {
 	Pools(ctx context.Context) ([]v1alpha1.ContinuumPool, error)
 }
 
-// namesTTL is how long a read of the store's actor table is reused.
-const namesTTL = 5 * time.Second
+// Subscriber joins the decision feed. stream.Hub implements it.
+type Subscriber interface {
+	Subscribe(f Filter, after *uint64) (*Subscription, error)
+}
+
+// NamesTTL is how long a read of the store's actor table is reused.
+const NamesTTL = 5 * time.Second
 
 // LogSourceConfig wires a LogSource. Names, Kube, Slots and Now are
 // optional: without them names are empty, the pool view is empty, the epoch
 // is unset, and the clock is time.Now.
 type LogSourceConfig struct {
 	Projection *Projection
-	Hub        *Hub
+	Hub        Subscriber
 	Names      Names
 	Kube       Kube
 	Slots      *sched.Slots
@@ -177,16 +182,16 @@ func (s *LogSource) Actors(ctx context.Context, q ActorQuery) (ActorPage, error)
 			rows[i].withIdentity(in)
 		}
 	}
-	return pageActors(rows, q), nil
+	return PageActors(rows, q), nil
 }
 
-// names returns the store's actor table by id, reusing a read for namesTTL.
+// names returns the store's actor table by id, reusing a read for NamesTTL.
 func (s *LogSource) names(ctx context.Context) (map[uint64]store.ActorRow, error) {
 	if s.cfg.Names == nil {
 		return nil, nil
 	}
 	s.mu.Lock()
-	if s.cached != nil && s.cfg.Now().Sub(s.cacheT) < namesTTL {
+	if s.cached != nil && s.cfg.Now().Sub(s.cacheT) < NamesTTL {
 		c := s.cached
 		s.mu.Unlock()
 		return c, nil
@@ -233,9 +238,9 @@ func parseIdents(rows map[uint64]store.ActorRow) map[uint64]store.Identity {
 	return out
 }
 
-// pageActors filters, sorts and slices rows. Sorting is stable on id, so a
+// PageActors filters, sorts and slices rows. Sorting is stable on id, so a
 // page boundary never repeats or skips a row.
-func pageActors(rows []ActorRow, q ActorQuery) ActorPage {
+func PageActors(rows []ActorRow, q ActorQuery) ActorPage {
 	rows = slices.DeleteFunc(rows, func(r ActorRow) bool {
 		f := q.Filter
 		return (f.Profile != "" && r.Profile != f.Profile) ||

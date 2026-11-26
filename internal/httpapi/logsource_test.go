@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
@@ -153,3 +154,11 @@ func TestLogSourceProfileCountsSumToActors(t *testing.T) {
 		t.Fatalf("profile filter over genesis actors: %+v %v", pg, err)
 	}
 }
+
+type fakeKube struct {
+	pools []v1alpha1.ContinuumPool
+	mode  v1alpha1.TopologyMode
+}
+
+func (f fakeKube) Pools(context.Context) ([]v1alpha1.ContinuumPool, error) { return f.pools, nil }
+func (f fakeKube) Topology(context.Context) (v1alpha1.TopologyMode, error) { return f.mode, nil }

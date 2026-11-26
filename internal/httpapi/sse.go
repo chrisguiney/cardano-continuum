@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/chrisguiney/cardano-continuum/internal/httpapi/view"
 )
 
 // sseFeed serves the decision feed over the API it is mounted on.
@@ -62,7 +64,7 @@ func (a sseFeed) serve(w http.ResponseWriter, r *http.Request) {
 	a.pump(r, sub, s)
 }
 
-func (a sseFeed) pump(r *http.Request, sub *Subscription, s *sseWriter) {
+func (a sseFeed) pump(r *http.Request, sub *view.Subscription, s *sseWriter) {
 	beat := time.NewTicker(a.Heartbeat)
 	defer beat.Stop()
 	for {
@@ -113,7 +115,7 @@ func (s *sseWriter) frame(id, event string, data []byte) error {
 	return s.write(text + "event: " + event + "\ndata: " + string(data) + "\n\n")
 }
 
-func (s *sseWriter) decision(d Decision) error {
+func (s *sseWriter) decision(d view.Decision) error {
 	b, err := json.Marshal(d)
 	if err != nil {
 		return err

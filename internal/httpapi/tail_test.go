@@ -7,10 +7,12 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
+	"go.uber.org/goleak"
 )
 
 func enc(t testing.TB, v any) []byte {
@@ -255,4 +257,22 @@ func TestFeedProjectsAndPublishes(t *testing.T) {
 	if len(sub.Replay) != 1 || sub.Replay[0].ID != 7 || sub.Replay[0].Kind != engine.KindSpawned {
 		t.Fatalf("hub replay %+v", sub.Replay)
 	}
+}
+
+func ptr(v uint64) *uint64 { return &v }
+
+func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+
+func recv(t *testing.T, c <-chan Decision) Decision {
+	t.Helper()
+	select {
+	case d, ok := <-c:
+		if !ok {
+			t.Fatal("channel closed")
+		}
+		return d
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for a decision")
+	}
+	return Decision{}
 }

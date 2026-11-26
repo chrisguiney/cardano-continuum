@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/chrisguiney/cardano-continuum/internal/httpapi/view"
 )
 
 var (
@@ -28,25 +30,25 @@ func queryOf(r *http.Request) (url.Values, error) {
 }
 
 // parseActorQuery validates the actors query string into a typed query.
-func parseActorQuery(r *http.Request) (ActorQuery, error) {
-	q := ActorQuery{Sort: "id", Limit: DefaultLimit}
+func parseActorQuery(r *http.Request) (view.ActorQuery, error) {
+	q := view.ActorQuery{Sort: "id", Limit: view.DefaultLimit}
 	v, err := queryOf(r)
 	if err != nil {
 		return q, err
 	}
 	if s := v.Get("limit"); s != "" {
-		if q.Limit, err = strconv.Atoi(s); err != nil || q.Limit < 1 || q.Limit > MaxLimit {
-			return q, badf("limit must be an integer in 1..%d", MaxLimit)
+		if q.Limit, err = strconv.Atoi(s); err != nil || q.Limit < 1 || q.Limit > view.MaxLimit {
+			return q, badf("limit must be an integer in 1..%d", view.MaxLimit)
 		}
 	}
 	if s := v.Get("offset"); s != "" {
-		if q.Offset, err = strconv.Atoi(s); err != nil || q.Offset < 0 || q.Offset > maxOffset {
-			return q, badf("offset must be an integer in 0..%d", maxOffset)
+		if q.Offset, err = strconv.Atoi(s); err != nil || q.Offset < 0 || q.Offset > view.MaxOffset {
+			return q, badf("offset must be an integer in 0..%d", view.MaxOffset)
 		}
 	}
 	if s := v.Get("sort"); s != "" {
-		if !slices.Contains(SortKeys, s) {
-			return q, badf("sort must be one of %s", strings.Join(SortKeys, ", "))
+		if !slices.Contains(view.SortKeys, s) {
+			return q, badf("sort must be one of %s", strings.Join(view.SortKeys, ", "))
 		}
 		q.Sort = s
 	}
@@ -77,8 +79,8 @@ func parseActorQuery(r *http.Request) (ActorQuery, error) {
 }
 
 // parseFilter validates the decision feed's filter parameters.
-func parseFilter(v url.Values) (Filter, error) {
-	var f Filter
+func parseFilter(v url.Values) (view.Filter, error) {
+	var f view.Filter
 	if s := v.Get("actor"); s != "" {
 		id, err := strconv.ParseUint(s, 10, 64)
 		if err != nil {
@@ -93,8 +95,8 @@ func parseFilter(v url.Values) (Filter, error) {
 		f.Profile = s
 	}
 	if s := v.Get("intent"); s != "" {
-		if !slices.Contains(BuildEnums().IntentKind, s) {
-			return f, badf("intent must be one of %s", strings.Join(BuildEnums().IntentKind, ", "))
+		if !slices.Contains(view.BuildEnums().IntentKind, s) {
+			return f, badf("intent must be one of %s", strings.Join(view.BuildEnums().IntentKind, ", "))
 		}
 		f.Intent = s
 	}
@@ -121,13 +123,13 @@ func parseFilter(v url.Values) (Filter, error) {
 
 // parseFindingFilter validates the findings kind and severity parameters
 // against the oracle's own lists.
-func parseFindingFilter(r *http.Request) (Page, error) {
-	var p Page
+func parseFindingFilter(r *http.Request) (view.Page, error) {
+	var p view.Page
 	v, err := queryOf(r)
 	if err != nil {
 		return p, err
 	}
-	e := BuildEnums()
+	e := view.BuildEnums()
 	if s := v.Get("kind"); s != "" {
 		if !slices.Contains(e.FindingKind, s) {
 			return p, badf("kind must be one of %s", strings.Join(e.FindingKind, ", "))

@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/chrisguiney/cardano-continuum/internal/httpapi/view"
 )
 
 const (
@@ -75,7 +77,7 @@ func NewHandler(cfg Config) http.Handler {
 		a.json(w, http.StatusOK, map[string]bool{"controls": a.Controls != nil, "explorer": a.Explorer != nil})
 	})
 	mux.HandleFunc("GET /api/meta/enums", func(w http.ResponseWriter, _ *http.Request) {
-		a.json(w, http.StatusOK, BuildEnums())
+		a.json(w, http.StatusOK, view.BuildEnums())
 	})
 	mux.HandleFunc("GET /api/overview", a.overview)
 	mux.HandleFunc("GET /api/actors", a.actors)
@@ -86,7 +88,7 @@ func NewHandler(cfg Config) http.Handler {
 	mux.HandleFunc("GET /api/governance", a.governance)
 	mux.HandleFunc("GET /api/findings", a.findings)
 	mux.HandleFunc("GET /api/findings/{id}", func(w http.ResponseWriter, _ *http.Request) {
-		a.fail(w, fmt.Errorf("%w: finding", ErrNotFound))
+		a.fail(w, fmt.Errorf("%w: finding", view.ErrNotFound))
 	})
 	mux.HandleFunc("GET /api/decisions", sseFeed{a}.serve)
 	mux.HandleFunc("POST /api/control", a.control)
@@ -133,11 +135,11 @@ func (a *api) fail(w http.ResponseWriter, err error) {
 	switch {
 	case errors.As(err, &mbe):
 		a.json(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "request body too large"})
-	case errors.Is(err, ErrBadRequest):
+	case errors.Is(err, view.ErrBadRequest):
 		a.json(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-	case errors.Is(err, ErrNotFound):
+	case errors.Is(err, view.ErrNotFound):
 		a.json(w, http.StatusNotFound, map[string]string{"error": err.Error()})
-	case errors.Is(err, ErrTooManyClients):
+	case errors.Is(err, view.ErrTooManyClients):
 		a.json(w, http.StatusTooManyRequests, map[string]string{"error": err.Error()})
 	default:
 		a.Logger.Error("request failed", "err", err)
@@ -239,7 +241,7 @@ func (a *api) findings(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, err)
 		return
 	}
-	f, err := a.Source.Findings(r.Context(), Page{Limit: q.Limit, Offset: q.Offset, Known: known, Kind: ff.Kind, Severity: ff.Severity})
+	f, err := a.Source.Findings(r.Context(), view.Page{Limit: q.Limit, Offset: q.Offset, Known: known, Kind: ff.Kind, Severity: ff.Severity})
 	if err != nil {
 		a.fail(w, err)
 		return
@@ -271,15 +273,15 @@ func (a *api) control(w http.ResponseWriter, r *http.Request) {
 
 // parseKnown reads the known filter: known=false hides findings that match
 // a known issue, known=true lists only those, and absent lists all.
-func parseKnown(r *http.Request) (KnownFilter, error) {
+func parseKnown(r *http.Request) (view.KnownFilter, error) {
 	switch v := r.URL.Query().Get("known"); v {
 	case "":
-		return KnownAll, nil
+		return view.KnownAll, nil
 	case "false":
-		return KnownHide, nil
+		return view.KnownHide, nil
 	case "true":
-		return KnownOnly, nil
+		return view.KnownOnly, nil
 	default:
-		return KnownAll, fmt.Errorf("%w: known must be true or false, not %q", ErrBadRequest, v)
+		return view.KnownAll, fmt.Errorf("%w: known must be true or false, not %q", view.ErrBadRequest, v)
 	}
 }

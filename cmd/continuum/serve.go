@@ -17,6 +17,8 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
 	"github.com/chrisguiney/cardano-continuum/internal/httpapi"
+	"github.com/chrisguiney/cardano-continuum/internal/httpapi/stream"
+	"github.com/chrisguiney/cardano-continuum/internal/httpapi/view"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/store"
 	"github.com/chrisguiney/cardano-continuum/web"
@@ -56,8 +58,9 @@ func cmdServe(ctx context.Context, args []string, out io.Writer, open openCluste
 	if err != nil {
 		return err
 	}
-	cfg := httpapi.LogSourceConfig{Projection: httpapi.NewProjection(), Hub: httpapi.NewHub(4096, 64, 256), Slots: &slots, GovLifetime: *govLife}
-	defer cfg.Hub.Close()
+	hub := stream.NewHub(4096, 64, 256)
+	cfg := view.LogSourceConfig{Projection: view.NewProjection(), Hub: hub, Slots: &slots, GovLifetime: *govLife}
+	defer hub.Close()
 	if *dbPath != "" {
 		db, err := openExistingStore(ctx, *dbPath)
 		if err != nil {
@@ -86,18 +89,19 @@ func cmdServe(ctx context.Context, args []string, out io.Writer, open openCluste
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	ex := newExplorer(slots, 0, *keep, cfg.Names, cfg.Kube, cfg.Tips, log)
 	cfg.Projection.Observe(ex.Apply)
-	return serve(ctx, serveParams{log: *logPath, addr: *addr, controls: *controls, cfg: cfg, explorer: ex}, out)
+	return serve(ctx, serveParams{log: *logPath, addr: *addr, controls: *controls, cfg: cfg, hub: hub, explorer: ex}, out)
 }
 
 type serveParams struct {
 	log, addr string
 	controls  bool
-	cfg       httpapi.LogSourceConfig
+	cfg       view.LogSourceConfig
+	hub       *stream.Hub
 	explorer  *httpapi.Explorer
 }
 
 func serve(ctx context.Context, p serveParams, out io.Writer) error {
-	tail, err := httpapi.NewTail(p.log, p.cfg.Projection, p.cfg.Hub)
+	tail, err := stream.NewTail(p.log, p.cfg.Projection, p.hub)
 	if err != nil {
 		return err
 	}
@@ -105,7 +109,7 @@ func serve(ctx context.Context, p serveParams, out io.Writer) error {
 	if _, err := tail.Poll(ctx); err != nil {
 		return err
 	}
-	hcfg := httpapi.Config{Source: httpapi.NewLogSource(p.cfg), Explorer: p.explorer, UI: web.Handler(), Logger: slog.New(slog.NewTextHandler(os.Stderr, nil))}
+	hcfg := httpapi.Config{Source: view.NewLogSource(p.cfg), Explorer: p.explorer, UI: web.Handler(), Logger: slog.New(slog.NewTextHandler(os.Stderr, nil))}
 	if p.controls {
 		fl, err := eventlog.Open(p.log)
 		if err != nil {
@@ -164,7 +168,7 @@ func openExistingStore(ctx context.Context, path string) (*store.DB, error) {
 	return store.Open(ctx, path)
 }
 
-// kubeView adapts the image command's cluster client to httpapi.Kube.
+// kubeView adapts the image command's cluster client to view.Kube.
 type kubeView struct {
 	cl      imageCluster
 	network string

@@ -11,14 +11,14 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
-	"github.com/chrisguiney/cardano-continuum/internal/httpapi"
+	"github.com/chrisguiney/cardano-continuum/internal/httpapi/view"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 	"github.com/chrisguiney/cardano-continuum/internal/poolwatch"
 )
 
 // liveTips follows every running pool of the network over node-to-node
-// chain-sync and serves what it saw to the Pools API (httpapi.Tips) and to
+// chain-sync and serves what it saw to the Pools API (view.Tips) and to
 // the fork monitor (engine.TipSource). The operator does not record tips:
 // the fork monitor needs a window of blocks per pool, not one tip.
 type liveTips struct {
@@ -26,7 +26,7 @@ type liveTips struct {
 	cl poolCluster
 	nw string
 	// kube reads the network's topology for the Pools API.
-	kube httpapi.Kube
+	kube view.Kube
 }
 
 // forkDepth is the number of blocks two pools must differ on for the Pools
@@ -74,7 +74,7 @@ func podTargets(ps []v1alpha1.ContinuumPool) []poolwatch.Target {
 	return out
 }
 
-// Tips implements httpapi.Tips.
+// Tips implements view.Tips.
 func (l *liveTips) Tips() map[string][]chain.Mark { return l.tr.Tips() }
 
 // Branches implements engine.TipSource.

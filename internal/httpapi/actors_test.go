@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chrisguiney/cardano-continuum/internal/httpapi/view"
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 	"github.com/chrisguiney/cardano-continuum/internal/store"
 )
@@ -184,14 +185,14 @@ func TestActorsPagingAtScale(t *testing.T) {
 	}
 	yes := true
 	start := time.Now()
-	pg := pageActors(rows, ActorQuery{Sort: "balance", Desc: true, Offset: 9_000, Limit: 100, Filter: ActorFilter{Delegated: &yes}})
+	pg := view.PageActors(rows, ActorQuery{Sort: "balance", Desc: true, Offset: 9_000, Limit: 100, Filter: ActorFilter{Delegated: &yes}})
 	if el := time.Since(start); el > 500*time.Millisecond {
 		t.Fatalf("took %v", el)
 	}
 	if pg.Total != 3334 || len(pg.Rows) != 0 {
 		t.Fatalf("total %d rows %d", pg.Total, len(pg.Rows))
 	}
-	pg = pageActors(rows, ActorQuery{Sort: "balance", Desc: true, Offset: 0, Limit: 100})
+	pg = view.PageActors(rows, ActorQuery{Sort: "balance", Desc: true, Offset: 0, Limit: 100})
 	if len(pg.Rows) != 100 || pg.Rows[0].Balance < pg.Rows[99].Balance {
 		t.Fatalf("not sorted: %d %d", pg.Rows[0].Balance, pg.Rows[99].Balance)
 	}

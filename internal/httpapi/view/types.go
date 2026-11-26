@@ -1,4 +1,4 @@
-package httpapi
+package view
 
 import (
 	"errors"
@@ -24,7 +24,7 @@ var (
 const (
 	DefaultLimit = 100
 	MaxLimit     = 500
-	maxOffset    = 1 << 30
+	MaxOffset    = 1 << 30
 )
 
 // Page is a limit and offset into a list.

@@ -8,6 +8,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
+	"github.com/chrisguiney/cardano-continuum/internal/httpapi/view"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 )
 
@@ -117,7 +118,7 @@ func TestDecisionVoteFilter(t *testing.T) {
 	if !f.Match(vote) || !f.Match(sub) || f.Match(send) {
 		t.Fatal("vote filter")
 	}
-	d, err := toDecision(submitted(t, 0, 7, engine.Submitted{Intent: 3, Kind: "vote", Voter: "spo"}), "pools")
+	d, err := view.ToDecision(submitted(t, 0, 7, engine.Submitted{Intent: 3, Kind: "vote", Voter: "spo"}), "pools")
 	if err != nil || d.Intent != "vote" {
 		t.Fatalf("submitted vote decision %+v, %v", d, err)
 	}

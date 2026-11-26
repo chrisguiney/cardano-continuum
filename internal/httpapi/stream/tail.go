@@ -1,4 +1,4 @@
-package httpapi
+package stream
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
+	"github.com/chrisguiney/cardano-continuum/internal/httpapi/view"
 )
 
 // pollEvery is how often Run looks for appended records.
@@ -21,14 +22,14 @@ const pollEvery = 250 * time.Millisecond
 // final frame with a bad checksum) is waited out, not cut.
 type Tail struct {
 	f    *os.File
-	proj *Projection
+	proj *view.Projection
 	hub  *Hub
 	off  int64
 	seq  uint64
 }
 
 // NewTail opens the log at path for reading.
-func NewTail(path string, p *Projection, h *Hub) (*Tail, error) {
+func NewTail(path string, p *view.Projection, h *Hub) (*Tail, error) {
 	f, err := os.Open(path) //nolint:gosec // operator-supplied path
 	if err != nil {
 		return nil, fmt.Errorf("open event log: %w", err)
@@ -107,12 +108,12 @@ func (t *Tail) apply(rec eventlog.Record) { NewFeed(t.proj, t.hub).Apply(rec) }
 // them to a hub, as a Tail does for a log file. A live engine feeds every
 // record it appends, in seq order, so its own Source needs no file.
 type Feed struct {
-	proj *Projection
+	proj *view.Projection
 	hub  *Hub
 }
 
 // NewFeed returns a feed into p and h.
-func NewFeed(p *Projection, h *Hub) *Feed { return &Feed{proj: p, hub: h} }
+func NewFeed(p *view.Projection, h *Hub) *Feed { return &Feed{proj: p, hub: h} }
 
 // Apply applies one record, which must carry its seq.
 func (f *Feed) Apply(rec eventlog.Record) {
@@ -120,7 +121,7 @@ func (f *Feed) Apply(rec eventlog.Record) {
 	if rec.Class != eventlog.Decision {
 		return
 	}
-	d, err := toDecision(rec, f.proj.Profile(rec.Actor))
+	d, err := view.ToDecision(rec, f.proj.Profile(rec.Actor))
 	if err != nil {
 		f.proj.NoteBodyError()
 	}

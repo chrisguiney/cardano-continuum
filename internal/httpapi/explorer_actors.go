@@ -6,11 +6,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chrisguiney/cardano-continuum/internal/httpapi/view"
 	"github.com/chrisguiney/cardano-continuum/internal/store"
 )
 
 // actorDir maps an address to the continuum actor that owns it, from the
-// store's actor table, reread at most every namesTTL.
+// store's actor table, reread at most every view.NamesTTL.
 type actorDir struct {
 	names Names
 	now   func() time.Time
@@ -56,7 +57,7 @@ func (d *actorDir) load(ctx context.Context) error {
 		return nil
 	}
 	d.mu.Lock()
-	fresh := d.byID != nil && d.now().Sub(d.readAt) < namesTTL
+	fresh := d.byID != nil && d.now().Sub(d.readAt) < view.NamesTTL
 	d.mu.Unlock()
 	if fresh {
 		return nil

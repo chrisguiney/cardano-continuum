@@ -15,7 +15,14 @@
 //	      store, kube ──▶ LogSource ──▶ Source ──▶ handlers ◀── POST /api/control
 //	                                                   └────▶ Controls ──▶ log
 //
-// LogSource is the read-only Source over a log file, the store's actor table
-// and the operator's pool status. A live engine supplies its own Source and
-// Controls through the same interfaces.
+// The packages form a DAG, each importing only those below it:
+//
+//	httpapi         handlers, controls, the explorer
+//	  ├─▶ stream    Hub, Tail and Feed: the decision feed
+//	  │     └─▶ view
+//	  └─▶ view      Projection, LogSource, Source and the response types
+//
+// view.LogSource is the read-only Source over a log file, the store's actor
+// table and the operator's pool status. A live engine supplies its own
+// Source and Controls through the same interfaces.
 package httpapi

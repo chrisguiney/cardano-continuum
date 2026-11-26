@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
+	"github.com/chrisguiney/cardano-continuum/internal/httpapi/view"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 )
 
@@ -68,7 +69,7 @@ type Controls interface {
 }
 
 func badf(format string, a ...any) error {
-	return fmt.Errorf("%w: %s", ErrBadRequest, fmt.Sprintf(format, a...))
+	return fmt.Errorf("%w: %s", view.ErrBadRequest, fmt.Sprintf(format, a...))
 }
 
 // ParseControl decodes and validates one control payload. Unknown fields,

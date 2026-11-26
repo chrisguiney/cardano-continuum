@@ -11,6 +11,8 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/httpapi"
+	"github.com/chrisguiney/cardano-continuum/internal/httpapi/stream"
+	"github.com/chrisguiney/cardano-continuum/internal/httpapi/view"
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/store"
@@ -68,7 +70,7 @@ func (q *controlQueue) Controls(context.Context) ([][]byte, error) {
 // live API's projection and hub.
 type feedLog struct {
 	engine.Log
-	feed *httpapi.Feed
+	feed *stream.Feed
 }
 
 // Append implements eventlog.Writer. The log numbers records in order, so
@@ -89,8 +91,8 @@ func (l feedLog) Append(ctx context.Context, recs ...eventlog.Record) error {
 type liveServer struct {
 	log      feedLog
 	controls *controlQueue
-	src      *httpapi.LogSource
-	hub      *httpapi.Hub
+	src      *view.LogSource
+	hub      *stream.Hub
 	explorer *httpapi.Explorer
 }
 
@@ -100,9 +102,9 @@ type liveServer struct {
 // logs each finding; findings may be nil, and the page then folds them
 // from the log.
 func newLiveServer(ctx context.Context, l engine.Log, db *store.DB, slots sched.Slots, govLife uint64, findings *oracle.Set, pv poolView) (*liveServer, error) {
-	proj, hub := httpapi.NewProjection(), httpapi.NewHub(4096, 64, 256)
-	feed := httpapi.NewFeed(proj, hub)
-	var names httpapi.Names
+	proj, hub := view.NewProjection(), stream.NewHub(4096, 64, 256)
+	feed := stream.NewFeed(proj, hub)
+	var names view.Names
 	if db != nil {
 		names = db
 	}
@@ -112,7 +114,7 @@ func newLiveServer(ctx context.Context, l engine.Log, db *store.DB, slots sched.
 		hub.Close()
 		return nil, fmt.Errorf("read event log: %w", err)
 	}
-	cfg := httpapi.LogSourceConfig{Projection: proj, Hub: hub, Slots: &slots, GovLifetime: govLife,
+	cfg := view.LogSourceConfig{Projection: proj, Hub: hub, Slots: &slots, GovLifetime: govLife,
 		Kube: pv.Kube, Tips: pv.Tips, K: pv.K, ForkDepth: pv.Depth}
 	if findings != nil {
 		cfg.Findings = findings
@@ -120,15 +122,15 @@ func newLiveServer(ctx context.Context, l engine.Log, db *store.DB, slots sched.
 	if db != nil {
 		cfg.Names = db
 	}
-	src := httpapi.NewLogSource(cfg)
+	src := view.NewLogSource(cfg)
 	return &liveServer{log: feedLog{Log: l, feed: feed}, controls: newControlQueue(), src: src, hub: hub, explorer: ex}, nil
 }
 
 // poolView is what the Pools API reads: the cluster's pool objects, the
 // followed chains, and the fork thresholds. Any part may be nil.
 type poolView struct {
-	Kube     httpapi.Kube
-	Tips     httpapi.Tips
+	Kube     view.Kube
+	Tips     view.Tips
 	K, Depth uint64
 }
 

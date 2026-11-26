@@ -1,4 +1,4 @@
-package httpapi
+package view
 
 import (
 	"encoding/hex"
@@ -9,10 +9,10 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 )
 
-// toDecision turns a Decision-class record into a feed entry. The body is
+// ToDecision turns a Decision-class record into a feed entry. The body is
 // decoded generically so a new decision kind reaches the feed without a
 // change here; IntentChosen also exposes the chosen kind and its scores.
-func toDecision(r eventlog.Record, profile string) (Decision, error) {
+func ToDecision(r eventlog.Record, profile string) (Decision, error) {
 	d := Decision{ID: r.Seq, At: int64(r.At), Kind: r.Kind, Actor: uint64(r.Actor), Profile: profile}
 	if len(r.Body) == 0 {
 		return d, nil

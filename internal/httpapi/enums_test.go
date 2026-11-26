@@ -11,6 +11,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
+	"github.com/chrisguiney/cardano-continuum/internal/httpapi/view"
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
@@ -92,7 +93,7 @@ func TestEnumValuesAreAccepted(t *testing.T) {
 
 func TestFiltersByEnumValue(t *testing.T) {
 	rows := []ActorRow{{ID: 1, Kind: "wallet"}, {ID: 2, Kind: "pool"}}
-	pg := pageActors(rows, ActorQuery{Sort: "id", Limit: 10, Filter: ActorFilter{Kind: "pool"}})
+	pg := view.PageActors(rows, ActorQuery{Sort: "id", Limit: 10, Filter: ActorFilter{Kind: "pool"}})
 	if pg.Total != 1 || pg.Rows[0].ID != 2 {
 		t.Errorf("kind filter: %+v", pg)
 	}
@@ -122,4 +123,12 @@ func TestEnumsNameExUnitsKinds(t *testing.T) {
 			}
 		}
 	}
+}
+
+func strs[T ~string](xs []T) []string {
+	out := make([]string, len(xs))
+	for i, x := range xs {
+		out[i] = string(x)
+	}
+	return out
 }
