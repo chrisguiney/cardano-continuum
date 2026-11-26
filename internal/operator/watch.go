@@ -17,6 +17,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 	"github.com/chrisguiney/cardano-continuum/internal/poolwatch"
 )
 
@@ -188,7 +189,7 @@ func (w *Watch) Observe(ctx context.Context, p *v1alpha1.ContinuumPool, net *v1a
 	defer cancel()
 	facts := w.genesis.of(ctx, net)
 	var issuer *common.Blake2b224
-	if RoleOf(p).Keyed() {
+	if render.RoleOf(p).Keyed() {
 		if h, ok := w.issuers.of(ctx, p, pod); ok {
 			issuer = &h
 		}
@@ -206,12 +207,12 @@ func (w *Watch) Observe(ctx context.Context, p *v1alpha1.ContinuumPool, net *v1a
 
 // Phase is Judge at the Watch's clock.
 func (w *Watch) Phase(base v1alpha1.PoolPhase, p *v1alpha1.ContinuumPool, o Observation) v1alpha1.PoolPhase {
-	return Judge(base, RoleOf(p), o.Facts, o.Seen, w.now())
+	return Judge(base, render.RoleOf(p), o.Facts, o.Seen, w.now())
 }
 
 func (w *Watch) track(key string, p *v1alpha1.ContinuumPool, net *v1alpha1.ContinuumNetwork) {
-	set := Name(p)
-	addr := fmt.Sprintf("%s.%s.%s.svc.%s:%d", PodName(set), set, p.Namespace, ClusterDomain, N2NPort)
+	set := render.Name(p)
+	addr := fmt.Sprintf("%s.%s.%s.svc.%s:%d", render.PodName(set), set, p.Namespace, render.ClusterDomain, render.N2NPort)
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if old, ok := w.targets[key]; ok && old.Addr != addr {

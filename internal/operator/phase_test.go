@@ -8,6 +8,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
 
 func TestPhaseOf(t *testing.T) {
@@ -50,31 +51,31 @@ func TestJudge(t *testing.T) {
 	tests := []struct {
 		name string
 		base v1alpha1.PoolPhase
-		role Role
+		role render.Role
 		f    Facts
 		s    Seen
 		want v1alpha1.PoolPhase
 	}{
-		{"not ready", v1alpha1.PhasePending, RoleForger, f, own(tip(2000), 1990), v1alpha1.PhasePending},
-		{"dark", v1alpha1.PhaseDark, RoleForger, f, own(tip(2000), 1990), v1alpha1.PhaseDark},
-		{"no tip yet", v1alpha1.PhaseSyncing, RoleForger, f, Seen{}, v1alpha1.PhaseSyncing},
-		{"lagging", v1alpha1.PhaseSyncing, RoleForger, f, own(tip(1500), 1490), v1alpha1.PhaseSyncing},
-		{"just inside the lag", v1alpha1.PhaseSyncing, RoleForger, f, own(tip(1800), 1800), v1alpha1.PhaseForging},
-		{"just outside the lag", v1alpha1.PhaseSyncing, RoleForger, f, own(tip(1799), 1799), v1alpha1.PhaseSyncing},
-		{"caught up, no block seen", v1alpha1.PhaseSyncing, RoleForger, f, tip(1990), v1alpha1.PhaseSyncing},
-		{"caught up, block in the window", v1alpha1.PhaseSyncing, RoleForger, f, own(tip(1990), 1500), v1alpha1.PhaseForging},
-		{"caught up, block before the window", v1alpha1.PhaseSyncing, RoleForger, f, own(tip(1990), 1446), v1alpha1.PhaseSyncing},
-		{"block at the window edge", v1alpha1.PhaseSyncing, RoleForger, f, own(tip(1990), 1447), v1alpha1.PhaseForging},
-		{"duplicate forges too", v1alpha1.PhaseSyncing, RoleDuplicate, f, own(tip(1990), 1990), v1alpha1.PhaseForging},
-		{"relay caught up", v1alpha1.PhaseSyncing, RoleRelay, f, own(tip(1990), 1990), v1alpha1.PhaseFollowing},
-		{"relay lagging", v1alpha1.PhaseSyncing, RoleRelay, f, tip(1000), v1alpha1.PhaseSyncing},
-		{"tiny stake is capped at the epoch", v1alpha1.PhaseSyncing, RoleForger,
+		{"not ready", v1alpha1.PhasePending, render.RoleForger, f, own(tip(2000), 1990), v1alpha1.PhasePending},
+		{"dark", v1alpha1.PhaseDark, render.RoleForger, f, own(tip(2000), 1990), v1alpha1.PhaseDark},
+		{"no tip yet", v1alpha1.PhaseSyncing, render.RoleForger, f, Seen{}, v1alpha1.PhaseSyncing},
+		{"lagging", v1alpha1.PhaseSyncing, render.RoleForger, f, own(tip(1500), 1490), v1alpha1.PhaseSyncing},
+		{"just inside the lag", v1alpha1.PhaseSyncing, render.RoleForger, f, own(tip(1800), 1800), v1alpha1.PhaseForging},
+		{"just outside the lag", v1alpha1.PhaseSyncing, render.RoleForger, f, own(tip(1799), 1799), v1alpha1.PhaseSyncing},
+		{"caught up, no block seen", v1alpha1.PhaseSyncing, render.RoleForger, f, tip(1990), v1alpha1.PhaseSyncing},
+		{"caught up, block in the window", v1alpha1.PhaseSyncing, render.RoleForger, f, own(tip(1990), 1500), v1alpha1.PhaseForging},
+		{"caught up, block before the window", v1alpha1.PhaseSyncing, render.RoleForger, f, own(tip(1990), 1446), v1alpha1.PhaseSyncing},
+		{"block at the window edge", v1alpha1.PhaseSyncing, render.RoleForger, f, own(tip(1990), 1447), v1alpha1.PhaseForging},
+		{"duplicate forges too", v1alpha1.PhaseSyncing, render.RoleDuplicate, f, own(tip(1990), 1990), v1alpha1.PhaseForging},
+		{"relay caught up", v1alpha1.PhaseSyncing, render.RoleRelay, f, own(tip(1990), 1990), v1alpha1.PhaseFollowing},
+		{"relay lagging", v1alpha1.PhaseSyncing, render.RoleRelay, f, tip(1000), v1alpha1.PhaseSyncing},
+		{"tiny stake is capped at the epoch", v1alpha1.PhaseSyncing, render.RoleForger,
 			Facts{Start: start, SlotLen: time.Second, F: 0.05, Share: 0.0001, Epoch: 1000}, own(tip(1990), 1000), v1alpha1.PhaseForging},
-		{"tiny stake, block over an epoch ago", v1alpha1.PhaseSyncing, RoleForger,
+		{"tiny stake, block over an epoch ago", v1alpha1.PhaseSyncing, render.RoleForger,
 			Facts{Start: start, SlotLen: time.Second, F: 0.05, Share: 0.0001, Epoch: 1000}, own(tip(1990), 999), v1alpha1.PhaseSyncing},
-		{"no genesis: best tip is the clock", v1alpha1.PhaseSyncing, RoleForger, Facts{Epoch: 1000},
+		{"no genesis: best tip is the clock", v1alpha1.PhaseSyncing, render.RoleForger, Facts{Epoch: 1000},
 			own(Seen{Tip: mark(1990), HaveTip: true, NetTip: 2000}, 1990), v1alpha1.PhaseForging},
-		{"no genesis: behind the best tip", v1alpha1.PhaseSyncing, RoleForger, Facts{Epoch: 1000},
+		{"no genesis: behind the best tip", v1alpha1.PhaseSyncing, render.RoleForger, Facts{Epoch: 1000},
 			own(Seen{Tip: mark(1500), HaveTip: true, NetTip: 2000}, 1500), v1alpha1.PhaseSyncing},
 	}
 	for _, tt := range tests {

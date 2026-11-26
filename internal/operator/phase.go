@@ -8,6 +8,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
 
 // PhaseOf is the phase of pool p from its pod alone: Dark, Pending (no
@@ -125,7 +126,7 @@ type Seen struct {
 //   - Caught up, a pool that does not forge is Following.
 //
 // Pure: now is the clock.
-func Judge(base v1alpha1.PoolPhase, role Role, f Facts, s Seen, now time.Time) v1alpha1.PoolPhase {
+func Judge(base v1alpha1.PoolPhase, role render.Role, f Facts, s Seen, now time.Time) v1alpha1.PoolPhase {
 	if base != v1alpha1.PhaseSyncing || !s.HaveTip {
 		return base
 	}

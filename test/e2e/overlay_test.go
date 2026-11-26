@@ -17,8 +17,8 @@ import (
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/devbuild"
 	"github.com/chrisguiney/cardano-continuum/internal/genesis"
-	"github.com/chrisguiney/cardano-continuum/internal/operator"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/image"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
 
 const (
@@ -62,7 +62,7 @@ func TestGouroborosOverlayCanary(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(t.Context()), 3*time.Minute)
 		defer cancel()
 		_, _ = kubectl(ctx, "", "-n", ns, "delete", "continuumpools", "--all", "--wait=true", "--timeout=60s")
-		_, _ = kubectl(ctx, "", "-n", ns, "wait", "--for=delete", "pod", "-l", operator.LabelWorkload, "--timeout=100s")
+		_, _ = kubectl(ctx, "", "-n", ns, "wait", "--for=delete", "pod", "-l", render.LabelWorkload, "--timeout=100s")
 	})
 	prepullNodeImage(t, ns)
 	kube(t, genesisResources, "-n", ns, "apply", "-f", "-")
@@ -96,7 +96,7 @@ func TestGouroborosOverlayCanary(t *testing.T) {
 	})
 	checkOverlayStatus(t, ns, mode, gouroSha)
 
-	pod := operator.PodName(operator.Name(&dingo))
+	pod := render.PodName(render.Name(&dingo))
 	start := systemStart(t, read("config/"+genesis.ShelleyFile))
 	requireOneChain(t, ns, pods, spec, start)
 	deadline := start.Add(10 * time.Minute)

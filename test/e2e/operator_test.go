@@ -16,7 +16,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/genesis"
-	"github.com/chrisguiney/cardano-continuum/internal/operator"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
 
 const operatorBinding = "continuum-e2e-operator"
@@ -77,7 +77,7 @@ func bootNetworkWith(t *testing.T, spec genesis.Spec, pool func(int) v1alpha1.Co
 		_, _ = kubectl(ctx, "", "-n", ns, "delete", "continuumpools", "--all", "--wait=true", "--timeout=60s")
 		// Deleting a pool does not wait for its pod, whose finalizer only the
 		// operator removes.
-		_, _ = kubectl(ctx, "", "-n", ns, "wait", "--for=delete", "pod", "-l", operator.LabelWorkload, "--timeout=100s")
+		_, _ = kubectl(ctx, "", "-n", ns, "wait", "--for=delete", "pod", "-l", render.LabelWorkload, "--timeout=100s")
 	})
 	prepullNodeImage(t, ns)
 	kube(t, genesisResources, "-n", ns, "apply", "-f", "-")
@@ -159,7 +159,7 @@ spec:
 // and never forges.
 func prepullNodeImage(t *testing.T, ns string) {
 	t.Helper()
-	image := operator.CardanoNode{}.Image()
+	image := render.CardanoNode{}.Image()
 	out := kube(t, "", "get", "nodes", "-l", "!node-role.kubernetes.io/control-plane", "-o", "name")
 	var pods []string
 	for i, node := range strings.Fields(out) {
@@ -193,7 +193,7 @@ func apply(t *testing.T, ns string, obj any) {
 }
 
 // keyFiles are the files of a pool's keys Secret, as the operator names them.
-var keyFiles = []string{operator.KESKey, operator.VRFKey, operator.OpCert}
+var keyFiles = []string{render.KESKey, render.VRFKey, render.OpCert}
 
 // publishGenesis copies the rendered config into the ConfigMap the network's
 // genesisRef names, and each pool's keys into a Secret. The ConfigMap holds
@@ -248,7 +248,7 @@ func applyNetworkWith(t *testing.T, ns string, s genesis.Spec, pool func(int) v1
 	for i := range s.Pools {
 		p := pool(i)
 		apply(t, ns, p)
-		pods = append(pods, operator.PodName(operator.Name(&p)))
+		pods = append(pods, render.PodName(render.Name(&p)))
 	}
 	return pods
 }

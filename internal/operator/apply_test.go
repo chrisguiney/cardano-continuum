@@ -17,6 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
 
 // writes counts the updates that reach the API server.
@@ -40,10 +41,24 @@ func newApplier(t *testing.T) (*applier, *writes) {
 	return &applier{client: c, log: slog.New(slog.NewTextHandler(io.Discard, nil))}, c
 }
 
-func rendered(t *testing.T) Workload {
+func renderOn(t *testing.T, d render.NodeDriver, n *v1alpha1.ContinuumNetwork, p *v1alpha1.ContinuumPool) render.Workload {
+	t.Helper()
+	w, err := render.Render(d, render.Input{
+		Network: n,
+		Pool:    p,
+		Peers:   []render.Peer{{Host: "pool-b.ns.svc.cluster.local", Port: render.N2NPort}},
+		Image:   render.Image{Name: "r@sha256:aaaa", PullPolicy: corev1.PullIfNotPresent},
+	})
+	if err != nil {
+		t.Fatalf("Render %s: %v", d.Impl(), err)
+	}
+	return w
+}
+
+func rendered(t *testing.T) render.Workload {
 	t.Helper()
 	p := pool("ns", "a", v1alpha1.Dingo, v1alpha1.TierValidating)
-	return renderOn(t, Drivers()[v1alpha1.Dingo], network("ns"), p)
+	return renderOn(t, render.Drivers()[v1alpha1.Dingo], network("ns"), p)
 }
 
 // defaulted adds what the API server fills into an object it stored.
@@ -165,7 +180,7 @@ func svcWith(t *testing.T, ntc bool) *corev1.Service {
 	t.Helper()
 	w := rendered(t)
 	if ntc {
-		w.Service.Spec.Ports = append(w.Service.Spec.Ports, corev1.ServicePort{Name: "ntc", Port: NtCPort})
+		w.Service.Spec.Ports = append(w.Service.Spec.Ports, corev1.ServicePort{Name: "ntc", Port: render.NtCPort})
 	}
 	return w.Service
 }

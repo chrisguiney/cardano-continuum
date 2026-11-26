@@ -3,6 +3,7 @@
 package operator
 
 import (
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
 
 // editNetwork retries f on a fresh copy of the network until the update lands.
@@ -40,7 +42,7 @@ func TestParquetSourceMoveRollsTwoPods(t *testing.T) {
 	names := map[string]string{}
 	uids := map[string]types.UID{}
 	for _, n := range []string{"f", "r1", "r2"} {
-		names[n] = PodName(Name(h.get(n)))
+		names[n] = render.PodName(render.Name(h.get(n)))
 		uids[n] = h.running(names[n], v1alpha1.CardanoNode).UID
 	}
 	// rolled waits for pool n's pod to be a new one with or without the
@@ -107,7 +109,16 @@ func TestParquetSourceMoveRollsTwoPods(t *testing.T) {
 	if gone == 0 || created == 0 || created < gone {
 		t.Fatalf("old forger gone at revision %d, new one created at %d", gone, created)
 	}
-	if got := h.keyedPods(RoleForger); got != 1 {
+	if got := h.keyedPods(render.RoleForger); got != 1 {
 		t.Errorf("%d forger pods, want 1", got)
 	}
+}
+
+// sidecarOf returns the mithril2pq container of the pod, or false.
+func sidecarOf(spec corev1.PodSpec) (corev1.Container, bool) {
+	i := slices.IndexFunc(spec.Containers, func(c corev1.Container) bool { return c.Name == "mithril2pq" })
+	if i < 0 {
+		return corev1.Container{}, false
+	}
+	return spec.Containers[i], true
 }

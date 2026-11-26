@@ -15,6 +15,7 @@ import (
 	"fmt"
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 
 	"github.com/blinklabs-io/gouroboros/cbor"
 	"github.com/blinklabs-io/gouroboros/ledger/common"
@@ -33,7 +34,7 @@ func IssuerOf(poolID string, files map[string][]byte) (common.Blake2b224, error)
 		copy(out[:], b)
 		return out, nil
 	}
-	raw := files[OpCert]
+	raw := files[render.OpCert]
 	if len(raw) == 0 {
 		return out, errors.New("no operational certificate in the keys secret")
 	}

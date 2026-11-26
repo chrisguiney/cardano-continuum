@@ -20,6 +20,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/ident"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
 
 // applier writes a pool's workload, Service and ConfigMap and reports its
@@ -40,7 +41,7 @@ type applier struct {
 // until that moment, which is the intended outcome (rule 10). A roll is an
 // in-place update; the StatefulSet controller deletes the pod and creates
 // its replacement only once the old object is gone (rule 9).
-func (r *applier) apply(ctx context.Context, p *v1alpha1.ContinuumPool, w Workload) (string, reconcile.Result, error) {
+func (r *applier) apply(ctx context.Context, p *v1alpha1.ContinuumPool, w render.Workload) (string, reconcile.Result, error) {
 	owned, err := r.owned(ctx, p)
 	if err != nil {
 		return "", reconcile.Result{}, err
@@ -49,7 +50,7 @@ func (r *applier) apply(ctx context.Context, p *v1alpha1.ContinuumPool, w Worklo
 	var cur *appsv1.StatefulSet
 	for i := range owned {
 		o := &owned[i]
-		if o.Name == want.Name && o.Labels[LabelImpl] == want.Labels[LabelImpl] {
+		if o.Name == want.Name && o.Labels[render.LabelImpl] == want.Labels[render.LabelImpl] {
 			cur = o
 			continue
 		}
@@ -75,7 +76,7 @@ func (r *applier) apply(ctx context.Context, p *v1alpha1.ContinuumPool, w Worklo
 
 func (r *applier) owned(ctx context.Context, p *v1alpha1.ContinuumPool) ([]appsv1.StatefulSet, error) {
 	var list appsv1.StatefulSetList
-	err := r.client.List(ctx, &list, client.InNamespace(p.Namespace), client.MatchingLabels{LabelOwner: string(p.UID)})
+	err := r.client.List(ctx, &list, client.InNamespace(p.Namespace), client.MatchingLabels{render.LabelOwner: string(p.UID)})
 	if err != nil {
 		return nil, fmt.Errorf("list statefulsets of pool %s: %w", p.Name, err)
 	}
@@ -86,7 +87,7 @@ func (r *applier) owned(ctx context.Context, p *v1alpha1.ContinuumPool) ([]appsv
 func (r *applier) create(ctx context.Context, p *v1alpha1.ContinuumPool, want *appsv1.StatefulSet) (string, reconcile.Result, error) {
 	err := r.client.Create(ctx, want)
 	if err == nil {
-		r.log.Info("workload created", "pool", p.Name, "workload", want.Name, "impl", want.Labels[LabelImpl])
+		r.log.Info("workload created", "pool", p.Name, "workload", want.Name, "impl", want.Labels[render.LabelImpl])
 		return "", reconcile.Result{}, nil
 	}
 	if !apierrors.IsAlreadyExists(err) {
@@ -209,7 +210,7 @@ func (r *applier) drop(ctx context.Context, set *appsv1.StatefulSet) error {
 	if err != nil && !apierrors.IsNotFound(err) && !apierrors.IsConflict(err) {
 		return fmt.Errorf("delete statefulset %s: %w", set.Name, err)
 	}
-	r.log.Info("workload deleted", "workload", set.Name, "impl", set.Labels[LabelImpl])
+	r.log.Info("workload deleted", "workload", set.Name, "impl", set.Labels[render.LabelImpl])
 	return nil
 }
 
@@ -282,7 +283,7 @@ func ignoreConflict(err error, kind, name string) error {
 // returns the workload's live pod, or nil.
 func (r *applier) observe(ctx context.Context, p *v1alpha1.ContinuumPool, workload string) (*corev1.Pod, error) {
 	var pods corev1.PodList
-	if err := r.client.List(ctx, &pods, client.InNamespace(p.Namespace), client.MatchingLabels{LabelOwner: string(p.UID)}); err != nil {
+	if err := r.client.List(ctx, &pods, client.InNamespace(p.Namespace), client.MatchingLabels{render.LabelOwner: string(p.UID)}); err != nil {
 		return nil, fmt.Errorf("list pods of pool %s: %w", p.Name, err)
 	}
 	var live *corev1.Pod
@@ -290,7 +291,7 @@ func (r *applier) observe(ctx context.Context, p *v1alpha1.ContinuumPool, worklo
 	for i := range pods.Items {
 		pod := &pods.Items[i]
 		if pod.DeletionTimestamp == nil {
-			if pod.Name == PodName(workload) {
+			if pod.Name == render.PodName(workload) {
 				live = pod
 			}
 			continue

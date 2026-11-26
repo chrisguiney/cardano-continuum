@@ -18,6 +18,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/fakekube"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
 
 const (
@@ -55,7 +56,7 @@ func rolling(t *testing.T) (*harness, string, *corev1.Pod) {
 	h.secret("a-keys", "opcert")
 	h.pool("a", v1alpha1.CardanoNode, v1alpha1.TierForging, func(p *v1alpha1.ContinuumPool) { p.Spec.Image = imageV1 })
 	h.startOperator()
-	name := PodName(Name(h.get("a")))
+	name := render.PodName(render.Name(h.get("a")))
 	return h, name, h.runningImage(name, pinned(h, imageV1))
 }
 
@@ -63,7 +64,7 @@ func rolling(t *testing.T) (*harness, string, *corev1.Pod) {
 // the same StatefulSet; its name and selector do not change.
 func TestRollIsInPlace(t *testing.T) {
 	h, name, old := rolling(t)
-	before, ok := h.set(Name(h.get("a")))
+	before, ok := h.set(render.Name(h.get("a")))
 	if !ok {
 		t.Fatal("no StatefulSet before the roll")
 	}
@@ -82,7 +83,7 @@ func TestRollIsInPlace(t *testing.T) {
 	if p, _ := h.pod(old.Name); p.UID == old.UID {
 		t.Error("the old pod was kept")
 	}
-	if n := h.keyedPods(RoleForger); n != 1 {
+	if n := h.keyedPods(render.RoleForger); n != 1 {
 		t.Errorf("%d keyed pods after the roll", n)
 	}
 }
@@ -114,7 +115,7 @@ func TestRollWaitsForPodGone(t *testing.T) {
 	})
 	h.consistently("old pod object held, no replacement", 1500*time.Millisecond, func() bool {
 		p, ok := h.pod(name)
-		return ok && p.UID == old.UID && h.keyedPods(RoleForger) == 1
+		return ok && p.UID == old.UID && h.keyedPods(render.RoleForger) == 1
 	})
 	h.kube.Withhold(name, false)
 	next := h.runningImage(name, pinned(h, imageV2))
@@ -150,7 +151,7 @@ func TestRollOnLostNodeHolds(t *testing.T) {
 	})
 	h.consistently("old pod held, no replacement", time.Second, func() bool {
 		p, ok := h.pod(name)
-		return ok && p.UID == old.UID && h.keyedPods(RoleForger) == 1
+		return ok && p.UID == old.UID && h.keyedPods(render.RoleForger) == 1
 	})
 }
 
@@ -171,8 +172,8 @@ func TestRollKeepsSecret(t *testing.T) {
 	if !hasVolumeFrom(old.Spec, "a-keys") || !hasVolumeFrom(next.Spec, "a-keys") {
 		t.Error("a pod does not mount a-keys")
 	}
-	if string(after.Data[OpCert]) != "opcert" {
-		t.Errorf("opcert %q", after.Data[OpCert])
+	if string(after.Data[render.OpCert]) != "opcert" {
+		t.Errorf("opcert %q", after.Data[render.OpCert])
 	}
 }
 
@@ -205,7 +206,7 @@ func TestRollDuringScenario(t *testing.T) {
 		p.Spec.UnsafeDuplicateOf, p.Spec.Image = "a", imageV1
 	})
 	h.startOperator()
-	a, d := PodName(Name(h.get("a"))), PodName(Name(h.get("d")))
+	a, d := render.PodName(render.Name(h.get("a"))), render.PodName(render.Name(h.get("d")))
 	h.runningImage(a, pinned(h, imageV1))
 	h.runningImage(d, pinned(h, imageV1))
 
@@ -213,7 +214,7 @@ func TestRollDuringScenario(t *testing.T) {
 	var forgers, dups int
 	h.run("monitor", func(ctx context.Context) error {
 		for ctx.Err() == nil {
-			f, du := h.keyedPods(RoleForger), h.keyedPods(RoleDuplicate)
+			f, du := h.keyedPods(render.RoleForger), h.keyedPods(render.RoleDuplicate)
 			mu.Lock()
 			forgers, dups = max(forgers, f), max(dups, du)
 			mu.Unlock()

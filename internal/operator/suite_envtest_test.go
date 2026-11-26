@@ -39,6 +39,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/fakekube"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
 
 // suite is the one API server every envtest test shares; each test works in
@@ -196,7 +197,7 @@ func TestHarnessJoinsBeforeCancel(t *testing.T) {
 	h := newHarness(t, nil)
 	h.run("probe", func(ctx context.Context) error {
 		<-ctx.Done()
-		h.keyedPods(RoleForger)
+		h.keyedPods(render.RoleForger)
 		return nil
 	})
 }
@@ -233,7 +234,7 @@ func (h *harness) startOperator() { h.startOperatorWith(nil) }
 func (h *harness) startOperatorWith(exec Exec) {
 	h.t.Helper()
 	mgr := h.manager()
-	h.must(Setup(h.ctx, mgr, Options{Drivers: Drivers(), Images: fakeResolver{}, Exec: exec, Log: quiet()}))
+	h.must(Setup(h.ctx, mgr, Options{Drivers: render.Drivers(), Images: fakeResolver{}, Exec: exec, Log: quiet()}))
 	h.run("manager", mgr.Start)
 }
 
@@ -241,7 +242,7 @@ func (h *harness) secret(name, opcert string) {
 	h.t.Helper()
 	h.must(h.c.Create(h.ctx, &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: h.ns},
-		Data:       map[string][]byte{KESKey: []byte("kes"), VRFKey: []byte("vrf"), OpCert: []byte(opcert)},
+		Data:       map[string][]byte{render.KESKey: []byte("kes"), render.VRFKey: []byte("vrf"), render.OpCert: []byte(opcert)},
 	}))
 }
 
@@ -335,7 +336,7 @@ func (h *harness) running(name string, impl v1alpha1.Implementation) *corev1.Pod
 	h.eventually(fmt.Sprintf("%s running %s", name, impl), func() bool {
 		p, ok := h.pod(name)
 		pod = p
-		return ok && p.DeletionTimestamp == nil && p.Status.Phase == corev1.PodRunning && p.Labels[LabelImpl] == string(impl)
+		return ok && p.DeletionTimestamp == nil && p.Status.Phase == corev1.PodRunning && p.Labels[render.LabelImpl] == string(impl)
 	})
 	return pod
 }
@@ -366,9 +367,9 @@ func (h *harness) hasCondition(pool, typ string, status metav1.ConditionStatus, 
 }
 
 // keyedPods counts the pod objects of PoolID "pool1abc" in role.
-func (h *harness) keyedPods(role Role) int {
+func (h *harness) keyedPods(role render.Role) int {
 	var pods corev1.PodList
-	h.must(h.c.List(h.ctx, &pods, client.InNamespace(h.ns), client.MatchingLabels{LabelPool: PoolKey("pool1abc"), LabelRole: string(role)}))
+	h.must(h.c.List(h.ctx, &pods, client.InNamespace(h.ns), client.MatchingLabels{render.LabelPool: render.PoolKey("pool1abc"), render.LabelRole: string(role)}))
 	return len(pods.Items)
 }
 
@@ -376,10 +377,10 @@ func (h *harness) keyedPods(role Role) int {
 // without running the operator.
 func (h *harness) renderDirect(p *v1alpha1.ContinuumPool) *appsv1.StatefulSet {
 	h.t.Helper()
-	d, err := Drivers().Driver(p.Spec.Implementation)
+	d, err := render.Drivers().Driver(p.Spec.Implementation)
 	h.must(err)
 	img, _ := fakeResolver{}.Resolve(h.ctx, d.Image())
-	w, err := Render(d, Input{Network: network(h.ns), Pool: p, Image: Image{Name: pin(img.Ref, img.Digest)}})
+	w, err := render.Render(d, render.Input{Network: network(h.ns), Pool: p, Image: render.Image{Name: pin(img.Ref, img.Digest)}})
 	h.must(err)
 	h.must(h.c.Create(h.ctx, w.StatefulSet))
 	return w.StatefulSet
@@ -396,7 +397,7 @@ func (h *harness) mustOwned(p *v1alpha1.ContinuumPool, name string) {
 	for _, obj := range []client.Object{&corev1.Service{}, &corev1.ConfigMap{}} {
 		key := types.NamespacedName{Namespace: h.ns, Name: name}
 		if _, ok := obj.(*corev1.ConfigMap); ok {
-			key.Name = configName(name)
+			key.Name = render.ConfigName(name)
 		}
 		h.must(h.c.Get(h.ctx, key, obj))
 		if ref := metav1.GetControllerOf(obj); ref == nil || ref.UID != p.UID {

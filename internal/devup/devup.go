@@ -17,7 +17,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
-	"github.com/chrisguiney/cardano-continuum/internal/operator"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
 
 // MaxPools is the largest pool count `make up` accepts: the default budget's
@@ -109,7 +109,7 @@ func EngineNode(ns string) string {
 		ObjectMeta: metav1.ObjectMeta{Name: "p0"},
 		Spec:       v1alpha1.ContinuumPoolSpec{PoolID: "continuum-pool-0", Implementation: v1alpha1.CardanoNode, Tier: v1alpha1.TierForging},
 	}
-	return fmt.Sprintf("%s.%s.svc.cluster.local:%d", operator.Name(&p), ns, operator.NtCPort)
+	return fmt.Sprintf("%s.%s.svc.cluster.local:%d", render.Name(&p), ns, render.NtCPort)
 }
 
 // AttackPlan is what `make up` passes for its ATTACKS: the engine's

@@ -1,4 +1,4 @@
-package operator
+package render
 
 import (
 	"errors"

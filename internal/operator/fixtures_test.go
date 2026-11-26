@@ -9,22 +9,6 @@ import (
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 )
 
-// stubDriver stands in for an implementation this build has no driver for.
-type stubDriver struct{ impl v1alpha1.Implementation }
-
-func (d stubDriver) Impl() v1alpha1.Implementation { return d.impl }
-func (d stubDriver) Image() string                 { return "example.invalid/" + string(d.impl) + ":main" }
-func (d stubDriver) DataDir() string               { return "" }
-func (d stubDriver) Requests() Demand              { return Demand{CPUMillis: 100, MemoryMiB: 128} }
-
-func (d stubDriver) Node(s NodeSpec) (Node, error) {
-	return Node{
-		Container: corev1.Container{Command: []string{string(d.impl)}},
-		Config:    map[string]string{"node.yaml": "peers: " + string(rune('0'+len(s.Peers)))},
-		Gate:      []string{"test", "-s", KeysDir + "/" + OpCert},
-	}, nil
-}
-
 func network(ns string) *v1alpha1.ContinuumNetwork {
 	return &v1alpha1.ContinuumNetwork{
 		ObjectMeta: metav1.ObjectMeta{Name: "net", Namespace: ns},

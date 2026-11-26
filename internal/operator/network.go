@@ -19,6 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
 
 // CondGenesis is True when a network's genesis ConfigMap exists.
@@ -74,7 +75,7 @@ func (r *Networks) Reconcile(ctx context.Context, req reconcile.Request) (reconc
 	if err := r.client.List(ctx, &pools, client.InNamespace(n.Namespace)); err != nil {
 		return reconcile.Result{}, fmt.Errorf("list pools of network %s: %w", n.Name, err)
 	}
-	n.Status.ParquetPool = ParquetSource(n.Name, n.Spec.Parquet, pools.Items)
+	n.Status.ParquetPool = render.ParquetSource(n.Name, n.Spec.Parquet, pools.Items)
 	if err := r.client.Status().Patch(ctx, &n, client.MergeFrom(orig)); err != nil && !apierrors.IsNotFound(err) {
 		return reconcile.Result{}, fmt.Errorf("patch network %s status: %w", n.Name, err)
 	}

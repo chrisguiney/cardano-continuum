@@ -19,6 +19,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/genesis"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 	"github.com/chrisguiney/cardano-continuum/internal/poolwatch"
 )
 
@@ -36,7 +37,7 @@ func (f *fakeChain) Dial(_ context.Context, addr string) (poolwatch.Conn, error)
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for set, issuer := range f.who {
-		if strings.HasPrefix(addr, PodName(set)+".") {
+		if strings.HasPrefix(addr, render.PodName(set)+".") {
 			f.open.Add(1)
 			return &fakeNode{f: f, issuer: issuer}, nil
 		}
@@ -93,7 +94,7 @@ func chainHarness(t *testing.T) (*harness, *fakeChain) {
 func (h *harness) startChains(fc *fakeChain) {
 	h.t.Helper()
 	mgr := h.manager()
-	h.must(Setup(h.ctx, mgr, Options{Drivers: Drivers(), Images: fakeResolver{}, Log: quiet(), Poll: 100 * time.Millisecond,
+	h.must(Setup(h.ctx, mgr, Options{Drivers: render.Drivers(), Images: fakeResolver{}, Log: quiet(), Poll: 100 * time.Millisecond,
 		Dial: func(uint32) poolwatch.Dialer { return fc }}))
 	h.run("manager", mgr.Start)
 }
@@ -120,10 +121,10 @@ func TestForgerThatForgesReportsForging(t *testing.T) {
 	h, fc := chainHarness(t)
 	h.secret("a-keys", fixtureOpCert(t))
 	p := h.pool("a", v1alpha1.CardanoNode, v1alpha1.TierForging, func(p *v1alpha1.ContinuumPool) { p.Spec.PoolID = "continuum-pool-0" })
-	set := Name(p)
+	set := render.Name(p)
 	fc.who[set] = fixtureIssuer(t)
 	h.startChains(fc)
-	h.running(PodName(set), v1alpha1.CardanoNode)
+	h.running(render.PodName(set), v1alpha1.CardanoNode)
 	h.eventually("Forging with a tip and a last block", func() bool {
 		s := h.get("a").Status
 		return s.Phase == v1alpha1.PhaseForging && s.Tip.Slot > 0 && s.LastBlock.Slot > 0 && s.LastBlock.Hash != "" && s.LastBlock.Height > 0
@@ -134,10 +135,10 @@ func TestForgerThatNeverForgesStaysSyncing(t *testing.T) {
 	h, fc := chainHarness(t)
 	h.secret("a-keys", fixtureOpCert(t))
 	p := h.pool("a", v1alpha1.CardanoNode, v1alpha1.TierForging, func(p *v1alpha1.ContinuumPool) { p.Spec.PoolID = "continuum-pool-0" })
-	set := Name(p)
+	set := render.Name(p)
 	fc.who[set] = common.Blake2b224{9}
 	h.startChains(fc)
-	h.running(PodName(set), v1alpha1.CardanoNode)
+	h.running(render.PodName(set), v1alpha1.CardanoNode)
 	h.eventually("tip observed", func() bool { return h.get("a").Status.Tip.Slot > 0 })
 	h.consistently("Syncing: the blocks are another pool's", 1500*time.Millisecond, func() bool {
 		s := h.get("a").Status
@@ -148,20 +149,20 @@ func TestForgerThatNeverForgesStaysSyncing(t *testing.T) {
 func TestRelayThatIsCaughtUpIsFollowing(t *testing.T) {
 	h, fc := chainHarness(t)
 	p := h.pool("r", v1alpha1.CardanoNode, v1alpha1.TierValidating, nil)
-	set := Name(p)
+	set := render.Name(p)
 	fc.who[set] = common.Blake2b224{9}
 	h.startChains(fc)
-	h.running(PodName(set), v1alpha1.CardanoNode)
+	h.running(render.PodName(set), v1alpha1.CardanoNode)
 	h.eventually("Following", func() bool { return h.get("r").Status.Phase == v1alpha1.PhaseFollowing })
 }
 
 func TestDarkPoolStopsBeingFollowed(t *testing.T) {
 	h, fc := chainHarness(t)
 	p := h.pool("r", v1alpha1.CardanoNode, v1alpha1.TierValidating, nil)
-	set := Name(p)
+	set := render.Name(p)
 	fc.who[set] = common.Blake2b224{9}
 	h.startChains(fc)
-	h.running(PodName(set), v1alpha1.CardanoNode)
+	h.running(render.PodName(set), v1alpha1.CardanoNode)
 	h.eventually("Following", func() bool { return h.get("r").Status.Phase == v1alpha1.PhaseFollowing })
 	h.edit("r", func(p *v1alpha1.ContinuumPool) { p.Spec.Dark = true })
 	h.eventually("Dark", func() bool { return h.get("r").Status.Phase == v1alpha1.PhaseDark })

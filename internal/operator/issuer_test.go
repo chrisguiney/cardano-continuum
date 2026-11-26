@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/blinklabs-io/gouroboros/ledger/conway"
+
+	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
 
 func fixtureText(t *testing.T, name string) []byte {
@@ -29,7 +31,7 @@ func TestIssuerMatchesHeader(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := IssuerOf("continuum-pool-0", map[string][]byte{OpCert: fixtureText(t, "opcert.cert")})
+	got, err := IssuerOf("continuum-pool-0", map[string][]byte{render.OpCert: fixtureText(t, "opcert.cert")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,9 +51,9 @@ func TestIssuerOfHexPoolID(t *testing.T) {
 func TestIssuerErrors(t *testing.T) {
 	for name, files := range map[string]map[string][]byte{
 		"no certificate":  {},
-		"not an envelope": {OpCert: []byte("opcert")},
-		"blank secret":    {OpCert: []byte{}},
-		"bad cbor":        {OpCert: []byte(`{"cborHex":"00"}`)},
+		"not an envelope": {render.OpCert: []byte("opcert")},
+		"blank secret":    {render.OpCert: []byte{}},
+		"bad cbor":        {render.OpCert: []byte(`{"cborHex":"00"}`)},
 	} {
 		if _, err := IssuerOf("continuum-pool-0", files); err == nil {
 			t.Errorf("%s: no error", name)

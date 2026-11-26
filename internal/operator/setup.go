@@ -20,6 +20,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/image"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 	"github.com/chrisguiney/cardano-continuum/internal/poolwatch"
 )
 
@@ -38,7 +39,7 @@ const nodeField = "spec.nodeName"
 
 // Options configure Setup.
 type Options struct {
-	Drivers Registry
+	Drivers render.Registry
 	Images  image.Resolver
 	// Exec tells running nodes to reread their Config; nil disables it.
 	Exec Exec
@@ -53,7 +54,7 @@ type Options struct {
 // CacheOptions limits the manager's caches of pods, StatefulSets, Services
 // and ConfigMaps to the operator's own objects.
 func CacheOptions() (cache.Options, error) {
-	req, err := labels.NewRequirement(LabelWorkload, selection.Exists, nil)
+	req, err := labels.NewRequirement(render.LabelWorkload, selection.Exists, nil)
 	if err != nil {
 		return cache.Options{}, fmt.Errorf("operator cache selector: %w", err)
 	}
@@ -66,7 +67,7 @@ func CacheOptions() (cache.Options, error) {
 // Setup registers the indexes and the three controllers with mgr.
 func Setup(ctx context.Context, mgr manager.Manager, o Options) error {
 	if o.Drivers == nil || o.Images == nil || o.Log == nil {
-		return errors.New("operator setup: Drivers, Images and Log are required")
+		return errors.New("operator setup: render.Drivers, Images and Log are required")
 	}
 	w := NewWatch(WatchOptions{Live: mgr.GetAPIReader(), Dial: o.Dial, Poll: o.Poll, Log: o.Log})
 	return errors.Join(
@@ -93,7 +94,7 @@ func Index(ctx context.Context, mgr manager.Manager) error {
 }
 
 func poolOfObject(_ context.Context, o client.Object) []reconcile.Request {
-	name := o.GetAnnotations()[AnnotationPoolName]
+	name := o.GetAnnotations()[render.AnnotationPoolName]
 	if name == "" {
 		return nil
 	}

@@ -5,12 +5,14 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
 
 func TestReleasable(t *testing.T) {
 	now := metav1.Now()
 	mk := func(deleting bool, phase corev1.PodPhase, states ...corev1.ContainerState) *corev1.Pod {
-		p := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Finalizers: []string{Finalizer}}}
+		p := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Finalizers: []string{render.Finalizer}}}
 		if deleting {
 			p.DeletionTimestamp = &now
 		}

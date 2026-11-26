@@ -9,7 +9,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/internal/devup"
 	"github.com/chrisguiney/cardano-continuum/internal/genesis"
-	"github.com/chrisguiney/cardano-continuum/internal/operator"
+	noderender "github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
 
 func main() {
@@ -29,8 +29,8 @@ func run(args []string) error {
 	case "render":
 		return render(args[1:])
 	case "images":
-		fmt.Println(operator.CardanoNode{}.Image())
-		fmt.Println(operator.Dingo{}.Image())
+		fmt.Println(noderender.CardanoNode{}.Image())
+		fmt.Println(noderender.Dingo{}.Image())
 		return nil
 	case "attacks":
 		// Line 1 is the engine's --attack value (empty for none); every

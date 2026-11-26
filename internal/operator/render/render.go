@@ -1,4 +1,4 @@
-package operator
+package render
 
 import (
 	"fmt"
@@ -42,6 +42,9 @@ type Workload struct {
 	Reload []string `json:"reload,omitempty"`
 }
 
+// NodeContainer is the name of the container that runs the node.
+const NodeContainer = "node"
+
 // Volume names inside the pod.
 const (
 	volGenesis = "genesis"
@@ -77,7 +80,7 @@ func Render(d NodeDriver, in Input) (Workload, error) {
 	w := Workload{
 		StatefulSet: statefulSet(meta(), podTemplate(d, in, n, meta()), p.Spec.Dark),
 		Service:     service(meta(), len(n.NtC) > 0),
-		Config:      &corev1.ConfigMap{ObjectMeta: withName(meta(), configName(name)), Data: n.Config},
+		Config:      &corev1.ConfigMap{ObjectMeta: withName(meta(), ConfigName(name)), Data: n.Config},
 		Reload:      n.Reload,
 	}
 	if pq := in.Network.Spec.Parquet; pq.Enabled && in.Sidecar {
@@ -95,7 +98,7 @@ func Render(d NodeDriver, in Input) (Workload, error) {
 	return w, nil
 }
 
-func configName(workload string) string { return workload + "-config" }
+func ConfigName(workload string) string { return workload + "-config" }
 
 func labelsOf(p *v1alpha1.ContinuumPool, name string, impl v1alpha1.Implementation) map[string]string {
 	return map[string]string{
@@ -172,7 +175,7 @@ func service(meta metav1.ObjectMeta, ntc bool) *corev1.Service {
 func podTemplate(d NodeDriver, in Input, n Node, meta metav1.ObjectMeta) corev1.PodTemplateSpec {
 	keyed := RoleOf(in.Pool).Keyed()
 	c := n.Container
-	c.Name = nodeContainer
+	c.Name = NodeContainer
 	c.Image = in.Image.Name
 	c.ImagePullPolicy = in.Image.PullPolicy
 	c.Resources = requests(d.Requests())
@@ -224,7 +227,7 @@ func volumes(in Input, name string) []corev1.Volume {
 			LocalObjectReference: corev1.LocalObjectReference{Name: in.Network.Spec.GenesisRef},
 		}}},
 		{Name: volConfig, VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{
-			LocalObjectReference: corev1.LocalObjectReference{Name: configName(name)},
+			LocalObjectReference: corev1.LocalObjectReference{Name: ConfigName(name)},
 		}}},
 		{Name: volData, VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
 	}

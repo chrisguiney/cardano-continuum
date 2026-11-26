@@ -1,4 +1,4 @@
-package operator
+package render
 
 import (
 	"slices"
@@ -15,13 +15,13 @@ import (
 // parseDingo parses the dingo config file of a rendered workload.
 func parseDingo(t *testing.T, w Workload) map[string]any {
 	t.Helper()
-	raw, ok := w.Config.Data[dingoConfigFile]
+	raw, ok := w.Config.Data[DingoConfigFile]
 	if !ok {
-		t.Fatalf("no %s in the config ConfigMap: %v", dingoConfigFile, w.Config.Data)
+		t.Fatalf("no %s in the config ConfigMap: %v", DingoConfigFile, w.Config.Data)
 	}
 	var cfg map[string]any
 	if err := yaml.Unmarshal([]byte(raw), &cfg); err != nil {
-		t.Fatalf("parse %s: %v", dingoConfigFile, err)
+		t.Fatalf("parse %s: %v", DingoConfigFile, err)
 	}
 	return cfg
 }
@@ -62,7 +62,7 @@ func TestRenderDingoRelay(t *testing.T) {
 	if got, want := cfg["topology"], ConfigDir+"/"+dingoTopology; got != want {
 		t.Errorf("topology %v, want %s", got, want)
 	}
-	if !strings.Contains(dingoArgs(spec), "--config "+ConfigDir+"/"+dingoConfigFile) {
+	if !strings.Contains(dingoArgs(spec), "--config "+ConfigDir+"/"+DingoConfigFile) {
 		t.Errorf("command %q does not load the rendered config", dingoArgs(spec))
 	}
 	golden(t, "dingo-relay", w)

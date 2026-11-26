@@ -15,13 +15,14 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/image"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
 
 // planner decides what workload a pool gets, or why it gets none. It only
 // reads: Pools and the applier do the writing.
 type planner struct {
 	client   client.Client
-	drivers  Registry
+	drivers  render.Registry
 	images   image.Resolver
 	defaults v1alpha1.ImageSet
 	log      *slog.Logger
@@ -37,47 +38,47 @@ func refuse(reason, format string, args ...any) *refusal {
 }
 
 // plan renders p's workload, or says why it gets none.
-func (r *planner) plan(ctx context.Context, p *v1alpha1.ContinuumPool) (Workload, v1alpha1.ResolvedImage, *refusal, error) {
+func (r *planner) plan(ctx context.Context, p *v1alpha1.ContinuumPool) (render.Workload, v1alpha1.ResolvedImage, *refusal, error) {
 	var none v1alpha1.ResolvedImage
 	d, err := r.drivers.Driver(p.Spec.Implementation)
 	if err != nil {
-		return Workload{}, none, refuse(ReasonUnsupported, "%v", err), nil
+		return render.Workload{}, none, refuse(ReasonUnsupported, "%v", err), nil
 	}
-	if RoleOf(p) == RoleNone {
-		return Workload{}, none, nil, nil
+	if render.RoleOf(p) == render.RoleNone {
+		return render.Workload{}, none, nil, nil
 	}
 	var net v1alpha1.ContinuumNetwork
 	err = r.client.Get(ctx, types.NamespacedName{Namespace: p.Namespace, Name: p.Spec.NetworkRef}, &net)
 	if apierrors.IsNotFound(err) {
-		return Workload{}, none, refuse(ReasonNetworkMissing, "network %s not found", p.Spec.NetworkRef), nil
+		return render.Workload{}, none, refuse(ReasonNetworkMissing, "network %s not found", p.Spec.NetworkRef), nil
 	}
 	if err != nil {
-		return Workload{}, none, nil, fmt.Errorf("get network %s: %w", p.Spec.NetworkRef, err)
+		return render.Workload{}, none, nil, fmt.Errorf("get network %s: %w", p.Spec.NetworkRef, err)
 	}
 	if no, err := r.keys(ctx, p); no != nil || err != nil {
-		return Workload{}, none, no, err
+		return render.Workload{}, none, no, err
 	}
 	sib, err := r.siblings(ctx, p, &net)
 	if err != nil {
-		return Workload{}, none, nil, err
+		return render.Workload{}, none, nil, err
 	}
-	if err := Admit(net.Spec.Budget, sib.claims(), p.Name); err != nil {
-		return Workload{}, none, refuse(ReasonOverBudget, "%v", err), nil
+	if err := render.Admit(net.Spec.Budget, sib.claims(), p.Name); err != nil {
+		return render.Workload{}, none, refuse(ReasonOverBudget, "%v", err), nil
 	}
 	img, no := r.resolve(ctx, p, &net)
 	if no != nil {
-		return Workload{}, none, no, nil
+		return render.Workload{}, none, no, nil
 	}
-	self := Member{Name: Name(p), PoolID: p.Spec.PoolID, Role: RoleOf(p)}
-	w, err := Render(d, Input{
+	self := render.Member{Name: render.Name(p), PoolID: p.Spec.PoolID, Role: render.RoleOf(p)}
+	w, err := render.Render(d, render.Input{
 		Network: &net,
 		Pool:    p,
-		Peers:   Peers(net.Spec.Topology.Policy, p.Namespace, sib.members, self),
-		Image:   Image{Name: pin(img.Ref, img.Digest), PullPolicy: image.PullPolicy(pin(img.Ref, img.Digest))},
+		Peers:   render.Peers(net.Spec.Topology.Policy, p.Namespace, sib.members, self),
+		Image:   render.Image{Name: pin(img.Ref, img.Digest), PullPolicy: image.PullPolicy(pin(img.Ref, img.Digest))},
 		Sidecar: sib.source == p.Name,
 	})
 	if err != nil {
-		return Workload{}, none, refuse(ReasonInvalid, "%v", err), nil
+		return render.Workload{}, none, refuse(ReasonInvalid, "%v", err), nil
 	}
 	return w, img, nil, nil
 }
@@ -86,11 +87,11 @@ func (r *planner) plan(ctx context.Context, p *v1alpha1.ContinuumPool) (Workload
 // own Secret, never the pool's (rule 4), and is refused, with its workload
 // deleted, once that Secret is gone: the engine deletes it at scenario end.
 func (r *planner) keys(ctx context.Context, p *v1alpha1.ContinuumPool) (*refusal, error) {
-	role := RoleOf(p)
+	role := render.RoleOf(p)
 	if role.Keyed() && p.Spec.KeysSecret == "" {
 		return refuse(ReasonInvalid, "a forging pool needs keysSecret"), nil
 	}
-	if role != RoleDuplicate {
+	if role != render.RoleDuplicate {
 		return nil, nil
 	}
 	var orig v1alpha1.ContinuumPool
@@ -150,12 +151,12 @@ func pin(ref, digest string) string {
 // siblings are the pools of p's network that render a workload, oldest
 // first, which is the budget's admission order.
 type siblings struct {
-	queue   []Claim
+	queue   []render.Claim
 	source  string // the pool whose pod carries the sidecar
-	members []Member
+	members []render.Member
 }
 
-func (s siblings) claims() []Claim { return s.queue }
+func (s siblings) claims() []render.Claim { return s.queue }
 
 func (r *planner) siblings(ctx context.Context, p *v1alpha1.ContinuumPool, net *v1alpha1.ContinuumNetwork) (siblings, error) {
 	var list v1alpha1.ContinuumPoolList
@@ -163,10 +164,10 @@ func (r *planner) siblings(ctx context.Context, p *v1alpha1.ContinuumPool, net *
 		return siblings{}, fmt.Errorf("list pools in %s: %w", p.Namespace, err)
 	}
 	var s siblings
-	s.source = ParquetSource(p.Spec.NetworkRef, net.Spec.Parquet, list.Items)
+	s.source = render.ParquetSource(p.Spec.NetworkRef, net.Spec.Parquet, list.Items)
 	pools := slices.DeleteFunc(list.Items, func(o v1alpha1.ContinuumPool) bool {
 		_, err := r.drivers.Driver(o.Spec.Implementation)
-		return o.Spec.NetworkRef != p.Spec.NetworkRef || RoleOf(&o) == RoleNone || err != nil || o.DeletionTimestamp != nil
+		return o.Spec.NetworkRef != p.Spec.NetworkRef || render.RoleOf(&o) == render.RoleNone || err != nil || o.DeletionTimestamp != nil
 	})
 	slices.SortFunc(pools, func(a, b v1alpha1.ContinuumPool) int {
 		if c := a.CreationTimestamp.Compare(b.CreationTimestamp.Time); c != 0 {
@@ -177,8 +178,8 @@ func (r *planner) siblings(ctx context.Context, p *v1alpha1.ContinuumPool, net *
 	for i := range pools {
 		o := &pools[i]
 		d, _ := r.drivers.Driver(o.Spec.Implementation)
-		s.queue = append(s.queue, Claim{Name: o.Name, Demand: PoolDemand(d, o.Name == s.source)})
-		s.members = append(s.members, Member{Name: Name(o), PoolID: o.Spec.PoolID, Role: RoleOf(o)})
+		s.queue = append(s.queue, render.Claim{Name: o.Name, Demand: render.PoolDemand(d, o.Name == s.source)})
+		s.members = append(s.members, render.Member{Name: render.Name(o), PoolID: o.Spec.PoolID, Role: render.RoleOf(o)})
 	}
 	return s, nil
 }

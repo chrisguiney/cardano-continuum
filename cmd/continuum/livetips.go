@@ -12,7 +12,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/httpapi"
-	"github.com/chrisguiney/cardano-continuum/internal/operator"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 	"github.com/chrisguiney/cardano-continuum/internal/poolwatch"
 )
@@ -67,8 +67,8 @@ func podTargets(ps []v1alpha1.ContinuumPool) []poolwatch.Target {
 			continue
 		}
 		w := p.Status.Workload
-		host := fmt.Sprintf("%s-0.%s.%s.svc.%s", w, w, p.Namespace, operator.ClusterDomain)
-		out = append(out, poolwatch.Target{Name: p.Name, Addr: fmt.Sprintf("%s:%d", host, operator.N2NPort)})
+		host := fmt.Sprintf("%s-0.%s.%s.svc.%s", w, w, p.Namespace, render.ClusterDomain)
+		out = append(out, poolwatch.Target{Name: p.Name, Addr: fmt.Sprintf("%s:%d", host, render.N2NPort)})
 	}
 	slices.SortFunc(out, func(a, b poolwatch.Target) int { return strings.Compare(a.Name, b.Name) })
 	return out

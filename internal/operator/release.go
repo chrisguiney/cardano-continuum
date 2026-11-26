@@ -4,6 +4,8 @@ import (
 	"slices"
 
 	corev1 "k8s.io/api/core/v1"
+
+	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
 
 // NodeState is what the API server says about the Node a pod is bound to.
@@ -29,7 +31,7 @@ const (
 // container terminated; the kubelet sets it only after they all stopped,
 // including containers that never left Waiting behind a keys gate.
 func Releasable(pod *corev1.Pod, node NodeState) bool {
-	if pod.DeletionTimestamp == nil || !slices.Contains(pod.Finalizers, Finalizer) {
+	if pod.DeletionTimestamp == nil || !slices.Contains(pod.Finalizers, render.Finalizer) {
 		return false
 	}
 	if node == NodeGone {

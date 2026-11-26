@@ -1,4 +1,4 @@
-package operator
+package render
 
 import (
 	"fmt"
@@ -21,7 +21,7 @@ import (
 type Dingo struct{}
 
 const (
-	dingoConfigFile = "dingo.yaml"
+	DingoConfigFile = "dingo.yaml"
 	dingoTopology   = "topology.json"
 	// dingoNtCPort serves node-to-client over TCP on the loopback address,
 	// for a sidecar in the pod.
@@ -103,7 +103,7 @@ func (Dingo) Node(s NodeSpec) (Node, error) {
 	return Node{
 		Container: corev1.Container{
 			Command: []string{"dingo"},
-			Args:    []string{"--config", ConfigDir + "/" + dingoConfigFile, "serve"},
+			Args:    []string{"--config", ConfigDir + "/" + DingoConfigFile, "serve"},
 			Env:     dingoEnv(cfg),
 			// The keys Secret is root-owned at 0400, and dingo's keystore
 			// refuses a key file with any group or other access, so an
@@ -111,7 +111,7 @@ func (Dingo) Node(s NodeSpec) (Node, error) {
 			// root.
 			SecurityContext: &corev1.SecurityContext{RunAsUser: ptr.To(int64(0)), RunAsGroup: ptr.To(int64(0))},
 		},
-		Config: map[string]string{dingoConfigFile: string(b), dingoTopology: topo},
+		Config: map[string]string{DingoConfigFile: string(b), dingoTopology: topo},
 		Gate:   []string{"test", "-s", KeysDir + "/" + OpCert},
 	}, nil
 }

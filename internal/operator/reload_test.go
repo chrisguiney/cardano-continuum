@@ -17,6 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
 
 // fakeExec serves cat from files, the node container's view of its Config
@@ -27,7 +28,7 @@ type fakeExec struct {
 }
 
 func (e *fakeExec) Exec(_ context.Context, _ types.NamespacedName, container string, argv []string) ([]byte, error) {
-	if container != nodeContainer {
+	if container != render.NodeContainer {
 		return nil, io.ErrUnexpectedEOF
 	}
 	if len(argv) == 2 && argv[0] == "cat" {
@@ -40,7 +41,7 @@ func (e *fakeExec) Exec(_ context.Context, _ types.NamespacedName, container str
 func (e *fakeExec) reloads() int {
 	n := 0
 	for _, argv := range e.ran {
-		if slices.Equal(argv, cardanoReload) {
+		if slices.Equal(argv, []string{"kill", "-HUP", "1"}) {
 			n++
 		}
 	}
@@ -52,7 +53,7 @@ type reloadRig struct {
 	exec *fakeExec
 	c    client.Client
 	now  time.Time
-	w    Workload
+	w    render.Workload
 	pod  *corev1.Pod
 }
 
@@ -66,7 +67,7 @@ func newReloadRig(t *testing.T) *reloadRig {
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Name: "pool-x-0", Namespace: "ns", UID: "pod-uid"},
 		Status: corev1.PodStatus{ContainerStatuses: []corev1.ContainerStatus{{
-			Name:  nodeContainer,
+			Name:  render.NodeContainer,
 			State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{StartedAt: metav1.NewTime(start)}},
 		}}},
 	}
@@ -74,7 +75,7 @@ func newReloadRig(t *testing.T) *reloadRig {
 	exec := &fakeExec{files: map[string]string{}}
 	rig := &reloadRig{exec: exec, c: c, now: start, pod: pod}
 	rig.r = &reloader{client: c, exec: exec, log: slog.New(slog.NewTextHandler(io.Discard, nil)), now: func() time.Time { return rig.now }}
-	rig.w = render(t, CardanoNode{}, pool("ns", "a", v1alpha1.CardanoNode, v1alpha1.TierForging), "r@sha256:aaaa")
+	rig.w = renderOn(t, render.CardanoNode{}, network("ns"), pool("ns", "a", v1alpha1.CardanoNode, v1alpha1.TierForging))
 	return rig
 }
 
@@ -95,7 +96,7 @@ func (g *reloadRig) step(t *testing.T) time.Duration {
 // project is the kubelet writing the rendered Config into the volume.
 func (g *reloadRig) project() {
 	for k, v := range g.w.Config.Data {
-		g.exec.files[ConfigDir+"/"+k] = v
+		g.exec.files[render.ConfigDir+"/"+k] = v
 	}
 }
 
@@ -103,7 +104,7 @@ func (g *reloadRig) project() {
 // start, so a pod started before its peers existed never dials them unless
 // it is told to reread it.
 func TestCardanoNodeRendersReload(t *testing.T) {
-	w := render(t, CardanoNode{}, pool("ns", "a", v1alpha1.CardanoNode, v1alpha1.TierForging), "r@sha256:aaaa")
+	w := renderOn(t, render.CardanoNode{}, network("ns"), pool("ns", "a", v1alpha1.CardanoNode, v1alpha1.TierForging))
 	if !slices.Equal(w.Reload, []string{"kill", "-HUP", "1"}) {
 		t.Fatalf("Reload = %q, want kill -HUP 1", w.Reload)
 	}
@@ -114,7 +115,7 @@ func TestCardanoNodeRendersReload(t *testing.T) {
 func TestReloadWaitsForProjection(t *testing.T) {
 	g := newReloadRig(t)
 	g.now = g.now.Add(time.Minute)
-	g.exec.files[ConfigDir+"/topology.json"] = "stale"
+	g.exec.files[render.ConfigDir+"/topology.json"] = "stale"
 	if wait := g.step(t); wait <= 0 || g.exec.reloads() != 0 {
 		t.Fatalf("stale volume: wait %v, reloads %d; want a retry and no reload", wait, g.exec.reloads())
 	}

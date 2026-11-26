@@ -16,6 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
 
 // kubeletExec plays a kubelet that has projected every ConfigMap: cat reads
@@ -35,19 +36,19 @@ func (e *kubeletExec) Exec(ctx context.Context, pod types.NamespacedName, _ stri
 		return nil, err
 	}
 	var cm corev1.ConfigMap
-	key := types.NamespacedName{Namespace: pod.Namespace, Name: configName(p.Labels[LabelWorkload])}
+	key := types.NamespacedName{Namespace: pod.Namespace, Name: render.ConfigName(p.Labels[render.LabelWorkload])}
 	if err := e.c.Get(ctx, key, &cm); err != nil {
 		return nil, err
 	}
 	if argv[0] == "cat" {
 		return []byte(cm.Data[path.Base(argv[1])]), nil
 	}
-	if !slices.Equal(argv, cardanoReload) {
+	if !slices.Equal(argv, []string{"kill", "-HUP", "1"}) {
 		return nil, fmt.Errorf("unexpected command %q", argv)
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.loaded[pod.Name] = append(e.loaded[pod.Name], cm.Data[cardanoTopology])
+	e.loaded[pod.Name] = append(e.loaded[pod.Name], cm.Data["topology.json"])
 	return nil, nil
 }
 
@@ -69,10 +70,10 @@ func TestFirstPoolLearnsLaterPeers(t *testing.T) {
 	exec := &kubeletExec{c: h.c, loaded: map[string][]string{}}
 	h.startOperatorWith(exec)
 	first := h.pool("a", v1alpha1.CardanoNode, v1alpha1.TierValidating, func(p *v1alpha1.ContinuumPool) { p.Spec.PoolID = "pool1a" })
-	h.running(PodName(Name(h.get(first.Name))), v1alpha1.CardanoNode)
+	h.running(render.PodName(render.Name(h.get(first.Name))), v1alpha1.CardanoNode)
 	second := h.pool("b", v1alpha1.CardanoNode, v1alpha1.TierValidating, func(p *v1alpha1.ContinuumPool) { p.Spec.PoolID = "pool1b" })
-	peer := Name(h.get(second.Name)) + "." + h.ns + ".svc."
-	pod := PodName(Name(h.get(first.Name)))
+	peer := render.Name(h.get(second.Name)) + "." + h.ns + ".svc."
+	pod := render.PodName(render.Name(h.get(first.Name)))
 	h.eventually(pod+" reloads a topology naming "+peer, func() bool {
 		return strings.Contains(exec.last(pod), peer)
 	})

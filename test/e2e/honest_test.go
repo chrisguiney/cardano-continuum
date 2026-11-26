@@ -15,7 +15,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/genesis"
-	"github.com/chrisguiney/cardano-continuum/internal/operator"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
 
 // engineRBAC lets the engine patch its network's ContinuumPools (the pool
@@ -73,7 +73,7 @@ func TestHonestM3(t *testing.T) {
 	})
 	p0 := poolObject(0)
 	kube(t, engineRBAC, "-n", ns, "apply", "-f", "-")
-	deployEngineWith(t, ns, fmt.Sprintf("%s.%s.svc.cluster.local:%d", operator.Name(&p0), ns, operator.NtCPort), true,
+	deployEngineWith(t, ns, fmt.Sprintf("%s.%s.svc.cluster.local:%d", render.Name(&p0), ns, render.NtCPort), true,
 		"--profiles=m3", "--wallets=30", "--pools=4", fmt.Sprintf("--genesis-pools=%d", spec.Pools), "--floor=60",
 		"--network=devnet", "--namespace="+ns, "--serve=127.0.0.1:8088")
 

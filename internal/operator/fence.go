@@ -17,6 +17,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
 
 // Release removes the fence finalizer from keyed pods whose process is
@@ -48,7 +50,7 @@ func (r *Release) Reconcile(ctx context.Context, req reconcile.Request) (reconci
 		}
 		return reconcile.Result{}, fmt.Errorf("get pod %s: %w", req.NamespacedName, err)
 	}
-	if pod.DeletionTimestamp == nil || !slices.Contains(pod.Finalizers, Finalizer) {
+	if pod.DeletionTimestamp == nil || !slices.Contains(pod.Finalizers, render.Finalizer) {
 		return reconcile.Result{}, nil
 	}
 	state, err := readNode(ctx, r.live, pod.Spec.NodeName)
@@ -73,7 +75,7 @@ func (r *Release) Reconcile(ctx context.Context, req reconcile.Request) (reconci
 // release removes the finalizer from pod with a merge patch preconditioned
 // on pod's UID and resourceVersion.
 func (r *Release) release(ctx context.Context, pod *corev1.Pod) error {
-	rest := slices.DeleteFunc(slices.Clone(pod.Finalizers), func(f string) bool { return f == Finalizer })
+	rest := slices.DeleteFunc(slices.Clone(pod.Finalizers), func(f string) bool { return f == render.Finalizer })
 	if rest == nil {
 		rest = []string{}
 	}
@@ -93,7 +95,7 @@ func (r *Release) release(ctx context.Context, pod *corev1.Pod) error {
 
 // SetupWithManager registers the release controller.
 func (r *Release) SetupWithManager(mgr manager.Manager) error {
-	fenced := predicate.NewPredicateFuncs(func(o client.Object) bool { return slices.Contains(o.GetFinalizers(), Finalizer) })
+	fenced := predicate.NewPredicateFuncs(func(o client.Object) bool { return slices.Contains(o.GetFinalizers(), render.Finalizer) })
 	err := builder.ControllerManagedBy(mgr).
 		Named("fence").
 		For(&corev1.Pod{}, builder.WithPredicates(fenced)).

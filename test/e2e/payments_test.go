@@ -16,7 +16,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/chrisguiney/cardano-continuum/internal/genesis"
-	"github.com/chrisguiney/cardano-continuum/internal/operator"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
 
 const enginePod = "continuum-engine-0"
@@ -65,7 +65,7 @@ func TestPayments(t *testing.T) {
 	spec := genesis.Default()
 	ns, pods, start := bootNetwork(t, spec)
 	p0 := poolObject(0)
-	deployEngine(t, ns, fmt.Sprintf("%s.%s.svc.cluster.local:%d", operator.Name(&p0), ns, operator.NtCPort))
+	deployEngine(t, ns, fmt.Sprintf("%s.%s.svc.cluster.local:%d", render.Name(&p0), ns, render.NtCPort))
 
 	epoch := time.Duration(spec.EpochLength) * spec.SlotLength
 	var before progress

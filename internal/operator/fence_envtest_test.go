@@ -24,6 +24,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/fakekube"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
 
 // emptyCache is a client whose StatefulSet and pod reads find nothing, as
@@ -69,10 +70,10 @@ func TestCreateIsTheFence(t *testing.T) {
 	h.secret("a-keys", "opcert")
 	p := h.pool("a", v1alpha1.CardanoNode, v1alpha1.TierForging, nil)
 	set := h.renderDirect(p)
-	held := h.running(PodName(set.Name), v1alpha1.CardanoNode)
+	held := h.running(render.PodName(set.Name), v1alpha1.CardanoNode)
 
 	c := &emptyCache{Client: h.c}
-	res, err := NewPools(c, Drivers(), fakeResolver{}, nil, quiet()).Reconcile(h.ctx, request(p))
+	res, err := NewPools(c, render.Drivers(), fakeResolver{}, nil, quiet()).Reconcile(h.ctx, request(p))
 	if err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
@@ -85,7 +86,7 @@ func TestCreateIsTheFence(t *testing.T) {
 	if len(creates) != 1 || !apierrors.IsAlreadyExists(creates[0]) {
 		t.Fatalf("StatefulSet creates %v, want one AlreadyExists", creates)
 	}
-	if n := h.keyedPods(RoleForger); n != 1 {
+	if n := h.keyedPods(render.RoleForger); n != 1 {
 		t.Fatalf("%d keyed pods, want 1", n)
 	}
 	if pod, _ := h.pod(held.Name); pod.UID != held.UID {
@@ -136,7 +137,7 @@ func (h *harness) record(events *[]event, mu *sync.Mutex) {
 					kind = "StatefulSet"
 				}
 				mu.Lock()
-				*events = append(*events, event{e.Type, kind, obj.GetName(), obj.GetUID(), obj.GetLabels()[LabelImpl], rv})
+				*events = append(*events, event{e.Type, kind, obj.GetName(), obj.GetUID(), obj.GetLabels()[render.LabelImpl], rv})
 				mu.Unlock()
 			}
 		})
@@ -162,14 +163,14 @@ func switchSerial(t *testing.T, from, to v1alpha1.Implementation) {
 	h.secret("a-keys", "opcert")
 	h.pool("a", from, v1alpha1.TierForging, nil)
 	h.startOperator()
-	name := Name(h.get("a"))
-	old := h.running(PodName(name), from)
+	name := render.Name(h.get("a"))
+	old := h.running(render.PodName(name), from)
 
 	var mu sync.Mutex
 	var events []event
 	h.record(&events, &mu)
 	h.edit("a", func(p *v1alpha1.ContinuumPool) { p.Spec.Implementation = to })
-	h.running(PodName(name), to)
+	h.running(render.PodName(name), to)
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -188,10 +189,10 @@ func switchSerial(t *testing.T, from, to v1alpha1.Implementation) {
 	if created < gone {
 		t.Fatalf("%s StatefulSet created at revision %d, before the old pod was gone at %d", to, created, gone)
 	}
-	if n := h.keyedPods(RoleForger); n != 1 {
+	if n := h.keyedPods(render.RoleForger); n != 1 {
 		t.Fatalf("%d keyed pods after the switch, want 1", n)
 	}
-	if got, ok := h.set(name); !ok || got.Labels[LabelImpl] != string(to) {
+	if got, ok := h.set(name); !ok || got.Labels[render.LabelImpl] != string(to) {
 		t.Fatalf("StatefulSet %s after the switch: %v", name, got)
 	}
 }
@@ -203,8 +204,8 @@ func TestSwitchWaitsForStuckTermination(t *testing.T) {
 	h.secret("a-keys", "opcert")
 	h.pool("a", v1alpha1.CardanoNode, v1alpha1.TierForging, nil)
 	h.startOperator()
-	name := Name(h.get("a"))
-	old := h.running(PodName(name), v1alpha1.CardanoNode)
+	name := render.Name(h.get("a"))
+	old := h.running(render.PodName(name), v1alpha1.CardanoNode)
 	h.kube.Withhold(old.Name, true)
 	h.edit("a", func(p *v1alpha1.ContinuumPool) { p.Spec.Implementation = v1alpha1.Dingo })
 	h.eventually("old pod terminating", func() bool {
@@ -214,10 +215,10 @@ func TestSwitchWaitsForStuckTermination(t *testing.T) {
 	h.consistently("no dingo workload while the old pod terminates", 1500*time.Millisecond, func() bool {
 		s, ok := h.set(name)
 		p, _ := h.pod(old.Name)
-		return (!ok || s.Labels[LabelImpl] != string(v1alpha1.Dingo)) && p != nil && p.UID == old.UID
+		return (!ok || s.Labels[render.LabelImpl] != string(v1alpha1.Dingo)) && p != nil && p.UID == old.UID
 	})
 	h.kube.Withhold(old.Name, false)
-	h.running(PodName(name), v1alpha1.Dingo)
+	h.running(render.PodName(name), v1alpha1.Dingo)
 }
 
 // TestFinalizerHeldOnNotReadyNode: ForgingLostIsGoneBug and
@@ -228,7 +229,7 @@ func TestFinalizerHeldOnNotReadyNode(t *testing.T) {
 	h.secret("a-keys", "opcert")
 	h.pool("a", v1alpha1.CardanoNode, v1alpha1.TierForging, nil)
 	h.startOperator()
-	old := h.running(PodName(Name(h.get("a"))), v1alpha1.CardanoNode)
+	old := h.running(render.PodName(render.Name(h.get("a"))), v1alpha1.CardanoNode)
 	h.kube.Lose()
 	h.must(fakekube.SetReady(h.ctx, h.c, h.node, false))
 	h.must(h.c.Delete(h.ctx, old, client.GracePeriodSeconds(0)))
@@ -246,7 +247,7 @@ func TestFinalizerReleasedOnTerminatedStatus(t *testing.T) {
 	h.secret("a-keys", "opcert")
 	h.pool("a", v1alpha1.CardanoNode, v1alpha1.TierForging, nil)
 	h.startOperator()
-	old := h.running(PodName(Name(h.get("a"))), v1alpha1.CardanoNode)
+	old := h.running(render.PodName(render.Name(h.get("a"))), v1alpha1.CardanoNode)
 	h.must(h.c.Delete(h.ctx, old))
 	h.eventually("old pod released and gone", func() bool { return h.goneUID(old.Name, old.UID) })
 }
@@ -256,7 +257,7 @@ func TestFinalizerReleasedOnNodeDeleted(t *testing.T) {
 	h.secret("a-keys", "opcert")
 	h.pool("a", v1alpha1.CardanoNode, v1alpha1.TierForging, nil)
 	h.startOperator()
-	old := h.running(PodName(Name(h.get("a"))), v1alpha1.CardanoNode)
+	old := h.running(render.PodName(render.Name(h.get("a"))), v1alpha1.CardanoNode)
 	h.kube.Lose()
 	h.must(fakekube.SetReady(h.ctx, h.c, h.node, false))
 	h.must(h.c.Delete(h.ctx, old))
@@ -273,7 +274,7 @@ func TestFinalizerPatchHasUIDPrecondition(t *testing.T) {
 	h := newHarness(t, nil)
 	mk := func() *corev1.Pod {
 		p := &corev1.Pod{
-			ObjectMeta: metav1.ObjectMeta{Name: "p-0", Namespace: h.ns, Finalizers: []string{Finalizer}},
+			ObjectMeta: metav1.ObjectMeta{Name: "p-0", Namespace: h.ns, Finalizers: []string{render.Finalizer}},
 			Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "node", Image: "x"}}},
 		}
 		h.must(h.c.Create(h.ctx, p))
@@ -343,7 +344,7 @@ func TestTwoReconcilersOneForger(t *testing.T) {
 	stale := h.manager()
 	h.must(Index(h.ctx, stale))
 	lag := &laggy{Client: stale.GetClient(), lag: time.Second, at: map[types.NamespacedName]time.Time{}, snap: map[types.NamespacedName]*v1alpha1.ContinuumPool{}}
-	h.must(NewPools(lag, Drivers(), fakeResolver{}, nil, quiet()).SetupWithManager(stale))
+	h.must(NewPools(lag, render.Drivers(), fakeResolver{}, nil, quiet()).SetupWithManager(stale))
 	h.must(NewRelease(stale.GetClient(), stale.GetAPIReader(), quiet()).SetupWithManager(stale))
 	h.run("stale manager", stale.Start)
 
@@ -351,7 +352,7 @@ func TestTwoReconcilersOneForger(t *testing.T) {
 	var mu sync.Mutex
 	h.run("monitor", func(ctx context.Context) error {
 		for ctx.Err() == nil {
-			n := h.keyedPods(RoleForger)
+			n := h.keyedPods(render.RoleForger)
 			mu.Lock()
 			most = max(most, n)
 			mu.Unlock()
@@ -361,12 +362,12 @@ func TestTwoReconcilersOneForger(t *testing.T) {
 	})
 
 	h.pool("a", v1alpha1.CardanoNode, v1alpha1.TierForging, nil)
-	name := Name(h.get("a"))
-	h.running(PodName(name), v1alpha1.CardanoNode)
+	name := render.Name(h.get("a"))
+	h.running(render.PodName(name), v1alpha1.CardanoNode)
 	h.edit("a", func(p *v1alpha1.ContinuumPool) { p.Spec.Implementation = v1alpha1.Dingo })
-	h.running(PodName(name), v1alpha1.Dingo)
+	h.running(render.PodName(name), v1alpha1.Dingo)
 	h.edit("a", func(p *v1alpha1.ContinuumPool) { p.Spec.Dark = true })
-	h.eventually("dark: no keyed pod", func() bool { return h.keyedPods(RoleForger) == 0 })
+	h.eventually("dark: no keyed pod", func() bool { return h.keyedPods(render.RoleForger) == 0 })
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -405,12 +406,12 @@ func TestStaleSpecDoesNotFlap(t *testing.T) {
 	if dark.Generation <= live.Generation {
 		t.Fatalf("generations %d then %d", live.Generation, dark.Generation)
 	}
-	r := NewPools(&scripted{Client: h.c, pools: []*v1alpha1.ContinuumPool{dark, live}}, Drivers(), fakeResolver{}, nil, quiet())
+	r := NewPools(&scripted{Client: h.c, pools: []*v1alpha1.ContinuumPool{dark, live}}, render.Drivers(), fakeResolver{}, nil, quiet())
 	if _, err := r.Reconcile(h.ctx, request(dark)); err != nil {
 		t.Fatal(err)
 	}
 	replicas := func() int32 {
-		s, ok := h.set(Name(dark))
+		s, ok := h.set(render.Name(dark))
 		if !ok {
 			t.Fatal("no StatefulSet")
 		}
@@ -440,28 +441,28 @@ func TestDuplicateUsesOwnSecret(t *testing.T) {
 	h.pool("a", v1alpha1.CardanoNode, v1alpha1.TierForging, nil)
 	h.pool("d", v1alpha1.Dingo, v1alpha1.TierForging, func(p *v1alpha1.ContinuumPool) { p.Spec.UnsafeDuplicateOf = "a" })
 	h.startOperator()
-	a, d := Name(h.get("a")), Name(h.get("d"))
+	a, d := render.Name(h.get("a")), render.Name(h.get("d"))
 	if a == d {
 		t.Fatalf("duplicate shares the name %s", a)
 	}
-	pa := h.running(PodName(a), v1alpha1.CardanoNode)
-	pd := h.running(PodName(d), v1alpha1.Dingo)
+	pa := h.running(render.PodName(a), v1alpha1.CardanoNode)
+	pd := h.running(render.PodName(d), v1alpha1.Dingo)
 	if !hasVolumeFrom(pa.Spec, "a-keys") || hasVolumeFrom(pa.Spec, "d-keys") {
 		t.Error("forger does not mount only its own Secret")
 	}
 	if !hasVolumeFrom(pd.Spec, "d-keys") || hasVolumeFrom(pd.Spec, "a-keys") {
 		t.Error("duplicate does not mount only its own Secret")
 	}
-	if pa.Labels[LabelPool] != pd.Labels[LabelPool] {
+	if pa.Labels[render.LabelPool] != pd.Labels[render.LabelPool] {
 		t.Error("duplicate is not listed under the pool's label")
 	}
-	if pa.Labels[LabelImpl] != string(v1alpha1.CardanoNode) || pd.Labels[LabelImpl] != string(v1alpha1.Dingo) {
-		t.Errorf("forger runs %s and duplicate %s", pa.Labels[LabelImpl], pd.Labels[LabelImpl])
+	if pa.Labels[render.LabelImpl] != string(v1alpha1.CardanoNode) || pd.Labels[render.LabelImpl] != string(v1alpha1.Dingo) {
+		t.Errorf("forger runs %s and duplicate %s", pa.Labels[render.LabelImpl], pd.Labels[render.LabelImpl])
 	}
 	cm := &corev1.ConfigMap{}
-	h.must(h.c.Get(h.ctx, client.ObjectKey{Namespace: h.ns, Name: configName(d)}, cm))
-	if !strings.Contains(cm.Data[dingoConfigFile], KeysDir+"/"+KESKey) {
-		t.Errorf("dingo duplicate's config does not read its keys at %s:\n%s", KeysDir, cm.Data[dingoConfigFile])
+	h.must(h.c.Get(h.ctx, client.ObjectKey{Namespace: h.ns, Name: render.ConfigName(d)}, cm))
+	if !strings.Contains(cm.Data[render.DingoConfigFile], render.KeysDir+"/"+render.KESKey) {
+		t.Errorf("dingo duplicate's config does not read its keys at %s:\n%s", render.KeysDir, cm.Data[render.DingoConfigFile])
 	}
 	h.pool("s", v1alpha1.Dingo, v1alpha1.TierForging, func(p *v1alpha1.ContinuumPool) {
 		p.Spec.UnsafeDuplicateOf = "a"
@@ -470,7 +471,7 @@ func TestDuplicateUsesOwnSecret(t *testing.T) {
 	h.eventually("shared-secret duplicate refused", func() bool {
 		return h.hasCondition("s", CondAdmitted, metav1.ConditionFalse, ReasonSharedSecret)
 	})
-	if _, ok := h.set(Name(h.get("s"))); ok {
+	if _, ok := h.set(render.Name(h.get("s"))); ok {
 		t.Fatal("shared-secret duplicate has a workload")
 	}
 }
@@ -484,18 +485,18 @@ func TestDuplicatePendingWithoutSecret(t *testing.T) {
 	d := h.pool("d", v1alpha1.Dingo, v1alpha1.TierForging, func(p *v1alpha1.ContinuumPool) { p.Spec.UnsafeDuplicateOf = "a" })
 	set := h.renderDirect(h.get(d.Name))
 	notRunning := func() bool {
-		p, ok := h.pod(PodName(set.Name))
+		p, ok := h.pod(render.PodName(set.Name))
 		return !ok || p.Status.Phase != corev1.PodRunning
 	}
 	h.eventually("duplicate pod pending", func() bool {
-		p, ok := h.pod(PodName(set.Name))
+		p, ok := h.pod(render.PodName(set.Name))
 		return ok && p.Status.Phase == corev1.PodPending
 	})
 	h.consistently("duplicate pod never runs", 500*time.Millisecond, notRunning)
 	h.startOperator()
 	h.eventually("duplicate workload deleted", func() bool {
 		_, sok := h.set(set.Name)
-		_, pok := h.pod(PodName(set.Name))
+		_, pok := h.pod(render.PodName(set.Name))
 		return !sok && !pok && notRunning()
 	})
 	if !h.hasCondition("d", CondAdmitted, metav1.ConditionFalse, ReasonSecretMissing, "d-keys") {
@@ -512,7 +513,7 @@ func TestLatePodAfterRetireCannotStart(t *testing.T) {
 	late := h.get(p.Name)
 	late.Spec.Dark = false
 	set := h.renderDirect(late)
-	pod := PodName(set.Name)
+	pod := render.PodName(set.Name)
 	h.eventually("late pod pending", func() bool {
 		p, ok := h.pod(pod)
 		return ok && p.Status.Phase == corev1.PodPending

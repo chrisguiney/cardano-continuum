@@ -22,6 +22,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/image"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
 
 // Condition types on a ContinuumPool.
@@ -80,7 +81,7 @@ type Pools struct {
 
 // NewPools returns a pool reconciler that reads and writes through c. With
 // a nil exec running nodes are never told to reread their Config.
-func NewPools(c client.Client, drivers Registry, images image.Resolver, exec Exec, log *slog.Logger) *Pools {
+func NewPools(c client.Client, drivers render.Registry, images image.Resolver, exec Exec, log *slog.Logger) *Pools {
 	log = log.With("component", "pools")
 	return &Pools{
 		client:  c,

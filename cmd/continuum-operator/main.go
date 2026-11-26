@@ -20,6 +20,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/ident"
 	"github.com/chrisguiney/cardano-continuum/internal/operator"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/image"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
 
 func main() {
@@ -99,7 +100,7 @@ func run(args []string, log *slog.Logger) error {
 	}
 	ctx := ctrl.SetupSignalHandler()
 	err = operator.Setup(ctx, mgr, operator.Options{
-		Drivers: operator.Drivers(),
+		Drivers: render.Drivers(),
 		Images:  image.NewResolver(rc, log),
 		Exec:    exec,
 		Log:     log,

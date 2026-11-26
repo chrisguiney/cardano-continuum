@@ -14,10 +14,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-)
 
-// nodeContainer is the name of the container that runs the node.
-const nodeContainer = "node"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
+)
 
 // Exec runs argv, with no shell, in one container of a pod and returns its
 // standard output.
@@ -54,7 +53,7 @@ type reloader struct {
 // pod starts with a topology that lacks the pools created after it; peers
 // then dial it, but it never dials them, takes none of their blocks and
 // forges its own fork.
-func (r *reloader) reload(ctx context.Context, pod *corev1.Pod, w Workload) (time.Duration, error) {
+func (r *reloader) reload(ctx context.Context, pod *corev1.Pod, w render.Workload) (time.Duration, error) {
 	if r.exec == nil || len(w.Reload) == 0 || pod == nil || w.Config == nil {
 		return 0, nil
 	}
@@ -64,7 +63,7 @@ func (r *reloader) reload(ctx context.Context, pod *corev1.Pod, w Workload) (tim
 		return 0, nil
 	}
 	mark := instance + " " + configDigest(w.Config.Data)
-	if pod.Annotations[AnnotationLoaded] == mark {
+	if pod.Annotations[render.AnnotationLoaded] == mark {
 		return 0, nil
 	}
 	if wait := reloadSettle - r.now().Sub(started); wait > 0 {
@@ -72,7 +71,7 @@ func (r *reloader) reload(ctx context.Context, pod *corev1.Pod, w Workload) (tim
 	}
 	key := client.ObjectKeyFromObject(pod)
 	for _, f := range slices.Sorted(maps.Keys(w.Config.Data)) {
-		got, err := r.exec.Exec(ctx, key, nodeContainer, []string{"cat", ConfigDir + "/" + f})
+		got, err := r.exec.Exec(ctx, key, render.NodeContainer, []string{"cat", render.ConfigDir + "/" + f})
 		if err != nil {
 			return 0, fmt.Errorf("read %s in pod %s: %w", f, key, err)
 		}
@@ -80,14 +79,14 @@ func (r *reloader) reload(ctx context.Context, pod *corev1.Pod, w Workload) (tim
 			return reloadRetry, nil
 		}
 	}
-	if _, err := r.exec.Exec(ctx, key, nodeContainer, w.Reload); err != nil {
+	if _, err := r.exec.Exec(ctx, key, render.NodeContainer, w.Reload); err != nil {
 		return 0, fmt.Errorf("reload node in pod %s: %w", key, err)
 	}
 	patch := client.MergeFrom(pod.DeepCopy())
 	if pod.Annotations == nil {
 		pod.Annotations = map[string]string{}
 	}
-	pod.Annotations[AnnotationLoaded] = mark
+	pod.Annotations[render.AnnotationLoaded] = mark
 	if err := r.client.Patch(ctx, pod, patch); err != nil {
 		return 0, fmt.Errorf("annotate pod %s: %w", key, err)
 	}
@@ -99,7 +98,7 @@ func (r *reloader) reload(ctx context.Context, pod *corev1.Pod, w Workload) (tim
 // count names the instance within the pod.
 func nodeInstance(pod *corev1.Pod) (string, time.Time, bool) {
 	for _, cs := range pod.Status.ContainerStatuses {
-		if cs.Name != nodeContainer || cs.State.Running == nil {
+		if cs.Name != render.NodeContainer || cs.State.Running == nil {
 			continue
 		}
 		return fmt.Sprintf("%s/%d", pod.UID, cs.RestartCount), cs.State.Running.StartedAt.Time, true
