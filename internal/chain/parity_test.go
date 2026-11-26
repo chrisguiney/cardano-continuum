@@ -33,8 +33,6 @@ type par struct {
 	pools   []keys.PoolKeys
 	drep    keys.Credential
 	pp      conway.ConwayProtocolParameters
-	// floor is the height of the newest block with K successors.
-	floor int
 	// rolled and dereg note what the last step did, for tally.
 	rolled, dereg bool
 }
@@ -290,11 +288,7 @@ func (p *par) step() {
 	if err := p.chain.AdvanceTo(p.chain.Slot() + adv); err != nil {
 		p.t.Fatal(err)
 	}
-	// A block with K successors is never rolled back, as on a real node;
-	// the fake keeps undo records for K blocks only.
-	h := len(p.chain.Blocks())
-	p.floor = max(p.floor, h-parK)
-	if room := h - p.floor; room > 0 && p.pick(5) == 0 {
+	if room := len(p.chain.Blocks()) - p.chain.Immutable(); room > 0 && p.pick(5) == 0 {
 		depth := 1 + uint64(p.pick(room))
 		p.rolled = true
 		if err := p.chain.Inject(fakechain.Rollback{Depth: depth, Readd: p.pick(2) == 0}); err != nil {

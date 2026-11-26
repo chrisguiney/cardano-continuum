@@ -63,7 +63,6 @@ type rig struct {
 	settled  map[TxID]bool
 	// used is every input an attempt ever reserved, by the attempt.
 	used    map[Ref][]TxID
-	floor   int // blocks that can never be rolled back
 	genesis []Utxo
 }
 
@@ -245,7 +244,6 @@ func (r *rig) blocks(n int) {
 	if err := r.chain.AdvanceTo(r.chain.Slot() + uint64(n)*rigBlockEvery); err != nil {
 		r.t.Fatal(err)
 	}
-	r.floor = max(r.floor, len(r.chain.Blocks())-int(r.k))
 }
 
 // truth checks the chain against the ledger's records: no intent paid
@@ -273,8 +271,8 @@ func (r *rig) truth() {
 		}
 	}
 	for tx := range r.settled {
-		if i, ok := onChain[tx]; !ok || i >= r.floor {
-			r.t.Fatalf("settled %x not in the immovable chain (at %d, floor %d, ok %v)", tx[:4], i, r.floor, ok)
+		if i, ok := onChain[tx]; !ok || i >= r.chain.Immutable() {
+			r.t.Fatalf("settled %x not in the immovable chain (at %d, immutable %d, ok %v)", tx[:4], i, r.chain.Immutable(), ok)
 		}
 	}
 }

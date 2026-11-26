@@ -22,7 +22,8 @@ type Scheduled struct {
 // revalidation that follows.
 type Drop struct{ Tx TxID }
 
-// Rollback removes the last Depth blocks (1..k). With Readd their
+// Rollback removes the last Depth blocks, never reaching the immutable point
+// (see Chain.Immutable). With Readd their
 // transactions go back to the front of the mempool and are revalidated;
 // without it they vanish, which is what a node does.
 type Rollback struct {

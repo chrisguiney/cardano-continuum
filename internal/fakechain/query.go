@@ -34,6 +34,14 @@ func (c *Chain) tip(n int) ocommon.Point {
 	return c.blocks[n-1].Point()
 }
 
+// Immutable returns how many blocks, counting from the first, can no longer
+// be rolled back. A rollback to a height below it is ErrTooDeep.
+func (c *Chain) Immutable() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.immutable
+}
+
 // Blocks returns the current chain, oldest first.
 func (c *Chain) Blocks() []Block {
 	c.mu.Lock()

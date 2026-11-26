@@ -234,7 +234,7 @@ var (
 	ErrMempoolFull = errors.New("fakechain: mempool full")
 	// ErrNotInMempool: a fault named a transaction the mempool does not hold.
 	ErrNotInMempool = errors.New("fakechain: transaction not in mempool")
-	// ErrTooDeep: a rollback deeper than k or past genesis.
+	// ErrTooDeep: a rollback past the immutable point or genesis.
 	ErrTooDeep = errors.New("fakechain: rollback too deep")
 )
 

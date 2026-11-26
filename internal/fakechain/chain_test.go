@@ -473,3 +473,33 @@ func TestRevalidateAfterBlock(t *testing.T) {
 		t.Fatalf("evictions %+v, want %s evicted at slot 2", ev, id)
 	}
 }
+
+// The immutable point is the block k deep when it became immutable; it never
+// moves back, so two rollbacks in a row cannot together pass it.
+func TestConsecutiveRollbacksWithinImmutablePoint(t *testing.T) {
+	f := newFixture(t, nil)
+	f.advance(10) // 5 blocks, k = 3: the first two are immutable
+	if err := f.chain.Inject(Rollback{Depth: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.chain.Inject(Rollback{Depth: 2}); err != nil {
+		t.Fatalf("second rollback within the remaining k-d: %v", err)
+	}
+	if got := len(f.chain.Blocks()); got != 2 {
+		t.Fatalf("height %d, want 2", got)
+	}
+}
+
+func TestConsecutiveRollbacksPastImmutablePoint(t *testing.T) {
+	f := newFixture(t, nil)
+	f.advance(10)
+	if err := f.chain.Inject(Rollback{Depth: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.chain.Inject(Rollback{Depth: 3}); !errors.Is(err, ErrTooDeep) {
+		t.Fatalf("second rollback past the immutable point: err = %v, want ErrTooDeep", err)
+	}
+	if got := len(f.chain.Blocks()); got != 4 {
+		t.Fatalf("a refused rollback changed the chain: height %d, want 4", got)
+	}
+}

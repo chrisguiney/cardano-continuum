@@ -157,6 +157,11 @@ type Chain struct {
 	fees      uint64
 	supply    uint64
 	blocks    []record
+	// immutable is the number of leading blocks that can never be rolled
+	// back. It only grows, so after a rollback of depth d the next one reaches
+	// at most k-d further back until new blocks arrive; blocks[immutable:]
+	// keep their undo records.
+	immutable int
 	pool      mempool
 	include   []TxID
 	evicted   []Eviction
@@ -359,7 +364,7 @@ func (c *Chain) produce() error {
 		return err
 	}
 	c.blocks = append(c.blocks, record{Block: b, txs: txs, undo: u})
-	c.trimUndo()
+	c.settle()
 	c.revalidate()
 	check.PostFn(c.conserved, "fakechain: supply conserved")
 	return nil
@@ -417,13 +422,19 @@ func (c *Chain) revalidate() {
 	}
 }
 
-// trimUndo forgets the undo records of blocks deeper than k: they are
-// immutable.
-func (c *Chain) trimUndo() {
-	if n := uint64(len(c.blocks)); n > c.cfg.K {
-		c.blocks[n-c.cfg.K-1].undo = undo{}
-		c.blocks[n-c.cfg.K-1].txs = nil
+// settle makes the block k deep immutable, if the chain is long enough, and
+// forgets the undo records of the blocks it newly covers.
+func (c *Chain) settle() {
+	n := len(c.blocks)
+	if n <= int(c.cfg.K) {
+		return
 	}
+	to := n - int(c.cfg.K)
+	for i := c.immutable; i < to; i++ {
+		c.blocks[i].undo = undo{}
+		c.blocks[i].txs = nil
+	}
+	c.immutable = max(c.immutable, to)
 }
 
 func (c *Chain) conserved() bool {
@@ -434,10 +445,11 @@ func (c *Chain) conserved() bool {
 	return sum+c.fees+c.certs.deposits() == c.supply
 }
 
-// rollback removes the last depth blocks.
+// rollback removes the last depth blocks. It refuses, changing nothing, a
+// depth that would remove an immutable block.
 func (c *Chain) rollback(depth uint64, readd bool) error {
-	if depth == 0 || depth > c.cfg.K || depth > uint64(len(c.blocks)) {
-		return fmt.Errorf("%w: depth %d, k %d, height %d", ErrTooDeep, depth, c.cfg.K, len(c.blocks))
+	if depth == 0 || depth > uint64(len(c.blocks)-c.immutable) {
+		return fmt.Errorf("%w: depth %d, height %d, immutable %d", ErrTooDeep, depth, len(c.blocks), c.immutable)
 	}
 	cut := len(c.blocks) - int(depth)
 	var back []*conway.ConwayTransaction

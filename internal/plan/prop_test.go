@@ -90,8 +90,8 @@ func (p *prop) step() {
 		}
 	case n < 85:
 		p.last = "rollback"
-		d := 1 + p.rnd.IntN(int(r.k))
-		if len(r.chain.Blocks())-d >= r.floor {
+		if room := len(r.chain.Blocks()) - r.chain.Immutable(); room > 0 {
+			d := 1 + p.rnd.IntN(room)
 			p.inject(fakechain.Rollback{Depth: uint64(d), Readd: p.rnd.IntN(2) == 0})
 		}
 	case n < 89:
