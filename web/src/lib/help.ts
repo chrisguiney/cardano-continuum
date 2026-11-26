@@ -29,6 +29,7 @@ export const FIELD_HELP: Record<string, FieldHelp> = {
   k: { label: "k (1 to 1000)", help: "Amplification factor: a multiplier on how fast actors act. 1 is the normal rate." },
   weights: { label: "Weights", help: "Overrides how much actors want each intent, as name=value pairs such as send=2, vote=0.5. A higher value makes that intent more likely; 0 turns it off." },
   scenario: { label: "Scenario", help: "Name of a scripted event to start now, for example a network partition. It is added to the event log, so the run stays replayable." },
+  search: { label: "Search", help: "Find a block by hash, height or slot:N, a transaction by hash, an address (addr_test1...), a pool by its 56-digit id or name, or an actor as actor:N. The matching view opens." },
   theme: { label: "Theme", help: "Switch between the light and dark colour schemes. Your choice is remembered in this browser." },
 };
 
@@ -42,6 +43,7 @@ export const VIEW_BLURB: Record<string, string> = {
   findings: "Disagreements and rule breaks the checkers found between node programs and expected results.",
   adversaries: "Simulated attackers: what they try, what it costs them and how honest actors are affected.",
   controls: "Change the running simulation. Every action is logged and asks for confirmation.",
+  explorer: "Browse the chain the engine follows: blocks, transactions, addresses and epochs, with the run's own context beside each one.",
   help: "What the words and controls in this app mean.",
 };
 
@@ -69,6 +71,14 @@ export const GLOSSARY: Term[] = [
   { term: "Delegation", def: "Pointing your stake at a pool so it can make blocks for you; you keep your ADA." },
   { term: "DRep", def: "Delegated representative: someone who votes on governance proposals for the ADA delegated to them." },
   { term: "Lovelace", def: "The smallest unit of ADA: one ADA is 1,000,000 lovelace." },
+  { term: "Block", def: "A batch of transactions the chain adds in one slot. Each block names the block before it, so blocks form a chain; a block is issued by one pool." },
+  { term: "Transaction", def: "A signed instruction that spends outputs and creates new ones, and may also mint tokens, register stake or vote." },
+  { term: "UTxO", def: "An unspent transaction output: a coin amount (and maybe tokens) locked to an address. A transaction consumes whole UTxOs and creates new ones; an address's balance is the sum of its UTxOs." },
+  { term: "Datum", def: "Data attached to an output for a script to read when the output is spent. It is either stored inline or referred to by its hash." },
+  { term: "Redeemer", def: "The argument a transaction gives a script when it spends, mints or votes, together with the execution budget (ExUnits) the script may use." },
+  { term: "ExUnits", def: "The execution budget of a script: memory and CPU steps. A block has a limit on the total its transactions may use; the Explorer shows the share used." },
+  { term: "Certificate", def: "A statement in a transaction that changes chain state: registering or delegating a stake key, registering or retiring a pool, or registering and delegating to a DRep." },
+  { term: "Collateral", def: "Coins a transaction with scripts puts at risk. If a script fails after the transaction is in a block (isValid false), the collateral is spent as the fee and nothing else happens." },
   { term: "Adversary", def: "An actor built to attack the network, to check that honest users stay protected." },
   { term: "Control run", def: "A second run without attacks, used to measure what the attacks changed." },
 ];

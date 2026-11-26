@@ -12,6 +12,13 @@ import { HelpTip } from "./views/fields";
 import { FIELD_HELP } from "./lib/help";
 import { Governance } from "./views/Governance";
 import { Overview } from "./views/Overview";
+import { ExAddress } from "./views/ExAddress";
+import { ExBlock } from "./views/ExBlock";
+import { ExEpoch } from "./views/ExEpoch";
+import { ExTx } from "./views/ExTx";
+import { Explorer } from "./views/Explorer";
+import { SearchBox } from "./views/SearchBox";
+import { navFor, type Capabilities } from "./lib/nav";
 import { Pools } from "./views/Pools";
 
 type Theme = "light" | "dark";
@@ -54,31 +61,24 @@ function usePath(): string {
   return path;
 }
 
-function useControlsEnabled(): boolean {
-  const [on, setOn] = useState(false);
+function useCapabilities(): Capabilities {
+  const [caps, setCaps] = useState<Capabilities>({ controls: false, explorer: false });
   useEffect(() => {
-    getJSON<{ controls: boolean }>("/api/capabilities").then((c) => setOn(c.controls), () => setOn(false));
+    getJSON<Partial<Capabilities>>("/api/capabilities").then(
+      (c) => setCaps({ controls: !!c.controls, explorer: !!c.explorer }),
+      () => setCaps({ controls: false, explorer: false }),
+    );
   }, []);
-  return on;
+  return caps;
 }
-
-const NAV: [string, string][] = [
-  ["/", "Overview"],
-  ["/actors", "Actors"],
-  ["/pools", "Pools"],
-  ["/governance", "Governance"],
-  ["/decisions", "Decisions"],
-  ["/findings", "Findings"],
-  ["/adversaries", "Adversaries"],
-  ["/help", "Help"],
-];
 
 export function App() {
   const path = usePath();
   const [theme, toggle] = useTheme();
-  const controls = useControlsEnabled();
+  const caps = useCapabilities();
+  const controls = caps.controls;
   const route = parseRoute(path);
-  const nav = controls ? [...NAV, ["/controls", "Controls"] as [string, string]] : NAV;
+  const nav = navFor(caps);
   const active = (to: string) => (to === "/" ? path === "/" : path === to || path.startsWith(to + "/"));
 
   return (
@@ -102,6 +102,7 @@ export function App() {
             </a>
           ))}
         </nav>
+        {caps.explorer && <SearchBox />}
         <span class="theme">
           <button type="button" class="ghost" onClick={toggle} aria-describedby="theme-help">
             {theme === "dark" ? "Light theme" : "Dark theme"}
@@ -118,6 +119,12 @@ export function App() {
         {route.name === "decisions" && <Decisions />}
         {route.name === "findings" && <Findings />}
         {route.name === "adversaries" && <Adversaries />}
+        {route.name === "explorer" && <Explorer />}
+        {route.name === "xblock" && <ExBlock id={route.key} />}
+        {route.name === "xtx" && <ExTx id={route.key} />}
+        {route.name === "xaddr" && <ExAddress addr={route.key} />}
+        {route.name === "xepoch" && <ExEpoch n={route.n} />}
+        {route.name === "xpool" && <Explorer pool={route.key} />}
         {route.name === "help" && <Help />}
         {route.name === "controls" && (controls ? <Controls /> : <p class="empty">Controls are not enabled on this server (start it with --controls).</p>)}
         {route.name === "notfound" && <p class="empty">No such page.</p>}

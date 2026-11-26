@@ -150,3 +150,19 @@ button.copy { padding: 0 .4rem; font-size: .75rem; margin-left: .3rem; }
 @media (max-width: 600px) { .bars li { grid-template-columns: 5rem 1fr 3rem; } }
 .tokens th, .tokens td { padding: .3rem .45rem; }
 .tokens button.copy { margin-left: .15rem; }
+
+/* Chain explorer */
+.search { display: inline-flex; align-items: center; gap: .3rem; flex-wrap: wrap; }
+.search input { width: 15rem; max-width: 100%; }
+.search-msg { color: var(--bad); font-size: .8rem; flex-basis: 100%; }
+.hash { display: inline-flex; align-items: center; white-space: nowrap; }
+.usage { display: inline-flex; align-items: center; gap: .4rem; }
+.usage-bar { display: inline-block; width: 4rem; height: .6rem; border: 1px solid var(--border); border-radius: 3px; overflow: hidden; background: var(--bg); }
+.usage-bar > span { display: block; height: 100%; background: var(--accent); }
+.usage-text { font-size: .8rem; min-width: 3ch; }
+pre.cbor { margin: .5rem 0 0; padding: .6rem; max-height: 14rem; overflow: auto; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; }
+a.button { display: inline-block; padding: .35rem .8rem; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); text-decoration: none; }
+a.button:hover { border-color: var(--accent); }
+.glossary dd .hash, .glossary dd .mono { overflow-wrap: anywhere; white-space: normal; }
+.usage { display: flex; }
+.usage-name { font-size: .75rem; color: var(--muted); min-width: 4.2em; }
