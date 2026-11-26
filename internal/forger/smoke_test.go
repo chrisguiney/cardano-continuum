@@ -142,9 +142,9 @@ func TestSmokeMisbehaviours(t *testing.T) {
 	rep.write(t, out, nodes)
 }
 
-// startDevnet runs cardano-node as pool 0, dingo as pool 1 and the forger
-// as pool 2 on their own Docker network, and removes them, with their logs
-// saved to out, when the test ends.
+// startDevnet runs cardano-node as pool 0, dingo as pool 1 and, when all
+// names a third node, the forger as pool 2 on their own Docker network, and
+// removes them, with their logs saved to out, when the test ends.
 func startDevnet(t *testing.T, dir, out, evidence string, magic uint32, all []smokeNode) {
 	t.Helper()
 	docker(t, "network", "create", smokeNetwork)
@@ -172,6 +172,9 @@ func startDevnet(t *testing.T, dir, out, evidence string, magic uint32, all []sm
 	docker(t, base(1, "-p", "127.0.0.1::3001", "--user", "0:0", "-e", "CARDANO_NETWORK=devnet",
 		"-e", "CARDANO_DATABASE_PATH=/data/db", "-e", "CARDANO_SOCKET_PATH=/tmp/node.socket",
 		"--entrypoint", "dingo", all[1].Image, "--config", "/keys/dingo.yaml", "serve")...)
+	if len(all) < 3 {
+		return
+	}
 	docker(t, base(2, "--user", "0:0", "-v", evidence+":/evidence",
 		all[2].Image, "run", "--genesis", "/config", "--keys", "/keys", "--evidence", "/evidence",
 		"--peer", all[0].Name+":3001", "--peer", all[1].Name+":3001")...)
