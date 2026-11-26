@@ -19,11 +19,16 @@ type Session struct {
 }
 
 // Feed logs in (Seq is assigned), syncs, hands it to the engine and logs the
-// decisions it returns.
+// decisions it returns. When the log reports its last seq, the engine sees
+// the input with the seq it was logged at, as replay hands it over, so a
+// decision may name its input's seq.
 func (s *Session) Feed(ctx context.Context, in Record) error {
 	in.Class = Input
 	if err := s.Log.Append(ctx, in); err != nil {
 		return err
+	}
+	if l, ok := s.Log.(interface{ LastSeq() uint64 }); ok {
+		in.Seq = l.LastSeq()
 	}
 	if err := s.Log.Sync(ctx); err != nil {
 		return err

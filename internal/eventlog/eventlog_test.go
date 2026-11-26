@@ -8,6 +8,7 @@ import (
 	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"testing"
 
@@ -612,10 +613,45 @@ func TestFeedSyncsInputBeforeHandle(t *testing.T) {
 	}
 }
 
-type probe struct{ onHandle func() }
+// An engine stamping its decisions with the input's seq gives the same
+// decisions live as in replay.
+func TestFeedHandsTheEngineTheSeq(t *testing.T) {
+	log := &MemLog{}
+	ctx := context.Background()
+	var live []uint64
+	s := &Session{Eng: &probe{onRecord: func(r Record) { live = append(live, r.Seq) }}, Log: log}
+	for range 3 {
+		if err := s.Feed(ctx, Record{Kind: KindControl}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var replayed []uint64
+	_, err := (&Replayer{Log: log, New: func([]byte) (Engine, error) {
+		return &probe{onRecord: func(r Record) { replayed = append(replayed, r.Seq) }}, nil
+	}}).Run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(live, []uint64{1, 2, 3}) || !slices.Equal(live, replayed) {
+		t.Fatalf("live seqs %v, replayed %v", live, replayed)
+	}
+}
 
-func (p *probe) Handle(context.Context, Record) ([]Record, error) { p.onHandle(); return nil, nil }
-func (p *probe) Snapshot() ([]byte, error)                        { return nil, nil }
+type probe struct {
+	onHandle func()
+	onRecord func(Record)
+}
+
+func (p *probe) Handle(_ context.Context, r Record) ([]Record, error) {
+	if p.onHandle != nil {
+		p.onHandle()
+	}
+	if p.onRecord != nil {
+		p.onRecord(r)
+	}
+	return nil, nil
+}
+func (p *probe) Snapshot() ([]byte, error) { return nil, nil }
 
 func TestApplyPointRebuildsIntersectionPoints(t *testing.T) {
 	var pts []ChainPoint
