@@ -51,6 +51,10 @@ const (
 	MissingScriptWitnesses  Class = "MissingScriptWitnessesUTXOW"
 	ScriptWitnessNotValid   Class = "ScriptWitnessNotValidatingUTXOW"
 	NonDisjointRefInputs    Class = "BabbageNonDisjointRefInputs"
+	InsufficientCollateral  Class = "InsufficientCollateral"
+	// ValidationTagMismatch: a script failed while the transaction declared
+	// its scripts pass (or the reverse); a node refuses it from its mempool.
+	ValidationTagMismatch Class = "ValidationTagMismatch"
 
 	// EraMismatch: the transaction's era is not the ledger's era.
 	EraMismatch Class = "HardForkApplyTxErrWrongEra"

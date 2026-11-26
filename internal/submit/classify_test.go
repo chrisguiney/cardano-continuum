@@ -38,6 +38,9 @@ func TestClassifyLedgerErrors(t *testing.T) {
 		{"body network", conway(&ledger.WrongNetworkInTxBody{}), WrongNetworkInTxBody},
 		{"forecast", conway(&ledger.OutsideForecast{}), OutsideForecast},
 		{"non-disjoint", conway(&ledger.BabbageNonDisjointRefInputs{}), NonDisjointRefInputs},
+		{"collateral", conway(&ledger.InsufficientCollateral{}), InsufficientCollateral},
+		{"script failed", conway(&ledger.UtxosFailure{Err: ledger.GenericError{Value: []any{uint64(0), false, []any{}}}}), ValidationTagMismatch},
+		{"collect errors", conway(&ledger.UtxosFailure{Err: ledger.GenericError{Value: []any{uint64(1), []any{}}}}), Unknown},
 		{"era", localtxsubmission.TransactionRejectedError{Reason: &ledger.EraMismatch{}}, EraMismatch},
 		{"vkey", localtxsubmission.TransactionRejectedError{Reason: &ledger.ShelleyTxValidationError{
 			Era: 6, Err: ledger.ApplyTxError{Failures: []error{&ledger.UtxowFailure{Err: &ledger.MissingVKeyWitnessesUTXOW{}}}},

@@ -15,6 +15,13 @@ import (
 // spent by a transaction in its mempool.
 const conwayMempoolFailure = 7
 
+// utxosValidationTagMismatch is the UTXOS constructor tag of
+// ValidationTagMismatch (Cardano.Ledger.Alonzo.Rules.Utxos, kept by Conway):
+// a script's result disagrees with the transaction's is_valid flag. Tag 1,
+// CollectErrors, means the script context could not be built and stays
+// Unknown with its text.
+const utxosValidationTagMismatch = 0
+
 // ledgerRejection decodes a local-tx-submission rejection into failures.
 func ledgerRejection(err error) ([]Failure, bool) {
 	var rej localtxsubmission.TransactionRejectedError
@@ -96,7 +103,7 @@ func unknownDetail(err error) string {
 }
 
 func leafClass(err error) (Class, bool) {
-	switch err.(type) {
+	switch e := err.(type) {
 	case *ledger.BadInputsUtxo:
 		return BadInputs, true
 	case *ledger.FeeTooSmallUtxo:
@@ -135,6 +142,23 @@ func leafClass(err error) (Class, bool) {
 		return ScriptWitnessNotValid, true
 	case *ledger.EraMismatch:
 		return EraMismatch, true
+	case *ledger.InsufficientCollateral:
+		return InsufficientCollateral, true
+	case *ledger.UtxosFailure:
+		return utxosClass(e)
+	}
+	return "", false
+}
+
+// utxosClass classifies a UTXOS failure, which gouroboros leaves undecoded,
+// by its constructor tag.
+func utxosClass(e *ledger.UtxosFailure) (Class, bool) {
+	parts, ok := e.Err.Value.([]any)
+	if !ok || len(parts) == 0 {
+		return "", false
+	}
+	if tag, ok := parts[0].(uint64); ok && tag == utxosValidationTagMismatch {
+		return ValidationTagMismatch, true
 	}
 	return "", false
 }
