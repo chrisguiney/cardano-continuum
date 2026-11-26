@@ -73,16 +73,22 @@ type Rule struct {
 type Schedule struct {
 	Seed  rng.Seed
 	Rules []Rule
+	// Window, when positive, makes the rules take turns: for Window slots
+	// only the first rule is live, then only the second, and round again.
+	// A run of Window times len(Rules) slots then gives every rule its
+	// turn, where independent draws could starve the later ones.
+	Window uint64
 }
 
 type scheduleDoc struct {
-	Seed  string `json:"seed"`
-	Rules []Rule `json:"rules"`
+	Seed   string `json:"seed"`
+	Rules  []Rule `json:"rules"`
+	Window uint64 `json:"window,omitempty"`
 }
 
 // MarshalJSON writes the seed as hex.
 func (s Schedule) MarshalJSON() ([]byte, error) {
-	return json.Marshal(scheduleDoc{Seed: hex.EncodeToString(s.Seed[:]), Rules: s.Rules})
+	return json.Marshal(scheduleDoc{Seed: hex.EncodeToString(s.Seed[:]), Rules: s.Rules, Window: s.Window})
 }
 
 // UnmarshalJSON reads what MarshalJSON writes.
@@ -96,7 +102,7 @@ func (s *Schedule) UnmarshalJSON(b []byte) error {
 		return fmt.Errorf("schedule seed must be %d hex bytes", len(s.Seed))
 	}
 	copy(s.Seed[:], raw)
-	s.Rules = d.Rules
+	s.Rules, s.Window = d.Rules, d.Window
 	return nil
 }
 
@@ -154,8 +160,8 @@ func NewPlanner(p Params, c *Credentials, s Schedule) (*Planner, error) {
 // Plan is the blocks to forge at st.Slot: those of the first rule that
 // fires and applies, else an honest block when the pool leads, else none.
 func (pl *Planner) Plan(st State) ([]Forge, error) {
-	for _, r := range pl.s.Rules {
-		if !pl.fires(r, st.Slot) {
+	for i, r := range pl.s.Rules {
+		if !pl.live(i, st.Slot) || !pl.fires(r, st.Slot) {
 			continue
 		}
 		fs, err := pl.misbehave(r.Kind, st)
@@ -170,6 +176,12 @@ func (pl *Planner) Plan(st State) ([]Forge, error) {
 		return nil, nil
 	}
 	return []Forge{pl.base(Honest, st)}, nil
+}
+
+// live reports whether rule i has its turn at slot.
+func (pl *Planner) live(i int, slot uint64) bool {
+	w := pl.s.Window
+	return w == 0 || slot/w%uint64(len(pl.s.Rules)) == uint64(i)
 }
 
 func (pl *Planner) fires(r Rule, slot uint64) bool {

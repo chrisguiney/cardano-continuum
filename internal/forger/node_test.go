@@ -51,46 +51,7 @@ func TestNodeServesItsChain(t *testing.T) {
 	go func() { done <- n.Run(ctx) }()
 
 	const want = 4
-	var mu sync.Mutex // protects headers
-	var headers []ledger.BlockHeader
-	got := make(chan struct{})
-	conn, err := net.Dial("tcp", ln.Addr().String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	oc, err := ouroboros.NewConnection(
-		ouroboros.WithConnection(conn), ouroboros.WithNetworkMagic(p.Magic), ouroboros.WithNodeToNode(true),
-		ouroboros.WithChainSyncConfig(chainsync.NewConfig(
-			chainsync.WithRollForwardFunc(func(_ chainsync.CallbackContext, _ uint, h any, _ chainsync.Tip) error {
-				mu.Lock()
-				defer mu.Unlock()
-				headers = append(headers, h.(ledger.BlockHeader))
-				if len(headers) == want {
-					close(got)
-				}
-				return nil
-			}),
-			chainsync.WithRollBackwardFunc(func(chainsync.CallbackContext, pcommon.Point, chainsync.Tip) error { return nil }),
-		)),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := oc.ChainSync().Client.Sync(nil); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case <-got:
-	case err := <-done:
-		t.Fatalf("node stopped: %v", err)
-	case err := <-oc.ErrorChan():
-		t.Fatalf("client connection failed: %v", err)
-	case <-time.After(20 * time.Second):
-		t.Fatal("no blocks served in 20s")
-	}
-	mu.Lock()
-	served := append([]ledger.BlockHeader(nil), headers[:want]...)
-	mu.Unlock()
+	oc, served := syncClient(t, ln.Addr().String(), p.Magic, want, done)
 	nonces := GenesisNonces(p)
 	for i, h := range served {
 		blk, err := oc.BlockFetch().Client.GetBlock(pcommon.NewPoint(h.SlotNumber(), h.Hash().Bytes()))
@@ -123,6 +84,52 @@ func TestNodeServesItsChain(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("Run did not return after cancel")
 	}
+}
+
+// syncClient chain-syncs addr from the origin until it has want headers.
+// stopped is the node's Run result, which ends the wait early.
+func syncClient(t *testing.T, addr string, magic uint32, want int, stopped <-chan error) (*ouroboros.Connection, []ledger.BlockHeader) {
+	t.Helper()
+	var mu sync.Mutex // protects headers
+	var headers []ledger.BlockHeader
+	got := make(chan struct{})
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oc, err := ouroboros.NewConnection(
+		ouroboros.WithConnection(conn), ouroboros.WithNetworkMagic(magic), ouroboros.WithNodeToNode(true),
+		ouroboros.WithChainSyncConfig(chainsync.NewConfig(
+			chainsync.WithRollForwardFunc(func(_ chainsync.CallbackContext, _ uint, h any, _ chainsync.Tip) error {
+				mu.Lock()
+				defer mu.Unlock()
+				headers = append(headers, h.(ledger.BlockHeader))
+				if len(headers) == want {
+					close(got)
+				}
+				return nil
+			}),
+			chainsync.WithRollBackwardFunc(func(chainsync.CallbackContext, pcommon.Point, chainsync.Tip) error { return nil }),
+		)),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := oc.ChainSync().Client.Sync(nil); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-got:
+	case err := <-stopped:
+		t.Fatalf("node stopped: %v", err)
+	case err := <-oc.ErrorChan():
+		t.Fatalf("client connection failed: %v", err)
+	case <-time.After(20 * time.Second):
+		t.Fatalf("fewer than %d blocks served in 20s", want)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	return oc, append([]ledger.BlockHeader(nil), headers[:want]...)
 }
 
 // TestGenesisGuard renders a devnet, loads it as the forger does, and

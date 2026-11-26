@@ -3,6 +3,8 @@ package forger
 import (
 	"fmt"
 	"slices"
+
+	"github.com/chrisguiney/cardano-continuum/internal/check"
 )
 
 // entry is a block of the followed chain with the state after it.
@@ -79,6 +81,8 @@ func (c *Chain) Extend(b Block) error {
 		c.own = nil
 	}
 	c.offers = nil
+	check.PostFn(func() bool { return c.last().Hash == b.Hash && c.at[b.Hash] == len(c.followed)-1 },
+		"forger.Chain.Extend: the block is the followed tip")
 	return nil
 }
 
@@ -240,6 +244,7 @@ func (c *Chain) Next(peer PeerID, cur Cursor) Step {
 		return Step{Move: Wait}
 	}
 	b := c.viewAt(suffix, pos+1)
+	check.Post(cur.Origin || b.Hash != cur.Hash, "forger.Chain.Next: a forward step moves the cursor")
 	if _, followed := c.at[b.Hash]; !followed && !c.isOwn(b.Hash) {
 		if c.served[peer] == nil {
 			c.served[peer] = map[[32]byte]bool{}

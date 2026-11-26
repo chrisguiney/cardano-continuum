@@ -29,10 +29,12 @@ func (n *Node) follow(ctx context.Context) error {
 		n.mu.Lock()
 		n.synced = false
 		n.mu.Unlock()
+		retry := time.NewTimer(retryEvery)
 		select {
 		case <-ctx.Done():
+			retry.Stop()
 			return ctx.Err()
-		case <-time.After(retryEvery):
+		case <-retry.C:
 		}
 	}
 }
@@ -117,6 +119,9 @@ func (n *Node) rollForward(header any, tip chainsync.Tip, fetch func(pcommon.Poi
 	}
 	b := blockOf(h)
 	var err error
+	// The upstream may have switched away from this block already and no
+	// longer serve it. Failing the connection is the recovery: the next
+	// one intersects at the followed tip and gets the rollback.
 	if b.CBOR, err = fetch(pcommon.NewPoint(b.Slot, b.Hash[:])); err != nil {
 		return fmt.Errorf("fetch block %x at slot %d: %w", b.Hash[:8], b.Slot, err)
 	}

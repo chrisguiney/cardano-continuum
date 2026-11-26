@@ -10,6 +10,8 @@ import (
 	"github.com/blinklabs-io/gouroboros/ledger"
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 	"github.com/blinklabs-io/gouroboros/vrf"
+
+	"github.com/chrisguiney/cardano-continuum/internal/check"
 )
 
 // Tip is a block a new block can extend.
@@ -120,6 +122,7 @@ type protoVersion struct {
 // Assemble builds the block f describes and signs it. It is pure: the same
 // arguments give the same bytes.
 func Assemble(p Params, c *Credentials, epochNonce [32]byte, f Forge) (Block, error) {
+	check.Pre(p.SlotsPerKESPeriod > 0, "forger.Assemble: params passed Params.check")
 	cert, ok := c.Certs[f.Cert]
 	if !ok {
 		return Block{}, fmt.Errorf("no operational certificate %q in the keys", certFile(f.Cert))

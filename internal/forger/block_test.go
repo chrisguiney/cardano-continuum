@@ -392,3 +392,39 @@ func peerStrings(ps []PeerID) []string {
 	}
 	return out
 }
+
+// TestWindowTakesTurns: with a window, one rule is live at a time, in
+// order, so a bounded run reaches every misbehaviour.
+func TestWindowTakesTurns(t *testing.T) {
+	p, c := testParams(), testCreds(t)
+	nonce := p.GenesisHash
+	pl, err := NewPlanner(p, c, Schedule{Seed: rng.Seed{1}, Window: 10, Rules: []Rule{
+		{Kind: BodyHash, Rate: 1}, {Kind: VRFNotLeader, Rate: 1},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for slot := uint64(100); slot < 140; slot++ {
+		st := testState(t, p, c, nonce, slot, testCounter)
+		fs, err := pl.Plan(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := Honest
+		switch turn := slot / 10 % 2; {
+		case turn == 0 && st.Leader:
+			want = BodyHash
+		case turn == 1 && !st.Leader:
+			want = VRFNotLeader
+		case !st.Leader:
+			want = ""
+		}
+		got := Kind("")
+		if len(fs) > 0 {
+			got = fs[0].Kind
+		}
+		if got != want {
+			t.Errorf("slot %d (leader %v): planned %q, want %q", slot, st.Leader, got, want)
+		}
+	}
+}
