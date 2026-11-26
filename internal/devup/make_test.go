@@ -21,10 +21,13 @@ func TestMakeDryRun(t *testing.T) {
 		return string(out)
 	}
 	up := run("up", "POOLS=5", "DINGO_POOLS=2", "NAMESPACE=lab")
-	for _, want := range []string{"CONTEXT='docker-desktop'", "POOLS='5'", "DINGO_POOLS='2'", "NAMESPACE='lab'", "WALLETS='100'", "PROFILES='preprod'", "hack/up.sh"} {
+	for _, want := range []string{"CONTEXT='docker-desktop'", "POOLS='5'", "DINGO_POOLS='2'", "NAMESPACE='lab'", "WALLETS='100'", "SCALE='200'", "PROFILES='preprod'", "hack/up.sh"} {
 		if !strings.Contains(up, want) {
 			t.Errorf("make -n up lacks %q:\n%s", want, up)
 		}
+	}
+	if got := run("up", "SCALE=1"); !strings.Contains(got, "SCALE='1'") {
+		t.Errorf("make -n up SCALE=1 does not pass SCALE:\n%s", got)
 	}
 	if down := run("down"); !strings.Contains(down, "hack/down.sh") {
 		t.Errorf("make -n down = %q", down)

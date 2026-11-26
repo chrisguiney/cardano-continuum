@@ -9,7 +9,7 @@
 # $CONTEXT, so the current context is never changed.
 #
 # Environment (the Makefile passes these): CONTEXT, NAMESPACE, PROFILES,
-# POOLS, DINGO_POOLS, WALLETS, SEED (64 hex), CONTINUUM_REGISTRY,
+# POOLS, DINGO_POOLS, WALLETS, SCALE, SEED (64 hex), CONTINUUM_REGISTRY,
 # CONTINUUM_REGISTRY_INSECURE, KO, MIN_MEM_GIB, UI_PORT, UI_ADDRESS.
 set -euo pipefail
 exec </dev/null
@@ -20,6 +20,8 @@ PROFILES=${PROFILES:-preprod}
 POOLS=${POOLS:-3}
 DINGO_POOLS=${DINGO_POOLS:-1}
 WALLETS=${WALLETS:-100}
+# SCALE multiplies every profile's activity rates (the engine's --scale).
+SCALE=${SCALE:-200}
 SEED=${SEED:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
 REGISTRY=${CONTINUUM_REGISTRY:-localhost:5005/continuum}
 INSECURE=${CONTINUUM_REGISTRY_INSECURE:-true}
@@ -71,6 +73,7 @@ preflight() {
   curl -fsS -m 5 "http://$host/v2/" >/dev/null || die "registry $host is not reachable"
   [ "$total" -ge 1 ] || die "need at least one pool"
   devup render -pools "$POOLS" -dingo "$DINGO_POOLS" >/dev/null || die "pool plan refused"
+  [[ $SCALE =~ ^[0-9]+([.][0-9]+)?$ && $SCALE =~ [1-9] ]] || die "SCALE must be a positive number"
   [[ $SEED =~ ^[0-9a-f]{64}$ ]] || die "SEED must be 64 lowercase hex characters"
 }
 
@@ -285,7 +288,7 @@ deploy_engine() {
     --dry-run=client -o yaml | k -n "$NAMESPACE" apply -f - >/dev/null
   local img args
   img=$(build continuum)
-  args=$(printf '            - %s\n' "--profiles=$PROFILES" "--wallets=$WALLETS" "--pools=$ENGINE_POOLS" \
+  args=$(printf '            - %s\n' "--profiles=$PROFILES" "--wallets=$WALLETS" "--scale=$SCALE" "--pools=$ENGINE_POOLS" \
     "--genesis-pools=$total" "--network=devnet" "--namespace=$NAMESPACE" "--serve=127.0.0.1:$UI_PORT")
   ARGS="$args" awk -v img="$img" '
     /^          image: continuum$/ { print "          image: " img; next }

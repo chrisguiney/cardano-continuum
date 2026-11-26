@@ -10,9 +10,18 @@ make down
 ```
 
 Variables: `CONTEXT`, `NAMESPACE`, `PROFILES`, `POOLS` (cardano-node),
-`DINGO_POOLS`, `WALLETS`, `SEED` (64 hex), `ENGINE_POOLS` (pool operators the
+`DINGO_POOLS`, `WALLETS`, `SCALE`, `SEED` (64 hex), `ENGINE_POOLS` (pool operators the
 engine simulates; keep 0 with `preprod` and `preview`, which have no pool
 profile), `UI_PORT`, `UI_ADDRESS`.
+
+`SCALE` (default 200, passed to the engine's `--scale`) multiplies every
+profile's activity rates and keeps their shapes. The preprod profile gives
+about 0.2 transactions per day per active unit, which at wall-clock speed is
+near silence for 100 wallets; a scale of 200 gives a few transactions a
+minute. The trade-off: a scaled run is a stress picture, not the measured
+network, and grading against the profile's target uses the unscaled target,
+so rates and counts compared with it are off by the factor. Use `SCALE=1`
+for a run that is graded.
 
 `make up` checks that the context exists, that allocatable memory is at least
 48 GiB (a warning only; Docker Desktop with 48 GB reports about 47 GiB, so
