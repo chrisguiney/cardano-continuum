@@ -275,17 +275,19 @@ Grade: seed-7 fake run (`--profiles mainnet`, 100 wallets, 2 epochs of
 | statistic | verdict | detail |
 |---|---|---|
 | outputs_per_tx, inputs_per_tx, change_to_sender | skipped | no devnet chain tables |
-| log10_output_value | FAIL | D=0.708, median 6.68 vs 6.30 |
-| activity_per_day | FAIL | D=0.571, median 0.033 vs 0.011 per unit per day |
-| log10_gap_seconds | FAIL | D=0.544, median 1.78 vs 1.46 |
-| tx_type_mix | PASS | TV=0.022; run 77% plain, 20% script, 3% stake |
-| address_reuse | PASS | 0.971 vs 0.946 |
+| log10_output_value | FAIL | D=0.556, median 7.51 vs 6.30 |
+| activity_per_day | FAIL | D=0.571, median 0.034 vs 0.011 per unit per day |
+| log10_gap_seconds | FAIL | D=0.667, median 4.36 vs 1.46 |
+| tx_type_mix | PASS | TV=0.036; run 79% plain, 18% script, 3% stake |
+| address_reuse | FAIL | 0.776 vs 0.946 |
 
-The run's intents: 285 sends, 68 script calls, 4 mints, 11 stake
-registrations, 23 withdrawals. What is left:
+The run's intents: 301 sends, 72 script calls, 4 mints, 11 stake
+registrations, 23 withdrawals; honest mistakes are on, so some are
+rejected on purpose. What is left:
 
-- Activity, gaps and amounts count every submission, and the fake chain
-  refuses many with ValueNotConservedUTxO, so retries inflate them.
+- Activity: the run's median unit is three times as busy as the chain's,
+  and its gaps are longer: arrivals inside an active spell are exponential,
+  the chain's are bursty.
 - Payment value: the engine floors payments at 2 ADA; the chain has many
   smaller outputs.
 - Stakers register their stake key but never delegate, and voters never
