@@ -96,6 +96,10 @@ type world struct {
 	// pods, when set, reports pod health to the engine; controls steer it.
 	pods     PodSource
 	controls ControlSource
+	// wrap, when set, is the node the engine talks to in place of node;
+	// monitor answers the view monitor's queries.
+	wrap    func(*FakeNode) Node
+	monitor Viewer
 	// mem, when set, replaces the SQLite store: the crash sweep starts
 	// hundreds of worlds and SQLite's fsyncs would dominate it.
 	mem *memStore
@@ -136,8 +140,12 @@ func (w *world) start(crash func(string) error, every int) (*proc, error) {
 	}
 	p := &proc{log: l, db: w.db}
 	var err error
-	p.r, err = Start(ctx, w.cfg, Deps{Clock: w.clock, Log: l, Store: cp, Node: w.node, Pacer: w.node,
-		CheckpointEvery: every, Crash: crash, Pods: w.pods, Controls: w.controls})
+	var node Node = w.node
+	if w.wrap != nil {
+		node = w.wrap(w.node)
+	}
+	p.r, err = Start(ctx, w.cfg, Deps{Clock: w.clock, Log: l, Store: cp, Node: node, Pacer: w.node,
+		CheckpointEvery: every, Crash: crash, Pods: w.pods, Controls: w.controls, Viewer: w.monitor})
 	if err != nil {
 		p.kill(w.t)
 		return nil, err

@@ -17,11 +17,13 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/plan"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
+	"github.com/chrisguiney/cardano-continuum/internal/submit"
 )
 
 // Every agenda intent with a transaction goes the same way: prepare fills
@@ -63,7 +65,19 @@ type spec struct {
 	// guarded kinds can lower forging stake: their TTL ends inside the
 	// current epoch (stake-floor rule 10).
 	guarded bool
+	// script kinds run a Plutus script, so their TTL stays inside the
+	// stability window (Config.Horizon).
+	script bool
+	// again are the classes the kind's certificates fail with when the
+	// same transaction already landed: what the oracle expects beside
+	// "inputs spent" from a resend.
+	again []submit.Class
 }
+
+var (
+	againRegister   = []submit.Class{submit.Class(fakechain.StakeKeyRegistered)}
+	againDeregister = []submit.Class{submit.Class(fakechain.StakeKeyNotRegistered), submit.Class(fakechain.RefundIncorrect)}
+)
 
 func none(*Engine, *pendingRec) uint64 { return 0 }
 
@@ -74,22 +88,23 @@ var specs = map[string]spec{
 		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
 			return e.builder.Pay(ctx, w, build.Payment{Inputs: sp.Inputs, TTL: sp.TTL, To: e.walletOf(population.ActorID(p.To)).Address(), Amount: p.Amount})
 		}},
-	string(profile.IntentRegisterStake): {need: func(e *Engine, _ *pendingRec) uint64 { return e.cfg.Build.KeyDeposit }, headroom: feeHeadroom,
+	string(profile.IntentRegisterStake): {need: func(e *Engine, _ *pendingRec) uint64 { return e.cfg.Build.KeyDeposit }, headroom: feeHeadroom, again: againRegister,
 		deposit: func(e *Engine, _ *pendingRec) int64 { return int64(e.cfg.Build.KeyDeposit) },
 		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, _ *pendingRec) (build.Built, error) {
 			return e.builder.RegisterStake(ctx, w, sp)
 		}},
-	string(profile.IntentDelegate): {need: registerNeed, headroom: feeHeadroom, guarded: true, deposit: registerDeposit,
+	string(profile.IntentDelegate): {need: registerNeed, headroom: feeHeadroom, guarded: true, deposit: registerDeposit, again: againRegister,
 		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
 			pool, _ := e.poolOf(population.ActorID(p.To))
 			return e.builder.Delegate(ctx, w, build.Delegation{Spend: sp, Pool: pool, Register: p.Register})
 		}},
-	string(profile.IntentUndelegate): {need: none, headroom: feeHeadroom, guarded: true,
+	string(profile.IntentUndelegate): {need: none, headroom: feeHeadroom, guarded: true, again: againDeregister,
 		deposit: func(e *Engine, _ *pendingRec) int64 { return -int64(e.cfg.Build.KeyDeposit) },
 		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, _ *pendingRec) (build.Built, error) {
 			return e.builder.DeregisterStake(ctx, w, sp)
 		}},
 	string(profile.IntentWithdraw): {need: none, headroom: feeHeadroom, deposit: noDeposit,
+		again: []submit.Class{submit.Class(fakechain.WithdrawalsNotInRewards)},
 		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
 			return e.builder.Withdraw(ctx, w, build.Withdrawal{Spend: sp, Amount: p.Amount})
 		}},
@@ -100,6 +115,7 @@ var specs = map[string]spec{
 			return e.builder.DelegateVote(ctx, w, build.VoteDelegation{Spend: sp, DRep: d})
 		}},
 	string(profile.IntentRegisterDRep): {need: func(e *Engine, _ *pendingRec) uint64 { return e.cfg.Build.DRepDeposit }, headroom: feeHeadroom,
+		again:   []submit.Class{submit.Class(fakechain.DRepAlreadyRegistered)},
 		deposit: func(e *Engine, _ *pendingRec) int64 { return int64(e.cfg.Build.DRepDeposit) },
 		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
 			return e.builder.RegisterDRep(ctx, w, build.DRepRegistration{Spend: sp, DRep: e.keys.DRepSigner(keysID(population.ActorID(p.Actor)))})
@@ -110,15 +126,18 @@ var specs = map[string]spec{
 		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, _ *pendingRec) (build.Built, error) {
 			return e.builder.Propose(ctx, w, build.Proposal{Spend: sp})
 		}},
-	string(profile.IntentMint): {need: none, headroom: scriptHeadroom, deposit: noDeposit, build: buildMint},
-	string(profile.IntentBurn): {need: none, headroom: scriptHeadroom, deposit: noDeposit, build: buildMint},
+	string(profile.IntentMint): {need: none, headroom: scriptHeadroom, deposit: noDeposit, build: buildMint, script: true},
+	string(profile.IntentBurn): {need: none, headroom: scriptHeadroom, deposit: noDeposit, build: buildMint, script: true},
 	lockKind: {need: func(_ *Engine, p *pendingRec) uint64 { return p.Amount }, headroom: feeHeadroom,
 		deposit: func(_ *Engine, p *pendingRec) int64 { return 0 },
 		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
 			return e.builder.Lock(ctx, w, build.Lock{Spend: sp, Script: build.AlwaysSucceeds, Amount: p.Amount, Datum: actorDatum(population.ActorID(p.Actor))})
 		}},
-	hotKind:                            {need: none, headroom: feeHeadroom, deposit: noDeposit, build: buildHot},
-	unlockKind:                         {need: none, headroom: scriptHeadroom, deposit: noDeposit, build: buildUnlock},
+	hotKind: {need: none, headroom: feeHeadroom, deposit: noDeposit, build: buildHot},
+	// A landed unlock's script input is gone, so its redeemer and script
+	// witness point at nothing.
+	unlockKind: {need: none, headroom: scriptHeadroom, deposit: noDeposit, build: buildUnlock, script: true,
+		again: []submit.Class{submit.Class(fakechain.ExtraRedeemers), submit.MissingScriptWitnesses}},
 	string(profile.IntentRegisterPool): {need: poolNeed, headroom: feeHeadroom, deposit: poolDeposit, build: buildPool},
 	string(profile.IntentRetirePool): {need: none, headroom: feeHeadroom, guarded: true, deposit: noDeposit,
 		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
@@ -237,9 +256,22 @@ func (e *Engine) prepare(at sched.Time, a population.Actor, in agenda.Intent, r 
 	switch in.Kind {
 	case profile.IntentSend:
 		return e.prepareSend(a, p, r)
+	case profile.IntentRegisterStake:
+		// The view shows only registrations in blocks: a second one sent
+		// beside one in flight fails StakeKeyRegisteredDELEG.
+		if e.view.StakeRegistered(a.ID) || e.registering(a.ID) {
+			return nil, "stake key registered or being registered"
+		}
+	case profile.IntentRegisterDRep:
+		if e.view.DRepRegistered(a.ID) || e.inFlight(a.ID, string(profile.IntentRegisterDRep)) {
+			return nil, "DRep registered or being registered"
+		}
 	case profile.IntentDelegate:
 		if _, ok := e.poolOf(in.Target); !ok {
 			return nil, fmt.Sprintf("actor %d operates no pool", in.Target)
+		}
+		if e.registering(a.ID) {
+			return nil, "stake key being registered"
 		}
 		p.Register = !e.view.StakeRegistered(a.ID)
 	case profile.IntentDelegateDRep:
@@ -278,6 +310,27 @@ func (e *Engine) prepare(at sched.Time, a population.Actor, in agenda.Intent, r 
 		return nil, "no builder for " + string(in.Kind)
 	}
 	return p, ""
+}
+
+// registering reports whether an unfinished intent of the actor registers
+// its stake key.
+func (e *Engine) registering(id population.ActorID) bool {
+	for _, q := range e.pending {
+		if q.Actor == uint64(id) && (q.Kind == string(profile.IntentRegisterStake) || q.Kind == string(profile.IntentDelegate) && q.Register) {
+			return true
+		}
+	}
+	return false
+}
+
+// inFlight reports whether an unfinished intent of the actor has kind.
+func (e *Engine) inFlight(id population.ActorID, kind string) bool {
+	for _, q := range e.pending {
+		if q.Actor == uint64(id) && q.Kind == kind {
+			return true
+		}
+	}
+	return false
 }
 
 func (e *Engine) prepareSend(a population.Actor, p *pendingRec, r *rand.Rand) (*pendingRec, string) {
@@ -386,6 +439,7 @@ func (e *Engine) start(ctx context.Context, at sched.Time, p *pendingRec) (strin
 func (e *Engine) emitSubmitted(at sched.Time, p *pendingRec, built build.Built, inputs []Ref) {
 	e.emit(at, KindSubmitted, population.ActorID(p.Actor), Submitted{
 		Intent: p.ID, ID: p.Tx, To: p.To, Amount: p.Amount, Fee: built.Fee, TTL: p.TTL, Inputs: inputs, Tx: built.Tx, Kind: p.Kind,
+		Mistakes: p.Carried,
 	})
 }
 
@@ -400,17 +454,31 @@ func (e *Engine) attemptOf(ctx context.Context, at sched.Time, p *pendingRec) (b
 	if coins == nil {
 		return build.Built{}, nil, 0, fmt.Sprintf("spendable %d below %d", sumCoins(avail), need), nil
 	}
-	ttl := e.ttl(at, sp.guarded)
+	ttl := e.ttl(at, sp.guarded, sp.script)
 	if ttl == 0 {
 		return build.Built{}, nil, 0, "too close to the epoch boundary", nil
 	}
 	w := e.walletOf(a)
-	built, err := sp.build(ctx, e, w, build.Spend{Inputs: e.ledgerUtxos(w, coins), TTL: ttl}, p)
+	// Only the first attempt is built before any send; it samples the
+	// intent's mistake.
+	first := p.M.Attempts == 0
+	attempt := func() (build.Built, error) {
+		b, err := sp.build(ctx, e, w, build.Spend{Inputs: e.ledgerUtxos(w, coins), TTL: ttl}, p)
+		if err != nil {
+			return b, err
+		}
+		if first {
+			e.sample(p, w, b)
+			first = false
+		}
+		return e.mutate(p, w, b)
+	}
+	built, err := attempt()
 	// A rebuild at the slot of the attempt it replaces, on the same inputs,
 	// is the same transaction; a later TTL makes it a new one.
 	for _, ok := e.byTx[TxID(built.ID)]; err == nil && ok; _, ok = e.byTx[TxID(built.ID)] {
 		ttl++
-		built, err = sp.build(ctx, e, w, build.Spend{Inputs: e.ledgerUtxos(w, coins), TTL: ttl}, p)
+		built, err = attempt()
 	}
 	if err != nil {
 		if ctx.Err() != nil {
@@ -428,10 +496,14 @@ func (e *Engine) attemptOf(ctx context.Context, at sched.Time, p *pendingRec) (b
 // ttl is an attempt's invalid-hereafter slot. A guarded step's ends with
 // the current epoch, so the epoch its effect reaches is known when the
 // guard runs; zero means too little of the epoch is left.
-func (e *Engine) ttl(at sched.Time, guarded bool) uint64 {
+func (e *Engine) ttl(at sched.Time, guarded, script bool) uint64 {
 	// A rebuild runs at a block's time, which can lag the block's own slot.
 	slot := max(e.cfg.Slots.SlotAt(at), e.Tip().Slot)
 	ttl := slot + e.cfg.TTL
+	if script && e.cfg.Horizon > 1 {
+		// The node's tip may trail slot; half the window leaves it room.
+		ttl = min(ttl, e.Tip().Slot+e.cfg.Horizon/2)
+	}
 	if !guarded {
 		return ttl
 	}

@@ -15,6 +15,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
+	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 	"github.com/chrisguiney/cardano-continuum/internal/plan"
 	"github.com/chrisguiney/cardano-continuum/internal/policy"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
@@ -169,6 +170,17 @@ type Engine struct {
 	// pools maps each pool actor to the pool it operates.
 	pools map[population.ActorID][28]byte
 
+	// findings are the oracle findings logged so far, monitors the
+	// invariant checks, genesis the lovelace value conservation counts
+	// from and lost what settled payments sent to wrong addresses. seq is
+	// the input being handled and ends the intents it ended.
+	findings *oracle.Set
+	monitors []oracle.Monitor
+	genesis  uint64
+	lost     uint64
+	seq      uint64
+	ends     []oracle.End
+
 	out []eventlog.Record
 }
 
@@ -259,6 +271,14 @@ func newEmpty(cfg Config) (*Engine, error) {
 	if e.guard, err = policy.New(cfg.floor()); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrConfig, err)
 	}
+	e.findings, e.monitors = oracle.NewSet(), oracle.Monitors(cfg.K, e.guard)
+	funds, err := cfg.Genesis()
+	if err != nil {
+		return nil, err
+	}
+	for _, f := range funds {
+		e.genesis += f.Lovelace
+	}
 	if err := e.book.AddAddress(build.AlwaysSucceeds.Address(cfg.NetworkID), scriptActor); err != nil {
 		return nil, fmt.Errorf("engine: book: %w", err)
 	}
@@ -294,7 +314,8 @@ func newEmpty(cfg Config) (*Engine, error) {
 // Handle implements eventlog.Engine: it applies one input and returns the
 // decisions it caused, in order.
 func (e *Engine) Handle(ctx context.Context, in eventlog.Record) ([]eventlog.Record, error) {
-	e.out = nil
+	e.out, e.ends, e.seq = nil, nil, in.Seq
+	from := e.conf
 	var err error
 	switch in.Kind {
 	case eventlog.KindTick:
@@ -310,13 +331,17 @@ func (e *Engine) Handle(ctx context.Context, in eventlog.Record) ([]eventlog.Rec
 				return nil, fmt.Errorf("engine: decode block content: %w", err)
 			}
 		}
-		err = e.applyBlock(ctx, in.At, blockRec{Point: b.Point, Txs: c.Txs, Number: c.Number})
+		if err = e.applyBlock(ctx, in.At, blockRec{Point: b.Point, Txs: c.Txs, Number: c.Number}); err == nil {
+			err = e.watch(in.At, from, nil)
+		}
 	case eventlog.KindRolledBack:
 		var b eventlog.RolledBack
 		if err = eventlog.Decode(in.Body, &b); err != nil {
 			return nil, fmt.Errorf("engine: decode rollback: %w", err)
 		}
-		err = e.rollback(ctx, b.To)
+		if err = e.rollback(ctx, b.To); err == nil {
+			err = e.watch(in.At, from, nil)
+		}
 	case eventlog.KindControl:
 		var c control
 		if err = eventlog.Decode(in.Body, &c); err != nil {
@@ -329,6 +354,12 @@ func (e *Engine) Handle(ctx context.Context, in eventlog.Record) ([]eventlog.Rec
 			return nil, fmt.Errorf("engine: decode pool status: %w", err)
 		}
 		err = e.poolStatus(ctx, in.At, s)
+	case eventlog.KindMonitorSnapshot:
+		var m MonitorSnapshot
+		if err = eventlog.Decode(in.Body, &m); err != nil {
+			return nil, fmt.Errorf("engine: decode monitor snapshot: %w", err)
+		}
+		err = e.monitorSnapshot(in.At, from, m)
 	case eventlog.KindSubmitResult:
 		var r SubmitResult
 		if err = eventlog.Decode(in.Body, &r); err != nil {
@@ -609,6 +640,13 @@ func (e *Engine) submitResult(ctx context.Context, at sched.Time, r SubmitResult
 		return e.dropped(ctx, at, r)
 	}
 	if p.Refill {
+		out, err := outcomeOf(r)
+		if err != nil {
+			return err
+		}
+		if err := e.judge(at, p, r, out); err != nil {
+			return err
+		}
 		return e.refillResult(ctx, at, p, r)
 	}
 	out, err := outcomeOf(r)
@@ -618,6 +656,9 @@ func (e *Engine) submitResult(ctx context.Context, at sched.Time, r SubmitResult
 	if r.Resend {
 		// The process that died before logging may have sent these bytes.
 		p.M.Sent = true
+	}
+	if err := e.judge(at, p, r, out); err != nil {
+		return err
 	}
 	return e.apply(ctx, at, p, submit.Answered{Out: out}, reasonOf(r))
 }
@@ -649,6 +690,7 @@ func (e *Engine) release(ctx context.Context, at sched.Time, dead []plan.TxID, w
 			}
 		}
 		e.dropPending(id)
+		e.ended(id, TxID(tx), true)
 		e.emit(at, KindReleased, population.ActorID(p.Actor), Released{Intent: id, Why: w})
 	}
 	return nil
@@ -713,7 +755,11 @@ func (e *Engine) applyBlock(ctx context.Context, at sched.Time, b blockRec) erro
 				return err
 			}
 			e.dropPending(id)
-			e.emit(at, KindConfirmed, population.ActorID(p.Actor), Confirmed{Intent: id, ID: TxID(tx)})
+			// Every attempt carries a WrongAddress mistake (it has no
+			// fix), so the current one's loss is the settled one's.
+			e.lost += p.Lost
+			e.ended(id, TxID(tx), false)
+			e.emit(at, KindConfirmed, population.ActorID(p.Actor), Confirmed{Intent: id, ID: TxID(tx), Lost: p.Lost})
 			if err := e.settle(at, p, TxID(tx)); err != nil {
 				return err
 			}

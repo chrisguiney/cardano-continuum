@@ -13,6 +13,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
+	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 )
 
@@ -70,6 +71,9 @@ func (f *FakeNode) Dropped() []TxID {
 	f.evicted = len(ev)
 	return out
 }
+
+// Identity implements Identifier.
+func (f *FakeNode) Identity() oracle.Node { return oracle.Node{Impl: "fakechain", Pool: "fakechain"} }
 
 // Submit implements Node.
 func (f *FakeNode) Submit(ctx context.Context, tx []byte) error {

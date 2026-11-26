@@ -14,6 +14,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
+	"github.com/chrisguiney/cardano-continuum/internal/mistake"
 	"github.com/chrisguiney/cardano-continuum/internal/plan"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
@@ -26,7 +27,7 @@ func blake2b256(b []byte) common.Blake2b256 { return common.Blake2b256Hash(b) }
 // Snapshot implements eventlog.Engine: the whole state in canonical CBOR,
 // the ledger's blob included.
 func (e *Engine) Snapshot() ([]byte, error) {
-	s := snapshot{Version: snapshotVersion, Now: e.now, NextIntent: e.nextID, Conf: e.conf, Fees: e.fees, Foreign: e.foreign, RefillAt: e.refillAt, Deposits: e.deposits, Market: e.market}
+	s := snapshot{Version: snapshotVersion, Now: e.now, NextIntent: e.nextID, Conf: e.conf, Fees: e.fees, Foreign: e.foreign, RefillAt: e.refillAt, Deposits: e.deposits, Market: e.market, Lost: e.lost}
 	for _, id := range e.order {
 		a, _ := e.census.Get(id)
 		st := e.actors[id]
@@ -87,7 +88,7 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 		return nil, err
 	}
 	e.now, e.nextID, e.conf, e.fees, e.foreign, e.deposits = s.Now, s.NextIntent, s.Conf, s.Fees, s.Foreign, s.Deposits
-	e.market, e.stalled = s.Market, s.Stalled
+	e.market, e.stalled, e.lost = s.Market, s.Stalled, s.Lost
 	e.paused, e.rateK, e.waves, e.adoptions = s.Paused, s.RateK, s.Waves, s.Adoptions
 	if len(s.Weights) > 0 {
 		e.weights = map[profile.IntentKind]float64{}
@@ -224,10 +225,20 @@ func (e *Engine) restoreActor(r actorRec) error {
 	return nil
 }
 
-// ledgerUtxos turns coins into the outputs the builder spends.
+// ledgerUtxos turns coins into the outputs the builder spends. The ledger
+// knows only lovelace; the view holds each output as the block carried it,
+// so an input holding tokens hands them to the builder, which returns them
+// in the change. Spending a token as plain lovelace leaves the
+// transaction's value unbalanced (ValueNotConservedUTxO). A coin the view
+// lacks is the change of an attempt not yet in a block, built from
+// lovelace-only inputs.
 func (e *Engine) ledgerUtxos(w keys.Wallet, coins []Coin) []common.Utxo {
 	out := make([]common.Utxo, len(coins))
 	for i, c := range coins {
+		if u, ok := e.view.Utxo(chain.Ref{Tx: chain.TxID(c.Ref.Tx), Index: c.Ref.Index}); ok {
+			out[i] = u
+			continue
+		}
 		out[i] = ownedUtxo(w.Address(), c.Ref, c.Lovelace)
 	}
 	return out
@@ -314,6 +325,9 @@ func (e *Engine) Balances() map[uint64]uint64 {
 	return out
 }
 
+// Lost is the lovelace settled payments sent to addresses nobody holds.
+func (e *Engine) Lost() uint64 { return e.lost }
+
 // Supply is everything the settled state accounts for: owned outputs, fees,
 // outputs to addresses outside the population (locked script outputs among
 // them) and the deposits the engine's certificates and proposals hold. It
@@ -342,12 +356,14 @@ func (e *Engine) IntentOf(tx TxID) (uint64, bool) {
 // Pending is the number of payments not yet confirmed or released.
 func (e *Engine) Pending() int { return len(e.pending) }
 
-// Submission is a payment waiting for the node's answer.
+// Submission is a payment waiting for the node's answer. Twice asks for the
+// bytes to be sent a second time (a DoubleSubmit mistake).
 type Submission struct {
 	Intent uint64
 	Actor  uint64
 	ID     TxID
 	Tx     []byte
+	Twice  bool
 }
 
 // InFlight returns the payments decided but not yet answered by the node,
@@ -360,7 +376,7 @@ func (e *Engine) InFlight() []Submission {
 		if p.NotBefore > e.now {
 			continue
 		}
-		out = append(out, Submission{Intent: id, Actor: p.Actor, ID: p.Tx, Tx: p.Cbor})
+		out = append(out, Submission{Intent: id, Actor: p.Actor, ID: p.Tx, Tx: p.Cbor, Twice: p.Carried.Has(mistake.DoubleSubmit)})
 	}
 	return out
 }

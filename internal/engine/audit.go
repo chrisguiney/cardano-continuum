@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
+	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 )
 
 // Tally is what a log says about payments.
@@ -27,6 +28,14 @@ type Tally struct {
 	// Guarded counts the stake-floor guard's refusals, Incidents the stall
 	// incidents.
 	Guarded, Incidents int
+	// Rejections counts the classes nodes named in rejections, every send
+	// and a DoubleSubmit's second one included.
+	Rejections map[string]int
+	// Findings counts the oracle's findings, Fatal those of fatal
+	// severity; Lost is the lovelace settled payments sent to wrong
+	// addresses.
+	Findings, Fatal int
+	Lost            uint64
 }
 
 // Audit folds decision records into a Tally. The zero value is ready.
@@ -41,14 +50,27 @@ type Audit struct {
 
 // Add folds one record. Inputs and other decisions are ignored.
 func (a *Audit) Add(rec eventlog.Record) error {
-	if rec.Class != eventlog.Decision {
-		return nil
-	}
 	if a.seen == nil {
 		a.seen, a.ended, a.refills = map[uint64]bool{}, map[uint64]bool{}, map[uint64]bool{}
 		a.kind, a.Settled = map[uint64]string{}, map[string]int{}
 	}
+	if rec.Class == eventlog.Input && rec.Kind == eventlog.KindSubmitResult {
+		return a.rejections(rec)
+	}
+	if rec.Class != eventlog.Decision {
+		return nil
+	}
 	switch rec.Kind {
+	case oracle.KindFinding:
+		f, err := oracle.Decode(rec)
+		if err != nil {
+			return fmt.Errorf("engine: audit seq %d: %w", rec.Seq, err)
+		}
+		a.Findings++
+		if f.Severity == oracle.Fatal {
+			a.Fatal++
+		}
+		return nil
 	case KindGuarded:
 		a.Guarded++
 		return nil
@@ -77,10 +99,12 @@ func (a *Audit) Add(rec eventlog.Record) error {
 			a.Payments++
 		}
 	case KindConfirmed:
-		id, err := intentOf(rec)
-		if err != nil {
-			return err
+		var c Confirmed
+		if err := eventlog.Decode(rec.Body, &c); err != nil {
+			return fmt.Errorf("engine: audit seq %d: %w", rec.Seq, err)
 		}
+		id := c.Intent
+		a.Lost += c.Lost
 		a.Confirmed++
 		if !a.refills[id] {
 			a.Paid++
@@ -99,6 +123,27 @@ func (a *Audit) Add(rec eventlog.Record) error {
 		}
 		a.Released++
 		a.ended[id] = true
+	}
+	return nil
+}
+
+func (a *Audit) rejections(rec eventlog.Record) error {
+	var r SubmitResult
+	if err := eventlog.Decode(rec.Body, &r); err != nil {
+		return fmt.Errorf("engine: audit seq %d: %w", rec.Seq, err)
+	}
+	var cs []string
+	if r.Verdict == VerdictRejected {
+		cs = append(cs, r.Failures...)
+	}
+	if r.Again != nil && r.Again.Verdict == VerdictRejected {
+		cs = append(cs, r.Again.Failures...)
+	}
+	for _, c := range cs {
+		if a.Rejections == nil {
+			a.Rejections = map[string]int{}
+		}
+		a.Rejections[c]++
 	}
 	return nil
 }

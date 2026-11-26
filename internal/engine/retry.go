@@ -77,6 +77,7 @@ func (e *Engine) carry(ctx context.Context, at sched.Time, p *pendingRec, m subm
 	// A nested apply (a diagnosis) may have released the payment already.
 	if p.M.State == submit.GaveUp && len(p.Txs) == 0 && e.pending[p.ID] == p {
 		e.dropPending(p.ID)
+		e.ended(p.ID, p.Tx, true)
 		e.emit(at, KindReleased, population.ActorID(p.Actor), Released{Intent: p.ID, Why: "gave up"})
 	}
 	return nil
@@ -103,7 +104,7 @@ func (e *Engine) act1(ctx context.Context, at sched.Time, p *pendingRec, act sub
 		return e.refuse(ctx, at, p, plan.TxID(act.Tx), why)
 	case submit.Diagnose:
 		a, _ := e.census.Get(population.ActorID(p.Actor))
-		c := e.diag.Diagnose(e.draw(a, e.actors[a.ID], "diagnose"), act.Failures)
+		c := e.diagnoser(a).Diagnose(e.draw(a, e.actors[a.ID], "diagnose"), act.Failures)
 		return e.apply(ctx, at, p, submit.Diagnosed{Class: c}, why)
 	case submit.BuildAttempt:
 		ev, err := e.rebuild(ctx, at, p)

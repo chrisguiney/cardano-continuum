@@ -4,6 +4,8 @@ import (
 	"bytes"
 
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
+	"github.com/chrisguiney/cardano-continuum/internal/mistake"
+	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/submit"
 )
@@ -165,6 +167,25 @@ type SubmitResult struct {
 	Failures []string `cbor:"5,keyasint,omitempty"`
 	// Tx is the attempt a drop notice is about.
 	Tx *TxID `cbor:"6,keyasint,omitempty"`
+	// Node is the node that answered, for the oracle's findings.
+	Node *oracle.Node `cbor:"7,keyasint,omitempty"`
+	// Again is the node's answer to the second send of a DoubleSubmit
+	// mistake. The retry machine reads only the first answer; the oracle
+	// judges both.
+	Again *Answer `cbor:"8,keyasint,omitempty"`
+}
+
+// Answer is one node answer to one send.
+type Answer struct {
+	Verdict  Verdict  `cbor:"1,keyasint"`
+	Failures []string `cbor:"2,keyasint,omitempty"`
+}
+
+// MonitorSnapshot is the body of a MonitorSnapshot input: what the runner
+// asked the nodes for the invariant monitors. The engine adds its own side
+// (each view's At and Engine balances) when it handles the input.
+type MonitorSnapshot struct {
+	Views []oracle.ViewCheck `cbor:"1,keyasint,omitempty"`
 }
 
 // Spawned is the body of a Spawned decision.
@@ -194,6 +215,8 @@ type Submitted struct {
 	// Kind is the intent kind; empty for a payment. To is then the pool,
 	// DRep or nobody the intent names, Amount its quantity.
 	Kind string `cbor:"9,keyasint,omitempty"`
+	// Mistakes are the honest mistakes the attempt carries.
+	Mistakes mistake.KindSet `cbor:"10,keyasint,omitempty"`
 }
 
 // Refill is the body of a Refill decision: the faucet pays To[i]
@@ -242,14 +265,16 @@ type GaveUp struct {
 	Intent uint64 `cbor:"1,keyasint"`
 }
 
-// Confirmed is the body of a Confirmed decision: a payment is K deep.
+// Confirmed is the body of a Confirmed decision: a payment is K deep. Lost
+// is the lovelace it paid to an address nobody holds (WrongAddress).
 type Confirmed struct {
 	Intent uint64 `cbor:"1,keyasint"`
 	ID     TxID   `cbor:"2,keyasint"`
+	Lost   uint64 `cbor:"3,keyasint,omitempty"`
 }
 
 // snapshotVersion is bumped whenever snapshot's shape changes.
-const snapshotVersion = 5
+const snapshotVersion = 6
 
 // logFormat is the version of the engine's input and decision bodies. It is
 // part of the log header's genesis fingerprint, so a log written in another
@@ -290,6 +315,8 @@ type snapshot struct {
 	// View is the chain view at the confirmed point; the window is replayed
 	// onto it on restore.
 	View viewRec `cbor:"13,keyasint"`
+	// Lost is the lovelace settled payments sent to wrong addresses.
+	Lost uint64 `cbor:"26,keyasint,omitempty"`
 }
 
 // ledgerBlob is the planner ledger's store.Blob.
@@ -362,6 +389,12 @@ type pendingRec struct {
 	// makes a pool registration a re-registration.
 	Register bool `cbor:"18,keyasint,omitempty"`
 	Update   bool `cbor:"19,keyasint,omitempty"`
+	// Injected is the mistake sampled for the intent; Carried those the
+	// current attempt carries (Injected less every fix so far), and Lost
+	// what the current attempt pays to a wrong address.
+	Injected mistake.KindSet `cbor:"20,keyasint,omitempty"`
+	Carried  mistake.KindSet `cbor:"21,keyasint,omitempty"`
+	Lost     uint64          `cbor:"22,keyasint,omitempty"`
 }
 
 func samePoint(a, b eventlog.ChainPoint) bool {

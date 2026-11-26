@@ -31,6 +31,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
+	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 	"github.com/chrisguiney/cardano-continuum/internal/policy"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
@@ -112,6 +113,20 @@ type Config struct {
 	// Committee is the number of genesis constitutional committee members,
 	// the run seed's keystore.Committee(0..Committee-1).
 	Committee int
+
+	// Mistakes makes actors err (internal/mistake): each intent samples
+	// one honest mistake from the actor's competence and care, every
+	// attempt carries it until a fix removes it, and a rejection is read
+	// by an actor of that competence. Off, every attempt is as built.
+	Mistakes bool
+	// Horizon is the stability window 3k/f in slots: a node translates a
+	// script transaction's validity interval to time only within it, and
+	// answers PastHorizon beyond. A script attempt's TTL stays inside it;
+	// zero means no bound.
+	Horizon uint64
+	// Run names the run in each oracle finding's replay command. Findings
+	// are decisions, so a replay must use the same Run.
+	Run oracle.Run
 }
 
 // Fund is one genesis output.
@@ -259,7 +274,9 @@ func (c *Config) Header() (eventlog.HeaderBody, error) {
 		GStake     uint64        `cbor:"18,keyasint,omitempty"`
 		Scale      float64       `cbor:"19,keyasint,omitempty"`
 		Committee  int           `cbor:"20,keyasint,omitempty"`
-	}{Committee: c.Committee, GPools: c.GenesisPools, GStake: c.GenesisPoolStake, NOpt: c.NOpt, GovLife: c.GovLifetime, Floor: c.floor().Floor, Margin: c.floor().Margin, SimPods: c.SimulatedPods, Format: logFormat, K: c.K, BlockEvery: c.BlockEvery, NetworkID: c.NetworkID, SlotMs: c.Slots.SlotStart(1),
+		Mistakes   bool          `cbor:"21,keyasint,omitempty"`
+		Horizon    uint64        `cbor:"22,keyasint,omitempty"`
+	}{Mistakes: c.Mistakes, Horizon: c.Horizon, Committee: c.Committee, GPools: c.GenesisPools, GStake: c.GenesisPoolStake, NOpt: c.NOpt, GovLife: c.GovLifetime, Floor: c.floor().Floor, Margin: c.floor().Margin, SimPods: c.SimulatedPods, Format: logFormat, K: c.K, BlockEvery: c.BlockEvery, NetworkID: c.NetworkID, SlotMs: c.Slots.SlotStart(1),
 		EpochMs: c.Slots.EpochStart(1), TTL: c.TTL, Build: c.Build, Retry: c.retry(), Refill: c.RefillEvery}
 	if c.Scale != 0 && c.Scale != 1 {
 		g.Scale = c.Scale
