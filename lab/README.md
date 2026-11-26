@@ -53,6 +53,33 @@ docker run --rm -v $PWD/lab:/work/lab -v $PWD/profiles:/work/profiles:ro \
   -m pytest -q -p no:cacheprovider /work/lab/tests/test_notebook.py --guide-real
 ```
 
+## Code map
+
+The code is written to be read. Each estimator's docstring gives its formula,
+the intuition, its assumption and what can go wrong; every tuning constant
+has a comment saying why that value and how sensitive results are to it.
+
+| file | what it holds |
+|---|---|
+| `fit.py` | CLI and flow of a fit: measure, cluster, fit, write |
+| `grade.py` | CLI and flow of a grade: load target, measure run, compare, report |
+| `cardano.py` | lovelace/ADA, slots/seconds, the 2 ADA pile |
+| `units.py` | address to unit (stake credential), pure |
+| `population_stats.py` | the named statistics (`Stats`) with unit, meaning and purpose |
+| `chain_stats.py` | DuckDB SQL over mithril2pq tables to `Stats` |
+| `engine_stats.py` | DuckDB SQL over a `continuum export` to `Stats` |
+| `unit_features.py` | the per-unit feature table, documented column by column |
+| `estimators.py` | log-normal, Pareto, truncated log-normal, body + tail, beta fits, pure |
+| `population_fit.py` | `Stats` to every number of a profile, pure |
+| `profile_yaml.py` | fitted numbers to profile YAML and target JSON, pure |
+| `cluster.py` | segments, Gaussian mixture, BIC, elbow, names, pure |
+| `compare.py` | KS distance, total variation, pass bounds, pure |
+| `report.py` | the Markdown grade report, pure |
+| `guide_lib.py`, `guide_figures.py` | toy models, data and figures for the notebooks |
+| `make_fixtures.py` | regenerates `tests/fixtures` |
+
+"Pure" files do no I/O and are tested with plain arrays.
+
 ## Statistics
 
 | name | meaning | test |
@@ -99,7 +126,7 @@ python fit.py /data/chain --out /work/out --clusters --network preprod \
    components, so BIC never converged; script and staking use are categorical
    segments instead, and address reuse is left out of the mixture (it is still
    fitted per cluster as the `care` trait).
-4. The remaining units get seven continuous features (`units.py`,
+4. The remaining units get seven continuous features (`unit_features.py`,
    `cluster.py`): tx/day, median gap, median payment value, inputs and outputs
    per tx, active days, longest dormancy, all log10-transformed and
    standardised.
@@ -157,7 +184,7 @@ is not a payment.
 | `traits.patience` pareto | inter-tx gaps above their median (seconds) |
 | `amount` | payment values: log-normal body up to the 90th percentile (truncated-likelihood fit) and a Pareto tail above it; `tail_share` is the share of payments above it, and the tail is left out when none is |
 | `budget` | 20 times the tail scale, between 100 ADA and 1M ADA |
-| `rates.base.send` | the 10th percentile of per-unit tx counts, as a rate over the active share of the window, divided by the chance a hodl wake-up is a payment (see `HODL_SEND_SCORE` in `fit.py`) |
+| `rates.base.send` | the 10th percentile of per-unit tx counts, as a rate over the active share of the window, divided by the chance a hodl wake-up is a payment (see `HODL_SEND_SCORE` in `population_fit.py`) |
 | `rates.activity_tail` | Pareto index of per-unit tx counts above that percentile, at least 1.05 |
 | `weights` | tx type mix: send, script_call, delegate, register_pool (the engine runs only send) |
 | `hazards.dormancy` lognormal | gaps over one day (seconds) |
