@@ -21,6 +21,23 @@
 //	wrong_datum      ValidationTagMismatch        yes       collateral and phase 2
 //	double_submit    none: accepted once          no: same bytes
 //	wrong_address    none: accepted, funds lost   yes       outputs
+//	exunits_over_declared  ExUnitsTooBigUTxO      yes       collateral and phase 2
+//	exunits_under_declared none: phase-2 invalid, collateral taken  yes  (withheld)
+//
+// exunits_over_declared declares one memory unit past maxBlockExUnits, as a
+// wallet copying a block budget or adding a large safety margin would. On
+// a consistent genesis that is past maxTxExUnits too, a phase-1
+// ExUnitsTooBigUTxO (cardano-ledger Alonzo/Rules/Utxo.hs
+// validateExUnitsTooBigUTxO, at 226b002d). On a genesis whose
+// per-transaction budget exceeds the per-block one (the opt-in
+// exunits-block-gap devnet) it passes admission and can never be forged:
+// ExpectOn then admits acceptance, the transaction stays in a mempool until
+// it expires, and the actor's retries or patience take over.
+//
+// exunits_under_declared declares a tenth of the measured units and flags
+// the transaction phase-2 invalid, so a block takes its collateral. It is
+// withheld (Withheld): the fake chain does not yet model collateral
+// collection for phase-2-invalid transactions and refuses them.
 //
 // The rules are the "Mistakes and expected verdicts" section of
 // models/specs/submit-retry/README.md: the expected verdict is a set, one
@@ -34,6 +51,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/submit"
 )
 
@@ -68,6 +86,12 @@ const (
 	// WrongAddress pays someone nobody holds the key for. The ledger
 	// accepts it; the funds are lost.
 	WrongAddress
+	// ExUnitsOverDeclared declares more execution units than a block
+	// holds.
+	ExUnitsOverDeclared
+	// ExUnitsUnderDeclared declares too few and flags the transaction
+	// phase-2 invalid.
+	ExUnitsUnderDeclared
 	numKinds
 )
 
@@ -94,7 +118,18 @@ var catalog = [numKinds]entry{
 	WrongDatum:      {"wrong_datum", submit.ValidationTagMismatch, true, true},
 	DoubleSubmit:    {"double_submit", "", false, false},
 	WrongAddress:    {"wrong_address", "", true, false},
+
+	ExUnitsOverDeclared:  {"exunits_over_declared", submit.ExUnitsTooBig, true, true},
+	ExUnitsUnderDeclared: {"exunits_under_declared", "", true, true},
 }
+
+// withheld are the mistakes the engine never samples, with why.
+var withheld = map[Kind]string{
+	ExUnitsUnderDeclared: "phase-2-invalid transactions need collateral collection, which the fake chain does not model yet",
+}
+
+// Withheld returns why the engine must not sample k, or "".
+func Withheld(k Kind) string { return withheld[k] }
 
 func (k Kind) String() string {
 	if k < numKinds {
@@ -241,6 +276,30 @@ func Expect(ks KindSet, spent bool) Expected {
 	slices.Sort(e.Classes)
 	e.Classes = slices.Compact(e.Classes)
 	return e
+}
+
+// ExpectOn is Expect on a network with protocol parameters p. An
+// over-declaration that fits maxTxExUnits (a genesis whose per-transaction
+// budget exceeds the per-block one) passes admission, so a node may accept
+// it; one that refuses it as too big for a block names ExUnitsTooBigUTxO.
+func ExpectOn(ks KindSet, spent bool, p build.Params) Expected {
+	if !ks.Has(ExUnitsOverDeclared) || !overFits(p) {
+		return Expect(ks, spent)
+	}
+	e := Expect(ks.Without(Of(ExUnitsOverDeclared)), spent)
+	e.Classes = append(e.Classes, submit.ExUnitsTooBig)
+	slices.Sort(e.Classes)
+	e.Classes = slices.Compact(e.Classes)
+	return e
+}
+
+// overDeclared is the memory an over-declaration declares in total: one
+// unit past the block's budget.
+func overDeclared(p build.Params) int64 { return p.MaxBlockExUnits.Memory + 1 }
+
+// overFits reports whether the over-declaration fits maxTxExUnits.
+func overFits(p build.Params) bool {
+	return p.MaxBlockExUnits.Memory > 0 && overDeclared(p) <= p.MaxTxExUnits.Memory
 }
 
 // Allows reports whether c is an expected class.

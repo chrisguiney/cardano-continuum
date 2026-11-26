@@ -380,7 +380,7 @@ func (e *Engine) grab(ctx context.Context, at sched.Time, id population.ActorID,
 	ref := Ref{Tx: TxID(step.Spend.Ref.Tx), Index: step.Spend.Ref.Index}
 	s := shot{rec: pendingRec{Kind: unlockKind, Locked: &ref, Amount: step.Spend.Lovelace}, ttl: e.ttl(at, false, true)}
 	// The honest spend it races may land first.
-	s.want = expect(0, true, specs[unlockKind].again)
+	s.want = expect(e.cfg.Build, 0, true, specs[unlockKind].again)
 	coins, why := e.fund(id, intent, scriptHeadroom)
 	if why != "" {
 		return shot{}, why, nil

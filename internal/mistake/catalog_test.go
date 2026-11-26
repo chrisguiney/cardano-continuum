@@ -195,6 +195,9 @@ func runCatalog(t *testing.T, wd *world) []result {
 	})
 	var out []result
 	for _, k := range order {
+		if Withheld(k) != "" {
+			continue
+		}
 		out = append(out, wd.row(t, k))
 	}
 	return out

@@ -28,6 +28,8 @@ func TestCatalogClasses(t *testing.T) {
 		MissingSigner:   submit.MissingVKeyWitnesses,
 		WrongNetwork:    submit.WrongNetwork,
 		WrongDatum:      submit.ValidationTagMismatch,
+		// cardano-ledger Alonzo/Rules/Utxo.hs validateExUnitsTooBigUTxO.
+		ExUnitsOverDeclared: submit.ExUnitsTooBig,
 	}
 	for _, k := range Kinds() {
 		c, ok := ClassOf(k)
@@ -36,8 +38,8 @@ func TestCatalogClasses(t *testing.T) {
 			t.Errorf("ClassOf(%v) = %q, %v; want %q, %v", k, c, ok, w, rejects)
 		}
 	}
-	if len(Kinds()) != 11 {
-		t.Fatalf("catalog has %d kinds, want 11", len(Kinds()))
+	if len(Kinds()) != 13 {
+		t.Fatalf("catalog has %d kinds, want 13", len(Kinds()))
 	}
 }
 

@@ -49,10 +49,21 @@ func (e *Engine) sample(p *pendingRec, w keys.Wallet, built build.Built) {
 	t := profile.SampledTraits{Competence: a.Competence, Care: a.Traits.Care}
 	// The engine's scripts (build.AlwaysSucceeds, build.FreeMint) accept
 	// any redeemer, so a wrong one is no mistake: the node rightly
-	// accepts it.
-	ok := mistake.Applicable(built.Tx, e.mistakeCtx(p, w)).Without(mistake.Of(mistake.WrongDatum))
+	// accepts it. Withheld mistakes cannot run yet (mistake.Withheld).
+	ok := mistake.Applicable(built.Tx, e.mistakeCtx(p, w)).Without(withheldKinds)
 	p.Injected = mistake.Sample(t, ok, a.Stream("mistake", strconv.FormatUint(p.ID, 10)))
 }
+
+// withheldKinds are the mistakes the engine never samples.
+var withheldKinds = func() mistake.KindSet {
+	s := mistake.Of(mistake.WrongDatum)
+	for _, k := range mistake.Kinds() {
+		if mistake.Withheld(k) != "" {
+			s |= mistake.Of(k)
+		}
+	}
+	return s
+}()
 
 // mutate makes the mistakes the attempt carries in the honest built. A
 // mistake that this attempt's shape does not allow (its rebuild lost the
@@ -121,7 +132,7 @@ func (e *Engine) judge(at sched.Time, p *pendingRec, r SubmitResult, out submit.
 	}
 	// An adversary racing for the same shared output may have spent it.
 	spent := p.M.Sent || len(p.Txs) > 1 || (p.Locked != nil && e.contested[*p.Locked])
-	want := expect(p.Carried, spent, specs[p.kindOf()].again)
+	want := expect(e.cfg.Build, p.Carried, spent, specs[p.kindOf()].again)
 	if p.Probe {
 		// The probe's honest bytes break only the GOV rule's voter check.
 		want.Accept = false
@@ -140,20 +151,20 @@ func (e *Engine) judge(at sched.Time, p *pendingRec, r SubmitResult, out submit.
 		fs = append(fs, f)
 	}
 	if r.Again != nil {
-		again := expect(p.Carried, true, specs[p.kindOf()].again)
+		again := expect(e.cfg.Build, p.Carried, true, specs[p.kindOf()].again)
 		a.Expected, a.Answers = &again, []oracle.Answer{{Node: node, Outcome: answerOutcome(*r.Again)}}
 		fs = append(fs, oracle.Judge(a, e.cfg.Run)...)
 	}
 	return e.report(at, fs)
 }
 
-// expect is mistake.Expect, plus the classes a node names beside "inputs
+// expect is mistake.ExpectOn the run's parameters, plus the classes a node names beside "inputs
 // spent" when the attempt's own earlier copy already landed: its
 // certificates are applied, so applying them again fails their rule too
 // (cardano-ledger runs the CERTS rule on the inputs it still holds and
 // accumulates both failures, as it does ValueNotConserved).
-func expect(ks mistake.KindSet, spent bool, again []submit.Class) mistake.Expected {
-	e := mistake.Expect(ks, spent)
+func expect(pp build.Params, ks mistake.KindSet, spent bool, again []submit.Class) mistake.Expected {
+	e := mistake.ExpectOn(ks, spent, pp)
 	if !spent {
 		return e
 	}

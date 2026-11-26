@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/blinklabs-io/gouroboros/ledger/common"
+	"github.com/blinklabs-io/gouroboros/ledger/conway"
 
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
@@ -44,6 +45,12 @@ const fund = 1_000_000_000
 
 func fakeWorld(t testing.TB) (*world, *fakechain.Chain) {
 	t.Helper()
+	return fakeWorldOn(t, fakechain.DefaultParams())
+}
+
+// fakeWorldOn is fakeWorld on a chain with protocol parameters pp.
+func fakeWorldOn(t testing.TB, pp conway.ConwayProtocolParameters) (*world, *fakechain.Chain) {
+	t.Helper()
 	store, err := keys.New(rng.Seed{9}, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -54,13 +61,12 @@ func fakeWorld(t testing.TB) (*world, *fakechain.Chain) {
 	}
 	alice := store.Wallet(1)
 	c, err := fakechain.New(fakechain.Config{
-		Slots: slots, K: 3, BlockEvery: 2,
+		Slots: slots, K: 3, BlockEvery: 2, Params: &pp,
 		Genesis: []fakechain.GenesisOutput{{Address: alice.Address(), Lovelace: fund}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	pp := fakechain.DefaultParams()
 	p := build.ParamsFromConway(&pp, 0)
 	p.SystemStart, p.SlotLength = time.Unix(0, 0).UTC(), time.Second
 	return &world{

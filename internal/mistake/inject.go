@@ -67,7 +67,12 @@ const (
 
 // structural are the mistakes that edit the transaction before the fee is
 // settled, in the order they are made.
-var structural = []Kind{StaleInput, OutputTooSmall, Expired, WrongNetwork, WrongAddress, ExUnitsLow, WrongDatum}
+var structural = []Kind{StaleInput, OutputTooSmall, Expired, WrongNetwork, WrongAddress, ExUnitsLow, WrongDatum,
+	ExUnitsOverDeclared, ExUnitsUnderDeclared}
+
+// budgetEdits are the mistakes that edit redeemers, so the script data
+// hash is recomputed.
+var budgetEdits = Of(ExUnitsLow, WrongDatum, ExUnitsOverDeclared, ExUnitsUnderDeclared)
 
 // Inject makes the mistakes ks in tx, a correct Conway transaction from
 // internal/build, and returns the mutant with the verdict a node must give
@@ -80,7 +85,7 @@ var structural = []Kind{StaleInput, OutputTooSmall, Expired, WrongNetwork, Wrong
 // with Expect(ks, true). Inject is pure.
 func Inject(tx []byte, ks KindSet, c Ctx) ([]byte, Expected, error) {
 	ks &= Of(Kinds()...)
-	want := Expect(ks, false)
+	want := ExpectOn(ks, false, c.Params)
 	m, err := parse(tx, c)
 	if err != nil {
 		return nil, Expected{}, err
@@ -93,12 +98,12 @@ func Inject(tx []byte, ks KindSet, c Ctx) ([]byte, Expected, error) {
 			return nil, Expected{}, fmt.Errorf("mistake: %v: %w", k, err)
 		}
 	}
-	if ks.Has(ExUnitsLow) || ks.Has(WrongDatum) {
+	if ks&budgetEdits != 0 {
 		if err := m.rehash(); err != nil {
 			return nil, Expected{}, err
 		}
 	}
-	if err := m.settle(ks.Has(FeeTooSmall), ks.Has(CollateralShort)); err != nil {
+	if err := m.settle(ks.Has(FeeTooSmall), ks.Has(CollateralShort), ks.Has(ExUnitsOverDeclared)); err != nil {
 		return nil, Expected{}, err
 	}
 	if !bytes.Equal(m.body().join(), m.orig) {
@@ -221,6 +226,10 @@ func (m *mutant) make(k Kind) error {
 		})
 	case WrongDatum:
 		return m.redeemers(func(r *redeemer) { r.data = encUint(wrongRedeemer) })
+	case ExUnitsOverDeclared:
+		return overDeclare(m)
+	case ExUnitsUnderDeclared:
+		return underDeclare(m)
 	}
 	return fmt.Errorf("mistake: %v is not structural", k)
 }
@@ -308,11 +317,12 @@ func (m *mutant) fee() (uint64, error) {
 // settle makes the fee match the edited transaction: at least the minimum
 // for its size, or below half of it when under is set, the difference
 // moved to or from the change. With short set it also declares less
-// collateral than the settled fee needs. Each pass can change the size, so
+// collateral than the settled fee needs; with cover, at least as much as it
+// needs, for an edit that raises the script fee. Each pass can change the size, so
 // it repeats until the encoding is stable; under only lowers the fee and
 // otherwise it only rises, so the passes converge.
-func (m *mutant) settle(under, short bool) error {
-	coll, err := m.collateral(short)
+func (m *mutant) settle(under, short, cover bool) error {
+	coll, err := m.collateral(short || cover)
 	if err != nil {
 		return err
 	}
@@ -342,6 +352,11 @@ func (m *mutant) settle(under, short bool) error {
 		}
 		if short {
 			if err := coll.shorten(m, target); err != nil {
+				return err
+			}
+		}
+		if cover {
+			if err := coll.cover(m, target); err != nil {
 				return err
 			}
 		}
@@ -397,6 +412,30 @@ func (c collateral) shorten(m *mutant, fee uint64) error {
 	}
 	m.fs = m.fs.set(keyTotalColl, encUint(short))
 	m.fs = m.fs.set(keyCollReturn, o.withCoin(c.ret+c.total-short).join())
+	return nil
+}
+
+// minReturn is the least lovelace cover leaves in the collateral return,
+// above min-UTxO for a plain ADA output.
+const minReturn = 1_000_000
+
+// cover declares at least the collateral fee requires, taken from the
+// collateral return.
+func (c collateral) cover(m *mutant, fee uint64) error {
+	need := (fee*uint64(m.c.Params.CollateralPercent) + 99) / 100
+	if need <= c.total {
+		return nil
+	}
+	if c.ret+c.total < need+minReturn {
+		return fmt.Errorf("%w: collateral return %d cannot cover %d", ErrNotApplicable, c.ret, need-c.total)
+	}
+	raw, _ := m.fs.get(keyCollReturn)
+	o, err := splitOutput(raw)
+	if err != nil {
+		return err
+	}
+	m.fs = m.fs.set(keyTotalColl, encUint(need))
+	m.fs = m.fs.set(keyCollReturn, o.withCoin(c.ret+c.total-need).join())
 	return nil
 }
 
