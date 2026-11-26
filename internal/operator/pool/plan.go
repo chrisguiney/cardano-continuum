@@ -1,4 +1,4 @@
-package operator
+package pool
 
 import (
 	"context"
@@ -74,7 +74,7 @@ func (r *planner) plan(ctx context.Context, p *v1alpha1.ContinuumPool) (render.W
 		Network: &net,
 		Pool:    p,
 		Peers:   render.Peers(net.Spec.Topology.Policy, p.Namespace, sib.members, self),
-		Image:   render.Image{Name: pin(img.Ref, img.Digest), PullPolicy: image.PullPolicy(pin(img.Ref, img.Digest))},
+		Image:   render.Image{Name: image.Pin(img.Ref, img.Digest), PullPolicy: image.PullPolicy(image.Pin(img.Ref, img.Digest))},
 		Sidecar: sib.source == p.Name,
 	})
 	if err != nil {
@@ -134,18 +134,6 @@ func (r *planner) resolve(ctx context.Context, p *v1alpha1.ContinuumPool, net *v
 		return cur, nil
 	}
 	return v1alpha1.ResolvedImage{}, refuse(ReasonImageUnresolved, "resolve %s: %v", ref, err)
-}
-
-// pin is ref at digest: repository@digest, dropping any tag.
-func pin(ref, digest string) string {
-	if strings.Contains(ref, "@") || digest == "" {
-		return ref
-	}
-	repo := ref
-	if i := strings.LastIndex(ref, ":"); i > strings.LastIndex(ref, "/") {
-		repo = ref[:i]
-	}
-	return repo + "@" + digest
 }
 
 // siblings are the pools of p's network that render a workload, oldest

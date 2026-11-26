@@ -67,3 +67,15 @@ func Roll(cur, next v1alpha1.ResolvedImage, now time.Time) *v1alpha1.RollStatus 
 	}
 	return &v1alpha1.RollStatus{From: cur.Digest, To: next.Digest, Time: metav1.NewTime(now)}
 }
+
+// Pin is ref at digest: repository@digest, dropping any tag.
+func Pin(ref, digest string) string {
+	if strings.Contains(ref, "@") || digest == "" {
+		return ref
+	}
+	repo := ref
+	if i := strings.LastIndex(ref, ":"); i > strings.LastIndex(ref, "/") {
+		repo = ref[:i]
+	}
+	return repo + "@" + digest
+}

@@ -76,7 +76,7 @@ func implTips(ps []v1alpha1.ContinuumPool, cs []poolChain) []ImplTip {
 // edges is the peer graph, one undirected edge per pair. A logical pool
 // renders nothing and has no peers. Under relayed a forging pool peers only
 // with the validating pools of its own PoolID and validating pools peer with
-// each other, matching operator.Peers.
+// each other, matching render.Peers.
 func edges(ps []v1alpha1.ContinuumPool, mode v1alpha1.TopologyMode) []Edge {
 	out := []Edge{}
 	for i, a := range ps {

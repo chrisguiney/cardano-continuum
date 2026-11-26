@@ -1,8 +1,15 @@
-// Package operator turns ContinuumPool and ContinuumNetwork specs into node
-// workloads: a StatefulSet, headless Service and ConfigMap per pool, rendered
-// by a NodeDriver per implementation. Rendering, admission (Admit), topology
-// (Peers), phase (PhaseOf) and the release rule (Releasable) are pure; the
-// reconcilers are the thin I/O around them.
+// Package operator wires the controllers that turn ContinuumPool and
+// ContinuumNetwork specs into node workloads: a StatefulSet, headless Service
+// and ConfigMap per pool, rendered by a NodeDriver per implementation. Setup
+// registers them with a controller-runtime manager; the work is in
+// sub-packages:
+//
+//   - render: pure rendering, admission (Admit), topology (Peers) and naming;
+//   - pool: the ContinuumPool reconciler;
+//   - phase: the pool's phase from its pod and its chain;
+//   - fence: the release rule (Releasable) and its controller;
+//   - network: the ContinuumNetwork reconciler;
+//   - image: image selection and digest pinning.
 //
 // The fence that keeps a pool to one forger follows the contract in
 // models/specs/pool-forging/README.md ("Operator fencing contract"):

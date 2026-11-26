@@ -9,6 +9,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/pool"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
 
@@ -29,8 +30,8 @@ func TestReconcileCreatesStatefulSet(t *testing.T) {
 		s := h.get("a").Status
 		return s.Phase == v1alpha1.PhaseSyncing && s.Workload == name && s.Image.Digest != ""
 	})
-	if !h.hasCondition("a", CondAdmitted, metav1.ConditionTrue, ReasonAdmitted) {
-		t.Fatalf("Admitted condition %+v", h.condition("a", CondAdmitted))
+	if !h.hasCondition("a", pool.CondAdmitted, metav1.ConditionTrue, pool.ReasonAdmitted) {
+		t.Fatalf("Admitted condition %+v", h.condition("a", pool.CondAdmitted))
 	}
 }
 
@@ -61,7 +62,7 @@ func TestReconcileFenceIsCondition(t *testing.T) {
 	h.running(render.PodName(name), v1alpha1.CardanoNode)
 	h.pool("b", v1alpha1.Dingo, v1alpha1.TierForging, nil)
 	h.eventually("b refused, naming a", func() bool {
-		return h.hasCondition("b", CondAdmitted, metav1.ConditionFalse, ReasonFenceHeld, `"a"`)
+		return h.hasCondition("b", pool.CondAdmitted, metav1.ConditionFalse, pool.ReasonFenceHeld, `"a"`)
 	})
 	h.consistently("a keeps its cardano-node workload", 500*time.Millisecond, func() bool {
 		s, ok := h.set(name)
@@ -76,7 +77,7 @@ func TestBudgetRefusalIsCondition(t *testing.T) {
 	h.running(render.PodName(render.Name(h.get("a"))), v1alpha1.CardanoNode)
 	h.pool("b", v1alpha1.CardanoNode, v1alpha1.TierValidating, nil)
 	h.eventually("b over budget", func() bool {
-		return h.hasCondition("b", CondAdmitted, metav1.ConditionFalse, ReasonOverBudget, "pods")
+		return h.hasCondition("b", pool.CondAdmitted, metav1.ConditionFalse, pool.ReasonOverBudget, "pods")
 	})
 	if _, ok := h.set(render.Name(h.get("b"))); ok {
 		t.Fatal("over-budget pool has a workload")
@@ -91,7 +92,7 @@ func TestAmaruRefusedAsUnsupported(t *testing.T) {
 	h.pool("a", v1alpha1.Amaru, v1alpha1.TierForging, nil)
 	h.startOperator()
 	h.eventually("amaru refused", func() bool {
-		return h.hasCondition("a", CondAdmitted, metav1.ConditionFalse, ReasonUnsupported, "amaru")
+		return h.hasCondition("a", pool.CondAdmitted, metav1.ConditionFalse, pool.ReasonUnsupported, "amaru")
 	})
 	if _, ok := h.set(render.Name(h.get("a"))); ok {
 		t.Fatal("amaru pool has a workload")

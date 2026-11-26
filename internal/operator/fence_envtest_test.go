@@ -25,6 +25,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/fakekube"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/fence"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/pool"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
 
@@ -74,7 +75,7 @@ func TestCreateIsTheFence(t *testing.T) {
 	held := h.running(render.PodName(set.Name), v1alpha1.CardanoNode)
 
 	c := &emptyCache{Client: h.c}
-	res, err := NewPools(c, render.Drivers(), fakeResolver{}, nil, quiet()).Reconcile(h.ctx, request(p))
+	res, err := pool.NewPools(c, render.Drivers(), fakeResolver{}, nil, quiet()).Reconcile(h.ctx, request(p))
 	if err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
@@ -235,7 +236,7 @@ func TestFinalizerHeldOnNotReadyNode(t *testing.T) {
 	h.must(fakekube.SetReady(h.ctx, h.c, h.node, false))
 	h.must(h.c.Delete(h.ctx, old, client.GracePeriodSeconds(0)))
 	h.eventually("fence condition naming pod and node", func() bool {
-		return h.hasCondition("a", CondFence, metav1.ConditionTrue, ReasonNodeUnreachable, old.Name, h.node)
+		return h.hasCondition("a", pool.CondFence, metav1.ConditionTrue, pool.ReasonNodeUnreachable, old.Name, h.node)
 	})
 	h.consistently("pod object held", time.Second, func() bool {
 		p, ok := h.pod(old.Name)
@@ -345,7 +346,7 @@ func TestTwoReconcilersOneForger(t *testing.T) {
 	stale := h.manager()
 	h.must(fence.Index(h.ctx, stale))
 	lag := &laggy{Client: stale.GetClient(), lag: time.Second, at: map[types.NamespacedName]time.Time{}, snap: map[types.NamespacedName]*v1alpha1.ContinuumPool{}}
-	h.must(NewPools(lag, render.Drivers(), fakeResolver{}, nil, quiet()).SetupWithManager(stale))
+	h.must(pool.NewPools(lag, render.Drivers(), fakeResolver{}, nil, quiet()).SetupWithManager(stale))
 	h.must(fence.NewRelease(stale.GetClient(), stale.GetAPIReader(), quiet()).SetupWithManager(stale))
 	h.run("stale manager", stale.Start)
 
@@ -407,7 +408,7 @@ func TestStaleSpecDoesNotFlap(t *testing.T) {
 	if dark.Generation <= live.Generation {
 		t.Fatalf("generations %d then %d", live.Generation, dark.Generation)
 	}
-	r := NewPools(&scripted{Client: h.c, pools: []*v1alpha1.ContinuumPool{dark, live}}, render.Drivers(), fakeResolver{}, nil, quiet())
+	r := pool.NewPools(&scripted{Client: h.c, pools: []*v1alpha1.ContinuumPool{dark, live}}, render.Drivers(), fakeResolver{}, nil, quiet())
 	if _, err := r.Reconcile(h.ctx, request(dark)); err != nil {
 		t.Fatal(err)
 	}
@@ -470,7 +471,7 @@ func TestDuplicateUsesOwnSecret(t *testing.T) {
 		p.Spec.KeysSecret = "a-keys"
 	})
 	h.eventually("shared-secret duplicate refused", func() bool {
-		return h.hasCondition("s", CondAdmitted, metav1.ConditionFalse, ReasonSharedSecret)
+		return h.hasCondition("s", pool.CondAdmitted, metav1.ConditionFalse, pool.ReasonSharedSecret)
 	})
 	if _, ok := h.set(render.Name(h.get("s"))); ok {
 		t.Fatal("shared-secret duplicate has a workload")
@@ -500,8 +501,8 @@ func TestDuplicatePendingWithoutSecret(t *testing.T) {
 		_, pok := h.pod(render.PodName(set.Name))
 		return !sok && !pok && notRunning()
 	})
-	if !h.hasCondition("d", CondAdmitted, metav1.ConditionFalse, ReasonSecretMissing, "d-keys") {
-		t.Fatalf("condition %+v", h.condition("d", CondAdmitted))
+	if !h.hasCondition("d", pool.CondAdmitted, metav1.ConditionFalse, pool.ReasonSecretMissing, "d-keys") {
+		t.Fatalf("condition %+v", h.condition("d", pool.CondAdmitted))
 	}
 }
 

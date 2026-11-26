@@ -266,7 +266,7 @@ func poolObject(i int) v1alpha1.ContinuumPool {
 }
 
 // checkPoolPhases requires every pool's workload to be ready: a running
-// phase, whether the pool has caught up or not (operator.Judge).
+// phase, whether the pool has caught up or not (phase.Judge).
 func checkPoolPhases(t *testing.T, ns string, pools int) {
 	t.Helper()
 	poll(t, 2*time.Minute, 5*time.Second, "pools to report a running phase", func(ctx context.Context) (bool, error) {

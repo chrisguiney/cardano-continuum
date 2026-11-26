@@ -92,9 +92,9 @@ func Render(d NodeDriver, in Input) (Workload, error) {
 			return Workload{}, fmt.Errorf("render sidecar for pool %s: %w", p.Name, err)
 		}
 	}
-	check.Post(w.StatefulSet.Name == name, "operator.Render: StatefulSet name is Name(pool)")
+	check.Post(w.StatefulSet.Name == name, "render.Render: StatefulSet name is Name(pool)")
 	check.Post(!role.Keyed() || slices.Contains(w.StatefulSet.Spec.Template.Finalizers, Finalizer),
-		"operator.Render: keyed template carries the finalizer")
+		"render.Render: keyed template carries the finalizer")
 	return w, nil
 }
 

@@ -24,7 +24,7 @@ func testNetwork(ns string) *v1alpha1.ContinuumNetwork {
 	}
 }
 
-func pool(ns, name string, impl v1alpha1.Implementation, tier v1alpha1.Tier) *v1alpha1.ContinuumPool {
+func testPool(ns, name string, impl v1alpha1.Implementation, tier v1alpha1.Tier) *v1alpha1.ContinuumPool {
 	p := &v1alpha1.ContinuumPool{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns, UID: "uid-" + "0000"},
 		Spec: v1alpha1.ContinuumPoolSpec{

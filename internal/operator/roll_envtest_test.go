@@ -18,6 +18,8 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/fakekube"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/image"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/pool"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
 
@@ -29,7 +31,7 @@ const (
 // pinned is the image a pod runs for ref under fakeResolver.
 func pinned(h *harness, ref string) string {
 	img, _ := fakeResolver{}.Resolve(h.ctx, ref)
-	return pin(ref, img.Digest)
+	return image.Pin(ref, img.Digest)
 }
 
 func (h *harness) setImage(pool, ref string) {
@@ -147,7 +149,7 @@ func TestRollOnLostNodeHolds(t *testing.T) {
 	h.must(fakekube.SetReady(h.ctx, h.c, h.node, false))
 	h.setImage("a", imageV2)
 	h.eventually("fence condition naming pod and node", func() bool {
-		return h.hasCondition("a", CondFence, metav1.ConditionTrue, ReasonNodeUnreachable, old.Name, h.node)
+		return h.hasCondition("a", pool.CondFence, metav1.ConditionTrue, pool.ReasonNodeUnreachable, old.Name, h.node)
 	})
 	h.consistently("old pod held, no replacement", time.Second, func() bool {
 		p, ok := h.pod(name)

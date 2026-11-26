@@ -39,6 +39,8 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/fakekube"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/image"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/pool"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
 
@@ -231,7 +233,7 @@ func (h *harness) manager() ctrl.Manager {
 func (h *harness) startOperator() { h.startOperatorWith(nil) }
 
 // startOperatorWith runs the operator with exec into pods.
-func (h *harness) startOperatorWith(exec Exec) {
+func (h *harness) startOperatorWith(exec pool.Exec) {
 	h.t.Helper()
 	mgr := h.manager()
 	h.must(Setup(h.ctx, mgr, Options{Drivers: render.Drivers(), Images: fakeResolver{}, Exec: exec, Log: quiet()}))
@@ -249,7 +251,7 @@ func (h *harness) secret(name, opcert string) {
 // pool creates a pool for PoolID "pool1abc"; forging pools get <name>-keys.
 func (h *harness) pool(name string, impl v1alpha1.Implementation, tier v1alpha1.Tier, edit func(*v1alpha1.ContinuumPool)) *v1alpha1.ContinuumPool {
 	h.t.Helper()
-	p := pool(h.ns, name, impl, tier)
+	p := testPool(h.ns, name, impl, tier)
 	p.UID = ""
 	if edit != nil {
 		edit(p)
@@ -380,7 +382,7 @@ func (h *harness) renderDirect(p *v1alpha1.ContinuumPool) *appsv1.StatefulSet {
 	d, err := render.Drivers().Driver(p.Spec.Implementation)
 	h.must(err)
 	img, _ := fakeResolver{}.Resolve(h.ctx, d.Image())
-	w, err := render.Render(d, render.Input{Network: testNetwork(h.ns), Pool: p, Image: render.Image{Name: pin(img.Ref, img.Digest)}})
+	w, err := render.Render(d, render.Input{Network: testNetwork(h.ns), Pool: p, Image: render.Image{Name: image.Pin(img.Ref, img.Digest)}})
 	h.must(err)
 	h.must(h.c.Create(h.ctx, w.StatefulSet))
 	return w.StatefulSet
