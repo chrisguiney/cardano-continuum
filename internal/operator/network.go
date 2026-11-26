@@ -67,6 +67,11 @@ func (r *Networks) Reconcile(ctx context.Context, req reconcile.Request) (reconc
 	if n.Status.Images, err = r.images(ctx, &n); err != nil {
 		return reconcile.Result{}, err
 	}
+	var pools v1alpha1.ContinuumPoolList
+	if err := r.client.List(ctx, &pools, client.InNamespace(n.Namespace)); err != nil {
+		return reconcile.Result{}, fmt.Errorf("list pools of network %s: %w", n.Name, err)
+	}
+	n.Status.ParquetPool = ParquetSource(n.Name, n.Spec.Parquet, pools.Items)
 	if err := r.client.Status().Patch(ctx, &n, client.MergeFrom(orig)); err != nil && !apierrors.IsNotFound(err) {
 		return reconcile.Result{}, fmt.Errorf("patch network %s status: %w", n.Name, err)
 	}

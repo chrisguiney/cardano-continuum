@@ -198,7 +198,7 @@ func (r *Pools) plan(ctx context.Context, p *v1alpha1.ContinuumPool) (Workload, 
 	if no, err := r.keys(ctx, p); no != nil || err != nil {
 		return Workload{}, none, no, err
 	}
-	sib, err := r.siblings(ctx, p)
+	sib, err := r.siblings(ctx, p, &net)
 	if err != nil {
 		return Workload{}, none, nil, err
 	}
@@ -215,6 +215,7 @@ func (r *Pools) plan(ctx context.Context, p *v1alpha1.ContinuumPool) (Workload, 
 		Pool:    p,
 		Peers:   Peers(net.Spec.Topology.Policy, p.Namespace, sib.members, self),
 		Image:   Image{Name: pin(img.Ref, img.Digest), PullPolicy: image.PullPolicy(pin(img.Ref, img.Digest))},
+		Sidecar: sib.source == p.Name,
 	})
 	if err != nil {
 		return Workload{}, none, refuse(ReasonInvalid, "%v", err), nil
@@ -291,16 +292,19 @@ func pin(ref, digest string) string {
 // first, which is the budget's admission order.
 type siblings struct {
 	queue   []Claim
+	source  string // the pool whose pod carries the sidecar
 	members []Member
 }
 
 func (s siblings) claims() []Claim { return s.queue }
 
-func (r *Pools) siblings(ctx context.Context, p *v1alpha1.ContinuumPool) (siblings, error) {
+func (r *Pools) siblings(ctx context.Context, p *v1alpha1.ContinuumPool, net *v1alpha1.ContinuumNetwork) (siblings, error) {
 	var list v1alpha1.ContinuumPoolList
 	if err := r.client.List(ctx, &list, client.InNamespace(p.Namespace)); err != nil {
 		return siblings{}, fmt.Errorf("list pools in %s: %w", p.Namespace, err)
 	}
+	var s siblings
+	s.source = ParquetSource(p.Spec.NetworkRef, net.Spec.Parquet, list.Items)
 	pools := slices.DeleteFunc(list.Items, func(o v1alpha1.ContinuumPool) bool {
 		_, err := r.drivers.Driver(o.Spec.Implementation)
 		return o.Spec.NetworkRef != p.Spec.NetworkRef || RoleOf(&o) == RoleNone || err != nil || o.DeletionTimestamp != nil
@@ -311,11 +315,10 @@ func (r *Pools) siblings(ctx context.Context, p *v1alpha1.ContinuumPool) (siblin
 		}
 		return strings.Compare(a.Name, b.Name)
 	})
-	var s siblings
 	for i := range pools {
 		o := &pools[i]
 		d, _ := r.drivers.Driver(o.Spec.Implementation)
-		s.queue = append(s.queue, Claim{Name: o.Name, Demand: d.Requests()})
+		s.queue = append(s.queue, Claim{Name: o.Name, Demand: PoolDemand(d, o.Name == s.source)})
 		s.members = append(s.members, Member{Name: Name(o), PoolID: o.Spec.PoolID, Role: RoleOf(o)})
 	}
 	return s, nil

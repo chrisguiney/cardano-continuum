@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
@@ -25,6 +26,7 @@ func renderOn(t *testing.T, d NodeDriver, n *v1alpha1.ContinuumNetwork, p *v1alp
 		Pool:    p,
 		Peers:   []Peer{{Host: "pool-b.ns.svc.cluster.local", Port: N2NPort}},
 		Image:   Image{Name: "r@sha256:aaaa", PullPolicy: corev1.PullIfNotPresent},
+		Sidecar: n.Spec.Parquet.Enabled,
 	})
 	if err != nil {
 		t.Fatalf("Render %s: %v", d.Impl(), err)
@@ -115,7 +117,7 @@ func TestSidecarMountsDataReadOnly(t *testing.T) {
 	}
 }
 
-// TestSidecarCommand: the loop passes the driver's ImmutableDB, the network
+// TestSidecarCommand: mithril2pq -watch gets the driver's ImmutableDB, the network
 // magic and a per-pool output directory to mithril2pq.
 func TestSidecarCommand(t *testing.T) {
 	for _, impl := range []v1alpha1.Implementation{v1alpha1.CardanoNode, v1alpha1.Dingo} {
@@ -124,10 +126,9 @@ func TestSidecarCommand(t *testing.T) {
 		sc, _ := sidecarOf(w.StatefulSet.Spec.Template.Spec)
 		cmd := strings.Join(append(sc.Command, sc.Args...), " ")
 		for _, want := range []string{
-			"mithril2pq -immutable-dir " + Drivers()[impl].DataDir(),
+			"/usr/local/bin/mithril2pq -watch 60s -immutable-dir " + Drivers()[impl].DataDir(),
 			"-network-magic 42",
 			"-out /parquet/a",
-			"sleep 60",
 		} {
 			if !strings.Contains(cmd, want) {
 				t.Errorf("%s: command %q lacks %q", impl, cmd, want)
@@ -152,6 +153,7 @@ func TestSidecarNeedsDataDir(t *testing.T) {
 		Network: withParquet(),
 		Pool:    pool("ns", "a", v1alpha1.CardanoNode, v1alpha1.TierValidating),
 		Image:   Image{Name: "r@sha256:aaaa"},
+		Sidecar: true,
 	})
 	if err == nil {
 		t.Fatal("rendered a sidecar for a driver with no DataDir")
@@ -164,5 +166,151 @@ func TestSidecarOnlyOnPodsThatRender(t *testing.T) {
 	w := renderOn(t, Drivers()[v1alpha1.Dingo], withParquet(), pool("ns", "l", v1alpha1.Dingo, v1alpha1.TierLogical))
 	if w.StatefulSet != nil {
 		t.Errorf("logical pool rendered a StatefulSet with a sidecar")
+	}
+}
+
+// TestSidecarRunsNoShell: the mithril2pq image is distroless, so the
+// container must exec the binary directly with its own flags.
+func TestSidecarRunsNoShell(t *testing.T) {
+	for _, impl := range []v1alpha1.Implementation{v1alpha1.CardanoNode, v1alpha1.Dingo} {
+		w := renderOn(t, Drivers()[impl], withParquet(), pool("ns", "a", impl, v1alpha1.TierValidating))
+		sc, _ := sidecarOf(w.StatefulSet.Spec.Template.Spec)
+		if len(sc.Command) == 0 || sc.Command[0] != "/usr/local/bin/mithril2pq" {
+			t.Errorf("%s: command %q, want the mithril2pq binary first", impl, sc.Command)
+		}
+		for _, a := range append(sc.Command, sc.Args...) {
+			if a == "sh" || a == "-c" || a == "/bin/sh" || strings.ContainsAny(a, ";&|$`") {
+				t.Errorf("%s: shell syntax %q in the sidecar command", impl, a)
+			}
+		}
+	}
+}
+
+// TestPoolDemandCountsOneSidecar: the sidecar's requests count against the
+// budget once, for the source pool only.
+func TestPoolDemandCountsOneSidecar(t *testing.T) {
+	d := Drivers()[v1alpha1.Dingo]
+	if got := PoolDemand(d, false); got != d.Requests() {
+		t.Errorf("non-source: %+v, want %+v", got, d.Requests())
+	}
+	got := PoolDemand(d, true)
+	want := Demand{CPUMillis: d.Requests().CPUMillis + sidecarCPU, MemoryMiB: d.Requests().MemoryMiB + sidecarMemMiB}
+	if got != want {
+		t.Fatalf("source: %+v, want %+v", got, want)
+	}
+	b := v1alpha1.BudgetSpec{MaxPools: 2, CPUMillis: 2 * d.Requests().CPUMillis, MemoryMiB: 2 * d.Requests().MemoryMiB}
+	if err := Admit(b, []Claim{{"a", PoolDemand(d, false)}, {"b", PoolDemand(d, false)}}, "b"); err != nil {
+		t.Fatalf("nodes alone refused: %v", err)
+	}
+	if err := Admit(b, []Claim{{"a", PoolDemand(d, true)}, {"b", PoolDemand(d, false)}}, "b"); err == nil {
+		t.Error("budget sized for the nodes admitted both pools beside a sidecar")
+	}
+}
+
+func poolWithID(name, id string, tier v1alpha1.Tier) v1alpha1.ContinuumPool {
+	p := pool("ns", name, v1alpha1.Dingo, tier)
+	p.Spec.PoolID = id
+	return *p
+}
+
+// TestParquetSource: the default is the lowest-named relay, else the
+// lowest-named keyed pool, whatever order the pools arrive in; spec.Pool
+// overrides; off or no candidate is "".
+func TestParquetSource(t *testing.T) {
+	on := v1alpha1.ParquetSpec{Enabled: true}
+	f := poolWithID("f", "pf", v1alpha1.TierForging)
+	g := poolWithID("g", "pg", v1alpha1.TierForging)
+	r1 := poolWithID("r1", "p1", v1alpha1.TierValidating)
+	r2 := poolWithID("r2", "p2", v1alpha1.TierValidating)
+	logical := poolWithID("a", "pa", v1alpha1.TierLogical)
+	other := poolWithID("0", "p0", v1alpha1.TierValidating)
+	other.Spec.NetworkRef = "elsewhere"
+	gone := poolWithID("b", "pb", v1alpha1.TierValidating)
+	gone.DeletionTimestamp = &metav1.Time{}
+
+	tests := []struct {
+		name  string
+		spec  v1alpha1.ParquetSpec
+		pools []v1alpha1.ContinuumPool
+		want  string
+	}{
+		{"relay beats forger", on, []v1alpha1.ContinuumPool{f, g, r2, r1}, "r1"},
+		{"forgers only: lowest name", on, []v1alpha1.ContinuumPool{g, f}, "f"},
+		{"skips logical, other networks, deleting", on, []v1alpha1.ContinuumPool{logical, other, gone, r2}, "r2"},
+		{"override by pool id", v1alpha1.ParquetSpec{Enabled: true, Pool: "pg"}, []v1alpha1.ContinuumPool{f, g, r1}, "g"},
+		{"override names no pool", v1alpha1.ParquetSpec{Enabled: true, Pool: "nope"}, []v1alpha1.ContinuumPool{f, r1}, ""},
+		{"off", v1alpha1.ParquetSpec{Pool: "pg"}, []v1alpha1.ContinuumPool{f, g}, ""},
+		{"no pools", on, nil, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for range 3 {
+				if got := ParquetSource("net", tt.spec, tt.pools); got != tt.want {
+					t.Fatalf("source %q, want %q", got, tt.want)
+				}
+				slices.Reverse(tt.pools)
+			}
+		})
+	}
+}
+
+// TestOnlySourcePodGetsSidecar: across the network's pools, exactly the
+// source renders a sidecar, and every other pod renders as it does with the
+// sidecar off.
+func TestOnlySourcePodGetsSidecar(t *testing.T) {
+	n := withParquet()
+	pools := []v1alpha1.ContinuumPool{
+		poolWithID("f", "pf", v1alpha1.TierForging),
+		poolWithID("r1", "p1", v1alpha1.TierValidating),
+		poolWithID("r2", "p2", v1alpha1.TierValidating),
+	}
+	src := ParquetSource("net", n.Spec.Parquet, pools)
+	if src != "r1" {
+		t.Fatalf("source %q, want r1", src)
+	}
+	in := func(net *v1alpha1.ContinuumNetwork, p *v1alpha1.ContinuumPool, side bool) Workload {
+		w, err := Render(Drivers()[v1alpha1.Dingo], Input{Network: net, Pool: p,
+			Image: Image{Name: "r@sha256:aaaa"}, Sidecar: side})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return w
+	}
+	with := 0
+	for i := range pools {
+		p := &pools[i]
+		got := in(n, p, p.Name == src)
+		_, has := sidecarOf(got.StatefulSet.Spec.Template.Spec)
+		if has != (p.Name == src) {
+			t.Errorf("pool %s: sidecar %v", p.Name, has)
+		}
+		if has {
+			with++
+			continue
+		}
+		a, _ := yaml.Marshal(got)
+		b, _ := yaml.Marshal(in(network("ns"), p, false))
+		if string(a) != string(b) {
+			t.Errorf("pool %s: changed by a sidecar elsewhere", p.Name)
+		}
+	}
+	if with != 1 {
+		t.Errorf("%d pods with a sidecar, want 1", with)
+	}
+}
+
+// TestRemovingSidecarChangesShape: a template that lost its sidecar and
+// volume is not the same shape as the one that had them, which
+// DeepDerivative alone would call equal.
+func TestRemovingSidecarChangesShape(t *testing.T) {
+	d := Drivers()[v1alpha1.Dingo]
+	p := pool("ns", "a", v1alpha1.Dingo, v1alpha1.TierValidating)
+	with := renderOn(t, d, withParquet(), p).StatefulSet.Spec.Template.Spec
+	without := renderOn(t, d, network("ns"), p).StatefulSet.Spec.Template.Spec
+	if sameShape(without, with) || sameShape(with, without) {
+		t.Error("sidecar added or removed, shape unchanged")
+	}
+	if !sameShape(with, with) {
+		t.Error("identical specs differ in shape")
 	}
 }

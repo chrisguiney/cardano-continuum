@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
 
@@ -24,48 +25,70 @@ func (h *harness) editNetwork(f func(*v1alpha1.ContinuumNetwork)) {
 	})
 }
 
-// TestParquetToggleRollsThroughFence: enabling the sidecar on the network
-// changes the pod template of a forging pool. The StatefulSet is updated in
-// place, and the old pod is gone before its replacement is created, so no
-// second pod ever runs beside the forger.
-func TestParquetToggleRollsThroughFence(t *testing.T) {
+// TestParquetSourceMoveRollsTwoPods: enabling the sidecar rolls only the
+// default source (the lowest relay); moving the source to the forger rolls
+// exactly the old and new source, the forger through the fence. The third
+// pod is never touched and the choice is recorded in status.
+func TestParquetSourceMoveRollsTwoPods(t *testing.T) {
 	h := newHarness(t, nil)
-	h.secret("a-keys", "opcert")
-	h.pool("a", v1alpha1.CardanoNode, v1alpha1.TierForging, nil)
-	h.startOperator()
-	set := Name(h.get("a"))
-	name := PodName(set)
-	old := h.running(name, v1alpha1.CardanoNode)
-	before, ok := h.set(set)
-	if !ok {
-		t.Fatal("no StatefulSet before the toggle")
+	h.secret("f-keys", "opcert")
+	h.pool("f", v1alpha1.CardanoNode, v1alpha1.TierForging, nil)
+	for _, r := range []string{"r1", "r2"} {
+		h.pool(r, v1alpha1.CardanoNode, v1alpha1.TierValidating, func(p *v1alpha1.ContinuumPool) { p.Spec.PoolID = "pool-" + r })
 	}
+	h.startOperator()
+	names := map[string]string{}
+	uids := map[string]types.UID{}
+	for _, n := range []string{"f", "r1", "r2"} {
+		names[n] = PodName(Name(h.get(n)))
+		uids[n] = h.running(names[n], v1alpha1.CardanoNode).UID
+	}
+	// rolled waits for pool n's pod to be a new one with or without the
+	// sidecar, then records it.
+	rolled := func(n string, sidecar bool) {
+		h.t.Helper()
+		h.eventually(n+" rolled", func() bool {
+			p, ok := h.pod(names[n])
+			if !ok || p.UID == uids[n] || p.DeletionTimestamp != nil || p.Status.Phase != corev1.PodRunning {
+				return false
+			}
+			if _, has := sidecarOf(p.Spec); has != sidecar {
+				return false
+			}
+			uids[n] = p.UID
+			return true
+		})
+	}
+	same := func(n string) {
+		h.t.Helper()
+		h.consistently(n+" untouched", time.Second, func() bool {
+			p, ok := h.pod(names[n])
+			return ok && p.UID == uids[n]
+		})
+	}
+	source := func() string {
+		var n v1alpha1.ContinuumNetwork
+		h.must(h.c.Get(h.ctx, types.NamespacedName{Namespace: h.ns, Name: "net"}, &n))
+		return n.Status.ParquetPool
+	}
+
+	h.editNetwork(func(n *v1alpha1.ContinuumNetwork) {
+		n.Spec.Parquet = v1alpha1.ParquetSpec{Enabled: true, Image: "mithril2pq:test", IntervalSeconds: 60, OutputClaim: "parquet"}
+	})
+	rolled("r1", true)
+	same("f")
+	same("r2")
+	h.eventually("status names r1", func() bool { return source() == "r1" })
 
 	var mu sync.Mutex
 	var events []event
 	h.record(&events, &mu)
-	h.kube.Withhold(name, true)
-	h.editNetwork(func(n *v1alpha1.ContinuumNetwork) {
-		n.Spec.Parquet = v1alpha1.ParquetSpec{Enabled: true, Image: "mithril2pq:test", IntervalSeconds: 60, OutputClaim: "parquet"}
-	})
-	h.eventually("old pod terminating", func() bool {
-		p, ok := h.pod(name)
-		return ok && p.DeletionTimestamp != nil
-	})
-	h.consistently("old pod object held, no replacement", 1500*time.Millisecond, func() bool {
-		p, ok := h.pod(name)
-		return ok && p.UID == old.UID && h.keyedPods(RoleForger) == 1
-	})
-	h.kube.Withhold(name, false)
-	next := h.runningImage(name, old.Spec.Containers[0].Image)
-
-	after, ok := h.set(set)
-	if !ok || after.UID != before.UID {
-		t.Fatalf("StatefulSet replaced by the toggle: %v", after)
-	}
-	if _, ok := sidecarOf(next.Spec); !ok {
-		t.Errorf("new pod has no mithril2pq container: %v", next.Spec.Containers)
-	}
+	oldF := uids["f"]
+	h.editNetwork(func(n *v1alpha1.ContinuumNetwork) { n.Spec.Parquet.Pool = "pool1abc" })
+	rolled("r1", false)
+	rolled("f", true)
+	same("r2")
+	h.eventually("status names f", func() bool { return source() == "f" })
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -74,14 +97,17 @@ func TestParquetToggleRollsThroughFence(t *testing.T) {
 		if e.kind != "Pod" {
 			continue
 		}
-		if e.uid == old.UID && e.typ == watch.Deleted {
+		if e.uid == oldF && e.typ == watch.Deleted {
 			gone = e.rv
 		}
-		if e.uid == next.UID && e.typ == watch.Added {
+		if e.uid == uids["f"] && e.typ == watch.Added {
 			created = e.rv
 		}
 	}
 	if gone == 0 || created == 0 || created < gone {
-		t.Fatalf("old pod gone at revision %d, new pod created at %d", gone, created)
+		t.Fatalf("old forger gone at revision %d, new one created at %d", gone, created)
+	}
+	if got := h.keyedPods(RoleForger); got != 1 {
+		t.Errorf("%d forger pods, want 1", got)
 	}
 }

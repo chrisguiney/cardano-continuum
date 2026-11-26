@@ -165,10 +165,15 @@ statefulSet:
           - mountPath: /data
             name: data
         - command:
-          - sh
-          - -c
-          - while :; do mkdir -p /parquet/a && mithril2pq -immutable-dir /data/db/immutable
-            -network-magic 42 -out /parquet/a; sleep 60; done
+          - /usr/local/bin/mithril2pq
+          - -watch
+          - 60s
+          - -immutable-dir
+          - /data/db/immutable
+          - -network-magic
+          - "42"
+          - -out
+          - /parquet/a
           image: mithril2pq:test
           name: mithril2pq
           resources:

@@ -100,6 +100,7 @@ func (r *Pools) holder(ctx context.Context, p *v1alpha1.ContinuumPool, want *app
 // so an update decided on a stale cache is refused with a conflict.
 func (r *Pools) update(ctx context.Context, cur, want *appsv1.StatefulSet) error {
 	if *cur.Spec.Replicas == *want.Spec.Replicas &&
+		sameShape(want.Spec.Template.Spec, cur.Spec.Template.Spec) &&
 		equality.Semantic.DeepDerivative(want.Spec.Template, cur.Spec.Template) &&
 		equality.Semantic.DeepDerivative(want.Labels, cur.Labels) {
 		return nil
@@ -112,6 +113,16 @@ func (r *Pools) update(ctx context.Context, cur, want *appsv1.StatefulSet) error
 		return fmt.Errorf("update statefulset %s: %w", cur.Name, err)
 	}
 	return nil
+}
+
+// sameShape reports whether a and b have as many containers and volumes.
+// DeepDerivative treats a shorter list as a prefix of a longer one, so a
+// removed container or volume, the sidecar when it moves to another pool,
+// would otherwise look unchanged.
+func sameShape(a, b corev1.PodSpec) bool {
+	return len(a.Containers) == len(b.Containers) &&
+		len(a.InitContainers) == len(b.InitContainers) &&
+		len(a.Volumes) == len(b.Volumes)
 }
 
 // drop deletes a StatefulSet in the foreground, preconditioned on the UID

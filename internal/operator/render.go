@@ -21,6 +21,9 @@ type Input struct {
 	Pool    *v1alpha1.ContinuumPool
 	Peers   []Peer
 	Image   Image
+	// Sidecar adds the mithril2pq sidecar, when the network enables it. Only
+	// the network's source pool (ParquetSource) sets it.
+	Sidecar bool
 }
 
 // Image is the container image a node runs, pinned to a digest when known.
@@ -74,7 +77,7 @@ func Render(d NodeDriver, in Input) (Workload, error) {
 		Service:     service(meta(), len(n.NtC) > 0),
 		Config:      &corev1.ConfigMap{ObjectMeta: withName(meta(), configName(name)), Data: n.Config},
 	}
-	if pq := in.Network.Spec.Parquet; pq.Enabled {
+	if pq := in.Network.Spec.Parquet; pq.Enabled && in.Sidecar {
 		w, err = WithSidecar(w, d, Sidecar{
 			Image: pq.Image, Pool: p.Name, Magic: in.Network.Spec.Magic,
 			IntervalSeconds: pq.IntervalSeconds, OutputClaim: pq.OutputClaim,

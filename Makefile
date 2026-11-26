@@ -81,7 +81,7 @@ GOUROBOROS_SRC ?=
 KO_INSECURE := $(if $(filter true,$(CONTINUUM_REGISTRY_INSECURE)),--insecure-registry)
 REGISTRY_HOST = $(firstword $(subst /, ,$(CONTINUUM_REGISTRY)))
 
-.PHONY: require-registry ko-images image-dingo
+.PHONY: require-registry ko-images image-dingo image-mithril2pq
 require-registry:
 	@test -n "$(CONTINUUM_REGISTRY)" || { echo "CONTINUUM_REGISTRY is not set"; exit 1; }
 
@@ -103,6 +103,17 @@ image-dingo: require-registry ## Build DINGO_SRC (WITH=mod=path ... MODE=fast|re
 	@if [ -n "$(KO_INSECURE)" ]; then docker info | grep -q '$(REGISTRY_HOST)' || { echo "add $(REGISTRY_HOST) to insecure-registries in the Docker daemon config"; exit 1; }; fi
 	go run ./cmd/continuum build --dingo '$(DINGO_SRC)' --mode '$(MODE)' $(if $(REF),--ref '$(REF)') \
 	  $(foreach w,$(WITH),--with '$(w)') $(foreach f,$(FORK),--fork '$(f)')
+
+# MITHRIL2PQ_SRC is a clean mithril2pq checkout at the commit to pin (7af010a
+# or later, which has -watch). The distroless mithril2pq target has no shell,
+# which the sidecar does not need. The image is tagged with the short commit.
+MITHRIL2PQ_SRC ?=
+image-mithril2pq: require-registry ## Build MITHRIL2PQ_SRC's mithril2pq target and push it to CONTINUUM_REGISTRY
+	@test -n "$(MITHRIL2PQ_SRC)" || { echo "MITHRIL2PQ_SRC is not set"; exit 1; }
+	@if [ -n "$(KO_INSECURE)" ]; then docker info | grep -q '$(REGISTRY_HOST)' || { echo "add $(REGISTRY_HOST) to insecure-registries in the Docker daemon config"; exit 1; }; fi
+	@git -C '$(MITHRIL2PQ_SRC)' diff --quiet HEAD || { echo "MITHRIL2PQ_SRC has uncommitted changes"; exit 1; }
+	@ref=$(CONTINUUM_REGISTRY)/mithril2pq:$$(git -C '$(MITHRIL2PQ_SRC)' rev-parse --short=7 HEAD); \
+	docker build --target mithril2pq -t $$ref '$(MITHRIL2PQ_SRC)' && docker push $$ref && echo $$ref
 
 # The determinism tests: once without the race detector (the crash sweep then
 # kills the engine at every step), then under it at one and eight procs, where

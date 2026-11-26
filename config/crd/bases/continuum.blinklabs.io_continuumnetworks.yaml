@@ -99,29 +99,36 @@ spec:
                 type: integer
               parquet:
                 description: |-
-                  Parquet adds a mithril2pq sidecar to every validating and forging pool
-                  pod on the network.
+                  Parquet adds a mithril2pq sidecar to one pool's pod on the network,
+                  to write that pool's chain as a Parquet dataset.
                 properties:
                   enabled:
                     description: |-
-                      Enabled adds the sidecar. It mounts the node's data volume read-only
-                      and writes Parquet to OutputClaim.
+                      Enabled adds the sidecar to the source pool's pod. It mounts the
+                      node's data volume read-only and writes Parquet to OutputClaim.
                     type: boolean
                   image:
                     description: |-
-                      Image runs the sidecar. It must provide /bin/sh and mithril2pq on PATH,
-                      because the sidecar's loop is a shell script. The distroless
-                      mithril2pq target has neither.
+                      Image runs the sidecar. It must hold the mithril2pq binary at
+                      /usr/local/bin/mithril2pq, which the sidecar runs directly with -watch
+                      and no shell; the mithril2pq Dockerfile target does.
                     type: string
                   intervalSeconds:
-                    description: IntervalSeconds is the pause between conversion runs.
+                    description: IntervalSeconds is the pause between conversion passes
+                      (mithril2pq -watch).
                     format: int32
                     minimum: 1
                     type: integer
                   outputClaim:
                     description: |-
                       OutputClaim names the PersistentVolumeClaim mounted at /parquet in
-                      every sidecar. Each pool writes to /parquet/<pool name>.
+                      the sidecar. The source pool writes to /parquet/<pool name>.
+                    type: string
+                  pool:
+                    description: |-
+                      Pool is the PoolID of the source pool. By default the operator picks
+                      one: the lowest-named validating pool, else the lowest-named forging
+                      pool. The choice is recorded in status.parquetPool.
                     type: string
                 type: object
                 x-kubernetes-validations:
@@ -271,6 +278,11 @@ spec:
                   Images holds the digest and commit each implementation resolved to for
                   this run. Dingo's entry carries its build provenance.
                 type: object
+              parquetPool:
+                description: |-
+                  ParquetPool is the name of the pool whose pod carries the mithril2pq
+                  sidecar; empty when the sidecar is off or no pool can carry it.
+                type: string
               phase:
                 description: Phase is a coarse summary of the network's state.
                 type: string
