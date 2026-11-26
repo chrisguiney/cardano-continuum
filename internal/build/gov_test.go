@@ -150,7 +150,7 @@ func TestProposeActionTypes(t *testing.T) {
 	h := newHarness(t)
 	h.registerStake()
 	deposits := uint64(h.pp.KeyDeposit)
-	for _, a := range []ActionType{ActionInfo, ActionParameterChange, ActionTreasuryWithdrawals} {
+	for _, a := range []ActionType{ActionInfo, ActionParameterChange, ActionTreasuryWithdrawals, ActionNoConfidence, ActionNewConstitution} {
 		sp := h.spend()
 		prop := Proposal{Spend: sp, Action: a}
 		got, err := h.b.Propose(ctx, h.alice, prop)
@@ -185,6 +185,10 @@ func actionTypeOf(a common.GovAction) (ActionType, bool) {
 		return ActionParameterChange, true
 	case *common.TreasuryWithdrawalGovAction:
 		return ActionTreasuryWithdrawals, true
+	case *common.NoConfidenceGovAction:
+		return ActionNoConfidence, true
+	case *common.NewConstitutionGovAction:
+		return ActionNewConstitution, true
 	}
 	return "", false
 }

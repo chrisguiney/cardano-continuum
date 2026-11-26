@@ -52,19 +52,27 @@ type Proposal struct {
 // files use (profile.Network.Proposals).
 type ActionType string
 
-// The action types Propose builds. The others (hard fork, no confidence,
-// committee and constitution changes) need ancestry and state a devnet
-// does not have.
+// The action types Propose builds. A hard fork needs a protocol version
+// the devnet can move to and a committee update a membership plan, so
+// neither is built; the rest name no previous action, which is right while
+// no action of their purpose was ever enacted, and the fake chain enacts
+// none.
 const (
 	ActionInfo                ActionType = "info"
 	ActionParameterChange     ActionType = "parameter_change"
 	ActionTreasuryWithdrawals ActionType = "treasury_withdrawals"
+	ActionNoConfidence        ActionType = "no_confidence"
+	ActionNewConstitution     ActionType = "new_constitution"
 )
 
 // treasuryAsk is what a treasury withdrawal proposal asks for. The
 // proposal is never enacted, so the amount only has to be positive
 // (ZeroTreasuryWithdrawals rejects zero).
 const treasuryAsk = 1_000_000
+
+// constitutionAnchor is what a new-constitution proposal points at. Nothing
+// fetches it.
+var constitutionAnchor = common.GovAnchor{Url: "https://example.invalid/constitution", DataHash: common.Blake2b256Hash([]byte("continuum constitution"))}
 
 // DRepRetirement deregisters a key-hash DRep, refunding its deposit.
 type DRepRetirement struct {
@@ -180,6 +188,14 @@ func (b *Builder) govAction(w keys.Wallet, t ActionType) (conway.ConwayGovAction
 		return conway.ConwayGovAction{Type: uint(common.GovActionTypeTreasuryWithdrawal), Action: &common.TreasuryWithdrawalGovAction{
 			Type: uint(common.GovActionTypeTreasuryWithdrawal), Withdrawals: map[*common.Address]uint64{&to: treasuryAsk},
 		}}, nil
+	case ActionNoConfidence:
+		return conway.ConwayGovAction{Type: uint(common.GovActionTypeNoConfidence), Action: &common.NoConfidenceGovAction{
+			Type: uint(common.GovActionTypeNoConfidence),
+		}}, nil
+	case ActionNewConstitution:
+		c := &common.NewConstitutionGovAction{Type: uint(common.GovActionTypeNewConstitution)}
+		c.Constitution.Anchor = constitutionAnchor
+		return conway.ConwayGovAction{Type: uint(common.GovActionTypeNewConstitution), Action: c}, nil
 	}
 	return conway.ConwayGovAction{}, fmt.Errorf("build: unsupported governance action type %q", t)
 }

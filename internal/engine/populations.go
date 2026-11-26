@@ -44,7 +44,7 @@ const (
 	// proposalBudget is how many governance action deposits the proposer
 	// holds. The fake chain never expires a proposal, so deposits are not
 	// returned and a long run's proposals past this many are skipped.
-	proposalBudget = 20
+	proposalBudget = 200
 )
 
 // Populate adds a profile file's non-wallet populations to cfg: an actor

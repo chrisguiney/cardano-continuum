@@ -28,7 +28,7 @@ type harness struct {
 	b     *Builder
 }
 
-const fund = 400_000_000_000
+const fund = 800_000_000_000
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
