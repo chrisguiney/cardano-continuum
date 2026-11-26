@@ -46,10 +46,10 @@ func New(cfg Config, genesis []Utxo) (*Ledger, error) {
 	}
 	s := newState(cfg.K)
 	for _, u := range genesis {
-		if _, dup := s.utxos[u.Ref]; dup {
+		if _, dup := s.out.utxos[u.Ref]; dup {
 			return nil, fmt.Errorf("plan: genesis output %x#%d twice", u.Ref.Tx[:4], u.Ref.Index)
 		}
-		s.putUtxo(u)
+		s.out.put(u)
 	}
 	return newLedger(cfg, s), nil
 }
@@ -118,7 +118,7 @@ func (l *Ledger) Reserve(ctx context.Context, id IntentID, a Attempt) error {
 // the chain releases a reservation. On error nothing changes and the event
 // must be delivered again.
 func (l *Ledger) Advance(ctx context.Context, ev chain.Event) (Result, error) {
-	was := l.st.settled
+	was := l.st.view.settled
 	next := l.next()
 	var res Result
 	switch ev.Kind {
@@ -135,7 +135,7 @@ func (l *Ledger) Advance(ctx context.Context, ev chain.Event) (Result, error) {
 	default:
 		return Result{}, fmt.Errorf("plan: unknown chain event %d", ev.Kind)
 	}
-	if next.settled == was && len(res.Dead) == 0 {
+	if next.view.settled == was && len(res.Dead) == 0 {
 		// Only the volatile window moved, and it is not stored.
 		l.st = next
 		return res, nil
@@ -176,7 +176,7 @@ func (l *Ledger) forget(txs []TxID) {
 // That is also what a block in flight looks like, so it releases nothing;
 // it may prompt another attempt, which Reserve keeps exclusive.
 func (l *Ledger) DropNotice(tx TxID) {
-	if _, ok := l.st.recs[tx]; ok {
+	if _, ok := l.st.att.recs[tx]; ok {
 		l.hints[tx] = struct{}{}
 	}
 }
@@ -189,12 +189,12 @@ func (l *Ledger) Dropped(tx TxID) bool {
 
 // ResumePoint is where chain-sync must intersect after a restart: the
 // settled point, which never moves back.
-func (l *Ledger) ResumePoint() chain.Point { return l.st.settled }
+func (l *Ledger) ResumePoint() chain.Point { return l.st.view.settled }
 
 // Unfinished returns every unfinished attempt in the order they were
 // reserved. After a restart each one must be treated as sent.
 func (l *Ledger) Unfinished() []Pending {
-	recs := l.st.sorted()
+	recs := l.st.att.sorted()
 	out := make([]Pending, len(recs))
 	for i, r := range recs {
 		out[i] = Pending{Intent: r.Intent, Attempt: r.Attempt}
@@ -204,14 +204,14 @@ func (l *Ledger) Unfinished() []Pending {
 
 // Holder returns the intent holding r, if any.
 func (l *Ledger) Holder(r Ref) (IntentID, bool) {
-	id, ok := l.st.held[r]
+	id, ok := l.st.att.held[r]
 	return id, ok
 }
 
 // Settled returns the owned outputs unspent at the settled point, reserved
 // or not, sorted by Ref. Blocks above the settled point are not reflected.
 func (l *Ledger) Settled() []Utxo {
-	return slices.SortedFunc(maps.Values(l.st.utxos), func(a, b Utxo) int { return compareRefs(a.Ref, b.Ref) })
+	return slices.SortedFunc(maps.Values(l.st.out.utxos), func(a, b Utxo) int { return compareRefs(a.Ref, b.Ref) })
 }
 
 // Blob returns the encoding a Commit of the current state would write. A

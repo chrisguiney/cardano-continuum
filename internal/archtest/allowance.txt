@@ -33,7 +33,6 @@ members internal/mistake mutant 24
 members internal/operator harness 32
 members internal/operator/fakekube Cluster 21
 members internal/plan rig 33
-members internal/plan state 41
 members internal/policy model 25
 members internal/scenario txSpec 29
 members internal/store Identity 30

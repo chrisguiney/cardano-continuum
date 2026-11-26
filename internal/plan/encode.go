@@ -33,12 +33,12 @@ type disk struct {
 // encode returns the canonical encoding of s, sorted so equal states give
 // equal bytes.
 func encode(s *state) (store.Blob, error) {
-	d := disk{SettledSlot: s.settled.Slot, NextSeq: s.nextSeq}
-	if !s.settled.IsOrigin() {
-		d.SettledHash = s.settled.Hash[:]
+	d := disk{SettledSlot: s.view.settled.Slot, NextSeq: s.att.nextSeq}
+	if !s.view.settled.IsOrigin() {
+		d.SettledHash = s.view.settled.Hash[:]
 	}
-	d.Utxos = slices.SortedFunc(maps.Values(s.utxos), func(a, b Utxo) int { return compareRefs(a.Ref, b.Ref) })
-	for _, rec := range s.sorted() {
+	d.Utxos = slices.SortedFunc(maps.Values(s.out.utxos), func(a, b Utxo) int { return compareRefs(a.Ref, b.Ref) })
+	for _, rec := range s.att.sorted() {
 		d.Attempts = append(d.Attempts, *rec)
 	}
 	d.Paid = slices.Sorted(maps.Keys(s.paid))
@@ -66,15 +66,15 @@ func decode(k uint64, b store.Blob) (*state, error) {
 			return nil, fmt.Errorf("%w: settled slot %d has no hash", ErrBlob, d.SettledSlot)
 		}
 	case common.Blake2b256Size:
-		s.settled = chain.Point{Slot: d.SettledSlot, Hash: common.Blake2b256(d.SettledHash)}
+		s.view.settled = chain.Point{Slot: d.SettledSlot, Hash: common.Blake2b256(d.SettledHash)}
 	default:
 		return nil, fmt.Errorf("%w: settled hash of %d bytes", ErrBlob, len(d.SettledHash))
 	}
 	for _, u := range d.Utxos {
-		if _, dup := s.utxos[u.Ref]; dup {
+		if _, dup := s.out.utxos[u.Ref]; dup {
 			return nil, fmt.Errorf("%w: output %x#%d twice", ErrBlob, u.Ref.Tx[:4], u.Ref.Index)
 		}
-		s.putUtxo(u)
+		s.out.put(u)
 	}
 	for _, id := range d.Paid {
 		s.paid[id] = struct{}{}
@@ -101,20 +101,16 @@ func restoreAttempts(s *state, recs []record, nextSeq uint64) error {
 			return fmt.Errorf("%w: attempt seq %d after %d, next %d", ErrBlob, rec.Seq, last, nextSeq)
 		}
 		last = rec.Seq
-		if err := s.wellFormed(rec.Attempt); err != nil {
+		if err := s.att.wellFormed(rec.Attempt); err != nil {
 			return fmt.Errorf("%w: %w", ErrBlob, err)
 		}
 		if _, ok := s.paid[rec.Intent]; ok {
 			return fmt.Errorf("%w: unfinished attempt of paid intent %d", ErrBlob, rec.Intent)
 		}
-		for _, r := range rec.Inputs {
-			if h, ok := s.held[r]; ok && h != rec.Intent {
-				return fmt.Errorf("%w: %x#%d held by intents %d and %d", ErrBlob, r.Tx[:4], r.Index, h, rec.Intent)
-			}
-			s.held[r] = rec.Intent
+		if err := s.att.restore(rec); err != nil {
+			return fmt.Errorf("%w: %w", ErrBlob, err)
 		}
-		s.addRec(rec)
 	}
-	s.nextSeq = nextSeq
+	s.att.nextSeq = nextSeq
 	return nil
 }
