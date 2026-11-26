@@ -31,6 +31,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
+	"github.com/chrisguiney/cardano-continuum/internal/store"
 	"github.com/chrisguiney/cardano-continuum/profiles"
 )
 
@@ -177,8 +178,11 @@ func cmdRun(ctx context.Context, args []string, out io.Writer) error {
 		return err
 	}
 	path := filepath.Join(*dir, "events.log")
-	if _, err := os.Stat(path); err == nil {
-		return fmt.Errorf("run: %s exists; a fake run cannot resume, since its chain lived in the process", path)
+	dbPath := filepath.Join(*dir, "store.db")
+	for _, p := range []string{path, dbPath} {
+		if _, err := os.Stat(p); err == nil {
+			return fmt.Errorf("run: %s exists; a fake run cannot resume, since its chain lived in the process", p)
+		}
 	}
 	chain, err := engine.NewFakeChain(&cfg)
 	if err != nil {
@@ -189,8 +193,19 @@ func cmdRun(ctx context.Context, args []string, out io.Writer) error {
 	// and an fsync per input would buy nothing: the log is kept in memory
 	// and written out once at the end.
 	mem := &eventlog.MemLog{}
+	// The store is the only record of genesis actors' profiles: their
+	// Spawned records are configuration, not decisions, so serve reads them
+	// from here. Its checkpoint at the end of the run covers the whole log.
+	if err := os.MkdirAll(*dir, 0o750); err != nil {
+		return err
+	}
+	db, err := store.Open(ctx, dbPath, store.WithLog(mem))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = db.Close() }()
 	start := time.Now()
-	r, err := engine.Start(ctx, cfg, engine.Deps{Clock: sched.NewVirtual(0), Log: mem, Node: node, Pacer: node})
+	r, err := engine.Start(ctx, cfg, engine.Deps{Clock: sched.NewVirtual(0), Log: mem, Node: node, Pacer: node, Store: db})
 	if err != nil {
 		return err
 	}

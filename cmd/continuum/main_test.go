@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/chrisguiney/cardano-continuum/internal/store"
 )
 
 // TestDeterminismCLIRuns is `make determinism`'s double run: two fake runs
@@ -48,5 +50,34 @@ func TestDeterminismCLIRuns(t *testing.T) {
 	}
 	if err := run(ctx, append([]string{"run", "--fake", "--out", filepath.Join(dir, "a")}, flags...), &out); err == nil {
 		t.Fatal("run over an existing log succeeded")
+	}
+}
+
+// A fake run's genesis actors never reach the log as Spawned records, so the
+// run's store is the only place their profiles are written.
+func TestFakeRunStoresActorProfiles(t *testing.T) {
+	ctx := context.Background()
+	dir := filepath.Join(t.TempDir(), "run")
+	var out bytes.Buffer
+	args := []string{"run", "--fake", "--epochs", "1", "--out", dir, "--seed", "7", "--wallets", "12", "--epoch-slots", "120"}
+	if err := run(ctx, args, &out); err != nil {
+		t.Fatalf("run: %v\n%s", err, out.String())
+	}
+	db, err := store.Open(ctx, filepath.Join(dir, "store.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	rows, err := db.Actors(ctx, store.ActorQuery{SortBy: "id", Limit: store.MaxLimit})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) < 12 {
+		t.Fatalf("store holds %d actors, want at least the 12 genesis wallets", len(rows))
+	}
+	for _, r := range rows {
+		if r.Profile == "" {
+			t.Fatalf("actor %d has no profile in the store", r.ID)
+		}
 	}
 }
