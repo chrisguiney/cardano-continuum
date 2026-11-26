@@ -24,6 +24,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/fakekube"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/fence"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
 
@@ -290,8 +291,8 @@ func TestFinalizerPatchHasUIDPrecondition(t *testing.T) {
 	h.eventually("old pod gone", func() bool { _, ok := h.pod("p-0"); return !ok })
 	fresh := mk()
 
-	r := NewRelease(h.c, h.c, quiet())
-	if err := r.release(h.ctx, stale.DeepCopy()); err == nil {
+	r := fence.NewRelease(h.c, h.c, quiet())
+	if err := r.Unfence(h.ctx, stale.DeepCopy()); err == nil {
 		t.Fatal("release of the old pod succeeded against the new one")
 	}
 	now, _ := h.pod("p-0")
@@ -300,7 +301,7 @@ func TestFinalizerPatchHasUIDPrecondition(t *testing.T) {
 	}
 	h.must(h.c.Delete(h.ctx, now))
 	h.must(h.c.Get(h.ctx, client.ObjectKeyFromObject(now), now))
-	h.must(r.release(h.ctx, now))
+	h.must(r.Unfence(h.ctx, now))
 	h.eventually("new pod released", func() bool { _, ok := h.pod("p-0"); return !ok })
 }
 
@@ -342,10 +343,10 @@ func TestTwoReconcilersOneForger(t *testing.T) {
 	h.secret("a-keys", "opcert")
 	h.startOperator()
 	stale := h.manager()
-	h.must(Index(h.ctx, stale))
+	h.must(fence.Index(h.ctx, stale))
 	lag := &laggy{Client: stale.GetClient(), lag: time.Second, at: map[types.NamespacedName]time.Time{}, snap: map[types.NamespacedName]*v1alpha1.ContinuumPool{}}
 	h.must(NewPools(lag, render.Drivers(), fakeResolver{}, nil, quiet()).SetupWithManager(stale))
-	h.must(NewRelease(stale.GetClient(), stale.GetAPIReader(), quiet()).SetupWithManager(stale))
+	h.must(fence.NewRelease(stale.GetClient(), stale.GetAPIReader(), quiet()).SetupWithManager(stale))
 	h.run("stale manager", stale.Start)
 
 	var most int

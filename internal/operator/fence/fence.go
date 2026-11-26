@@ -1,4 +1,4 @@
-package operator
+package fence
 
 import (
 	"context"
@@ -20,6 +20,10 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
+
+// refusalRetry is how long a reconcile of a held pod waits before looking
+// again; the node and pod events are the real triggers.
+const refusalRetry = 10 * time.Second
 
 // Release removes the fence finalizer from keyed pods whose process is
 // known to have stopped (see Releasable).
@@ -53,7 +57,7 @@ func (r *Release) Reconcile(ctx context.Context, req reconcile.Request) (reconci
 	if pod.DeletionTimestamp == nil || !slices.Contains(pod.Finalizers, render.Finalizer) {
 		return reconcile.Result{}, nil
 	}
-	state, err := readNode(ctx, r.live, pod.Spec.NodeName)
+	state, err := ReadNode(ctx, r.live, pod.Spec.NodeName)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
@@ -62,7 +66,7 @@ func (r *Release) Reconcile(ctx context.Context, req reconcile.Request) (reconci
 		// events this controller watches. The requeue is a backstop.
 		return reconcile.Result{RequeueAfter: refusalRetry}, nil
 	}
-	if err := r.release(ctx, &pod); err != nil {
+	if err := r.Unfence(ctx, &pod); err != nil {
 		if apierrors.IsConflict(err) || apierrors.IsNotFound(err) {
 			return reconcile.Result{RequeueAfter: time.Second}, nil
 		}
@@ -72,9 +76,9 @@ func (r *Release) Reconcile(ctx context.Context, req reconcile.Request) (reconci
 	return reconcile.Result{}, nil
 }
 
-// release removes the finalizer from pod with a merge patch preconditioned
+// Unfence removes the finalizer from pod with a merge patch preconditioned
 // on pod's UID and resourceVersion.
-func (r *Release) release(ctx context.Context, pod *corev1.Pod) error {
+func (r *Release) Unfence(ctx context.Context, pod *corev1.Pod) error {
 	rest := slices.DeleteFunc(slices.Clone(pod.Finalizers), func(f string) bool { return f == render.Finalizer })
 	if rest == nil {
 		rest = []string{}
@@ -99,7 +103,7 @@ func (r *Release) SetupWithManager(mgr manager.Manager) error {
 	err := builder.ControllerManagedBy(mgr).
 		Named("fence").
 		For(&corev1.Pod{}, builder.WithPredicates(fenced)).
-		Watches(&corev1.Node{}, handler.EnqueueRequestsFromMapFunc(podsOnNode(mgr.GetClient()))).
+		Watches(&corev1.Node{}, handler.EnqueueRequestsFromMapFunc(PodsOnNode(mgr.GetClient()))).
 		Complete(r)
 	if err != nil {
 		return fmt.Errorf("set up release controller: %w", err)

@@ -20,6 +20,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/ident"
+	"github.com/chrisguiney/cardano-continuum/internal/operator/fence"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/phase"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
@@ -301,7 +302,7 @@ func (r *applier) observe(ctx context.Context, p *v1alpha1.ContinuumPool, worklo
 		if err != nil {
 			return nil, err
 		}
-		if state == NodeUnreachable {
+		if state == fence.NodeUnreachable {
 			held = append(held, fmt.Sprintf("pod %s on node %s", pod.Name, pod.Spec.NodeName))
 		}
 	}
@@ -316,26 +317,6 @@ func (r *applier) observe(ctx context.Context, p *v1alpha1.ContinuumPool, worklo
 }
 
 // nodeState reads a Node. It is a report only here; Release reads live.
-func (r *applier) nodeState(ctx context.Context, name string) (NodeState, error) {
-	return readNode(ctx, r.client, name)
-}
-
-func readNode(ctx context.Context, c client.Reader, name string) (NodeState, error) {
-	if name == "" {
-		return NodeGone, nil
-	}
-	var n corev1.Node
-	err := c.Get(ctx, types.NamespacedName{Name: name}, &n)
-	if apierrors.IsNotFound(err) {
-		return NodeGone, nil
-	}
-	if err != nil {
-		return NodeUnreachable, fmt.Errorf("get node %s: %w", name, err)
-	}
-	for _, c := range n.Status.Conditions {
-		if c.Type == corev1.NodeReady && c.Status == corev1.ConditionTrue {
-			return NodeReady, nil
-		}
-	}
-	return NodeUnreachable, nil
+func (r *applier) nodeState(ctx context.Context, name string) (fence.NodeState, error) {
+	return fence.ReadNode(ctx, r.client, name)
 }

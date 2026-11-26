@@ -1,4 +1,4 @@
-package operator
+package fence
 
 import (
 	"testing"
