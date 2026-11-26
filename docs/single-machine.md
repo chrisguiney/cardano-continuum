@@ -65,6 +65,16 @@ every cardano-node tip within k), starts the engine with `--serve` and
 port-forwards its UI. It is idempotent. The genesis fixes the pool count and
 the seed, so change either only after `make down`.
 
+An engine resumes its event log only under the binary, seed, profile set
+and attacks that wrote it; a pod given another refuses its log ("eventlog:
+header mismatch") and crash-loops. `make up` records those on the engine
+StatefulSet (annotation `continuum.blinklabs.io/run`, computed by `go run
+./hack/devup run`), and when a deploy would change them it logs why, for
+example "engine binary changed: a run can't be resumed by a different
+binary; resetting the network", and runs `make down` first, so the chain
+and the engine store start fresh. `make up KEEP_RUN=1` refuses instead.
+A deploy from before the annotation existed counts as changed.
+
 `make down` deletes the pools while the operator still runs, since the
 operator's fence finalizer on each keyed pod blocks namespace deletion
 otherwise, then the engine, then the namespace.

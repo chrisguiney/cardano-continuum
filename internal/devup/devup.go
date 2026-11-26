@@ -4,6 +4,8 @@
 package devup
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -157,4 +159,53 @@ func Attacks(s string) (AttackPlan, error) {
 	}
 	p.Engine = strings.Join(names, ",")
 	return p, nil
+}
+
+// RunIdentity is what an engine's event log header binds a run to, as far
+// as `make up` can change it without a new genesis: the engine image, the
+// profile set, the seed and the attacks (which add adversary profiles).
+// An engine pod resuming a log under another identity refuses it.
+type RunIdentity struct {
+	Image, Profiles, Seed, Attacks string
+}
+
+// String encodes the identity for the engine StatefulSet's annotation. The
+// seed is a secret, so only its SHA-256 is written.
+func (r RunIdentity) String() string {
+	h := sha256.Sum256([]byte(r.Seed))
+	return strings.Join([]string{"image=" + r.Image, "profiles=" + r.Profiles,
+		"seed=" + hex.EncodeToString(h[:8]), "attacks=" + r.Attacks}, ";")
+}
+
+// runFields names each identity field in the order RunChange reports it,
+// with the line up.sh logs.
+var runFields = []struct{ key, why string }{
+	{"image", "engine binary changed: a run can't be resumed by a different binary"},
+	{"seed", "seed changed: a run can't be resumed under another seed"},
+	{"profiles", "profiles changed: a run can't be resumed under another profile set"},
+	{"attacks", "attacks changed: a run can't be resumed with other adversaries"},
+}
+
+// RunChange returns why a deployed engine, whose annotation is deployed,
+// cannot resume under want, or "" when it can.
+func RunChange(deployed string, want RunIdentity) string {
+	if deployed == "" {
+		return "engine identity unrecorded: the deployed engine predates it, so a run can't be known to resume"
+	}
+	have := map[string]string{}
+	for _, kv := range strings.Split(deployed, ";") {
+		k, v, _ := strings.Cut(kv, "=")
+		have[k] = v
+	}
+	next := map[string]string{}
+	for _, kv := range strings.Split(want.String(), ";") {
+		k, v, _ := strings.Cut(kv, "=")
+		next[k] = v
+	}
+	for _, f := range runFields {
+		if have[f.key] != next[f.key] {
+			return f.why
+		}
+	}
+	return ""
 }

@@ -14,11 +14,19 @@
 # also renders the genesis with per-transaction ExUnits above the per-block
 # ones (devup attacks prints the overrides).
 #
+# An engine resumes its event log only under the binary, seed, profiles and
+# attacks that wrote it. up.sh records them on the engine StatefulSet
+# (annotation continuum.blinklabs.io/run, see devup run); when an existing
+# deploy differs, it logs why ("engine binary changed: a run can't be
+# resumed by a different binary; resetting the network") and runs
+# hack/down.sh first, so the chain and the engine store start fresh. With
+# KEEP_RUN=1 it refuses instead.
+#
 # Every wait is bounded and nothing reads stdin. kubectl always names
 # $CONTEXT, so the current context is never changed.
 #
 # Environment (the Makefile passes these): CONTEXT, NAMESPACE, PROFILES,
-# POOLS, DINGO_POOLS, WALLETS, SCALE, SEED (64 hex), ATTACKS, CONTINUUM_REGISTRY,
+# POOLS, DINGO_POOLS, WALLETS, SCALE, SEED (64 hex), ATTACKS, KEEP_RUN, CONTINUUM_REGISTRY,
 # CONTINUUM_REGISTRY_INSECURE, KO, MIN_MEM_GIB, UI_PORT, UI_ADDRESS.
 set -euo pipefail
 exec </dev/null
@@ -33,6 +41,7 @@ WALLETS=${WALLETS:-100}
 SCALE=${SCALE:-200}
 SEED=${SEED:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
 ATTACKS=${ATTACKS:-}
+KEEP_RUN=${KEEP_RUN:-}
 REGISTRY=${CONTINUUM_REGISTRY:-localhost:5005/continuum}
 INSECURE=${CONTINUUM_REGISTRY_INSECURE:-true}
 KO=${KO:-go run github.com/google/ko@v0.19.1}
@@ -309,16 +318,35 @@ require_one_chain() {
   log "one chain: tips $lo..$hi, $forged blocks forged"
 }
 
+# check_run builds the engine image and compares the run identity it makes
+# with the deployed engine's. A deploy that cannot resume is reset with
+# hack/down.sh, or refused with KEEP_RUN=1.
+check_run() {
+  ENGINE_IMG=$(build continuum)
+  local out old reason
+  old=$(k -n "$NAMESPACE" get statefulset continuum-engine -o jsonpath='{.metadata.annotations.continuum\.blinklabs\.io/run}' 2>/dev/null) || old=""
+  out=$(SEED=$SEED devup run -deployed "$old" -image "$ENGINE_IMG" -profiles "$PROFILES" -attacks "$ENGINE_ATTACKS")
+  RUN_ID=$(printf '%s\n' "$out" | sed -n 1p)
+  reason=$(printf '%s\n' "$out" | sed -n 2p)
+  k -n "$NAMESPACE" get statefulset continuum-engine >/dev/null 2>&1 || return 0
+  [ -z "$reason" ] && return 0
+  [ "$KEEP_RUN" = 1 ] && die "$reason; KEEP_RUN=1, so not resetting (make down, or unset KEEP_RUN)"
+  log "$reason; resetting the network"
+  CONTEXT=$CONTEXT NAMESPACE=$NAMESPACE K_BIN=$K UI_PORT=$UI_PORT CONTINUUM_STATE_DIR=$state "$root/hack/down.sh" >&2 ||
+    die "reset failed; run make down"
+  k create namespace "$NAMESPACE" --dry-run=client -o yaml | k apply -f - >/dev/null
+}
+
 deploy_engine() {
   k -n "$NAMESPACE" apply -f "$root/deploy/engine/rbac.yaml" >/dev/null
   k -n "$NAMESPACE" create configmap continuum-engine --from-literal=node="$(devup node "$NAMESPACE")" \
     --dry-run=client -o yaml | k -n "$NAMESPACE" apply -f - >/dev/null
-  local img args
-  img=$(build continuum)
+  local img=$ENGINE_IMG args
   args=$(printf '            - %s\n' "--profiles=$PROFILES" "--wallets=$WALLETS" "--scale=$SCALE" "--pools=$ENGINE_POOLS" \
     "--genesis-pools=$total" "--network=devnet" "--namespace=$NAMESPACE" "--serve=127.0.0.1:$UI_PORT" \
     ${ENGINE_ATTACKS:+"--attack=$ENGINE_ATTACKS"})
-  ARGS="$args" awk -v img="$img" '
+  ARGS="$args" awk -v img="$img" -v run="$RUN_ID" '
+    /^  name: continuum-engine$/ && !named { print; print "  annotations: {continuum.blinklabs.io/run: \"" run "\"}"; named = 1; next }
     /^          image: continuum$/ { print "          image: " img; next }
     /^            - --wallets=20$/ { print ENVIRON["ARGS"]; next }
     /^      automountServiceAccountToken: false$/ { print "      serviceAccountName: continuum-engine"; print "      automountServiceAccountToken: true"; next }
@@ -343,6 +371,7 @@ forward() {
 main() {
   preflight
   k create namespace "$NAMESPACE" --dry-run=client -o yaml | k apply -f - >/dev/null
+  check_run
   install_operator
   if ! k -n "$NAMESPACE" get job continuum-genesis >/dev/null 2>&1; then
     local node_img dingo_img imgs

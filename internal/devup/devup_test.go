@@ -124,3 +124,31 @@ func TestAttacks(t *testing.T) {
 		t.Fatal("an unknown attack parsed")
 	}
 }
+
+func TestRunChange(t *testing.T) {
+	a := RunIdentity{Image: "reg/continuum:aaaa", Profiles: "preprod", Seed: "00ff", Attacks: "dust-flood"}
+	if got := RunChange(a.String(), a); got != "" {
+		t.Fatalf("same identity changed: %q", got)
+	}
+	for _, tc := range []struct {
+		mod  func(*RunIdentity)
+		want string
+	}{
+		{func(r *RunIdentity) { r.Image = "reg/continuum:bbbb" }, "engine binary changed"},
+		{func(r *RunIdentity) { r.Seed = "0100" }, "seed changed"},
+		{func(r *RunIdentity) { r.Profiles = "preview" }, "profiles changed"},
+		{func(r *RunIdentity) { r.Attacks = "none" }, "attacks changed"},
+	} {
+		b := a
+		tc.mod(&b)
+		if got := RunChange(a.String(), b); !strings.HasPrefix(got, tc.want) {
+			t.Errorf("RunChange = %q, want %q", got, tc.want)
+		}
+	}
+	if got := RunChange("", a); !strings.Contains(got, "unrecorded") {
+		t.Fatalf("a deploy with no recorded identity: %q", got)
+	}
+	if strings.Contains(a.String(), "00ff") {
+		t.Fatal("the identity carries the seed itself")
+	}
+}

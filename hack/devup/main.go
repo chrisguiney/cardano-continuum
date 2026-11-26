@@ -47,6 +47,8 @@ func run(args []string) error {
 			fmt.Println(a)
 		}
 		return nil
+	case "run":
+		return runIdentity(args[1:])
 	case "node":
 		if len(args) != 2 {
 			return fmt.Errorf("usage: devup node <namespace>")
@@ -90,5 +92,25 @@ func render(args []string) error {
 		return err
 	}
 	fmt.Println(out)
+	return nil
+}
+
+// runIdentity prints the engine run identity for the flags and the SEED
+// environment variable (a flag would put the seed in the process list),
+// then, on a second line, why an engine deployed under -deployed cannot
+// resume it, or an empty line when it can.
+func runIdentity(args []string) error {
+	fs := flag.NewFlagSet("run", flag.ContinueOnError)
+	var r devup.RunIdentity
+	deployed := fs.String("deployed", "", "the deployed engine's identity annotation")
+	fs.StringVar(&r.Image, "image", "", "engine image")
+	fs.StringVar(&r.Profiles, "profiles", "", "PROFILES")
+	fs.StringVar(&r.Attacks, "attacks", "", "the engine's --attack value")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	r.Seed = os.Getenv("SEED")
+	fmt.Println(r.String())
+	fmt.Println(devup.RunChange(*deployed, r))
 	return nil
 }
