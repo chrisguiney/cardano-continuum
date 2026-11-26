@@ -126,3 +126,12 @@ def test_grade_cli_report_and_exit_code(chain, tmp_path):
     assert code == 1
     assert "| activity_per_day | FAIL |" in text
     assert "Idle wake-ups" in text
+
+
+def test_samples_are_sorted_so_a_fit_is_reproducible(chain, engine):
+    """DuckDB returns unordered rows in a different order from run to run,
+    and sums of floats depend on the order of their terms. Every sample is
+    sorted, so the fitted numbers are the same to the last bit on every run."""
+    for st in (chain, engine):
+        for name, x in {**st.samples, **st.per_address}.items():
+            assert (np.diff(x) >= 0).all(), name

@@ -174,6 +174,17 @@ QUALIFY gap IS NOT NULL
 """
 
 
+def _sample(values) -> np.ndarray:
+    """A sample as a sorted float array.
+
+    DuckDB returns the rows of an unordered query in whatever order its
+    threads finish, and a floating-point sum depends on the order of its
+    terms. Sorting fixes the order, so a fit of the same data gives the same
+    numbers to the last bit on every run.
+    """
+    return np.sort(np.array(list(values), dtype=float))
+
+
 def _tables(root: str) -> dict[str, str]:
     p = {t: _glob(root, t) for t in ["tx", "block", "tx_input", "tx_output"]}
     if has_table(root, "certificate"):
@@ -251,15 +262,15 @@ def stats_from(con: duckdb.DuckDBPyConnection, slot_seconds: float = 1.0, span_s
     """
     st = Stats()
     rows = con.execute("SELECT n_in, n_out, kind FROM c_facts").fetchall()
-    n_in = np.array([r[0] for r in rows], dtype=float)
-    n_out = np.array([r[1] for r in rows], dtype=float)
+    n_in = _sample(r[0] for r in rows)
+    n_out = _sample(r[1] for r in rows)
     st.samples["inputs_per_tx"] = n_in
     st.samples["outputs_per_tx"] = n_out
     kinds = [r[2] for r in rows]
     total = max(len(kinds), 1)
     st.shares["tx_type_mix"] = {t: kinds.count(t) / total for t in TYPES}
 
-    lov = np.array([v[0] for v in con.execute(PAYMENT_SQL).fetchall()], dtype=float)
+    lov = _sample(v[0] for v in con.execute(PAYMENT_SQL).fetchall())
     st.samples["output_value_lovelace"] = lov
     st.samples["log10_output_value"] = np.log10(lov)
 
@@ -267,7 +278,7 @@ def stats_from(con: duckdb.DuckDBPyConnection, slot_seconds: float = 1.0, span_s
         span = con.execute("SELECT max(slot) - min(slot) FROM c_facts").fetchall()[0][0] or 0
         span_seconds = span * slot_seconds
     span_days = max(span_seconds / 86400.0, 1e-9)
-    counts = np.array([a[1] for a in con.execute(ADDR_SQL).fetchall()], dtype=float)
+    counts = _sample(a[1] for a in con.execute(ADDR_SQL).fetchall())
     st.samples["tx_count_per_address"] = counts
     st.samples["activity_per_day"] = counts / span_days
     st.info["span_days"] = span_days
@@ -278,14 +289,14 @@ def stats_from(con: duckdb.DuckDBPyConnection, slot_seconds: float = 1.0, span_s
         "FROM c_facts WHERE unit IS NOT NULL GROUP BY unit)", [slot_seconds]
     ).fetchall()[0][0]
     st.info["active_fraction"] = min(float(act or 1.0) / span_days, 1.0)
-    gaps = np.array([g[0] for g in con.execute(GAP_SQL).fetchall()], dtype=float) * slot_seconds
+    gaps = _sample(g[0] for g in con.execute(GAP_SQL).fetchall()) * slot_seconds
     st.samples["gap_seconds"] = gaps
     st.samples["log10_gap_seconds"] = np.log10(np.maximum(gaps, slot_seconds))
 
     st.fractions["address_reuse"] = float(con.execute(REUSE_SQL).fetchall()[0][0] or 0.0)
     st.fractions["change_to_sender"] = float(con.execute(CHANGE_SQL).fetchall()[0][0] or 0.0)
-    st.per_address["change_to_sender"] = np.array([r[1] for r in con.execute(PER_ADDR_FRAC_SQL).fetchall()], dtype=float)
-    st.per_address["address_reuse"] = np.array([r[1] for r in con.execute(PER_ADDR_REUSE_SQL).fetchall()], dtype=float)
+    st.per_address["change_to_sender"] = _sample(r[1] for r in con.execute(PER_ADDR_FRAC_SQL).fetchall())
+    st.per_address["address_reuse"] = _sample(r[1] for r in con.execute(PER_ADDR_REUSE_SQL).fetchall())
     st.info["txs"] = float(len(kinds))
     return st
 
@@ -345,30 +356,21 @@ def engine_stats(root: str, actors: set[int] | None = None) -> Stats:
         con.execute(f"CREATE TEMP VIEW {view} AS SELECT * FROM read_parquet('{_glob(root, table)}'){where}")
     sub, dec = "sub", "dec"
     st = Stats()
-    amounts = np.array(
-        [r[0] for r in con.execute(f"SELECT amount FROM {sub} WHERE amount > 0").fetchall()],
-        dtype=float,
-    )
+    amounts = _sample(r[0] for r in con.execute(f"SELECT amount FROM {sub} WHERE amount > 0").fetchall())
     st.samples["output_value_lovelace"] = amounts
     st.samples["log10_output_value"] = np.log10(amounts) if len(amounts) else amounts
     span_ms = con.execute(f"SELECT max(\"at\") - min(\"at\") FROM {sub}").fetchall()[0][0] or 0
     span_days = max(span_ms / 86_400_000.0, 1e-9)
-    counts = np.array(
-        [r[0] for r in con.execute(f"SELECT count(*) FROM {sub} GROUP BY actor").fetchall()],
-        dtype=float,
-    )
+    counts = _sample(r[0] for r in con.execute(f"SELECT count(*) FROM {sub} GROUP BY actor").fetchall())
     st.samples["tx_count_per_address"] = counts
     st.samples["activity_per_day"] = counts / span_days
     st.info["span_days"] = span_days
-    gaps = np.array(
-        [
-            r[0] / 1000.0
-            for r in con.execute(
-                f"SELECT \"at\" - lag(\"at\") OVER (PARTITION BY actor ORDER BY \"at\", seq) AS g "
-                f"FROM {sub} QUALIFY g IS NOT NULL"
-            ).fetchall()
-        ],
-        dtype=float,
+    gaps = _sample(
+        r[0] / 1000.0
+        for r in con.execute(
+            f"SELECT \"at\" - lag(\"at\") OVER (PARTITION BY actor ORDER BY \"at\", seq) AS g "
+            f"FROM {sub} QUALIFY g IS NOT NULL"
+        ).fetchall()
     )
     st.samples["gap_seconds"] = gaps
     st.samples["log10_gap_seconds"] = np.log10(np.maximum(gaps, 1e-3))
