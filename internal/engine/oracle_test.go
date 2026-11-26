@@ -11,6 +11,7 @@ import (
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/window"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/mistake"
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
@@ -240,7 +241,7 @@ func (o offByOne) View(_ context.Context, at chain.Point, addrs []common.Address
 	for _, a := range addrs {
 		for _, u := range e.win.View().UtxosAt(a) {
 			ref := Ref{Tx: TxID(u.Id.Id()), Index: u.Id.Index()}
-			ans.Utxos = append(ans.Utxos, ownedUtxo(a, ref, u.Output.Amount().Uint64()-1))
+			ans.Utxos = append(ans.Utxos, window.Utxo(a, ref, u.Output.Amount().Uint64()-1))
 		}
 	}
 	return ans, nil

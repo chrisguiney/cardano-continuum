@@ -172,11 +172,7 @@ type birthRec struct {
 	N       uint64     `cbor:"3,keyasint"`
 }
 
-type blockRec struct {
-	Point  eventlog.ChainPoint `cbor:"1,keyasint"`
-	Txs    []TxDigest          `cbor:"2,keyasint"`
-	Number uint64              `cbor:"3,keyasint,omitempty"`
-}
+type blockRec = wire.Block
 
 // pendingRec is a payment the ledger holds unfinished. Its inputs and
 // reservation are the ledger's.

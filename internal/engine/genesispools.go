@@ -8,6 +8,7 @@ import (
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/window"
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
@@ -84,7 +85,7 @@ func (e *Engine) stakeGenesis(s *chain.State) error {
 			return err
 		}
 		cred := common.Blake2b224(g.Owner.StakeKeyHash())
-		s.Utxos = append(s.Utxos, ownedUtxo(g.Owner.Address(), ref, e.cfg.GenesisPoolStake))
+		s.Utxos = append(s.Utxos, window.Utxo(g.Owner.Address(), ref, e.cfg.GenesisPoolStake))
 		s.Stake = append(s.Stake, chain.StakeState{Cred: cred, Registered: true, Delegated: true, Pool: common.Blake2b224(g.ID)})
 		s.Pools = append(s.Pools, chain.PoolState{ID: common.Blake2b224(g.ID)})
 		entries = append(entries, chain.StakeEntry{Cred: cred, Pool: common.Blake2b224(g.ID), Stake: e.cfg.GenesisPoolStake})

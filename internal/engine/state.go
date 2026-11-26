@@ -6,13 +6,11 @@ import (
 	"maps"
 	"slices"
 
-	"github.com/blinklabs-io/gouroboros/ledger/babbage"
 	"github.com/blinklabs-io/gouroboros/ledger/common"
-	"github.com/blinklabs-io/gouroboros/ledger/mary"
-	"github.com/blinklabs-io/gouroboros/ledger/shelley"
 
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	evclock "github.com/chrisguiney/cardano-continuum/internal/engine/internal/clock"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/window"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/mistake"
@@ -185,7 +183,7 @@ func (e *Engine) restoreLedger(s snapshot) error {
 	if err != nil {
 		return err
 	}
-	if err := e.win.Open(vs, windowSaved{Conf: s.Conf, Fees: s.Fees, Foreign: s.Foreign}); err != nil {
+	if err := e.win.Open(vs, window.Saved{Conf: s.Conf, Fees: s.Fees, Foreign: s.Foreign}); err != nil {
 		return fmt.Errorf("engine: snapshot view: %w", err)
 	}
 	ctx := context.Background()
@@ -260,7 +258,7 @@ func (e *Engine) ledgerUtxos(w keys.Wallet, coins []Coin) []common.Utxo {
 			out[i] = u
 			continue
 		}
-		out[i] = ownedUtxo(w.Address(), c.Ref, c.Lovelace)
+		out[i] = window.Utxo(w.Address(), c.Ref, c.Lovelace)
 	}
 	return out
 }
@@ -302,14 +300,6 @@ func (logged) Commit(context.Context, store.Blob) error { return nil }
 // Discards tells the ledger not to encode or copy its state for a Commit
 // that stores nothing.
 func (logged) Discards() bool { return true }
-
-func ownedUtxo(addr common.Address, r Ref, lovelace uint64) common.Utxo {
-	o := babbage.BabbageTransactionOutput{
-		OutputAddress: addr,
-		OutputAmount:  mary.MaryTransactionOutputValue{Amount: lovelace},
-	}
-	return common.Utxo{Id: shelley.ShelleyTransactionInput{TxId: common.Blake2b256(r.Tx), OutputIndex: r.Index}, Output: &o}
-}
 
 // Now is the engine's clock: the time of the last Tick.
 func (e *Engine) Now() sched.Time { return e.clk.Now() }

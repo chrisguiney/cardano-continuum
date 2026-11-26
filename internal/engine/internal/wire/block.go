@@ -48,6 +48,14 @@ type ProposalDigest struct {
 	Deposit uint64 `cbor:"3,keyasint,omitempty"`
 }
 
+// Block is an applied block as the engine keeps it: its point, its
+// transactions and its block number.
+type Block struct {
+	Point  eventlog.ChainPoint `cbor:"1,keyasint"`
+	Txs    []TxDigest          `cbor:"2,keyasint"`
+	Number uint64              `cbor:"3,keyasint,omitempty"`
+}
+
 // BlockContent is the Content of a BlockApplied input.
 type BlockContent struct {
 	Txs    []TxDigest `cbor:"1,keyasint"`

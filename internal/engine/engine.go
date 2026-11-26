@@ -15,6 +15,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	evclock "github.com/chrisguiney/cardano-continuum/internal/engine/internal/clock"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/journal"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/window"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
@@ -34,9 +35,9 @@ var (
 	// ErrRollbackBelowConfirmed: the chain rolled back past the K-deep point
 	// durable state came from. Design A cannot unwind it, so the engine stops
 	// instead of silently resetting.
-	ErrRollbackBelowConfirmed = errors.New("engine: rollback below the confirmed point")
+	ErrRollbackBelowConfirmed = window.ErrRollbackBelowConfirmed
 	// ErrUnknownPoint: a rollback names a point the engine never applied.
-	ErrUnknownPoint = errors.New("engine: rollback to an unknown point")
+	ErrUnknownPoint = window.ErrUnknownPoint
 	// ErrTimeBackwards: a Tick older than the engine's clock.
 	ErrTimeBackwards = evclock.ErrBackwards
 	// ErrUnknownInput: an input kind the engine does not handle.
@@ -130,7 +131,7 @@ type Engine struct {
 	byAddr map[string]population.ActorID
 
 	// win folds the same blocks as led.
-	win *window
+	win *window.Window
 
 	led      *plan.Ledger
 	pending  map[uint64]*pendingRec
@@ -230,7 +231,7 @@ func New(cfg Config) (*Engine, error) {
 	}
 	var gs chain.State
 	for i, f := range funds {
-		gs.Utxos = append(gs.Utxos, ownedUtxo(f.Address, Ref{Tx: TxID(genesis[i].Ref.Tx)}, f.Lovelace))
+		gs.Utxos = append(gs.Utxos, window.Utxo(f.Address, Ref{Tx: TxID(genesis[i].Ref.Tx)}, f.Lovelace))
 	}
 	if err := e.stakeGenesis(&gs); err != nil {
 		return nil, err
@@ -241,7 +242,7 @@ func New(cfg Config) (*Engine, error) {
 			return nil, fmt.Errorf("engine: genesis pool actor %d: %w", g.Actor, err)
 		}
 	}
-	if err = e.win.Open(gs, windowSaved{}); err != nil {
+	if err = e.win.Open(gs, window.Saved{}); err != nil {
 		return nil, fmt.Errorf("engine: view: %w", err)
 	}
 	for _, b := range e.births {
@@ -278,7 +279,7 @@ func newEmpty(cfg Config) (*Engine, error) {
 		retry: cfg.retry(), diag: diag,
 		actors: map[population.ActorID]*actor{}, byAddr: map[string]population.ActorID{},
 		pending: map[uint64]*pendingRec{}, byTx: map[TxID]uint64{},
-		win:   newWindow(chain.Config{K: cfg.K, Slots: cfg.Slots, NOpt: cfg.NOpt, GovLifetime: cfg.GovLifetime}),
+		win:   window.New(chain.Config{K: cfg.K, Slots: cfg.Slots, NOpt: cfg.NOpt, GovLifetime: cfg.GovLifetime}),
 		pools: map[population.ActorID][28]byte{},
 		dark:  map[population.ActorID]bool{}, down: map[population.ActorID]bool{}, repairs: map[population.ActorID]bool{},
 		images: map[population.ActorID]string{}, contracts: 1, deployAt: population.Never,
