@@ -298,19 +298,3 @@ func TestOnlySourcePodGetsSidecar(t *testing.T) {
 		t.Errorf("%d pods with a sidecar, want 1", with)
 	}
 }
-
-// TestRemovingSidecarChangesShape: a template that lost its sidecar and
-// volume is not the same shape as the one that had them, which
-// DeepDerivative alone would call equal.
-func TestRemovingSidecarChangesShape(t *testing.T) {
-	d := Drivers()[v1alpha1.Dingo]
-	p := pool("ns", "a", v1alpha1.Dingo, v1alpha1.TierValidating)
-	with := renderOn(t, d, withParquet(), p).StatefulSet.Spec.Template.Spec
-	without := renderOn(t, d, network("ns"), p).StatefulSet.Spec.Template.Spec
-	if sameShape(without, with) || sameShape(with, without) {
-		t.Error("sidecar added or removed, shape unchanged")
-	}
-	if !sameShape(with, with) {
-		t.Error("identical specs differ in shape")
-	}
-}

@@ -2,19 +2,23 @@ package operator
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"maps"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
+	"github.com/chrisguiney/cardano-continuum/internal/ident"
 )
 
 // apply writes w. It deletes every StatefulSet p owns that is not w's (a
@@ -53,6 +57,7 @@ func (r *Pools) apply(ctx context.Context, p *v1alpha1.ContinuumPool, w Workload
 	}
 	switch {
 	case cur == nil:
+		stamp(want)
 		return r.create(ctx, p, want)
 	case cur.DeletionTimestamp != nil:
 		return "", reconcile.Result{RequeueAfter: fenceRetry}, nil
@@ -98,31 +103,90 @@ func (r *Pools) holder(ctx context.Context, p *v1alpha1.ContinuumPool, want *app
 
 // update changes cur to want in place. It carries cur's resourceVersion,
 // so an update decided on a stale cache is refused with a conflict.
+//
+// The pod template is compared by the digest stamped on the object when it
+// was last written, not field by field: the API server defaults fields the
+// operator never renders, and DeepDerivative, the usual way to ignore them,
+// also ignores a removed list element, a removed map key and a field set back
+// to its zero value.
 func (r *Pools) update(ctx context.Context, cur, want *appsv1.StatefulSet) error {
+	stamp(want)
 	if *cur.Spec.Replicas == *want.Spec.Replicas &&
-		sameShape(want.Spec.Template.Spec, cur.Spec.Template.Spec) &&
-		equality.Semantic.DeepDerivative(want.Spec.Template, cur.Spec.Template) &&
-		equality.Semantic.DeepDerivative(want.Labels, cur.Labels) {
+		cur.Annotations[AnnotationSpecHash] == want.Annotations[AnnotationSpecHash] &&
+		hasLabels(cur.Labels, want.Labels) {
 		return nil
 	}
 	next := cur.DeepCopy()
 	next.Spec.Replicas = want.Spec.Replicas
 	next.Spec.Template = want.Spec.Template
 	maps.Copy(next.Labels, want.Labels)
+	if next.Annotations == nil {
+		next.Annotations = map[string]string{}
+	}
+	next.Annotations[AnnotationSpecHash] = want.Annotations[AnnotationSpecHash]
 	if err := r.client.Update(ctx, next); err != nil && !apierrors.IsConflict(err) {
 		return fmt.Errorf("update statefulset %s: %w", cur.Name, err)
 	}
 	return nil
 }
 
-// sameShape reports whether a and b have as many containers and volumes.
-// DeepDerivative treats a shorter list as a prefix of a longer one, so a
-// removed container or volume, the sidecar when it moves to another pool,
-// would otherwise look unchanged.
-func sameShape(a, b corev1.PodSpec) bool {
-	return len(a.Containers) == len(b.Containers) &&
-		len(a.InitContainers) == len(b.InitContainers) &&
-		len(a.Volumes) == len(b.Volumes)
+// AnnotationSpecHash records the digest of the pod template the operator
+// last wrote to a StatefulSet.
+const AnnotationSpecHash = ident.LabelPrefix + "/spec-hash"
+
+// stamp records the digest of want's pod template on want.
+func stamp(want *appsv1.StatefulSet) {
+	b, err := json.Marshal(want.Spec.Template)
+	if err != nil {
+		// A PodTemplateSpec is plain data; Marshal cannot fail on it.
+		panic(fmt.Sprintf("marshal pod template of %s: %v", want.Name, err))
+	}
+	sum := sha256.Sum256(b)
+	if want.Annotations == nil {
+		want.Annotations = map[string]string{}
+	}
+	want.Annotations[AnnotationSpecHash] = hex.EncodeToString(sum[:])
+}
+
+// hasLabels reports whether have carries every label in want with its value.
+// Labels other actors add are left alone.
+func hasLabels(have, want map[string]string) bool {
+	for k, v := range want {
+		if got, ok := have[k]; !ok || got != v {
+			return false
+		}
+	}
+	return true
+}
+
+// samePorts reports whether have serves the ports in want. An unset protocol
+// is TCP and an unset target port is the port, as the API server defaults them.
+func samePorts(have, want []corev1.ServicePort) bool {
+	if len(have) != len(want) {
+		return false
+	}
+	for i := range want {
+		h, w := have[i], want[i]
+		if h.Name != w.Name || h.Port != w.Port || h.Protocol != protocolOf(w) ||
+			h.TargetPort != targetOf(w) {
+			return false
+		}
+	}
+	return true
+}
+
+func protocolOf(p corev1.ServicePort) corev1.Protocol {
+	if p.Protocol == "" {
+		return corev1.ProtocolTCP
+	}
+	return p.Protocol
+}
+
+func targetOf(p corev1.ServicePort) intstr.IntOrString {
+	if p.TargetPort == (intstr.IntOrString{}) {
+		return intstr.FromInt32(p.Port)
+	}
+	return p.TargetPort
 }
 
 // drop deletes a StatefulSet in the foreground, preconditioned on the UID
@@ -168,7 +232,7 @@ func (r *Pools) applyService(ctx context.Context, p *v1alpha1.ContinuumPool, wan
 	if err != nil {
 		return fmt.Errorf("get service %s: %w", want.Name, err)
 	}
-	if !controlledBy(&cur, p.UID) || equality.Semantic.DeepDerivative(want.Spec, cur.Spec) {
+	if !controlledBy(&cur, p.UID) || (maps.Equal(want.Spec.Selector, cur.Spec.Selector) && samePorts(cur.Spec.Ports, want.Spec.Ports)) {
 		return nil
 	}
 	cur.Spec.Selector, cur.Spec.Ports = want.Spec.Selector, want.Spec.Ports
