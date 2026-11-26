@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/blinklabs-io/gouroboros/cbor"
 	"github.com/blinklabs-io/gouroboros/ledger/conway"
 	ocommon "github.com/blinklabs-io/gouroboros/protocol/common"
 
@@ -110,9 +111,9 @@ func Digest(blockCbor []byte) ([]byte, error) {
 // digestOf encodes a block as chain-sync delivered it. Consumed, Produced
 // and the fee already follow the isValid rule (chain.TxFrom).
 func digestOf(b chain.Block) ([]byte, error) {
-	var c BlockContent
+	c := BlockContent{Number: b.Number}
 	for _, tx := range b.Txs {
-		d := TxDigest{ID: TxID(tx.Hash), Fee: tx.Fee}
+		d := TxDigest{ID: TxID(tx.Hash), Fee: tx.Fee, Proposals: uint32(len(tx.Proposals))}
 		for _, in := range tx.Spends {
 			d.Inputs = append(d.Inputs, Ref{Tx: TxID(in.Tx), Index: in.Index})
 		}
@@ -121,7 +122,22 @@ func digestOf(b chain.Block) ([]byte, error) {
 			if err != nil {
 				return nil, fmt.Errorf("engine: output address: %w", err)
 			}
-			d.Outputs = append(d.Outputs, TxOut{Index: u.Id.Index(), Address: addr, Lovelace: u.Output.Amount().Uint64()})
+			d.Outputs = append(d.Outputs, TxOut{Index: u.Id.Index(), Address: addr, Lovelace: u.Output.Amount().Uint64(), Cbor: u.Output.Cbor()})
+		}
+		for _, cert := range tx.Certs {
+			raw := cert.Cbor()
+			if len(raw) == 0 {
+				var err error
+				if raw, err = cbor.Encode(cert); err != nil {
+					return nil, fmt.Errorf("engine: encode certificate: %w", err)
+				}
+			}
+			d.Certs = append(d.Certs, raw)
+		}
+		for _, v := range tx.Votes {
+			d.Votes = append(d.Votes, VoteDigest{
+				Kind: v.Voter.Kind, Hash: v.Voter.Hash, Tx: TxID(v.Action.Tx), Index: v.Action.Index, Choice: v.Choice,
+			})
 		}
 		c.Txs = append(c.Txs, d)
 	}

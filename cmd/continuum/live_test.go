@@ -34,7 +34,7 @@ func TestLiveConfig(t *testing.T) {
 	seed[0] = 7
 	sf := simFlags{wallets: 20, ttl: 120}
 	lf := liveFlags{faucet: 1_000_000, refillEvery: 20}
-	bp := build.Params{MinFeeA: 44, MinFeeB: 155381, CoinsPerUtxoByte: 4310, MaxTxSize: 16384}
+	bp := nodeParams{build: build.Params{MinFeeA: 44, MinFeeB: 155381, CoinsPerUtxoByte: 4310, MaxTxSize: 16384}, nOpt: 3, govLifetime: 6}
 	cfg, err := liveConfig(sf, lf, g, bp, seed)
 	if err != nil {
 		t.Fatal(err)
@@ -44,6 +44,9 @@ func TestLiveConfig(t *testing.T) {
 	}
 	if cfg.Faucet != 1_000_000 || cfg.RefillEvery != 20 || cfg.Build.MinFeeB != 155381 {
 		t.Fatalf("faucet %d every %d, build %+v", cfg.Faucet, cfg.RefillEvery, cfg.Build)
+	}
+	if cfg.NOpt != 3 || cfg.GovLifetime != 6 {
+		t.Fatalf("view parameters nOpt %d, lifetime %d", cfg.NOpt, cfg.GovLifetime)
 	}
 	if cfg.Build.SystemStart != g.Start || cfg.Build.SlotLength != g.SlotLength {
 		t.Fatalf("build slot timing %v %v", cfg.Build.SystemStart, cfg.Build.SlotLength)

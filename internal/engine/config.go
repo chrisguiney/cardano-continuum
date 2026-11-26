@@ -83,6 +83,11 @@ type Config struct {
 	// RefillEvery is the slots between the faucet's refill rounds. It must
 	// be positive when Faucet is.
 	RefillEvery uint64
+
+	// NOpt is the protocol parameter nOpt, the view's saturation cap; zero
+	// means none is known. GovLifetime is govActionLifetime in epochs.
+	// Both come from the node's (or the fake chain's) parameters.
+	NOpt, GovLifetime uint64
 }
 
 // Fund is one genesis output.
@@ -207,7 +212,9 @@ func (c *Config) Header() (eventlog.HeaderBody, error) {
 		Format     uint32        `cbor:"9,keyasint"`
 		Retry      submit.Policy `cbor:"10,keyasint"`
 		Refill     uint64        `cbor:"11,keyasint,omitempty"`
-	}{Format: logFormat, K: c.K, BlockEvery: c.BlockEvery, NetworkID: c.NetworkID, SlotMs: c.Slots.SlotStart(1),
+		NOpt       uint64        `cbor:"12,keyasint,omitempty"`
+		GovLife    uint64        `cbor:"13,keyasint,omitempty"`
+	}{NOpt: c.NOpt, GovLife: c.GovLifetime, Format: logFormat, K: c.K, BlockEvery: c.BlockEvery, NetworkID: c.NetworkID, SlotMs: c.Slots.SlotStart(1),
 		EpochMs: c.Slots.EpochStart(1), TTL: c.TTL, Build: c.Build, Retry: c.retry(), Refill: c.RefillEvery}
 	for _, f := range funds {
 		a, err := f.Address.Bytes()

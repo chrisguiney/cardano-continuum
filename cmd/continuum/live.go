@@ -57,7 +57,8 @@ func (l *liveFlags) register(fs *flag.FlagSet) {
 // the flags, the slot shape and k from the node's genesis, the builder from
 // the node's protocol parameters, and the run seed, so the faucet is the one
 // internal/genesis funded.
-func liveConfig(sf simFlags, lf liveFlags, g chain.Genesis, bp build.Params, seed rng.Seed) (engine.Config, error) {
+func liveConfig(sf simFlags, lf liveFlags, g chain.Genesis, np nodeParams, seed rng.Seed) (engine.Config, error) {
+	bp := np.build
 	reg, cohorts, err := sf.population()
 	if err != nil {
 		return engine.Config{}, err
@@ -73,6 +74,7 @@ func liveConfig(sf simFlags, lf liveFlags, g chain.Genesis, bp build.Params, see
 	return engine.Config{
 		Seed: seed, Profiles: reg, Cohorts: cohorts, Slots: slots, K: g.SecurityParam, TTL: sf.ttl,
 		Build: bp, BinaryVersion: version, Faucet: lf.faucet, RefillEvery: lf.refillEvery,
+		NOpt: np.nOpt, GovLifetime: np.govLifetime,
 	}, nil
 }
 
@@ -94,11 +96,11 @@ func runLive(ctx context.Context, sf simFlags, lf liveFlags, epochs uint64) erro
 	if err := guard(ctx, log, q, want); err != nil {
 		return err
 	}
-	bp, err := nodeParams(ctx, q)
+	np, err := queryParams(ctx, q)
 	if err != nil {
 		return err
 	}
-	cfg, err := liveConfig(sf, lf, want, bp, seed)
+	cfg, err := liveConfig(sf, lf, want, np, seed)
 	if err != nil {
 		return err
 	}
@@ -200,18 +202,24 @@ func guard(ctx context.Context, log *slog.Logger, q *chain.Querier, want chain.G
 	}
 }
 
-// nodeParams is the builder's parameters from the node's protocol
-// parameters, so fees and min-UTxO match the ledger that judges them.
-func nodeParams(ctx context.Context, q *chain.Querier) (build.Params, error) {
+// nodeParams are what a live run takes from the node's protocol
+// parameters: the builder's, so fees and min-UTxO match the ledger that
+// judges them, and the view's nOpt and governance action lifetime.
+type nodeParams struct {
+	build             build.Params
+	nOpt, govLifetime uint64
+}
+
+func queryParams(ctx context.Context, q *chain.Querier) (nodeParams, error) {
 	pp, err := q.Params(ctx)
 	if err != nil {
-		return build.Params{}, err
+		return nodeParams{}, err
 	}
 	cp, ok := pp.(*conway.ConwayProtocolParameters)
 	if !ok {
-		return build.Params{}, fmt.Errorf("node is not in Conway: protocol parameters are %T", pp)
+		return nodeParams{}, fmt.Errorf("node is not in Conway: protocol parameters are %T", pp)
 	}
-	return build.ParamsFromConway(cp, 0), nil
+	return nodeParams{build: build.ParamsFromConway(cp, 0), nOpt: uint64(cp.NOpt), govLifetime: cp.GovActionValidityPeriod}, nil
 }
 
 // checkFaucet refuses a fresh run whose faucet does not hold its genesis

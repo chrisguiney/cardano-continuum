@@ -36,21 +36,40 @@ type TxOut struct {
 	Index    uint32 `cbor:"1,keyasint"`
 	Address  []byte `cbor:"2,keyasint"`
 	Lovelace uint64 `cbor:"3,keyasint"`
+	// Cbor is the output as the block carries it, with its assets and
+	// datum; empty means lovelace only.
+	Cbor []byte `cbor:"4,keyasint,omitempty"`
+}
+
+// VoteDigest is one voting procedure: the voter (common.VoterType* and
+// its key or script hash), the governance action and the choice.
+type VoteDigest struct {
+	Kind   uint8    `cbor:"1,keyasint"`
+	Hash   [28]byte `cbor:"2,keyasint"`
+	Tx     TxID     `cbor:"3,keyasint"`
+	Index  uint32   `cbor:"4,keyasint"`
+	Choice uint8    `cbor:"5,keyasint"`
 }
 
 // TxDigest is one transaction as the engine reads it from a block: the
 // outputs it consumed and produced (collateral ones for an invalid
-// transaction) and its fee.
+// transaction), its fee, and its certificates (each its CBOR), the number
+// of governance actions it proposes and its votes. An invalid
+// transaction has no certificates, proposals or votes.
 type TxDigest struct {
-	ID      TxID    `cbor:"1,keyasint"`
-	Inputs  []Ref   `cbor:"2,keyasint"`
-	Outputs []TxOut `cbor:"3,keyasint"`
-	Fee     uint64  `cbor:"4,keyasint"`
+	ID        TxID         `cbor:"1,keyasint"`
+	Inputs    []Ref        `cbor:"2,keyasint"`
+	Outputs   []TxOut      `cbor:"3,keyasint"`
+	Fee       uint64       `cbor:"4,keyasint"`
+	Certs     [][]byte     `cbor:"5,keyasint,omitempty"`
+	Proposals uint32       `cbor:"6,keyasint,omitempty"`
+	Votes     []VoteDigest `cbor:"7,keyasint,omitempty"`
 }
 
 // BlockContent is the Content of a BlockApplied input.
 type BlockContent struct {
-	Txs []TxDigest `cbor:"1,keyasint"`
+	Txs    []TxDigest `cbor:"1,keyasint"`
+	Number uint64     `cbor:"2,keyasint,omitempty"`
 }
 
 // Verdict is what a submission established, as internal/submit classifies
@@ -166,12 +185,12 @@ type Confirmed struct {
 }
 
 // snapshotVersion is bumped whenever snapshot's shape changes.
-const snapshotVersion = 4
+const snapshotVersion = 5
 
 // logFormat is the version of the engine's input and decision bodies. It is
 // part of the log header's genesis fingerprint, so a log written in another
 // format is refused at the header rather than failing on its first body.
-const logFormat = 3
+const logFormat = 4
 
 // snapshot is the engine state in canonical form: every slice sorted, so
 // equal states encode to equal bytes.
@@ -189,6 +208,9 @@ type snapshot struct {
 	Ledger     ledgerBlob          `cbor:"11,keyasint"`
 	// RefillAt is the faucet's next round; zero without a faucet.
 	RefillAt sched.Time `cbor:"12,keyasint,omitempty"`
+	// View is the chain view at the confirmed point; the window is replayed
+	// onto it on restore.
+	View viewRec `cbor:"13,keyasint"`
 }
 
 // ledgerBlob is the planner ledger's store.Blob.
@@ -217,8 +239,9 @@ type birthRec struct {
 }
 
 type blockRec struct {
-	Point eventlog.ChainPoint `cbor:"1,keyasint"`
-	Txs   []TxDigest          `cbor:"2,keyasint"`
+	Point  eventlog.ChainPoint `cbor:"1,keyasint"`
+	Txs    []TxDigest          `cbor:"2,keyasint"`
+	Number uint64              `cbor:"3,keyasint,omitempty"`
 }
 
 // pendingRec is a payment the ledger holds unfinished. Its inputs and

@@ -114,13 +114,13 @@ func (s *simFlags) config() (engine.Config, error) {
 		return engine.Config{}, err
 	}
 	pp := fakechain.DefaultParams()
+	bp := build.ParamsFromConway(&pp, 0)
+	// The fake chain's slot 0 is the Unix epoch.
+	bp.SystemStart, bp.SlotLength = time.UnixMilli(0).UTC(), time.Duration(s.slotMs)*time.Millisecond
 	return engine.Config{
 		Seed: engine.SeedFromInt(s.seed), Profiles: reg, Cohorts: cohorts, Slots: slots,
-		K: s.k, BlockEvery: s.blockEvery, TTL: s.ttl, BinaryVersion: version,
-		Build: build.Params{
-			MinFeeA: uint64(pp.MinFeeA), MinFeeB: uint64(pp.MinFeeB),
-			CoinsPerUtxoByte: uint64(pp.AdaPerUtxoByte), MaxTxSize: uint32(pp.MaxTxSize),
-		},
+		K: s.k, BlockEvery: s.blockEvery, TTL: s.ttl, BinaryVersion: version, Build: bp,
+		NOpt: uint64(pp.NOpt), GovLifetime: pp.GovActionValidityPeriod,
 	}, nil
 }
 

@@ -125,6 +125,10 @@ type Engine struct {
 
 	conf   eventlog.ChainPoint
 	window []blockRec
+	// view folds the same blocks as window and led; book names what it
+	// tracks.
+	view *chain.View
+	book *chain.Book
 
 	led      *plan.Ledger
 	pending  map[uint64]*pendingRec
@@ -173,6 +177,13 @@ func New(cfg Config) (*Engine, error) {
 	if e.led, err = plan.New(e.ledgerConfig(), genesis); err != nil {
 		return nil, fmt.Errorf("engine: ledger: %w", err)
 	}
+	var gs chain.State
+	for i, f := range funds {
+		gs.Utxos = append(gs.Utxos, ownedUtxo(f.Address, Ref{Tx: TxID(genesis[i].Ref.Tx)}, f.Lovelace))
+	}
+	if e.view, err = chain.New(e.viewConfig(), gs); err != nil {
+		return nil, fmt.Errorf("engine: view: %w", err)
+	}
 	for _, b := range e.births {
 		e.scheduleBirth(b, 0)
 	}
@@ -200,7 +211,7 @@ func newEmpty(cfg Config) (*Engine, error) {
 		cfg: cfg, keys: ks, builder: build.New(cfg.Build), sel: sel, root: cfg.Seed.Derive(censusStream),
 		retry: cfg.retry(), diag: diag,
 		actors: map[population.ActorID]*actor{}, byAddr: map[string]population.ActorID{},
-		pending: map[uint64]*pendingRec{}, byTx: map[TxID]uint64{},
+		pending: map[uint64]*pendingRec{}, byTx: map[TxID]uint64{}, book: chain.NewBook(),
 	}
 	for _, n := range cfg.Profiles.Names() {
 		p, _ := cfg.Profiles.Get(n)
@@ -217,6 +228,7 @@ func newEmpty(cfg Config) (*Engine, error) {
 			return nil, fmt.Errorf("engine: faucet address: %w", err)
 		}
 		e.byAddr[string(addr)] = faucetActor
+		_ = e.book.AddAddress(e.faucet.Address(), faucetActor)
 	}
 	return e, nil
 }
@@ -240,7 +252,7 @@ func (e *Engine) Handle(ctx context.Context, in eventlog.Record) ([]eventlog.Rec
 				return nil, fmt.Errorf("engine: decode block content: %w", err)
 			}
 		}
-		err = e.applyBlock(ctx, in.At, blockRec{Point: b.Point, Txs: c.Txs})
+		err = e.applyBlock(ctx, in.At, blockRec{Point: b.Point, Txs: c.Txs, Number: c.Number})
 	case eventlog.KindRolledBack:
 		var b eventlog.RolledBack
 		if err = eventlog.Decode(in.Body, &b); err != nil {
@@ -364,6 +376,7 @@ func (e *Engine) register(a population.Actor, p profile.Profile) *actor {
 	if addr, err := st.wallet.Address().Bytes(); err == nil {
 		e.byAddr[string(addr)] = a.ID
 	}
+	e.bookActor(a.ID, p, st)
 	return st
 }
 
@@ -622,9 +635,17 @@ func (e *Engine) applyBlock(ctx context.Context, at sched.Time, b blockRec) erro
 	if err != nil {
 		return err
 	}
+	vb, err := viewBlock(e.Tip(), b)
+	if err != nil {
+		return err
+	}
 	res, err := e.led.Advance(ctx, chain.Event{Kind: chain.Forward, Block: lb, Point: lb.Point})
 	if err != nil {
 		return fmt.Errorf("engine: ledger: %w", err)
+	}
+	// The ledger accepted the block, so it extends the tip the view shares.
+	if _, err := e.view.Apply(vb); err != nil {
+		return fmt.Errorf("engine: view: %w", err)
 	}
 	e.window = append(e.window, b)
 	for uint64(len(e.window)) > e.cfg.K {
@@ -704,6 +725,9 @@ func (e *Engine) rollback(ctx context.Context, p eventlog.ChainPoint) error {
 	lp, _ := chain.PointFromLog(p)
 	if _, err := e.led.Advance(ctx, chain.Event{Kind: chain.Backward, Point: lp}); err != nil {
 		return fmt.Errorf("engine: ledger: %w", err)
+	}
+	if _, err := e.view.Rollback(lp); err != nil {
+		return fmt.Errorf("engine: view: %w", err)
 	}
 	e.window = e.window[:keep]
 	return nil

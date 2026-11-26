@@ -10,13 +10,11 @@ import (
 	"github.com/blinklabs-io/gouroboros/ledger/mary"
 	"github.com/blinklabs-io/gouroboros/ledger/shelley"
 
-	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/plan"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
-	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/store"
 )
@@ -47,6 +45,9 @@ func (e *Engine) Snapshot() ([]byte, error) {
 		return nil, fmt.Errorf("engine: ledger: %w", err)
 	}
 	s.Ledger = ledgerBlob{Version: blob.Version, Data: blob.Data}
+	if s.View, err = encodeView(e.view.Base()); err != nil {
+		return nil, err
+	}
 	return eventlog.Encode(s)
 }
 
@@ -125,6 +126,13 @@ func (e *Engine) restoreLedger(s snapshot) error {
 	if conf, _ := chain.PointFromLog(e.conf); led.ResumePoint() != conf {
 		return fmt.Errorf("engine: snapshot ledger settled at slot %d, engine confirmed slot %d", led.ResumePoint().Slot, e.conf.Slot)
 	}
+	vs, err := decodeView(s.View)
+	if err != nil {
+		return err
+	}
+	if e.view, err = chain.New(e.viewConfig(), vs); err != nil {
+		return fmt.Errorf("engine: snapshot view: %w", err)
+	}
 	ctx := context.Background()
 	for _, b := range s.Window {
 		lb, err := e.ledgerBlock(e.Tip(), b)
@@ -140,6 +148,13 @@ func (e *Engine) restoreLedger(s snapshot) error {
 		}
 		if len(res.Settled)+len(res.Dead) > 0 {
 			return fmt.Errorf("engine: snapshot window at slot %d finishes a payment", b.Point.Slot)
+		}
+		vb, err := viewBlock(e.Tip(), b)
+		if err != nil {
+			return err
+		}
+		if _, err := e.view.Apply(vb); err != nil {
+			return fmt.Errorf("engine: snapshot window: %w", err)
 		}
 		e.window = append(e.window, b)
 	}
@@ -229,19 +244,6 @@ func ownedUtxo(addr common.Address, r Ref, lovelace uint64) common.Utxo {
 	}
 	return common.Utxo{Id: shelley.ShelleyTransactionInput{TxId: common.Blake2b256(r.Tx), OutputIndex: r.Index}, Output: &o}
 }
-
-// view adapts the engine's own chain view to agenda.View. Decisions read
-// only this, never the live chain, so replay sees the same world.
-type view struct{ e *Engine }
-
-func (v view) Balance(id population.ActorID) profile.Lovelace {
-	return profile.Lovelace(v.e.Spendable(uint64(id)))
-}
-func (view) Pools() []agenda.PoolInfo                                  { return nil }
-func (v view) Epoch() uint64                                           { return v.e.cfg.Slots.EpochAt(v.e.now) }
-func (view) StakeRegistered(population.ActorID) bool                   { return false }
-func (view) DelegatedTo(population.ActorID) (population.ActorID, bool) { return 0, false }
-func (view) PoolRegistered(population.ActorID) bool                    { return false }
 
 // Now is the engine's clock: the time of the last Tick.
 func (e *Engine) Now() sched.Time { return e.now }
