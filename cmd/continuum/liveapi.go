@@ -11,6 +11,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/httpapi"
+	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/store"
 	"github.com/chrisguiney/cardano-continuum/web"
@@ -94,7 +95,10 @@ type liveServer struct {
 
 // newLiveServer feeds the records already in l, then wraps l so later ones
 // follow.
-func newLiveServer(ctx context.Context, l engine.Log, db *store.DB, slots sched.Slots) (*liveServer, error) {
+// The findings page is the engine's own set, which the loop fills as it
+// logs each finding; findings may be nil, and the page then folds them
+// from the log.
+func newLiveServer(ctx context.Context, l engine.Log, db *store.DB, slots sched.Slots, findings *oracle.Set) (*liveServer, error) {
 	proj, hub := httpapi.NewProjection(), httpapi.NewHub(4096, 64, 256)
 	feed := httpapi.NewFeed(proj, hub)
 	if err := l.Scan(ctx, 1, func(r eventlog.Record) error { feed.Apply(r); return nil }); err != nil {
@@ -102,6 +106,9 @@ func newLiveServer(ctx context.Context, l engine.Log, db *store.DB, slots sched.
 		return nil, fmt.Errorf("read event log: %w", err)
 	}
 	cfg := httpapi.LogSourceConfig{Projection: proj, Hub: hub, Slots: &slots}
+	if findings != nil {
+		cfg.Findings = findings
+	}
 	if db != nil {
 		cfg.Names = db
 	}

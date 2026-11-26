@@ -22,6 +22,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/genesis"
+	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 	"github.com/chrisguiney/cardano-continuum/internal/policy"
 	"github.com/chrisguiney/cardano-continuum/internal/rng"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
@@ -92,6 +93,10 @@ func liveConfig(sf simFlags, lf liveFlags, g chain.Genesis, np nodeParams, seed 
 	bp.SystemStart, bp.SlotLength = g.Start, g.SlotLength
 	// The guard needs every genesis pool's stake, so a run with operators
 	// operates all of them; one without has no pools to guard.
+	mistakes, err := sf.mistakesOn(fitted)
+	if err != nil {
+		return engine.Config{}, err
+	}
 	gpools := 0
 	if sf.pools > 0 {
 		if sf.pools < lf.gpools {
@@ -104,6 +109,7 @@ func liveConfig(sf simFlags, lf liveFlags, g chain.Genesis, np nodeParams, seed 
 		Build: bp, BinaryVersion: version, Faucet: lf.faucet, RefillEvery: lf.refillEvery,
 		NOpt: np.nOpt, GovLifetime: np.govLifetime, GenesisPoolStake: lf.poolStake, GenesisPools: gpools,
 		Floor: policy.Config{Floor: sf.floor, Margin: 1}, Committee: genesis.Default().Committee,
+		Mistakes: mistakes, Horizon: g.StabilityWindow(), Run: sf.run(mistakes),
 	}, nil
 }
 
@@ -165,7 +171,9 @@ func runLive(ctx context.Context, sf simFlags, lf liveFlags, epochs uint64) erro
 		}
 	}()
 	clock := sched.NewWall(want.Start)
-	deps := engine.Deps{Clock: clock, Log: fl, Store: db, Node: live, CheckpointEvery: 200, Logger: log}
+	deps := engine.Deps{Clock: clock, Log: fl, Store: db, Node: live, CheckpointEvery: 200, Logger: log,
+		Viewer: liveViewer{q: q, node: oracle.Node{Impl: "node", Pool: lf.node}}, ViewEvery: viewEvery,
+		Findings: oracle.NewSet()}
 	if err := livePlan(&deps, cfg, lf, log); err != nil {
 		return err
 	}
@@ -183,6 +191,26 @@ func runLive(ctx context.Context, sf simFlags, lf liveFlags, epochs uint64) erro
 		end = cfg.Slots.EpochStart(epochs)
 	}
 	return follow(ctx, log, cfg, r, fl, clock, end, lf.report)
+}
+
+// viewEvery is the simulated time between view monitor queries: each asks
+// the node for every actor's UTxOs.
+const viewEvery = sched.Time(time.Minute / time.Millisecond)
+
+// liveViewer answers the view monitor from the node's local-state-query at
+// the engine's settled point.
+type liveViewer struct {
+	q    *chain.Querier
+	node oracle.Node
+}
+
+// View implements engine.Viewer.
+func (v liveViewer) View(ctx context.Context, at chain.Point, addrs []common.Address) (engine.ViewAnswer, error) {
+	us, err := v.q.UtxosAtPoint(ctx, at, addrs)
+	if err != nil {
+		return engine.ViewAnswer{}, err
+	}
+	return engine.ViewAnswer{Node: v.node, At: at, Utxos: us}, nil
 }
 
 // follow runs the loop in report-sized stretches, logging progress after
@@ -218,6 +246,7 @@ func report(ctx context.Context, log *slog.Logger, cfg engine.Config, r *engine.
 		"actors", e.Actors(), "payments", t.Payments, "refills", t.Refills, "confirmed", t.Confirmed, "paid", t.Paid,
 		"released", t.Released, "double_paid", t.DoublePaid, "pending", e.Pending(),
 		"tip_epoch", cfg.Slots.EpochOfSlot(e.Tip().Slot), "settled", t.Settled, "guarded", t.Guarded, "incidents", t.Incidents,
+		"findings", t.Findings, "fatal", t.Fatal, "lost", t.Lost,
 		"supply", e.Supply(), "genesis", cfg.Faucet, "conserved", e.Supply() == cfg.Faucet, "log_seq", l.LastSeq())
 	return nil
 }
@@ -343,7 +372,7 @@ func liveServe(ctx context.Context, d *engine.Deps, db *store.DB, cfg engine.Con
 	if err := checkAddr(lf.serve, false); err != nil {
 		return nil, err
 	}
-	s, err := newLiveServer(ctx, d.Log, db, cfg.Slots)
+	s, err := newLiveServer(ctx, d.Log, db, cfg.Slots, d.Findings)
 	if err != nil {
 		return nil, err
 	}

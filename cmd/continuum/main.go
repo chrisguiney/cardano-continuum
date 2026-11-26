@@ -24,9 +24,13 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -35,6 +39,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
 	"github.com/chrisguiney/cardano-continuum/internal/genesis"
+	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 	"github.com/chrisguiney/cardano-continuum/internal/policy"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
@@ -102,6 +107,7 @@ type simFlags struct {
 	ttl        uint64
 	pools      int
 	floor      uint64
+	mistakes   string
 }
 
 func (s *simFlags) register(fs *flag.FlagSet) {
@@ -115,6 +121,7 @@ func (s *simFlags) register(fs *flag.FlagSet) {
 	fs.Uint64Var(&s.blockEvery, "block-every", 10, "slots between fake-chain blocks")
 	fs.Uint64Var(&s.ttl, "ttl", 120, "slots a payment stays valid")
 	fs.Uint64Var(&s.floor, "floor", 50, "stake floor: the percentage of each schedule's stake forging pools must hold, one pool's loss included")
+	fs.StringVar(&s.mistakes, "mistakes", "", "honest mistakes: on or off (default: on when a profile's competence can fall below 1)")
 	fs.IntVar(&s.pools, "pools", 0, "pool operators at genesis, spread over the pool profiles; on a live run the first --genesis-pools operate the genesis pools")
 }
 
@@ -131,6 +138,10 @@ func (s *simFlags) config() (engine.Config, error) {
 	if err != nil {
 		return engine.Config{}, err
 	}
+	mistakes, err := s.mistakesOn(fitted)
+	if err != nil {
+		return engine.Config{}, err
+	}
 	pp := fakechain.DefaultParams()
 	bp := build.ParamsFromConway(&pp, 0)
 	// The fake chain's slot 0 is the Unix epoch.
@@ -143,7 +154,44 @@ func (s *simFlags) config() (engine.Config, error) {
 		// The fake chain's genesis registers a pool for every operator and
 		// seats internal/genesis's committee, as a devnet's does.
 		GenesisPools: s.pools, GenesisPoolStake: genesis.Default().PoolStake, Committee: genesis.Default().Committee,
+		Mistakes: mistakes, Run: s.run(mistakes),
 	}, nil
+}
+
+// mistakesOn resolves --mistakes. Unset, mistakes are on when some
+// profile's competence is a Beta with B > 0, which falls below 1; an actor
+// of competence 1 never errs anyway.
+func (s *simFlags) mistakesOn(reg *profile.Registry) (bool, error) {
+	switch s.mistakes {
+	case "on":
+		return true, nil
+	case "off":
+		return false, nil
+	case "":
+		for _, n := range reg.Names() {
+			if p, _ := reg.Get(n); p.Traits.Competence.B > 0 {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+	return false, fmt.Errorf("--mistakes %q: want on or off", s.mistakes)
+}
+
+// run names the run in findings' replay commands: the log as run --out
+// writes it, and every flag that fixes the configuration, so the command
+// replays it from the run's directory. It is built from the parsed values,
+// so run and replay give the same one however the flags were spelled.
+func (s *simFlags) run(mistakes bool) oracle.Run {
+	onOff := map[bool]string{true: "on", false: "off"}
+	flags := []string{
+		"--wallets=" + strconv.Itoa(s.wallets), "--profiles=" + s.profiles,
+		"--scale=" + strconv.FormatFloat(s.scale, 'g', -1, 64), "--slot-ms=" + strconv.FormatInt(s.slotMs, 10),
+		"--epoch-slots=" + strconv.FormatUint(s.epochSlots, 10), "--k=" + strconv.FormatUint(s.k, 10),
+		"--block-every=" + strconv.FormatUint(s.blockEvery, 10), "--ttl=" + strconv.FormatUint(s.ttl, 10),
+		"--floor=" + strconv.FormatUint(s.floor, 10), "--pools=" + strconv.Itoa(s.pools), "--mistakes=" + onOff[mistakes],
+	}
+	return oracle.Run{Seed: s.seed, Log: "events.log", Flags: flags}
 }
 
 // scaled applies --scale to the population's base rates.
@@ -339,6 +387,12 @@ func summarize(out io.Writer, cfg engine.Config, r *engine.Runner, chain *fakech
 	w.printf("payments: submitted %d, confirmed %d, released %d, skipped %d, pending %d\n",
 		kinds[engine.KindSubmitted], kinds[engine.KindConfirmed], kinds[engine.KindReleased], kinds[engine.KindSkipped], e.Pending())
 	w.printf("value conserved: %t (genesis %d lovelace, fees %d)\n", conserved, genesis, chain.Fees())
+	t, err := engine.AuditLog(context.Background(), mem)
+	if err != nil {
+		return err
+	}
+	w.printf("mistakes %t: rejections %s; findings %d (fatal %d); lost %d lovelace\n",
+		cfg.Mistakes, classCounts(t.Rejections), t.Findings, t.Fatal, t.Lost)
 	w.printf("elapsed %s, %.0f events/s\n", elapsed.Round(time.Millisecond), float64(recs)/elapsed.Seconds())
 	if w.err != nil {
 		return w.err
@@ -347,6 +401,18 @@ func summarize(out io.Writer, cfg engine.Config, r *engine.Runner, chain *fakech
 		return errors.New("value not conserved")
 	}
 	return nil
+}
+
+// classCounts prints counts by class, sorted by class.
+func classCounts(m map[string]int) string {
+	if len(m) == 0 {
+		return "none"
+	}
+	parts := make([]string, 0, len(m))
+	for _, c := range slices.Sorted(maps.Keys(m)) {
+		parts = append(parts, fmt.Sprintf("%s=%d", c, m[c]))
+	}
+	return strings.Join(parts, " ")
 }
 
 // writer keeps the first write error so a run of prints checks it once.
