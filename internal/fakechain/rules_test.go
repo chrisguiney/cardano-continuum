@@ -290,3 +290,37 @@ func TestMissingInputIsOnlyBadInputs(t *testing.T) {
 		t.Fatalf("classes %v: MissingRedeemers must not accompany a missing input", cs)
 	}
 }
+
+// TestUnresolvedAuxInputsAreBadInputs: collateral (body key 13) and reference
+// (key 18) inputs missing from the UTxO set are BadInputsUTxO, reported once
+// even when a spent input is also missing.
+func TestUnresolvedAuxInputsAreBadInputs(t *testing.T) {
+	missing := []any{[]any{make([]byte, 32), uint64(7)}}
+	for _, tc := range []struct {
+		name      string
+		key       uint
+		spentGone bool
+	}{
+		{"collateral", 13, false},
+		{"reference", 18, false},
+		{"collateral and spent", 13, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFixture(t, nil)
+			s := f.pay(f.alice, f.bob.Address(), 10_000_000)
+			if tc.spentGone {
+				s.ins = []Ref{{TxID: TxID{0xee}, Index: 0}}
+			}
+			s.bodyHook = func(m map[uint]any) { m[tc.key] = missing }
+			n := 0
+			for _, c := range rejectClasses(t, f.submit(s.build(t))) {
+				if c == BadInputs {
+					n++
+				}
+			}
+			if n != 1 {
+				t.Fatalf("BadInputsUTxO reported %d times, want 1", n)
+			}
+		})
+	}
+}

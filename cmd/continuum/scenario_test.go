@@ -16,7 +16,7 @@ func scenarioCmd(t *testing.T, args ...string) (string, error) {
 }
 
 // TestScenarioRunLibrary runs the committed library on the fake chain and
-// checks the summary's totals: three known disagreements, the rest passing.
+// checks the summary's totals: two known disagreements, the rest passing.
 func TestScenarioRunLibrary(t *testing.T) {
 	out, err := scenarioCmd(t, "run", "-v", "--lib", "../../scenarios", "../../scenarios")
 	if err != nil {
@@ -24,7 +24,8 @@ func TestScenarioRunLibrary(t *testing.T) {
 	}
 	for _, want := range []string{
 		"pass\tledger-utxo/UtxoGoTtlExclusiveBug/0",
-		"spec_disagreement\tledger-utxo/UtxoGoSpentOnlyCollUnresolvedBug/0",
+		"pass\tledger-utxo/UtxoGoSpentOnlyCollUnresolvedBug/0",
+		"spec_disagreement\tcodec/MultiAssetQuantityMainBug",
 		"family source", "ledger-witnesses trace", "codec table",
 	} {
 		if !strings.Contains(out, want) {

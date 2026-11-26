@@ -27,12 +27,6 @@ Two committed scenarios are answered against the model by the fake chain,
 which validates with gouroboros v0.220.1. They are kept as regression
 attacks: each passes once the dependency follows the reference.
 
-- `ledger-utxo/UtxoGoSpentOnlyCollUnresolvedBug/0`: a transaction with no
-  redeemers that names a collateral input that does not exist is accepted.
-  The reference's BadInputsUTxO covers collateral and reference inputs;
-  gouroboros' Conway `UtxoValidateBadInputsUtxo` checks spent inputs only,
-  and the fake chain discards the "not found" that the collateral witness
-  rule reports instead, expecting BadInputs to carry it.
 - `codec/MultiAssetQuantityMainBug` and
   `codec/table/MultiAssetQuantity/outputAsset-five-bignumLongTag`: an output
   asset quantity written as a CBOR bignum (`c24105`, `d8024105`) is decoded

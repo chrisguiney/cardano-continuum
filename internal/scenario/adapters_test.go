@@ -384,7 +384,6 @@ func TestCuratedLibrary(t *testing.T) {
 // knownDisagreements are curated scenarios the fake chain answers against
 // the model: see scenarios/README.md.
 var knownDisagreements = map[string]bool{
-	"ledger-utxo/UtxoGoSpentOnlyCollUnresolvedBug/0":                true,
 	"codec/MultiAssetQuantityMainBug":                               true,
 	"codec/table/MultiAssetQuantity/outputAsset-five-bignumLongTag": true,
 }

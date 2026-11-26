@@ -262,6 +262,9 @@ func conwayRules() []rule {
 			c = Class(unmappedPrefix + string(d.Id))
 		}
 		out = append(out, rule{id: string(d.Id), class: c, fn: d.Validator})
+		if d.Id == common.UtxoValidationRuleBadInputs {
+			out = append(out, rule{id: auxInputsRule, class: BadInputs, fn: unresolvedAuxInputs})
+		}
 	}
 	return out
 }
@@ -283,13 +286,47 @@ func signatureRules() []rule {
 	}
 }
 
+// auxInputsRule identifies the fake's own check that collateral and reference
+// inputs resolve.
+const auxInputsRule = "badinputs/collateral-reference"
+
+// unresolvedAuxInputs fails when a collateral or reference input is not in the
+// UTxO set. The ledger's BadInputsUTxO covers spend, collateral and reference
+// inputs together (Babbage Rules/Utxo.hs, babbageUtxoValidation:
+// `Shelley.validateBadInputsUTxO utxo allInputs`), but gouroboros' rule checks
+// spent inputs only and the rules that do resolve collateral are dropped by
+// validate to keep one failure per class.
+func unresolvedAuxInputs(tx common.Transaction, _ uint64, ls common.LedgerState, _ common.ProtocolParameters) error {
+	var bad []common.TransactionInput
+	for _, ins := range [][]common.TransactionInput{tx.Collateral(), tx.ReferenceInputs()} {
+		for _, in := range ins {
+			if _, err := ls.UtxoById(in); err != nil {
+				bad = append(bad, in)
+			}
+		}
+	}
+	if len(bad) == 0 {
+		return nil
+	}
+	return shelley.BadInputsUtxoError{Inputs: bad}
+}
+
 // validate runs every rule, as the ledger does, and returns all failures.
+// The ledger reports BadInputsUTxO once for every unresolved input, so a
+// second BadInputs failure is folded into the first.
 func validate(tx common.Transaction, slot uint64, ls common.LedgerState, pp common.ProtocolParameters) []Failure {
 	var out []Failure
+	reported := false
 	for _, r := range rules {
 		if err := r.fn(tx, slot, ls, pp); err != nil {
 			if r.class != BadInputs && resolution(err) {
 				continue
+			}
+			if r.class == BadInputs {
+				if reported {
+					continue
+				}
+				reported = true
 			}
 			out = append(out, Failure{Class: refine(r.class, err), Rule: r.id, Err: err})
 		}
