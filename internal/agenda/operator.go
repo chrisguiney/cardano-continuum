@@ -7,6 +7,11 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 )
 
+// poolUpdateScore is a registered operator's standing wish to change its
+// pool's parameters, against 1 for maintaining: real operators re-register
+// about once a year (lab/population_fit.py, update_rate).
+const poolUpdateScore = 0.05
+
 // operatorScores registers the pool once, then maintains it. Frustration
 // raises the wish to leave, which runs dark first and then retire
 // (pool-forging rule 18): a live pool may go dark, a dark pool whose pod
@@ -20,6 +25,7 @@ func operatorScores(a population.Actor, v View) []Score {
 			{Kind: Idle, Value: 0.05, Why: "waiting to register"},
 			off(profile.IntentRetirePool, "pool not registered"),
 			off(profile.IntentWithdraw, "pool not registered"),
+			off(profile.IntentUpdatePool, "pool not registered"),
 			off(GoDark, "pool not registered"),
 			off(GoLive, "pool not registered"),
 		}
@@ -30,6 +36,7 @@ func operatorScores(a population.Actor, v View) []Score {
 		off(profile.IntentRegisterPool, "pool already registered"),
 		{Kind: Idle, Value: 1, Why: "maintaining pool"},
 		pick(profile.IntentWithdraw, 0.05, bal, "collect rewards"),
+		pick(profile.IntentUpdatePool, poolUpdateScore, bal, "change pool parameters"),
 	}
 	if a.State == population.Retiring {
 		return append(ss,

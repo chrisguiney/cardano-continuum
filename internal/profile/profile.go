@@ -44,13 +44,17 @@ const (
 	IntentScriptCall    IntentKind = "script_call"
 	IntentRegisterPool  IntentKind = "register_pool"
 	IntentRetirePool    IntentKind = "retire_pool"
+	// IntentUpdatePool re-registers a registered pool with new parameters.
+	IntentUpdatePool IntentKind = "update_pool"
+	// IntentRetireDRep deregisters a DRep, refunding its deposit.
+	IntentRetireDRep IntentKind = "retire_drep"
 )
 
 var intents = map[IntentKind]bool{
 	IntentSend: true, IntentDelegate: true, IntentUndelegate: true, IntentRegisterStake: true,
 	IntentWithdraw: true, IntentVote: true, IntentRegisterDRep: true, IntentDelegateDRep: true,
 	IntentPropose: true, IntentMint: true, IntentBurn: true, IntentScriptCall: true,
-	IntentRegisterPool: true, IntentRetirePool: true,
+	IntentRegisterPool: true, IntentRetirePool: true, IntentUpdatePool: true, IntentRetireDRep: true,
 }
 
 // Lovelace is an amount of ADA in lovelace.

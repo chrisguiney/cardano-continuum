@@ -44,14 +44,22 @@ func civicScores(a population.Actor, v View) []Score {
 	return ss
 }
 
+// drepRetireScore is a registered DRep's standing wish to deregister,
+// against 1 for waiting: DReps stay registered for years.
+const drepRetireScore = 0.001
+
 func drepScores(a population.Actor, v View, g Governance, bal profile.Lovelace) []Score {
 	if !g.DRepRegistered(a.ID) {
 		return []Score{
 			pick(profile.IntentRegisterDRep, 1, bal, "DRep not registered"),
 			off(profile.IntentVote, "DRep not registered"),
+			off(profile.IntentRetireDRep, "DRep not registered"),
 		}
 	}
-	ss := []Score{off(profile.IntentRegisterDRep, "DRep already registered")}
+	ss := []Score{
+		off(profile.IntentRegisterDRep, "DRep already registered"),
+		pick(profile.IntentRetireDRep, drepRetireScore, bal, "leave"),
+	}
 	epoch, open := v.Epoch(), 0
 	for _, p := range g.OpenProposals() {
 		if p.Expires < epoch || g.Voted(a.ID, p.ID) {

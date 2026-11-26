@@ -102,3 +102,52 @@ func TestSpikeSample(t *testing.T) {
 		t.Errorf("draw above the share gave %v, want the rest", got)
 	}
 }
+
+// MarshalFile renders populations and network rates too, and ParseFile
+// reads back what it rendered.
+func TestMarshalFileRoundTrip(t *testing.T) {
+	f, err := ParseFile(bytes.NewReader(open(t, "testdata/populations.yaml")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := MarshalFile(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	back, err := ParseFile(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatalf("%v\n%s", err, raw)
+	}
+	if !reflect.DeepEqual(back, f) {
+		t.Fatalf("round trip\n got %+v\nwant %+v", back, f)
+	}
+}
+
+// A file with no populations and no network rates marshals exactly as
+// Marshal renders its profiles, so the hash of an old profile file does not
+// change.
+func TestMarshalFileWithoutPopulations(t *testing.T) {
+	f, err := ParseFile(bytes.NewReader(open(t, "testdata/minimal.yaml")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := MarshalFile(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := Marshal(f.Profiles)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(a, b) {
+		t.Fatalf("MarshalFile\n%s\nMarshal\n%s", a, b)
+	}
+}
+
+func TestPoolAndDRepIntents(t *testing.T) {
+	for _, k := range []IntentKind{IntentUpdatePool, IntentRetireDRep} {
+		if !intents[k] {
+			t.Fatalf("%s is not an intent kind", k)
+		}
+	}
+}

@@ -540,3 +540,33 @@ func mustJSON(t *testing.T, d Decision) []byte {
 	}
 	return b
 }
+
+// A registered pool may update its parameters, an unregistered one cannot,
+// and an update rates far below idling so a hand-written operator mostly
+// maintains.
+func TestOperatorUpdatesRegisteredPool(t *testing.T) {
+	p := mustFor(t, "operator")
+	a := actor(profile.Pool, 1)
+	if v := value(p.Score(a, ok(fakeView{balance: 1000 * ada})), profile.IntentUpdatePool); v != 0 {
+		t.Fatalf("unregistered pool scores update %v", v)
+	}
+	reg := p.Score(a, ok(fakeView{balance: 1000 * ada, poolReg: true}))
+	if v := value(reg, profile.IntentUpdatePool); v <= 0 || v >= value(reg, Idle) {
+		t.Fatalf("registered pool scores update %v against idle %v", v, value(reg, Idle))
+	}
+}
+
+// A registered DRep may retire; an unregistered one cannot.
+func TestCivicDRepRetires(t *testing.T) {
+	p := mustFor(t, "civic")
+	drep := actor(profile.DRep, 1)
+	v := ok(fakeView{balance: 1000 * ada})
+	if s := value(p.Score(drep, v), profile.IntentRetireDRep); s != 0 {
+		t.Fatalf("unregistered DRep scores retire %v", s)
+	}
+	v.drep = true
+	ss := p.Score(drep, v)
+	if s := value(ss, profile.IntentRetireDRep); s <= 0 || s >= value(ss, Idle) {
+		t.Fatalf("registered DRep scores retire %v against idle %v", s, value(ss, Idle))
+	}
+}

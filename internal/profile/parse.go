@@ -372,6 +372,44 @@ func (ra rawAdversary) validate() (*AdversarySpec, error) {
 // Marshal renders ps in the file format Parse reads. Parse(Marshal(ps)) yields
 // a value equal to ps.
 func Marshal(ps []Profile) ([]byte, error) {
+	return yaml.Marshal(rawProfiles(ps))
+}
+
+// MarshalFile renders a whole file: profiles, populations and network
+// rates. ParseFile(MarshalFile(f)) yields a value equal to f, and a file
+// with neither populations nor network rates renders as Marshal renders
+// its profiles.
+func MarshalFile(f File) ([]byte, error) {
+	raw := rawProfiles(f.Profiles)
+	for _, p := range f.Populations {
+		raw.Populations = append(raw.Populations, rawPopulationOf(p))
+	}
+	if len(f.Network.Proposals) > 0 {
+		raw.Network.Proposals = f.Network.Proposals
+	}
+	return yaml.Marshal(raw)
+}
+
+func rawSpikeOf(s Spike) rawSpike {
+	return rawSpike{Dist: s.Rest.String(), Point: s.Point, PointShare: s.Share}
+}
+
+func rawPopulationOf(p Population) rawPopulation {
+	rp := rawPopulation{Name: p.Name, Kind: string(p.Kind), Count: p.Count, ChainCount: p.ChainCount}
+	if c := p.Pool; c != nil {
+		rp.Pool = &rawPool{Register: c.Register, Retire: c.Retire, Update: c.Update,
+			Pledge: rawSpikeOf(c.Pledge), Margin: rawSpikeOf(c.Margin), Cost: rawSpikeOf(c.Cost)}
+	}
+	if d := p.DRep; d != nil {
+		rp.DRep = &rawDRep{Register: d.Register, Retire: d.Retire, Vote: d.Vote, Voting: d.Voting}
+	}
+	if c := p.Contract; c != nil {
+		rp.Contract = &rawContract{New: c.New, Usage: c.Usage.String(), TopShare: c.TopShare}
+	}
+	return rp
+}
+
+func rawProfiles(ps []Profile) rawFile {
 	f := rawFile{Version: SchemaVersion}
 	for _, p := range ps {
 		rp := rawProfile{
@@ -408,7 +446,7 @@ func Marshal(ps []Profile) ([]byte, error) {
 		}
 		f.Profiles = append(f.Profiles, rp)
 	}
-	return yaml.Marshal(f)
+	return f
 }
 
 func toRaw(m map[IntentKind]float64) map[string]float64 {
