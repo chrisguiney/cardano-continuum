@@ -53,6 +53,42 @@ type ContinuumNetworkSpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Minimum=1
 	SecurityParam int64 `json:"securityParam"`
+
+	// Parquet adds a mithril2pq sidecar to every validating and forging pool
+	// pod on the network.
+	//
+	// +optional
+	Parquet ParquetSpec `json:"parquet,omitempty"`
+}
+
+// ParquetSpec configures the mithril2pq sidecar.
+//
+// +kubebuilder:validation:XValidation:rule="!(has(self.enabled) && self.enabled) || (has(self.image) && size(self.image) > 0 && has(self.outputClaim) && size(self.outputClaim) > 0 && has(self.intervalSeconds) && self.intervalSeconds > 0)",message="enabled needs image, outputClaim and intervalSeconds"
+type ParquetSpec struct {
+	// Enabled adds the sidecar. It mounts the node's data volume read-only
+	// and writes Parquet to OutputClaim.
+	//
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+
+	// Image runs the sidecar. It must provide /bin/sh and mithril2pq on PATH,
+	// because the sidecar's loop is a shell script. The distroless
+	// mithril2pq target has neither.
+	//
+	// +optional
+	Image string `json:"image,omitempty"`
+
+	// IntervalSeconds is the pause between conversion runs.
+	//
+	// +optional
+	// +kubebuilder:validation:Minimum=1
+	IntervalSeconds int32 `json:"intervalSeconds,omitempty"`
+
+	// OutputClaim names the PersistentVolumeClaim mounted at /parquet in
+	// every sidecar. Each pool writes to /parquet/<pool name>.
+	//
+	// +optional
+	OutputClaim string `json:"outputClaim,omitempty"`
 }
 
 // ContinuumNetworkStatus is the observed state of a ContinuumNetwork.

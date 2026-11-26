@@ -74,6 +74,15 @@ func Render(d NodeDriver, in Input) (Workload, error) {
 		Service:     service(meta(), len(n.NtC) > 0),
 		Config:      &corev1.ConfigMap{ObjectMeta: withName(meta(), configName(name)), Data: n.Config},
 	}
+	if pq := in.Network.Spec.Parquet; pq.Enabled {
+		w, err = WithSidecar(w, d, Sidecar{
+			Image: pq.Image, Pool: p.Name, Magic: in.Network.Spec.Magic,
+			IntervalSeconds: pq.IntervalSeconds, OutputClaim: pq.OutputClaim,
+		})
+		if err != nil {
+			return Workload{}, fmt.Errorf("render sidecar for pool %s: %w", p.Name, err)
+		}
+	}
 	check.Post(w.StatefulSet.Name == name, "operator.Render: StatefulSet name is Name(pool)")
 	check.Post(!role.Keyed() || slices.Contains(w.StatefulSet.Spec.Template.Finalizers, Finalizer),
 		"operator.Render: keyed template carries the finalizer")
