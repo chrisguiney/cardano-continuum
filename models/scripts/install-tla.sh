@@ -18,9 +18,19 @@ TLA_SHA256="936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88"
 # TLC 2.19 (tla2tools 1.7.4) has no -dumpTrace. The harvester (internal/tla)
 # needs it, so it runs this second jar through TLA2TOOLS_JAR. The models keep
 # running on the version above.
+#
+# The v1.8.0 release is a GitHub prerelease built from tlaplus master, not a
+# frozen release: its tag was moved to master 1138302 and the asset replaced
+# (asset updated_at 2026-11-26T02:13:04Z), so the earlier checksum stopped
+# matching. No immutable 1.8.0 asset exists upstream (v1.7.4 is the newest
+# non-prerelease, without -dumpTrace). The SHA-256 below is therefore the pin;
+# it equals the digest GitHub reports for the asset, and the jar's manifest
+# names X-Git-Revision 1138302995a41cc5649c0321992e4146d8ff06e2. When the
+# download fails the checksum, the tag has moved again: re-read the release
+# metadata of tlaplus/tlaplus v1.8.0 and re-verify before changing the pin.
 TLA_DUMP_VERSION="1.8.0"
 TLA_DUMP_URL="https://github.com/tlaplus/tlaplus/releases/download/v${TLA_DUMP_VERSION}/tla2tools.jar"
-TLA_DUMP_SHA256="fdffef247f563ef6edbfd44958d2a82db79e7564e07cb673262d896353fa6713"
+TLA_DUMP_SHA256="67f9575c3b9ef7a0787b1bded34812862ffe79d711298e5a75b1a77720b19928"
 
 # Eclipse Temurin JDK 21 (long-term support). TLA+ needs Java 11 or newer.
 JDK_VERSION="21.0.13.1+2"
