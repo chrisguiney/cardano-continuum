@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "id": "codec/TxSizeFramingDingoBug",
+  "family": "codec",
+  "source": "trace",
+  "provenance": {
+    "repo": "https://github.com/chrisguiney/dingo-tla-models",
+    "commit": "5a8a2e139b2c91515937ea620bedcd47e6e3ccbd",
+    "spec": "TxSizeFraming.tla",
+    "cfg": "TxSizeFramingDingoBug.cfg",
+    "invariant": "SizeAsReference"
+  },
+  "codec": {
+    "model": "TxSizeFraming",
+    "input": {
+      "aux": "null",
+      "era": "Shelley",
+      "framing": "wide8",
+      "shape": "three"
+    }
+  }
+}

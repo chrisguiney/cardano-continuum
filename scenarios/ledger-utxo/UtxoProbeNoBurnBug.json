@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "id": "ledger-utxo/UtxoProbeNoBurnBug",
+  "family": "ledger-utxo",
+  "source": "trace",
+  "provenance": {
+    "repo": "https://github.com/chrisguiney/gouroboros-tla-models",
+    "commit": "cb40c04f01e16e7f0561e9aa86cc7443c3cd98cb",
+    "spec": "Utxo.tla",
+    "cfg": "UtxoProbeNoBurnBug.cfg",
+    "invariant": "ProbeNoBurn"
+  },
+  "utxo": {
+    "era": "Mary",
+    "mutation": "none",
+    "start": {
+      "utxo": {
+        "a": {
+          "coin": 3,
+          "tok": 1,
+          "lock": "key"
+        },
+        "b": {
+          "coin": 2,
+          "tok": 0,
+          "lock": "key"
+        }
+      },
+      "slot": 0,
+      "registered": true,
+      "reward": 1
+    },
+    "steps": [
+      {
+        "tx": {
+          "ins": [
+            "a"
+          ],
+          "coll": [],
+          "refs": [],
+          "delta": 0,
+          "tdelta": 0,
+          "fee": 1,
+          "mint": -1,
+          "cert": "none",
+          "wdrl": false,
+          "olock": "key",
+          "big": false,
+          "lo": 0,
+          "hi": 0,
+          "rdmrs": false,
+          "valid": true,
+          "pass": true,
+          "tcoll": -1
+        },
+        "accepts": true,
+        "after": {
+          "utxo": {
+            "b": {
+              "coin": 2,
+              "tok": 0,
+              "lock": "key"
+            },
+            "c": {
+              "coin": 2,
+              "tok": 0,
+              "lock": "key"
+            }
+          },
+          "slot": 0,
+          "registered": true,
+          "reward": 1
+        }
+      }
+    ]
+  }
+}

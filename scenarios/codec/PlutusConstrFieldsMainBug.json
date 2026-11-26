@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "id": "codec/PlutusConstrFieldsMainBug",
+  "family": "codec",
+  "source": "trace",
+  "provenance": {
+    "repo": "https://github.com/chrisguiney/gouroboros-tla-models",
+    "commit": "cb40c04f01e16e7f0561e9aa86cc7443c3cd98cb",
+    "spec": "PlutusConstrFields.tla",
+    "cfg": "PlutusConstrFieldsMainBug.cfg",
+    "invariant": "FieldsAsDecodeListOf"
+  },
+  "codec": {
+    "model": "PlutusConstrFields",
+    "input": {
+      "alt": "uint",
+      "family": "121-127",
+      "fields": "uint"
+    }
+  }
+}

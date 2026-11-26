@@ -15,7 +15,7 @@ GOLANGCI_LINT_VERSION := v2.15.0
 CONTROLLER_GEN_VERSION := v0.23.0
 CONTROLLER_GEN := go run sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_GEN_VERSION)
 
-.PHONY: web web-test lab lab-image lab-test profiles-index help build test test-race vet fmt-check lint check check-manifests manifests generate determinism models models-install harvest vectors
+.PHONY: web web-test lab lab-image lab-test profiles-index help build test test-race vet fmt-check lint check check-manifests manifests generate determinism models models-install harvest vectors scenarios
 
 help: ## Show this list
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-16s %s\n", $$1, $$2}'
@@ -169,6 +169,12 @@ harvest: ## Run TLC on every *Bug.cfg of TLA_REPO at TLA_REF; write seeds to HAR
 vectors: ## Export the Utxo.tla boundary-transaction table of TLA_REPO at TLA_REF to VECTORS_OUT
 	@test -n "$(TLA_REPO)" -a -n "$(TLA_REF)" || { echo "set TLA_REPO and TLA_REF"; exit 2; }
 	go run ./cmd/continuum vectors --repo "$(TLA_REPO)" --ref "$(TLA_REF)" --out "$(VECTORS_OUT)"
+
+SCENARIOS_OUT ?= scenarios/generated
+WALKS ?= 20
+scenarios: ## Regenerate the scenario library from TLA_REPO at TLA_REF (Mode A traces, the codec table, WALKS Mode B walks)
+	@test -n "$(TLA_REPO)" -a -n "$(TLA_REF)" || { echo "set TLA_REPO and TLA_REF"; exit 2; }
+	go run ./cmd/continuum scenario harvest --repo "$(TLA_REPO)" --ref "$(TLA_REF)" --out "$(SCENARIOS_OUT)" --walks $(WALKS)
 
 # kind e2e. kind-up starts a throwaway plain-HTTP registry next to the cluster;
 # e2e points CONTINUUM_REGISTRY at it. kind-down removes both.

@@ -19,3 +19,8 @@ web/node_modules/
 # Python bytecode and caches from lab/.
 __pycache__/
 .pytest_cache/
+
+# Regenerated scenario material; scenarios/ holds only the curated set.
+/scenarios/generated/
+/scenarios/seeds/
+/scenarios/vectors/

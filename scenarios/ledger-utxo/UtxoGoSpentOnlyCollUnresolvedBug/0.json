@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "id": "ledger-utxo/UtxoGoSpentOnlyCollUnresolvedBug/0",
+  "family": "ledger-utxo",
+  "source": "trace",
+  "provenance": {
+    "repo": "https://github.com/chrisguiney/gouroboros-tla-models",
+    "commit": "cb40c04f01e16e7f0561e9aa86cc7443c3cd98cb",
+    "spec": "Utxo.tla",
+    "cfg": "UtxoGoSpentOnlyCollUnresolvedBug.cfg",
+    "invariant": "GoAgrees"
+  },
+  "utxo": {
+    "era": "Alonzo",
+    "mutation": "GoSpentOnlyCollUnresolved",
+    "start": {
+      "utxo": {
+        "a": {
+          "coin": 2,
+          "tok": 0,
+          "lock": "key"
+        }
+      },
+      "slot": 0,
+      "registered": false,
+      "reward": 0
+    },
+    "steps": [
+      {
+        "tx": {
+          "ins": [
+            "a"
+          ],
+          "coll": [
+            "a",
+            "b"
+          ],
+          "refs": [],
+          "delta": 0,
+          "tdelta": 0,
+          "fee": 1,
+          "mint": 0,
+          "cert": "none",
+          "wdrl": false,
+          "olock": "key",
+          "big": false,
+          "lo": 0,
+          "hi": 0,
+          "rdmrs": false,
+          "valid": true,
+          "pass": false,
+          "tcoll": -1
+        },
+        "accepts": false
+      }
+    ]
+  }
+}

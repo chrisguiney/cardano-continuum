@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "id": "ledger-witnesses/WitnessesGoExpireExclusiveBug/0",
+  "family": "ledger-witnesses",
+  "source": "trace",
+  "provenance": {
+    "repo": "https://github.com/chrisguiney/gouroboros-tla-models",
+    "commit": "cb40c04f01e16e7f0561e9aa86cc7443c3cd98cb",
+    "spec": "Witnesses.tla",
+    "cfg": "WitnessesGoExpireExclusiveBug.cfg",
+    "invariant": "GoAgrees"
+  },
+  "witness": {
+    "era": "Mary",
+    "mutation": "GoExpireExclusive",
+    "env": {
+      "wits": [],
+      "lo": -1,
+      "hi": 0
+    },
+    "kind": "native",
+    "cell": {
+      "op": "all",
+      "subs": [
+        {
+          "key": "v1",
+          "op": "expire",
+          "slot": 0
+        },
+        {
+          "key": "v1",
+          "op": "expire",
+          "slot": 0
+        }
+      ],
+      "m": 0
+    },
+    "accepts": true
+  }
+}

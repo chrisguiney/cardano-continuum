@@ -12,6 +12,9 @@
 //	continuum build --dingo DIR [--with MODULE=PATH|SHA ...] [flags]
 //	continuum harvest --repo URL|PATH --ref SHA --out DIR [--family F ...]
 //	continuum vectors --repo URL|PATH --ref SHA --out DIR [--era E ...]
+//	continuum scenario run ID|FILE|DIR ... [--lib DIR] [--target fake] [--seed N]
+//	continuum scenario harvest --repo URL|PATH --ref SHA --out DIR [--walks N]
+//	continuum scenario vectors FILE.vectors.jsonl ... [--sample N]
 //
 // replay takes the same population and chain flags as run; the log header's
 // fingerprints refuse a log recorded under different ones.
@@ -62,7 +65,7 @@ func main() {
 	}
 }
 
-var errUsage = errors.New("usage: continuum run|replay|export|image|build|bisect|serve|harvest|vectors|profiles [flags]")
+var errUsage = errors.New("usage: continuum run|replay|export|image|build|bisect|serve|harvest|vectors|scenario|profiles [flags]")
 
 func run(ctx context.Context, args []string, out io.Writer) error {
 	if len(args) == 0 {
@@ -89,6 +92,8 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 		return cmdHarvest(ctx, args[1:], out)
 	case "vectors":
 		return cmdVectors(ctx, args[1:], out)
+	case "scenario":
+		return cmdScenario(ctx, args[1:], out)
 	}
 	return fmt.Errorf("%w: unknown command %q", errUsage, args[0])
 }

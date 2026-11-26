@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "id": "codec/table/ValueSetMembers/uint",
+  "family": "codec",
+  "source": "table",
+  "provenance": {
+    "repo": "https://github.com/chrisguiney/gouroboros-tla-models",
+    "commit": "cb40c04f01e16e7f0561e9aa86cc7443c3cd98cb",
+    "spec": "cbor-codec/ValueSetMembers.tla"
+  },
+  "codec": {
+    "model": "ValueSetMembers",
+    "input": {
+      "where": "top",
+      "content": "uint",
+      "members": [],
+      "treeOver": false
+    }
+  }
+}

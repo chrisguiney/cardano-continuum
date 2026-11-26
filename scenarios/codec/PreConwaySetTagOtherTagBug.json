@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "id": "codec/PreConwaySetTagOtherTagBug",
+  "family": "codec",
+  "source": "trace",
+  "provenance": {
+    "repo": "https://github.com/chrisguiney/gouroboros-tla-models",
+    "commit": "cb40c04f01e16e7f0561e9aa86cc7443c3cd98cb",
+    "spec": "PreConwaySetTag.tla",
+    "cfg": "PreConwaySetTagOtherTagBug.cfg",
+    "invariant": "SetTagAsReference"
+  },
+  "codec": {
+    "model": "PreConwaySetTag",
+    "input": {
+      "elsewhere258": false,
+      "era": "Shelley",
+      "field": "witness",
+      "tag": "other"
+    }
+  }
+}

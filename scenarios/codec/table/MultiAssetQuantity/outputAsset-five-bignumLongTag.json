@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "id": "codec/table/MultiAssetQuantity/outputAsset-five-bignumLongTag",
+  "family": "codec",
+  "source": "table",
+  "provenance": {
+    "repo": "https://github.com/chrisguiney/gouroboros-tla-models",
+    "commit": "cb40c04f01e16e7f0561e9aa86cc7443c3cd98cb",
+    "spec": "cbor-codec/MultiAssetQuantity.tla"
+  },
+  "codec": {
+    "model": "MultiAssetQuantity",
+    "input": {
+      "pv": 10,
+      "field": "outputAsset",
+      "value": "five",
+      "enc": "bignumLongTag"
+    }
+  }
+}

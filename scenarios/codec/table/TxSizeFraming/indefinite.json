@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "id": "codec/table/TxSizeFraming/indefinite",
+  "family": "codec",
+  "source": "table",
+  "provenance": {
+    "repo": "https://github.com/chrisguiney/gouroboros-tla-models",
+    "commit": "cb40c04f01e16e7f0561e9aa86cc7443c3cd98cb",
+    "spec": "ledger-codec/TxSizeFraming.tla"
+  },
+  "codec": {
+    "model": "TxSizeFraming",
+    "input": {
+      "era": "Conway",
+      "framing": "indefinite"
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "id": "codec/MultiAssetQuantityMainBug",
+  "family": "codec",
+  "source": "trace",
+  "provenance": {
+    "repo": "https://github.com/chrisguiney/gouroboros-tla-models",
+    "commit": "cb40c04f01e16e7f0561e9aa86cc7443c3cd98cb",
+    "spec": "MultiAssetQuantity.tla",
+    "cfg": "MultiAssetQuantityMainBug.cfg",
+    "invariant": "QuantityAsDecodeWord64"
+  },
+  "codec": {
+    "model": "MultiAssetQuantity",
+    "input": {
+      "enc": "bignum",
+      "field": "outputAsset",
+      "pv": 8,
+      "value": "five"
+    }
+  }
+}
