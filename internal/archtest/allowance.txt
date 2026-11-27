@@ -45,4 +45,3 @@ stray-methods internal/engine Engine 125
 stray-methods internal/engine Runner 2
 stray-methods internal/engine pendingRec 2
 stray-methods internal/engine view 9
-stray-methods internal/sink builder 1
