@@ -54,5 +54,4 @@ stray-methods internal/policy State 1
 stray-methods internal/profile rawAmount 1
 stray-methods internal/scenario Scenario 2
 stray-methods internal/sink builder 1
-stray-methods internal/store DB 6
 stray-methods internal/tla rawTx 1
