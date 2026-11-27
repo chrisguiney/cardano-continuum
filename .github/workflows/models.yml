@@ -1,0 +1,72 @@
+name: models
+
+# A push checks the TLA+ models its change can affect (make models-changed);
+# the nightly run and a manual dispatch check every model. Each config's
+# verdict and distinct state count must match the committed verdicts.tsv.
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "23 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One TLC suite at a time per ref: a second would only queue behind the
+# first on the same runner class and race it for the result.
+concurrency:
+  group: models-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  models:
+    runs-on: ubuntu-latest
+    # The full suite takes about 11 minutes on a 14-core laptop (the sum of
+    # the secs column of every verdicts.tsv); a 4-vCPU runner needs about
+    # three times that, and liveness configs run on one core either way.
+    timeout-minutes: 75
+    env:
+      # A run must use the pinned Temurin JDK that models-install fetches,
+      # never the runner's preinstalled Java.
+      TLC_REQUIRE_PINNED_JAVA: "1"
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # models-changed diffs against the commit before the push.
+          fetch-depth: 0
+
+      - name: Restore the TLA+ tools
+        id: tools
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: models/.tools
+          key: tla-tools-${{ runner.os }}-${{ hashFiles('models/scripts/install-tla.sh') }}
+
+      - name: make models-install
+        run: make models-install
+
+      - name: Save the TLA+ tools
+        if: steps.tools.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: models/.tools
+          key: tla-tools-${{ runner.os }}-${{ hashFiles('models/scripts/install-tla.sh') }}
+
+      - name: make models-changed
+        if: github.event_name == 'push'
+        env:
+          BEFORE: ${{ github.event.before }}
+        # A push with no usable parent (a new branch, a rewritten history)
+        # has nothing to diff against, so it checks every model.
+        run: |
+          if git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            make models-changed BASE="$BEFORE"
+          else
+            make models
+          fi
+
+      - name: make models
+        if: github.event_name != 'push'
+        run: make models

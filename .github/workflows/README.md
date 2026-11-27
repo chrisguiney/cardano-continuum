@@ -1,13 +1,16 @@
 # .github/workflows
 
-`ci.yml` is the one workflow. It runs on pushes to `main` and on manual
-dispatch.
+`ci.yml` runs on pushes to `main` and on manual dispatch. `models.yml` checks
+the TLA+ models: on a push, the ones the change can affect
+(`make models-changed`); nightly and on manual dispatch, all of them
+(`make models`).
 
 | Job | Runs on | Does |
 |---|---|---|
 | `static` | push | `make check-static`: build, vet, gofmt, golangci-lint, the generated-file drift check and the Helm chart lint and render (`make chart-check`) |
 | `test` | push | `make test-race SHARD=...`, one job per shard (`engine-a`, `engine-b`, `engine-internal`, `cli`, `rest`); together they run every test once |
 | `web-test` | push | `make web-test`: typecheck and Vitest for [`web/`](../../web/README.md) (Node 22) |
+| `models` (`models.yml`) | push, nightly, dispatch | `make models-install` (pinned JDK and jars, cached on `install-tla.sh`), then `make models-changed BASE=<commit before the push>` or `make models`, with `TLC_REQUIRE_PINNED_JAVA=1` |
 
 No job runs the end-to-end suite: GitHub's runners have no cluster. It runs
 against a cluster you provide, with `make e2e E2E_CONTEXT=<context>
