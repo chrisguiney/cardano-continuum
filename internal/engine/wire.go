@@ -279,3 +279,10 @@ type imageRec struct {
 	Pool uint64 `cbor:"1,keyasint"`
 	Ref  string `cbor:"2,keyasint"`
 }
+
+// wantRec is the verdict an attack's first send calls for
+// (mistake.Expected).
+type wantRec struct {
+	Classes []string `cbor:"1,keyasint,omitempty"`
+	Accept  bool     `cbor:"2,keyasint,omitempty"`
+}

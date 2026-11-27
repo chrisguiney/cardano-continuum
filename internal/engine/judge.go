@@ -41,7 +41,7 @@ func (h jhooks) Holders() oracle.Holders { return h.e.pay.Reads() }
 func (h jhooks) State(at sched.Time) policy.State { return h.e.fl.State(at) }
 
 // Contested implements judge.Race.
-func (h jhooks) Contested(ref wire.Ref) bool { return h.e.contested[ref] }
+func (h jhooks) Contested(ref wire.Ref) bool { return h.e.adv.contested[ref] }
 
 // Findings is the set of findings this engine has logged. It is safe for
 // concurrent use, so an API may serve it while the loop runs.

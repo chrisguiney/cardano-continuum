@@ -99,14 +99,8 @@ type Engine struct {
 	// jd is the oracle bridge: mistakes, verdicts, findings and monitors.
 	jd *judge.Judge
 
-	// advs are the adversaries' attack policies and costs their cost
-	// account; contested are the shared outputs an adversary tried to
-	// spend, so an honest spend of one may meet "inputs spent". owners
-	// maps an actor's lock datum to the actor, derived on demand.
-	advs      map[population.ActorID]adversary.Policy
-	costs     *adversary.Ledger
-	contested map[Ref]bool
-	owners    map[string]population.ActorID
+	// adv is the adversaries: policies, cost accounts, contested outputs.
+	adv *attack
 }
 
 // New returns a fresh engine at time zero holding the genesis population and
@@ -193,8 +187,8 @@ func newEmpty(cfg Config) (*Engine, error) {
 		pay:    pay.New(),
 		win:    window.New(chain.Config{K: cfg.K, Slots: cfg.Slots, NOpt: cfg.NOpt, GovLifetime: cfg.GovLifetime}),
 		images: map[population.ActorID]string{},
-		advs:   map[population.ActorID]adversary.Policy{}, costs: adversary.NewLedger(), contested: map[Ref]bool{},
 	}
+	e.adv = &attack{e: e, advs: map[population.ActorID]adversary.Policy{}, costs: adversary.NewLedger(), contested: map[Ref]bool{}, mk: &maker{e: e}}
 	e.retry = pay.NewRetry(pay.Spec{Policy: cfg.retry(), Diagnoser: diag}, e.pay,
 		pay.Env{Actors: hooks{e}, Builder: hooks{e}, Journal: &e.jr, Sched: evsched{&e.clk}, Chain: e.win})
 	if e.fl, err = floor.New(floor.Spec{Guard: cfg.floor(), Slots: cfg.Slots, SimulatedPods: cfg.SimulatedPods},
@@ -380,7 +374,7 @@ func (e *Engine) act(ctx context.Context, at sched.Time, id population.ActorID) 
 	case d.Intent.Kind == agenda.GoDark, d.Intent.Kind == agenda.GoLive:
 		e.fl.Take(at, d.Intent)
 	case isAttack(d.Intent.Kind):
-		if err := e.attack(ctx, at, a, d.Intent, r); err != nil {
+		if err := e.adv.attack(ctx, at, a, d.Intent, r); err != nil {
 			return err
 		}
 	default:
@@ -406,7 +400,7 @@ func (e *Engine) submitResult(ctx context.Context, at sched.Time, r SubmitResult
 		return e.retry.Dropped(ctx, at, r)
 	}
 	if p.Attack != "" {
-		return e.attackResult(ctx, at, p, r)
+		return e.adv.attackResult(ctx, at, p, r)
 	}
 	if p.Refill {
 		out, err := pay.Outcome(r)

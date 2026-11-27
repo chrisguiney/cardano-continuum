@@ -33,6 +33,7 @@ import (
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
+	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/cohort"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
@@ -400,4 +401,33 @@ func (c *Config) floor() policy.Config {
 		f.Margin = defaultFloor.Margin
 	}
 	return f
+}
+
+func (c *Config) spawns(name string, p profile.Profile) bool {
+	if p.Hazards.Birth > 0 {
+		return true
+	}
+	return slices.ContainsFunc(c.Cohorts, func(co Cohort) bool { return co.Profile == name && co.Count > 0 })
+}
+
+// checkAdversaries refuses an adversary profile that is malformed, and one
+// the run would spawn without a devnet clearance.
+func (c *Config) checkAdversaries() error {
+	for _, n := range c.Profiles.Names() {
+		p, _ := c.Profiles.Get(n)
+		if p.Adversary == nil {
+			continue
+		}
+		pol, err := adversary.NewPolicy(*p.Adversary)
+		if err == nil {
+			_, err = agenda.WithAttacks(p.Agenda, pol)
+		}
+		if err != nil {
+			return fmt.Errorf("%w: profile %q: %w", ErrConfig, n, err)
+		}
+		if c.spawns(n, p) && !c.Adversaries.Cleared() {
+			return fmt.Errorf("engine: profile %q: %w", n, adversary.ErrNotDevnet)
+		}
+	}
+	return nil
 }

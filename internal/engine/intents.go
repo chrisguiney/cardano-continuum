@@ -60,7 +60,7 @@ func (e *Engine) start(ctx context.Context, at sched.Time, p *wire.Pending) (str
 	}
 	e.pc.Excite(at)
 	e.in.Submitted(at, p, built, inputs)
-	return "", e.react(ctx, at, p, built.Fee)
+	return "", e.adv.react(ctx, at, p, built.Fee)
 }
 
 // settle accounts for a settled attempt of intent p: the deposit it paid
@@ -138,4 +138,4 @@ type ihooks struct{ e *Engine }
 func (h ihooks) Utxos(w keys.Wallet, coins []Coin) []common.Utxo { return h.e.ledgerUtxos(w, coins) }
 
 // Adversary implements intent.Spend.
-func (h ihooks) Adversary(id population.ActorID) bool { return h.e.isAdversary(id) }
+func (h ihooks) Adversary(id population.ActorID) bool { return h.e.adv.isAdversary(id) }

@@ -57,23 +57,25 @@ const dustGuess = 1_000_000
 // maxVictims bounds the honest outputs a steal chooses from.
 const maxVictims = 256
 
-// wantRec is the verdict an attack's first send calls for
-// (mistake.Expected).
-type wantRec struct {
-	Classes []string `cbor:"1,keyasint,omitempty"`
-	Accept  bool     `cbor:"2,keyasint,omitempty"`
+// attack is the adversaries: their attack policies (advs) and cost
+// accounts (costs); contested are the shared outputs an adversary tried
+// to spend, so an honest spend of one may meet "inputs spent". owners
+// maps an actor's lock datum to the actor, derived on demand.
+type attack struct {
+	e         *Engine
+	advs      map[population.ActorID]adversary.Policy
+	costs     *adversary.Ledger
+	contested map[Ref]bool
+	owners    map[string]population.ActorID
+	mk        *maker
 }
 
-func (c *Config) spawns(name string, p profile.Profile) bool {
-	if p.Hazards.Birth > 0 {
-		return true
-	}
-	return slices.ContainsFunc(c.Cohorts, func(co Cohort) bool { return co.Profile == name && co.Count > 0 })
-}
+// maker builds each attack's step.
+type maker struct{ e *Engine }
 
 // arm returns pol with the actor's attacks, when the profile has them, and
 // opens its cost account. checkAdversaries has vetted the profile.
-func (e *Engine) arm(id population.ActorID, p profile.Profile, pol agenda.Policy) agenda.Policy {
+func (k *attack) arm(id population.ActorID, p profile.Profile, pol agenda.Policy) agenda.Policy {
 	if p.Adversary == nil {
 		return pol
 	}
@@ -85,23 +87,24 @@ func (e *Engine) arm(id population.ActorID, p profile.Profile, pol agenda.Policy
 	if err != nil {
 		return pol
 	}
-	e.advs[id] = ap
-	e.costs.Limit(id, uint64(p.Adversary.CostCeiling))
+	k.advs[id] = ap
+	k.costs.Limit(id, uint64(p.Adversary.CostCeiling))
 	return armed
 }
 
-func (e *Engine) isAdversary(id population.ActorID) bool {
-	_, ok := e.advs[id]
+func (k *attack) isAdversary(id population.ActorID) bool {
+	_, ok := k.advs[id]
 	return ok
 }
 
 // attack plans and makes the attack the adversary chose.
-func (e *Engine) attack(ctx context.Context, at sched.Time, a population.Actor, in agenda.Intent, r *rand.Rand) error {
+func (k *attack) attack(ctx context.Context, at sched.Time, a population.Actor, in agenda.Intent, r *rand.Rand) error {
+	e := k.e
 	n, _ := adversary.Of(in.Kind)
 	step, why := adversary.Plan(n, view{e: e}, r)
 	if why == "" {
 		var err error
-		if why, err = e.strike(ctx, at, a.ID, step, 0); err != nil {
+		if why, err = k.strike(ctx, at, a.ID, step, 0); err != nil {
 			return err
 		}
 	}
@@ -113,30 +116,9 @@ func (e *Engine) attack(ctx context.Context, at sched.Time, a population.Actor, 
 
 // react gives every front-runner the honest unlock p, built with fee, to
 // outbid; the first that can afford it does.
-// checkAdversaries refuses an adversary profile that is malformed, and one
-// the run would spawn without a devnet clearance.
-func (c *Config) checkAdversaries() error {
-	for _, n := range c.Profiles.Names() {
-		p, _ := c.Profiles.Get(n)
-		if p.Adversary == nil {
-			continue
-		}
-		pol, err := adversary.NewPolicy(*p.Adversary)
-		if err == nil {
-			_, err = agenda.WithAttacks(p.Agenda, pol)
-		}
-		if err != nil {
-			return fmt.Errorf("%w: profile %q: %w", ErrConfig, n, err)
-		}
-		if c.spawns(n, p) && !c.Adversaries.Cleared() {
-			return fmt.Errorf("engine: profile %q: %w", n, adversary.ErrNotDevnet)
-		}
-	}
-	return nil
-}
-
-func (e *Engine) react(ctx context.Context, at sched.Time, p *wire.Pending, fee uint64) error {
-	if p.Kind != unlockKind || p.Attack != "" || p.Locked == nil || len(e.advs) == 0 {
+func (k *attack) react(ctx context.Context, at sched.Time, p *wire.Pending, fee uint64) error {
+	e := k.e
+	if p.Kind != unlockKind || p.Attack != "" || p.Locked == nil || len(k.advs) == 0 {
 		return nil
 	}
 	target := adversary.Locked{
@@ -144,10 +126,10 @@ func (e *Engine) react(ctx context.Context, at sched.Time, p *wire.Pending, fee 
 		Owner: population.ActorID(p.Actor), Lovelace: p.Amount, Busy: true,
 	}
 	for _, id := range e.co.IDs() {
-		if pol := e.advs[id]; !pol.Has(adversary.FrontRun) || e.abandoned(id) {
+		if pol := k.advs[id]; !pol.Has(adversary.FrontRun) || k.abandoned(id) {
 			continue
 		}
-		why, err := e.strike(ctx, at, id, adversary.Outbid(target, fee), p.ID)
+		why, err := k.strike(ctx, at, id, adversary.Outbid(target, fee), p.ID)
 		if err != nil || why == "" {
 			return err
 		}
@@ -156,7 +138,8 @@ func (e *Engine) react(ctx context.Context, at sched.Time, p *wire.Pending, fee 
 	return nil
 }
 
-func (e *Engine) abandoned(id population.ActorID) bool {
+func (k *attack) abandoned(id population.ActorID) bool {
+	e := k.e
 	a, ok := e.co.Get(id)
 	return !ok || a.State == population.Abandoned
 }
@@ -178,14 +161,15 @@ type shot struct {
 // strike builds step for adversary id and, when the cost fits its ceiling,
 // reserves and logs it. against is the honest intent a front-run outbids.
 // It returns why the step was not made, if it was not.
-func (e *Engine) strike(ctx context.Context, at sched.Time, id population.ActorID, step adversary.Step, against uint64) (string, error) {
+func (k *attack) strike(ctx context.Context, at sched.Time, id population.ActorID, step adversary.Step, against uint64) (string, error) {
+	e := k.e
 	iid := e.pay.Next()
-	s, why, err := e.build(ctx, at, id, iid, step)
+	s, why, err := k.mk.build(ctx, at, id, iid, step)
 	if why != "" || err != nil {
 		return why, err
 	}
 	epoch := e.cfg.Slots.EpochAt(at)
-	if left := e.costs.Remaining(id, epoch); s.cost > left {
+	if left := k.costs.Remaining(id, epoch); s.cost > left {
 		return fmt.Sprintf("cost ceiling: step costs %d, %d left this epoch", s.cost, left), nil
 	}
 	for _, b := range s.txs {
@@ -193,7 +177,7 @@ func (e *Engine) strike(ctx context.Context, at sched.Time, id population.ActorI
 			return "reserve: " + err.Error(), nil
 		}
 	}
-	if err := e.costs.Charge(id, epoch, s.cost); err != nil {
+	if err := k.costs.Charge(id, epoch, s.cost); err != nil {
 		return "", fmt.Errorf("engine: charge attack %d: %w", iid, err)
 	}
 	e.pay.Claim(iid)
@@ -209,7 +193,7 @@ func (e *Engine) strike(ctx context.Context, at sched.Time, id population.ActorI
 		p.Rivals = append(p.Rivals, Rival{ID: TxID(b.ID), Tx: b.Tx})
 	}
 	if p.Locked != nil {
-		e.contested[*p.Locked] = true
+		k.contested[*p.Locked] = true
 		body.Value = p.Amount
 	}
 	e.pay.Add(&p)
@@ -222,21 +206,21 @@ func (e *Engine) strike(ctx context.Context, at sched.Time, id population.ActorI
 }
 
 // build makes step's transactions for adversary id.
-func (e *Engine) build(ctx context.Context, at sched.Time, id population.ActorID, iid uint64, step adversary.Step) (shot, string, error) {
+func (mk *maker) build(ctx context.Context, at sched.Time, id population.ActorID, iid uint64, step adversary.Step) (shot, string, error) {
 	var s shot
 	var why string
 	var err error
 	switch step.Attack {
 	case adversary.DustFlood:
-		s, why, err = e.dust(ctx, at, id, iid, step)
+		s, why, err = mk.dust(ctx, at, id, iid, step)
 	case adversary.Contention, adversary.FrontRun:
-		s, why, err = e.grab(ctx, at, id, iid, step)
+		s, why, err = mk.grab(ctx, at, id, iid, step)
 	case adversary.Malformed:
-		s, why, err = e.malformed(ctx, at, id, iid, step)
+		s, why, err = mk.malformed(ctx, at, id, iid, step)
 	case adversary.DoubleSpend:
-		s, why, err = e.race(ctx, at, id, iid, step)
+		s, why, err = mk.race(ctx, at, id, iid, step)
 	case adversary.ExUnitsGap:
-		s, why, err = e.gap(ctx, at, id, iid, step)
+		s, why, err = mk.gap(ctx, at, id, iid, step)
 	default:
 		return shot{}, "no builder for " + string(step.Attack), nil
 	}
@@ -250,7 +234,8 @@ func (e *Engine) build(ctx context.Context, at sched.Time, id population.ActorID
 }
 
 // fund selects the adversary's inputs for need lovelace.
-func (e *Engine) fund(id population.ActorID, iid uint64, need uint64) ([]Coin, string) {
+func (mk *maker) fund(id population.ActorID, iid uint64, need uint64) ([]Coin, string) {
+	e := mk.e
 	avail := e.pay.Coins(id, plan.IntentID(iid))
 	coins := e.sel.Select(avail, need)
 	if coins == nil {
@@ -268,7 +253,8 @@ func refs(coins []Coin) []Ref {
 }
 
 // dust pays every payee one output of exactly its min-UTxO.
-func (e *Engine) dust(ctx context.Context, at sched.Time, id population.ActorID, iid uint64, step adversary.Step) (shot, string, error) {
+func (mk *maker) dust(ctx context.Context, at sched.Time, id population.ActorID, iid uint64, step adversary.Step) (shot, string, error) {
+	e := mk.e
 	outs := make([]build.Output, len(step.Payees))
 	s := shot{rec: wire.Pending{Args: wire.Args{Kind: dustKind}}, want: mistake.Expect(0, false), ttl: e.in.TTL(at, false, false)}
 	for i, p := range step.Payees {
@@ -278,7 +264,7 @@ func (e *Engine) dust(ctx context.Context, at sched.Time, id population.ActorID,
 		}
 		s.payees = append(s.payees, uint64(p.Actor))
 	}
-	coins, why := e.fund(id, iid, uint64(len(outs))*dustGuess*2+feeHeadroom)
+	coins, why := mk.fund(id, iid, uint64(len(outs))*dustGuess*2+feeHeadroom)
 	if why != "" {
 		return shot{}, why, nil
 	}
@@ -289,7 +275,7 @@ func (e *Engine) dust(ctx context.Context, at sched.Time, id population.ActorID,
 	// its coin: rebuild until the amounts are the minimum of themselves.
 	for pass := 0; err == nil && pass < 3; pass++ {
 		var changed bool
-		if changed, err = e.atMinimum(b.Tx, outs); err != nil || !changed {
+		if changed, err = mk.atMinimum(b.Tx, outs); err != nil || !changed {
 			break
 		}
 		b, err = e.builder.FanOut(ctx, w, sp, outs)
@@ -308,7 +294,8 @@ func (e *Engine) dust(ctx context.Context, at sched.Time, id population.ActorID,
 // atMinimum sets each of outs to the min-UTxO of its output in tx, the
 // Babbage rule (160 + encoded size) * coinsPerUTxOByte, and reports
 // whether any changed.
-func (e *Engine) atMinimum(tx []byte, outs []build.Output) (bool, error) {
+func (mk *maker) atMinimum(tx []byte, outs []build.Output) (bool, error) {
+	e := mk.e
 	t, err := conway.NewConwayTransactionFromCbor(tx)
 	if err != nil {
 		return false, err
@@ -332,12 +319,13 @@ func (e *Engine) atMinimum(tx []byte, outs []build.Output) (bool, error) {
 
 // grab spends a shared script output: contention, or a front-run when the
 // step bids a tip.
-func (e *Engine) grab(ctx context.Context, at sched.Time, id population.ActorID, iid uint64, step adversary.Step) (shot, string, error) {
+func (mk *maker) grab(ctx context.Context, at sched.Time, id population.ActorID, iid uint64, step adversary.Step) (shot, string, error) {
+	e := mk.e
 	ref := Ref{Tx: TxID(step.Spend.Ref.Tx), Index: step.Spend.Ref.Index}
 	s := shot{rec: wire.Pending{Args: wire.Args{Kind: unlockKind, Locked: &ref, Amount: step.Spend.Lovelace}}, ttl: e.in.TTL(at, false, true)}
 	// The honest spend it races may land first.
 	s.want = judge.Expect(e.cfg.Build, 0, true, intent.Again(unlockKind))
-	coins, why := e.fund(id, iid, scriptHeadroom)
+	coins, why := mk.fund(id, iid, scriptHeadroom)
 	if why != "" {
 		return shot{}, why, nil
 	}
@@ -352,10 +340,11 @@ func (e *Engine) grab(ctx context.Context, at sched.Time, id population.ActorID,
 
 // malformed builds a valid self-payment and mutates it, or raw-builds a
 // steal of the victim's output.
-func (e *Engine) malformed(ctx context.Context, at sched.Time, id population.ActorID, iid uint64, step adversary.Step) (shot, string, error) {
+func (mk *maker) malformed(ctx context.Context, at sched.Time, id population.ActorID, iid uint64, step adversary.Step) (shot, string, error) {
+	e := mk.e
 	s := shot{rec: wire.Pending{Args: wire.Args{To: uint64(id), Amount: minPayment}}, ttl: e.in.TTL(at, false, false), mutation: step.Mutation.String()}
 	s.want = adversary.Expect(step.Mutation)
-	coins, why := e.fund(id, iid, minPayment+feeHeadroom)
+	coins, why := mk.fund(id, iid, minPayment+feeHeadroom)
 	if why != "" {
 		return shot{}, why, nil
 	}
@@ -364,7 +353,7 @@ func (e *Engine) malformed(ctx context.Context, at sched.Time, id population.Act
 	if err != nil {
 		return shot{}, "", err
 	}
-	tx, cost, err := e.mutant(id, w, coins, base, step, &s.rec)
+	tx, cost, err := mk.mutant(id, w, coins, base, step, &s.rec)
 	if err != nil {
 		return shot{}, "", err
 	}
@@ -378,7 +367,8 @@ func (e *Engine) malformed(ctx context.Context, at sched.Time, id population.Act
 
 // mutant is step's malformed transaction and its cost, nil when the
 // mutation does not apply to base.
-func (e *Engine) mutant(id population.ActorID, w keys.Wallet, coins []Coin, base build.Built, step adversary.Step, p *wire.Pending) ([]byte, uint64, error) {
+func (mk *maker) mutant(id population.ActorID, w keys.Wallet, coins []Coin, base build.Built, step adversary.Step, p *wire.Pending) ([]byte, uint64, error) {
+	e := mk.e
 	m := step.Mutation
 	if ks, ok := m.Mistake(); ok {
 		p.Actor = uint64(id)
@@ -413,9 +403,10 @@ func mutantID(tx []byte) common.Blake2b256 {
 }
 
 // race pays each payee from the same inputs.
-func (e *Engine) race(ctx context.Context, at sched.Time, id population.ActorID, iid uint64, step adversary.Step) (shot, string, error) {
+func (mk *maker) race(ctx context.Context, at sched.Time, id population.ActorID, iid uint64, step adversary.Step) (shot, string, error) {
+	e := mk.e
 	s := shot{rec: wire.Pending{Args: wire.Args{To: uint64(step.Payees[0].Actor), Amount: minPayment}}, want: mistake.Expect(0, false), ttl: e.in.TTL(at, false, false)}
-	coins, why := e.fund(id, iid, minPayment+feeHeadroom)
+	coins, why := mk.fund(id, iid, minPayment+feeHeadroom)
 	if why != "" {
 		return shot{}, why, nil
 	}
@@ -440,9 +431,10 @@ var gapToken = []byte("gap")
 // gap mints under a burn loop sized to spend the step's memory, declaring
 // what the builder measured it spend, which must land between the block
 // and transaction limits.
-func (e *Engine) gap(ctx context.Context, at sched.Time, id population.ActorID, iid uint64, step adversary.Step) (shot, string, error) {
+func (mk *maker) gap(ctx context.Context, at sched.Time, id population.ActorID, iid uint64, step adversary.Step) (shot, string, error) {
+	e := mk.e
 	s := shot{rec: wire.Pending{Args: wire.Args{To: uint64(id)}}, want: adversary.GapExpect(), ttl: e.in.TTL(at, false, false)}
-	coins, why := e.fund(id, iid, 2*adversary.GapCollateral+scriptHeadroom)
+	coins, why := mk.fund(id, iid, 2*adversary.GapCollateral+scriptHeadroom)
 	if why != "" {
 		return shot{}, why, nil
 	}
@@ -468,12 +460,13 @@ func (e *Engine) gap(ctx context.Context, at sched.Time, id population.ActorID, 
 // attackResult judges and records the node's answers to an attack. A
 // first-send rejection writes the attempt off; the intent is released when
 // none is left.
-func (e *Engine) attackResult(ctx context.Context, at sched.Time, p *wire.Pending, r SubmitResult) error {
+func (k *attack) attackResult(ctx context.Context, at sched.Time, p *wire.Pending, r SubmitResult) error {
+	e := k.e
 	out, err := pay.Outcome(r)
 	if err != nil {
 		return err
 	}
-	if err := e.judgeAttack(at, p, r, out); err != nil {
+	if err := k.judgeAttack(at, p, r, out); err != nil {
 		return err
 	}
 	var dead []plan.TxID
@@ -503,7 +496,8 @@ func (e *Engine) attackResult(ctx context.Context, at sched.Time, p *wire.Pendin
 // judgeAttack holds every answer to the verdict the step called for. A
 // rival may be accepted only while no copy of the race was: one accepted
 // beside another is a double spend in a mempool.
-func (e *Engine) judgeAttack(at sched.Time, p *wire.Pending, r SubmitResult, out submit.Outcome) error {
+func (k *attack) judgeAttack(at sched.Time, p *wire.Pending, r SubmitResult, out submit.Outcome) error {
+	e := k.e
 	node := oracle.Node{Impl: "node"}
 	if r.Node != nil {
 		node = *r.Node
@@ -547,7 +541,7 @@ func (v view) Shared() []adversary.Locked {
 	var out []adversary.Locked
 	for _, u := range e.win.View().UtxosAt(build.AlwaysSucceeds.Address(e.cfg.NetworkID)) {
 		ref := Ref{Tx: TxID(u.Id.Id()), Index: u.Id.Index()}
-		owner, ok := e.lockOwner(u.Output.Datum())
+		owner, ok := e.adv.lockOwner(u.Output.Datum())
 		if !ok || taken[ref] {
 			continue
 		}
@@ -563,25 +557,26 @@ func cmpRef(a, b adversary.Ref) int {
 }
 
 // lockOwner is the honest actor whose datum d is (actorDatum).
-func (e *Engine) lockOwner(d *common.Datum) (population.ActorID, bool) {
+func (k *attack) lockOwner(d *common.Datum) (population.ActorID, bool) {
+	e := k.e
 	if d == nil {
 		return 0, false
 	}
-	if len(e.owners) != len(e.co.IDs()) {
-		e.owners = make(map[string]population.ActorID, len(e.co.IDs()))
+	if len(k.owners) != len(e.co.IDs()) {
+		k.owners = make(map[string]population.ActorID, len(e.co.IDs()))
 		for _, id := range e.co.IDs() {
-			e.owners[string(intent.DatumKey(intent.ActorDatum(id)))] = id
+			k.owners[string(intent.DatumKey(intent.ActorDatum(id)))] = id
 		}
 	}
-	id, ok := e.owners[string(intent.DatumKey(*d))]
-	return id, ok && !e.isAdversary(id)
+	id, ok := k.owners[string(intent.DatumKey(*d))]
+	return id, ok && !k.isAdversary(id)
 }
 
 // Payees implements adversary.Sight: the honest wallets not abandoned.
 func (v view) Payees() []population.ActorID {
 	var out []population.ActorID
 	for _, id := range v.e.co.IDs() {
-		if v.e.isAdversary(id) || v.e.abandoned(id) || v.e.co.Rec(id).Prof.Kind != profile.Wallet {
+		if v.e.adv.isAdversary(id) || v.e.adv.abandoned(id) || v.e.co.Rec(id).Prof.Kind != profile.Wallet {
 			continue
 		}
 		out = append(out, id)
@@ -594,7 +589,7 @@ func (v view) Payees() []population.ActorID {
 func (v view) Victims() []adversary.Coin {
 	var out []adversary.Coin
 	for _, u := range v.e.pay.Reads().Settled() {
-		if v.e.isAdversary(u.Owner) || u.Owner == faucetActor {
+		if v.e.adv.isAdversary(u.Owner) || u.Owner == faucetActor {
 			continue
 		}
 		if _, held := v.e.pay.Reads().Holder(u.Ref); held {
@@ -608,7 +603,7 @@ func (v view) Victims() []adversary.Coin {
 
 // Remaining implements adversary.View.
 func (v view) Remaining(id population.ActorID) uint64 {
-	return v.e.costs.Remaining(id, v.e.cfg.Slots.EpochAt(v.e.clk.Now()))
+	return v.e.adv.costs.Remaining(id, v.e.cfg.Slots.EpochAt(v.e.clk.Now()))
 }
 
 var _ adversary.View = view{}
@@ -620,8 +615,4 @@ func oneShotBuild(context.Context, keys.Wallet, build.Spend, *wire.Pending) (bui
 func isAttack(k profile.IntentKind) bool {
 	_, ok := adversary.Of(k)
 	return ok
-}
-
-func cmpLogRef(a, b Ref) int {
-	return cmp.Or(bytes.Compare(a.Tx[:], b.Tx[:]), cmp.Compare(a.Index, b.Index))
 }
