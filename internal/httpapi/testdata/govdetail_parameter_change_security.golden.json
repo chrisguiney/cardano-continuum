@@ -1,0 +1,138 @@
+{
+  "id": "TX#0",
+  "epoch": 0,
+  "lifetime_epochs": 6,
+  "proposal": {
+    "id": "TX#0",
+    "type": "parameter_change",
+    "proposer": 5,
+    "profile": "hodl",
+    "deposit_lovelace": 100000000000,
+    "slot": 5,
+    "epoch": 0,
+    "expires_epoch": 6,
+    "status": "open",
+    "spo_may_vote": true,
+    "tally": {
+      "committee": {
+        "yes": 0,
+        "no": 0,
+        "abstain": 0,
+        "yes_power": 0,
+        "no_power": 0,
+        "abstain_power": 0
+      },
+      "drep": {
+        "yes": 0,
+        "no": 1,
+        "abstain": 0,
+        "yes_power": 0,
+        "no_power": 3000,
+        "abstain_power": 0
+      },
+      "spo": {
+        "yes": 1,
+        "no": 0,
+        "abstain": 0,
+        "yes_power": 5000,
+        "no_power": 0,
+        "abstain_power": 0
+      }
+    }
+  },
+  "summary": "Change maxTxSize 16,384→20,000; 1 other param",
+  "content": {
+    "tx": "TX",
+    "index": 0,
+    "slot": 5,
+    "kind": "parameter_change",
+    "return_address": "stake_test1upg4z52329g4z52329g4z52329g4z52329g4z52329g4z5gnxdtg0",
+    "deposit": 100000000000,
+    "anchor": {
+      "url": "https://example.test/proposal-parameter_change_security",
+      "hash": "2020202020202020202020202020202020202020202020202020202020202020"
+    },
+    "prev_action": {
+      "tx": "7777777777777777777777777777777777777777777777777777777777777777",
+      "index": 1
+    },
+    "params": [
+      {
+        "field": "MaxTxSize",
+        "name": "maxTxSize",
+        "group": "network",
+        "security": true,
+        "unit": "bytes",
+        "desc": "The most bytes one transaction may take.",
+        "new": "20,000",
+        "current": "16,384"
+      },
+      {
+        "field": "MaxTxExUnits",
+        "name": "maxTxExUnits",
+        "group": "network",
+        "security": false,
+        "unit": "memory units and CPU steps",
+        "desc": "The most memory and CPU steps one transaction's scripts may use.",
+        "new": "20,000,000 mem, 10,000,000,000 steps",
+        "current": "16,500,000 mem, 10,000,000,000 steps"
+      }
+    ],
+    "policy_hash": "31313131313131313131313131313131313131313131313131313131",
+    "return_actor": {
+      "id": 5,
+      "name": "network-5",
+      "role": "active"
+    }
+  },
+  "voters": [
+    {
+      "class": "drep",
+      "allowed": true,
+      "reason": "DReps vote on every kind of governance action.",
+      "rule": "isDRepVotingAllowed, Governance/Internal.hs"
+    },
+    {
+      "class": "spo",
+      "allowed": true,
+      "reason": "The change sets a security-group parameter, which stake pools help protect.",
+      "rule": "isStakePoolVotingAllowed, Governance/Internal.hs"
+    },
+    {
+      "class": "committee",
+      "allowed": true,
+      "reason": "The committee votes on everything except no-confidence and committee updates.",
+      "rule": "isCommitteeVotingAllowed, Governance/Internal.hs"
+    }
+  ],
+  "votes": [
+    {
+      "slot": 10,
+      "at": 12000,
+      "tx": "c34251d7f7000fb84d09791d361ef3685dff63254283e3c8e711247b16437401",
+      "proposal": "TX#0",
+      "type": "parameter_change",
+      "voter": "spo",
+      "voter_id": "07000000000000000000000000000000000000000000000000000000",
+      "actor": 7,
+      "choice": "yes",
+      "power": 5000,
+      "anchor": {
+        "url": "https://example.test/why",
+        "hash": "1414141414141414141414141414141414141414141414141414141414141414"
+      }
+    },
+    {
+      "slot": 10,
+      "at": 12000,
+      "tx": "2300f4f1ff66f6b92c9a4fc0e9c516eacaa6c081968a4f029a00524e7a1ac1e5",
+      "proposal": "TX#0",
+      "type": "parameter_change",
+      "voter": "drep",
+      "voter_id": "08000000000000000000000000000000000000000000000000000000",
+      "actor": 8,
+      "choice": "no",
+      "power": 3000
+    }
+  ]
+}

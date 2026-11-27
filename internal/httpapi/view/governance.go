@@ -64,6 +64,18 @@ type ProposalRow struct {
 	Status       string           `json:"status"`
 	PoolsMayVote bool             `json:"spo_may_vote"`
 	Tally        map[string]Tally `json:"tally"`
+	// Summary is one line on what the action asks for, set by the handler
+	// from the explorer's decoding; the fold knows only the type.
+	Summary string `json:"summary,omitempty"`
+}
+
+// ProposalDetail is /api/governance/{tx}/{index}'s fold side: the
+// proposal's row with every current vote on it, newest first.
+type ProposalDetail struct {
+	Epoch    *uint64     `json:"epoch,omitempty"`
+	Lifetime uint64      `json:"lifetime_epochs"`
+	Row      ProposalRow `json:"proposal"`
+	Votes    []VoteRow   `json:"votes"`
 }
 
 // Tally counts one voter class's current votes on a proposal, and the
@@ -80,16 +92,18 @@ type Tally struct {
 // VoteRow is one vote on the chain. Actor and Power are known for the
 // run's own voters only.
 type VoteRow struct {
-	Slot     uint64  `json:"slot"`
-	At       int64   `json:"at"`
-	Tx       string  `json:"tx"`
-	Proposal string  `json:"proposal"`
-	Type     string  `json:"type"`
-	Voter    string  `json:"voter"`
-	Actor    *uint64 `json:"actor,omitempty"`
-	Profile  string  `json:"profile,omitempty"`
-	Choice   string  `json:"choice"`
-	Power    uint64  `json:"power"`
+	Slot     uint64 `json:"slot"`
+	At       int64  `json:"at"`
+	Tx       string `json:"tx"`
+	Proposal string `json:"proposal"`
+	Type     string `json:"type"`
+	Voter    string `json:"voter"`
+	// VoterID is the voter's credential hash in hex.
+	VoterID string  `json:"voter_id"`
+	Actor   *uint64 `json:"actor,omitempty"`
+	Profile string  `json:"profile,omitempty"`
+	Choice  string  `json:"choice"`
+	Power   uint64  `json:"power"`
 }
 
 // PoolVotes is one pool actor's newest SPO votes.
@@ -205,7 +219,7 @@ func (g *govFold) vote(at int64, slot uint64, tx engine.TxID, v engine.VoteDiges
 	if prev, ok := g.votes[key]; ok {
 		u.prev = &prev
 	}
-	row := VoteRow{Slot: slot, At: at, Tx: hex.EncodeToString(tx[:]), Proposal: id, Voter: voterClass(v.Kind), Choice: choiceNames[v.Choice]}
+	row := VoteRow{Slot: slot, At: at, Tx: hex.EncodeToString(tx[:]), Proposal: id, Voter: voterClass(v.Kind), VoterID: hex.EncodeToString(v.Hash[:]), Choice: choiceNames[v.Choice]}
 	if p := g.props[id]; p != nil {
 		row.Type = p.Type
 	}
@@ -339,4 +353,26 @@ func (t *Tally) add(choice string, power uint64) {
 		t.Abstain++
 		t.AbstainPower += power
 	}
+}
+
+// detail is one proposal's row and its current votes, newest first; ok is
+// false when the proposal is not on the chain.
+func (g *govFold) detail(id string, slots *sched.Slots, tip uint64, life uint64, profileOf func(uint64) string) (ProposalDetail, bool) {
+	v := g.view(slots, tip, life, profileOf)
+	i := slices.IndexFunc(v.Proposals, func(p ProposalRow) bool { return p.ID == id })
+	if i < 0 {
+		return ProposalDetail{}, false
+	}
+	d := ProposalDetail{Epoch: v.Epoch, Lifetime: life, Row: v.Proposals[i], Votes: []VoteRow{}}
+	for _, r := range g.sortedVotes() {
+		if r.Proposal != id {
+			continue
+		}
+		if r.Actor != nil {
+			r.Profile = profileOf(*r.Actor)
+		}
+		d.Votes = append(d.Votes, r)
+	}
+	slices.Reverse(d.Votes)
+	return d, true
 }

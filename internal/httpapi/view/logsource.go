@@ -138,6 +138,15 @@ func (s *LogSource) Governance(ctx context.Context) (GovernanceView, error) {
 	return s.cfg.Projection.Governance(s.cfg.Slots, s.cfg.GovLifetime, func(id uint64) string { return n[id].Profile }), nil
 }
 
+// Proposal implements Source.
+func (s *LogSource) Proposal(ctx context.Context, id string) (ProposalDetail, error) {
+	n, err := s.names(ctx)
+	if err != nil {
+		return ProposalDetail{}, err
+	}
+	return s.cfg.Projection.Proposal(id, s.cfg.Slots, s.cfg.GovLifetime, func(a uint64) string { return n[a].Profile })
+}
+
 // Pools implements Source.
 func (s *LogSource) Pools(ctx context.Context) (PoolsView, error) {
 	if s.cfg.Kube == nil {
@@ -389,7 +398,7 @@ func (s *LogSource) Adversaries(ctx context.Context) (AdversaryView, error) {
 				st = x
 			}
 		}
-		out.Adversaries = append(out.Adversaries, adversaryRow(id, st, n[id], idents[id], impact, now, s.cfg.Slots, ownedFindings(s.findingsSet(), s.cfg.Projection.attackOwner, id)))
+		out.Adversaries = append(out.Adversaries, adversaryRow(id, st, n[id], idents[id], impact, now, s.cfg.Slots, ownedFindings(s.findingsSet(), func(tx []byte) (uint64, bool) { return attackOwner(s.cfg.Projection, tx) }, id)))
 	}
 	return out, nil
 }

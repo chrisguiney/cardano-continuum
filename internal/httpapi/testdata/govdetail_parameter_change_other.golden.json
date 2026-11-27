@@ -1,0 +1,104 @@
+{
+  "id": "TX#0",
+  "epoch": 0,
+  "lifetime_epochs": 6,
+  "proposal": {
+    "id": "TX#0",
+    "type": "parameter_change",
+    "proposer": 5,
+    "profile": "hodl",
+    "deposit_lovelace": 100000000000,
+    "slot": 5,
+    "epoch": 0,
+    "expires_epoch": 6,
+    "status": "open",
+    "spo_may_vote": false,
+    "tally": {
+      "committee": {
+        "yes": 0,
+        "no": 0,
+        "abstain": 0,
+        "yes_power": 0,
+        "no_power": 0,
+        "abstain_power": 0
+      },
+      "drep": {
+        "yes": 0,
+        "no": 0,
+        "abstain": 0,
+        "yes_power": 0,
+        "no_power": 0,
+        "abstain_power": 0
+      },
+      "spo": {
+        "yes": 0,
+        "no": 0,
+        "abstain": 0,
+        "yes_power": 0,
+        "no_power": 0,
+        "abstain_power": 0
+      }
+    }
+  },
+  "summary": "Change keyDeposit 2M→3M; 1 other param",
+  "content": {
+    "tx": "TX",
+    "index": 0,
+    "slot": 5,
+    "kind": "parameter_change",
+    "return_address": "stake_test1upg4z52329g4z52329g4z52329g4z52329g4z52329g4z5gnxdtg0",
+    "deposit": 100000000000,
+    "anchor": {
+      "url": "https://example.test/proposal-parameter_change_other",
+      "hash": "2121212121212121212121212121212121212121212121212121212121212121"
+    },
+    "params": [
+      {
+        "field": "KeyDeposit",
+        "name": "keyDeposit",
+        "group": "economic",
+        "security": false,
+        "unit": "lovelace",
+        "desc": "The deposit a stake key pays to register, returned when it deregisters.",
+        "new": "3,000,000",
+        "current": "2,000,000"
+      },
+      {
+        "field": "A0",
+        "name": "a0",
+        "group": "technical",
+        "security": false,
+        "unit": "ratio",
+        "desc": "How much a pool's pledge raises its rewards (the pledge influence).",
+        "new": "0.25",
+        "current": "0.3"
+      }
+    ],
+    "return_actor": {
+      "id": 5,
+      "name": "network-5",
+      "role": "active"
+    }
+  },
+  "voters": [
+    {
+      "class": "drep",
+      "allowed": true,
+      "reason": "DReps vote on every kind of governance action.",
+      "rule": "isDRepVotingAllowed, Governance/Internal.hs"
+    },
+    {
+      "class": "spo",
+      "allowed": false,
+      "reason": "The change sets no security-group parameter, so stake pools do not vote.",
+      "rule": "isStakePoolVotingAllowed, Governance/Internal.hs"
+    },
+    {
+      "class": "committee",
+      "allowed": true,
+      "reason": "The committee votes on everything except no-confidence and committee updates.",
+      "rule": "isCommitteeVotingAllowed, Governance/Internal.hs"
+    }
+  ],
+  "votes": []
+}

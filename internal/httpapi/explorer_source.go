@@ -11,6 +11,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/blinklabs-io/gouroboros/ledger/conway"
+
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
@@ -35,6 +37,10 @@ type ExplorerOptions struct {
 	Names  Names
 	Logger *slog.Logger
 	Now    func() time.Time
+	// Params are the protocol parameters in force, which a parameter-change
+	// action's current values are read from; nil leaves them unknown. The
+	// run never enacts an update, so its genesis parameters stay current.
+	Params *conway.ConwayProtocolParameters
 }
 
 // Explorer serves the chain explorer: the block index plus what only the

@@ -117,3 +117,31 @@ func (x *Index) Find(q string) (Hit, bool) {
 	defer x.mu.Unlock()
 	return find(x.st, q)
 }
+
+// GovAction returns the governance action proposed at index idx of
+// transaction tx, or ErrNotFound. Unlike a transaction, it is available after
+// its block is evicted.
+func (x *Index) GovAction(tx string, idx uint32) (GovAction, error) {
+	h, err := parseHash(tx)
+	if err != nil {
+		return GovAction{}, err
+	}
+	x.mu.Lock()
+	defer x.mu.Unlock()
+	g, ok := x.st.gov.acts[govKey{h, idx}]
+	if !ok {
+		return GovAction{}, fmt.Errorf("%w: governance action %s#%d", ErrNotFound, tx, idx)
+	}
+	return g, nil
+}
+
+// GovVotes lists the anchors of the votes cast on an action, oldest first.
+func (x *Index) GovVotes(tx string, idx uint32) []VoteAnchor {
+	h, err := parseHash(tx)
+	if err != nil {
+		return nil
+	}
+	x.mu.Lock()
+	defer x.mu.Unlock()
+	return append([]VoteAnchor(nil), x.st.gov.notes[govKey{h, idx}]...)
+}

@@ -1,0 +1,98 @@
+{
+  "id": "TX#0",
+  "epoch": 0,
+  "lifetime_epochs": 6,
+  "proposal": {
+    "id": "TX#0",
+    "type": "treasury_withdrawals",
+    "proposer": 5,
+    "profile": "hodl",
+    "deposit_lovelace": 100000000000,
+    "slot": 5,
+    "epoch": 0,
+    "expires_epoch": 6,
+    "status": "open",
+    "spo_may_vote": false,
+    "tally": {
+      "committee": {
+        "yes": 0,
+        "no": 0,
+        "abstain": 0,
+        "yes_power": 0,
+        "no_power": 0,
+        "abstain_power": 0
+      },
+      "drep": {
+        "yes": 0,
+        "no": 0,
+        "abstain": 0,
+        "yes_power": 0,
+        "no_power": 0,
+        "abstain_power": 0
+      },
+      "spo": {
+        "yes": 0,
+        "no": 0,
+        "abstain": 0,
+        "yes_power": 0,
+        "no_power": 0,
+        "abstain_power": 0
+      }
+    }
+  },
+  "summary": "Withdraw 1,200 ADA to 2 recipients",
+  "content": {
+    "tx": "TX",
+    "index": 0,
+    "slot": 5,
+    "kind": "treasury_withdrawals",
+    "return_address": "stake_test1upg4z52329g4z52329g4z52329g4z52329g4z52329g4z5gnxdtg0",
+    "deposit": 100000000000,
+    "anchor": {
+      "url": "https://example.test/proposal-treasury_withdrawals",
+      "hash": "2222222222222222222222222222222222222222222222222222222222222222"
+    },
+    "total": 1200000000,
+    "return_actor": {
+      "id": 5,
+      "name": "network-5",
+      "role": "active"
+    },
+    "withdrawals": [
+      {
+        "address": "stake_test1up3xycnzvf3xycnzvf3xycnzvf3xycnzvf3xycnzvf3xycsmcz84p",
+        "lovelace": 200000000
+      },
+      {
+        "address": "stake_test1upskzctpv9skzctpv9skzctpv9skzctpv9skzctpv9skzcggk7njd",
+        "lovelace": 1000000000,
+        "actor": {
+          "id": 6,
+          "name": "hodl-6",
+          "role": "active"
+        }
+      }
+    ]
+  },
+  "voters": [
+    {
+      "class": "drep",
+      "allowed": true,
+      "reason": "DReps vote on every kind of governance action.",
+      "rule": "isDRepVotingAllowed, Governance/Internal.hs"
+    },
+    {
+      "class": "spo",
+      "allowed": false,
+      "reason": "Stake pools do not vote on treasury withdrawals.",
+      "rule": "isStakePoolVotingAllowed, Governance/Internal.hs"
+    },
+    {
+      "class": "committee",
+      "allowed": true,
+      "reason": "The committee votes on everything except no-confidence and committee updates.",
+      "rule": "isCommitteeVotingAllowed, Governance/Internal.hs"
+    }
+  ],
+  "votes": []
+}

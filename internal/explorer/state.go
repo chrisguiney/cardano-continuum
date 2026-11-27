@@ -24,6 +24,7 @@ type state struct {
 	utxos  *utxoSet
 	hist   *history
 	eps    *epochs
+	gov    *govBook
 }
 
 // txLoc is where a transaction sits: its block's position and its index.
@@ -34,7 +35,7 @@ type txLoc struct {
 func newState(cfg Config) *state {
 	return &state{
 		cfg: cfg, byHash: map[[32]byte]int{}, byHeight: map[uint64]int{}, byIssuer: map[[28]byte][]int{},
-		txs: map[[32]byte]txLoc{}, utxos: newUtxoSet(), hist: newHistory(), eps: newEpochs(),
+		txs: map[[32]byte]txLoc{}, utxos: newUtxoSet(), hist: newHistory(), eps: newEpochs(), gov: newGovBook(),
 	}
 }
 
@@ -67,6 +68,7 @@ func (st *state) add(blk *conway.ConwayBlock, raw []byte) error {
 	for i, t := range m.txs {
 		st.txs[t.id] = txLoc{block: pos, idx: i}
 	}
+	st.gov.add(hash, m.slot, blk.Transactions())
 	st.eps.add(st.epochOf(m.slot), m)
 	st.evict()
 	return nil
@@ -136,6 +138,7 @@ func (st *state) pop() {
 	} else {
 		st.byIssuer[m.issuer] = l[:len(l)-1]
 	}
+	st.gov.drop(m.hash)
 	st.eps.sub(st.epochOf(m.slot), m)
 	st.metas = st.metas[:n]
 	st.oldest = min(st.oldest, n)

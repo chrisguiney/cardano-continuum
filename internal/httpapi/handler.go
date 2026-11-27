@@ -53,6 +53,7 @@ type api struct {
 //	GET  /api/actors/{id}/timeline
 //	GET  /api/pools
 //	GET  /api/governance
+//	GET  /api/governance/{tx}/{index}
 //	GET  /api/findings?limit&offset&known=true|false&kind&severity
 //	GET  /api/findings/{id}
 //	GET  /api/decisions?actor&profile&kind&intent&vote&last_event_id   (SSE)
@@ -95,6 +96,7 @@ func NewHandler(cfg Config) http.Handler {
 	if a.Explorer != nil {
 		exRoutes{a}.register(mux)
 	}
+	govRoutes{a}.register(mux)
 	if cfg.UI == nil {
 		return mux
 	}
@@ -221,6 +223,9 @@ func (a *api) governance(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		a.fail(w, err)
 		return
+	}
+	if a.Explorer != nil {
+		fillSummaries(a.Explorer, &g)
 	}
 	a.json(w, http.StatusOK, g)
 }

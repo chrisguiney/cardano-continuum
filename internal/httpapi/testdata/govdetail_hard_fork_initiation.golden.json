@@ -1,0 +1,86 @@
+{
+  "id": "TX#0",
+  "epoch": 0,
+  "lifetime_epochs": 6,
+  "proposal": {
+    "id": "TX#0",
+    "type": "hard_fork_initiation",
+    "proposer": 5,
+    "profile": "hodl",
+    "deposit_lovelace": 100000000000,
+    "slot": 5,
+    "epoch": 0,
+    "expires_epoch": 6,
+    "status": "open",
+    "spo_may_vote": true,
+    "tally": {
+      "committee": {
+        "yes": 0,
+        "no": 0,
+        "abstain": 0,
+        "yes_power": 0,
+        "no_power": 0,
+        "abstain_power": 0
+      },
+      "drep": {
+        "yes": 0,
+        "no": 0,
+        "abstain": 0,
+        "yes_power": 0,
+        "no_power": 0,
+        "abstain_power": 0
+      },
+      "spo": {
+        "yes": 0,
+        "no": 0,
+        "abstain": 0,
+        "yes_power": 0,
+        "no_power": 0,
+        "abstain_power": 0
+      }
+    }
+  },
+  "summary": "Hard fork to protocol version 11.0",
+  "content": {
+    "tx": "TX",
+    "index": 0,
+    "slot": 5,
+    "kind": "hard_fork_initiation",
+    "return_address": "stake_test1upg4z52329g4z52329g4z52329g4z52329g4z52329g4z5gnxdtg0",
+    "deposit": 100000000000,
+    "anchor": {
+      "url": "https://example.test/proposal-hard_fork_initiation",
+      "hash": "2525252525252525252525252525252525252525252525252525252525252525"
+    },
+    "version": {
+      "major": 11,
+      "minor": 0
+    },
+    "return_actor": {
+      "id": 5,
+      "name": "network-5",
+      "role": "active"
+    }
+  },
+  "voters": [
+    {
+      "class": "drep",
+      "allowed": true,
+      "reason": "DReps vote on every kind of governance action.",
+      "rule": "isDRepVotingAllowed, Governance/Internal.hs"
+    },
+    {
+      "class": "spo",
+      "allowed": true,
+      "reason": "Stake pools vote on no-confidence, committee updates, hard forks and info actions.",
+      "rule": "isStakePoolVotingAllowed, Governance/Internal.hs"
+    },
+    {
+      "class": "committee",
+      "allowed": true,
+      "reason": "The committee votes on everything except no-confidence and committee updates.",
+      "rule": "isCommitteeVotingAllowed, Governance/Internal.hs"
+    }
+  ],
+  "votes": []
+}

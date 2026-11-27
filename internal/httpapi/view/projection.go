@@ -166,6 +166,30 @@ func (p *Projection) Governance(slots *sched.Slots, life uint64, profileOf ...fu
 	})
 }
 
+// Proposal builds one proposal's detail like Governance does, or reports
+// ErrNotFound for an ID the chain does not carry.
+func (p *Projection) Proposal(id string, slots *sched.Slots, life uint64, profileOf ...func(uint64) string) (ProposalDetail, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	var tip uint64
+	if p.tot.tip != nil {
+		tip = p.tot.tip.Slot
+	}
+	d, ok := p.gov.detail(id, slots, tip, life, func(a uint64) string {
+		if r := p.actors.actors[a]; r != nil && r.profile != "" {
+			return r.profile
+		}
+		for _, f := range profileOf {
+			return f(a)
+		}
+		return ""
+	})
+	if !ok {
+		return ProposalDetail{}, fmt.Errorf("%w: governance action %s", ErrNotFound, id)
+	}
+	return d, nil
+}
+
 // Rows returns every actor's row, unsorted.
 func (p *Projection) Rows() []ActorRow {
 	p.mu.Lock()
@@ -203,7 +227,7 @@ func (p *Projection) Attacks() ([]engine.AttackStat, adversary.Metrics, int64) {
 
 // attackOwner is the adversary that sent tx, by an Attack decision or by
 // its own Submitted record.
-func (p *Projection) attackOwner(tx []byte) (uint64, bool) {
+func attackOwner(p *Projection, tx []byte) (uint64, bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if id, ok := p.meter.AttackActor(tx); ok {

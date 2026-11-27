@@ -46,6 +46,7 @@ type (
 	PoolsView       = view.PoolsView
 	Population      = view.Population
 	Projection      = view.Projection
+	ProposalDetail  = view.ProposalDetail
 	ProposalRow     = view.ProposalRow
 	Snapshot        = view.Snapshot
 	Subscription    = view.Subscription

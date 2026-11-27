@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"errors"
 	"testing"
 
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
@@ -149,5 +150,35 @@ func TestLogSourceGovernance(t *testing.T) {
 	g, err := src.Governance(context.Background())
 	if err != nil || len(g.Proposals) != 2 || g.Lifetime != 2 {
 		t.Fatalf("governance %+v, %v", g, err)
+	}
+}
+
+func TestProposalDetail(t *testing.T) {
+	slots, err := sched.NewSlots(1000, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := NewLogSource(LogSourceConfig{Projection: fold(t, govFixture(t)), Slots: &slots, GovLifetime: 2})
+	prop := txid(0x10)
+	d, err := src.Proposal(context.Background(), hex.EncodeToString(prop[:])+"#0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Row.Type != "info" || d.Row.Status != "open" || d.Lifetime != 2 || d.Epoch == nil {
+		t.Errorf("row %+v", d)
+	}
+	// Newest vote first: the DRep 9's yes (slot 40), the DRep 8's abstain
+	// (slot 40, replaced its no), then the pool's yes (slot 30).
+	if len(d.Votes) != 3 || d.Votes[2].Voter != "spo" || d.Votes[2].VoterID != hex.EncodeToString(append([]byte{7}, make([]byte, 27)...)) ||
+		d.Votes[2].Power != 5000 || d.Votes[2].Actor == nil || *d.Votes[2].Actor != 7 {
+		t.Errorf("votes %+v", d.Votes)
+	}
+	for _, v := range d.Votes {
+		if v.Proposal != d.Row.ID {
+			t.Errorf("vote on another proposal: %+v", v)
+		}
+	}
+	if _, err := src.Proposal(context.Background(), "00#0"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("unknown proposal: %v", err)
 	}
 }

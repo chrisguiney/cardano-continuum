@@ -95,3 +95,26 @@ func TestActionTypes(t *testing.T) {
 		t.Fatalf("ActionTypes() = %v, want %v", got, want)
 	}
 }
+
+func TestMayVote(t *testing.T) {
+	for _, tt := range []struct {
+		typ                string
+		pools              bool
+		drep, spo, members bool
+	}{
+		{"info", true, true, true, true},
+		{"no_confidence", true, true, true, false},
+		{"update_committee", true, true, true, false},
+		{"new_constitution", false, true, false, true},
+		{"hard_fork_initiation", true, true, true, true},
+		{"treasury_withdrawals", false, true, false, true},
+		{"parameter_change", false, true, false, true},
+		{"parameter_change", true, true, true, true},
+		{"", false, false, false, false},
+	} {
+		d, s, m := MayVote(tt.typ, tt.pools)
+		if d != tt.drep || s != tt.spo || m != tt.members {
+			t.Errorf("%s pools=%v: drep %v spo %v committee %v, want %v %v %v", tt.typ, tt.pools, d, s, m, tt.drep, tt.spo, tt.members)
+		}
+	}
+}

@@ -123,6 +123,21 @@ func actionOf(a common.GovAction) (string, bool) {
 	return "", false
 }
 
+// MayVote reports which voter classes the ledger lets vote on an action of
+// type typ (an ActionTypes name); pools is Proposal.Pools, which for a
+// parameter change says it touches the security group. DReps may vote on
+// every action; the committee on all but no-confidence and committee
+// updates, which would let it vote on its own removal; pools as actionOf
+// says. The class sets are isDRepVotingAllowed, isCommitteeVotingAllowed and
+// isStakePoolVotingAllowed of cardano-ledger Governance/Internal.hs. An
+// unknown type has no voters.
+func MayVote(typ string, pools bool) (drep, spo, committee bool) {
+	if typ == "" {
+		return false, false, false
+	}
+	return true, pools, typ != "no_confidence" && typ != "update_committee"
+}
+
 // VoteState is a tracked vote.
 type VoteState struct {
 	Action GovID
