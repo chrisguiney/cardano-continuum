@@ -403,23 +403,12 @@ func describe(raw []byte, tx *conway.ConwayTransaction, id common.Blake2b256, wh
 // keptTokens are the tokens of the inputs plus what the transaction
 // mints, by policy and name in sorted order; zero quantities drop out.
 func keptTokens(inputs []common.Utxo, minted *apollo.Unit) []apollo.Unit {
-	type key struct{ policy, name string }
-	held := map[key]int64{}
+	held := map[tokenKey]int64{}
 	for _, u := range inputs {
-		as := u.Output.Assets()
-		if as == nil {
-			continue
-		}
-		for _, p := range as.Policies() {
-			for _, n := range as.Assets(p) {
-				if q := as.Asset(p, n); q != nil {
-					held[key{hex.EncodeToString(p[:]), hex.EncodeToString(n)}] += q.Int64()
-				}
-			}
-		}
+		addHeld(held, u.Output.Assets())
 	}
 	if minted != nil {
-		held[key{minted.PolicyId, minted.Name}] += minted.Quantity
+		held[tokenKey{minted.PolicyId, minted.Name}] += minted.Quantity
 	}
 	var out []apollo.Unit
 	for k, q := range held {
@@ -542,4 +531,21 @@ func (b *Builder) evaluate(txCbor []byte, utxos []common.Utxo) (map[common.Redee
 		return nil, fmt.Errorf("build: evaluate: %w", err)
 	}
 	return used, nil
+}
+
+// tokenKey identifies one native asset by hex policy and hex name.
+type tokenKey struct{ policy, name string }
+
+// addHeld adds every asset of as to held.
+func addHeld(held map[tokenKey]int64, as *common.MultiAsset[common.MultiAssetTypeOutput]) {
+	if as == nil {
+		return
+	}
+	for _, p := range as.Policies() {
+		for _, n := range as.Assets(p) {
+			if q := as.Asset(p, n); q != nil {
+				held[tokenKey{hex.EncodeToString(p[:]), hex.EncodeToString(n)}] += q.Int64()
+			}
+		}
+	}
 }
