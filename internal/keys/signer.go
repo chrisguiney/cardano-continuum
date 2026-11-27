@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/blinklabs-io/bursa"
 	"github.com/blinklabs-io/bursa/bip32"
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 )
@@ -62,61 +61,3 @@ func (s Signer) GoString() string             { return s.redaction().String() }
 func (s Signer) Format(f fmt.State, _ rune)   { s.redaction().format(f) }
 func (s Signer) MarshalJSON() ([]byte, error) { return s.redaction().marshal() }
 func (s Signer) LogValue() slog.Value         { return s.redaction().logValue() }
-
-// PaymentSigner returns the wallet's payment key signer.
-func (w Wallet) PaymentSigner() Signer { return Signer{"payment", xprvKey{w.paymentKey}} }
-
-// StakeSigner returns the wallet's stake key signer, which witnesses stake
-// certificates, withdrawals and pool ownership.
-func (w Wallet) StakeSigner() Signer { return Signer{"stake", xprvKey{w.stakeKey}} }
-
-// PoolSigner returns actor id's pool cold key signer; its KeyHash is the
-// pool id.
-func (s *Store) PoolSigner(id ActorID) (Signer, error) {
-	if id > maxActorID {
-		return Signer{}, fmt.Errorf("pool actor id %d out of range", id)
-	}
-	cold, err := s.coldSeed(id)
-	if err != nil {
-		return Signer{}, err
-	}
-	return Signer{"pool", seedKey{ed25519.NewKeyFromSeed(cold)}}, nil
-}
-
-// DRepSigner returns actor id's DRep key signer; its KeyHash is DRep(id).
-func (s *Store) DRepSigner(id ActorID) Signer { return Signer{"drep", xprvKey{s.drepKey(id)}} }
-
-// CommitteeSigners returns the cold and hot key signers of committee member
-// i; their KeyHashes are Committee(i).
-func (s *Store) CommitteeSigners(i uint32) (cold, hot Signer) {
-	c, h := s.committeeKeys(i)
-	return Signer{"committee cold", xprvKey{c}}, Signer{"committee hot", xprvKey{h}}
-}
-
-func (s *Store) drepKey(id ActorID) bip32.XPrv {
-	acct, err := bursa.GetAccountKey(s.root, uint32(id))
-	if err != nil {
-		panic("keys: drep account: " + err.Error())
-	}
-	k, err := bursa.GetDRepKey(acct, 0)
-	if err != nil {
-		panic("keys: drep key: " + err.Error())
-	}
-	return k
-}
-
-func (s *Store) committeeKeys(i uint32) (cold, hot bip32.XPrv) {
-	acct, err := bursa.GetAccountKey(s.root, uint32(committeeAccount))
-	if err != nil {
-		panic("keys: committee account: " + err.Error())
-	}
-	c, err := bursa.GetCommitteeColdKey(acct, i)
-	if err != nil {
-		panic("keys: committee cold: " + err.Error())
-	}
-	h, err := bursa.GetCommitteeHotKey(acct, i)
-	if err != nil {
-		panic("keys: committee hot: " + err.Error())
-	}
-	return c, h
-}

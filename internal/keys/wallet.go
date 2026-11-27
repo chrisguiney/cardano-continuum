@@ -89,3 +89,10 @@ func (w Wallet) GoString() string             { return w.redaction().String() }
 func (w Wallet) Format(f fmt.State, _ rune)   { w.redaction().format(f) }
 func (w Wallet) MarshalJSON() ([]byte, error) { return w.redaction().marshal() }
 func (w Wallet) LogValue() slog.Value         { return w.redaction().logValue() }
+
+// PaymentSigner returns the wallet's payment key signer.
+func (w Wallet) PaymentSigner() Signer { return Signer{"payment", xprvKey{w.paymentKey}} }
+
+// StakeSigner returns the wallet's stake key signer, which witnesses stake
+// certificates, withdrawals and pool ownership.
+func (w Wallet) StakeSigner() Signer { return Signer{"stake", xprvKey{w.stakeKey}} }

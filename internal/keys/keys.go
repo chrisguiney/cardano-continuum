@@ -261,3 +261,54 @@ func (e Envelope) GoString() string             { return e.redaction().String() 
 func (e Envelope) Format(f fmt.State, _ rune)   { e.redaction().format(f) }
 func (e Envelope) MarshalJSON() ([]byte, error) { return e.redaction().marshal() }
 func (e Envelope) LogValue() slog.Value         { return e.redaction().logValue() }
+
+// PoolSigner returns actor id's pool cold key signer; its KeyHash is the
+// pool id.
+func (s *Store) PoolSigner(id ActorID) (Signer, error) {
+	if id > maxActorID {
+		return Signer{}, fmt.Errorf("pool actor id %d out of range", id)
+	}
+	cold, err := s.coldSeed(id)
+	if err != nil {
+		return Signer{}, err
+	}
+	return Signer{"pool", seedKey{ed25519.NewKeyFromSeed(cold)}}, nil
+}
+
+// DRepSigner returns actor id's DRep key signer; its KeyHash is DRep(id).
+func (s *Store) DRepSigner(id ActorID) Signer { return Signer{"drep", xprvKey{s.drepKey(id)}} }
+
+// CommitteeSigners returns the cold and hot key signers of committee member
+// i; their KeyHashes are Committee(i).
+func (s *Store) CommitteeSigners(i uint32) (cold, hot Signer) {
+	c, h := s.committeeKeys(i)
+	return Signer{"committee cold", xprvKey{c}}, Signer{"committee hot", xprvKey{h}}
+}
+
+func (s *Store) drepKey(id ActorID) bip32.XPrv {
+	acct, err := bursa.GetAccountKey(s.root, uint32(id))
+	if err != nil {
+		panic("keys: drep account: " + err.Error())
+	}
+	k, err := bursa.GetDRepKey(acct, 0)
+	if err != nil {
+		panic("keys: drep key: " + err.Error())
+	}
+	return k
+}
+
+func (s *Store) committeeKeys(i uint32) (cold, hot bip32.XPrv) {
+	acct, err := bursa.GetAccountKey(s.root, uint32(committeeAccount))
+	if err != nil {
+		panic("keys: committee account: " + err.Error())
+	}
+	c, err := bursa.GetCommitteeColdKey(acct, i)
+	if err != nil {
+		panic("keys: committee cold: " + err.Error())
+	}
+	h, err := bursa.GetCommitteeHotKey(acct, i)
+	if err != nil {
+		panic("keys: committee hot: " + err.Error())
+	}
+	return c, h
+}
