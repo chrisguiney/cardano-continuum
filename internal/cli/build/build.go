@@ -12,7 +12,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/flagx"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/internal/flagx"
 	"github.com/chrisguiney/cardano-continuum/internal/devbuild"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/image"
 )

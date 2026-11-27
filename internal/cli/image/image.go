@@ -8,8 +8,8 @@ import (
 	"io"
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
-	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/flagx"
-	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/kube"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/internal/flagx"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/internal/kube"
 	"github.com/chrisguiney/cardano-continuum/internal/imageset"
 )
 

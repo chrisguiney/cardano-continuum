@@ -7,10 +7,10 @@ import (
 	"io"
 	"time"
 
+	"github.com/chrisguiney/cardano-continuum/internal/cli/internal/lines"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/internal/simflags"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/live"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/rerun"
-	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/lines"
-	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/simflags"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 )
 

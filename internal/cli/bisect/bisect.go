@@ -13,8 +13,8 @@ import (
 	"strings"
 
 	ibisect "github.com/chrisguiney/cardano-continuum/internal/bisect"
-	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/flagx"
-	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/lines"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/internal/flagx"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/internal/lines"
 	"github.com/chrisguiney/cardano-continuum/internal/devbuild"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/image"
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"

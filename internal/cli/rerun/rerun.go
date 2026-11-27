@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/chrisguiney/cardano-continuum/internal/cli/internal/kube"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/internal/simflags"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/live"
-	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/kube"
-	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/simflags"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/imageset"
 	irerun "github.com/chrisguiney/cardano-continuum/internal/rerun"

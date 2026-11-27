@@ -8,8 +8,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/kube"
-	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/kubetest"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/internal/kube"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/internal/kubetest"
 	"github.com/chrisguiney/cardano-continuum/internal/imageset"
 )
 

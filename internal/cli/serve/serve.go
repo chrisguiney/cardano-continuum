@@ -11,8 +11,8 @@ import (
 	"os"
 
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
-	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/kube"
-	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/serving"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/internal/kube"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/internal/serving"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"

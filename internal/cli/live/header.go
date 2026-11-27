@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
-	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/simflags"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/internal/simflags"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 )
 

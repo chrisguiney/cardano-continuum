@@ -8,8 +8,8 @@ import (
 	"slices"
 
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
-	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/lines"
-	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/simflags"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/internal/lines"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/internal/simflags"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 )

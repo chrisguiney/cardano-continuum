@@ -8,8 +8,8 @@ import (
 	"io"
 	"sort"
 
-	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/flagx"
-	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/tlaflags"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/internal/flagx"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/internal/tlaflags"
 	"github.com/chrisguiney/cardano-continuum/internal/tla"
 )
 

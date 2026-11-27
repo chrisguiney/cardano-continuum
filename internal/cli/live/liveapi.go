@@ -8,7 +8,7 @@ import (
 	"net"
 	"sync"
 
-	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/serving"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/internal/serving"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/httpapi"

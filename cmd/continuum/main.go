@@ -32,13 +32,13 @@ import (
 	"syscall"
 
 	"github.com/chrisguiney/cardano-continuum/internal/cli/attack"
-	clibisect "github.com/chrisguiney/cardano-continuum/internal/cli/bisect"
-	clibuild "github.com/chrisguiney/cardano-continuum/internal/cli/build"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/bisect"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/build"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/export"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/harvest"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/image"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/profiles"
-	cliscenario "github.com/chrisguiney/cardano-continuum/internal/cli/scenario"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/scenario"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/serve"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/sim"
 )
@@ -75,9 +75,9 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 	case "profiles":
 		return profiles.Run(ctx, args[1:], out)
 	case "build":
-		return clibuild.Run(ctx, args[1:], out)
+		return build.Run(ctx, args[1:], out)
 	case "bisect":
-		return clibisect.Run(ctx, args[1:], out)
+		return bisect.Run(ctx, args[1:], out)
 	case "serve":
 		return serve.Run(ctx, args[1:], out)
 	case "harvest":
@@ -85,7 +85,7 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 	case "vectors":
 		return harvest.Vectors(ctx, args[1:], out)
 	case "scenario":
-		return cliscenario.Run(ctx, args[1:], out)
+		return scenario.Run(ctx, args[1:], out)
 	}
 	return fmt.Errorf("%w: unknown command %q", errUsage, args[0])
 }

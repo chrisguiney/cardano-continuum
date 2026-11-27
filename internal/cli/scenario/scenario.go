@@ -11,7 +11,7 @@ import (
 	"sort"
 	"text/tabwriter"
 
-	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/tlaflags"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/internal/tlaflags"
 	"github.com/chrisguiney/cardano-continuum/internal/rng"
 	iscenario "github.com/chrisguiney/cardano-continuum/internal/scenario"
 	"github.com/chrisguiney/cardano-continuum/internal/tla"

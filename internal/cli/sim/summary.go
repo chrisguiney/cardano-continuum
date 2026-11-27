@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/chrisguiney/cardano-continuum/internal/cli/attack"
-	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/lines"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/internal/lines"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
