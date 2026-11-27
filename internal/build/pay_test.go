@@ -71,6 +71,7 @@ func decode(t *testing.T, raw []byte) ledger.Transaction {
 }
 
 func TestApolloVersionPinned(t *testing.T) {
+	t.Parallel()
 	out, err := exec.Command("go", "list", "-m", "github.com/Salvionied/apollo/v2").Output()
 	if err != nil {
 		t.Fatal(err)
@@ -81,6 +82,7 @@ func TestApolloVersionPinned(t *testing.T) {
 }
 
 func TestPayFeeIsLinearInSize(t *testing.T) {
+	t.Parallel()
 	got, _, _, _ := buildPay(t, 10_000_000, 50_000_000)
 	tx := decode(t, got.Tx)
 	size, err := common.TxSize(tx)
@@ -94,6 +96,7 @@ func TestPayFeeIsLinearInSize(t *testing.T) {
 }
 
 func TestPayConservesValueAndPaysChangeBack(t *testing.T) {
+	t.Parallel()
 	got, alice, bob, _ := buildPay(t, 10_000_000, 30_000_000, 40_000_000)
 	tx := decode(t, got.Tx)
 	var out, paid, change uint64
@@ -122,6 +125,7 @@ func TestPayConservesValueAndPaysChangeBack(t *testing.T) {
 }
 
 func TestPayChangeAtOrAboveMinUTxO(t *testing.T) {
+	t.Parallel()
 	got, _, _, _ := buildPay(t, 10_000_000, 50_000_000)
 	tx := decode(t, got.Tx)
 	for _, o := range tx.Outputs() {
@@ -135,6 +139,7 @@ func TestPayChangeAtOrAboveMinUTxO(t *testing.T) {
 // Change too small to stand alone is folded into the fee: one output, and
 // fee + payment account for the whole input.
 func TestPayDustChangeFoldedIntoFee(t *testing.T) {
+	t.Parallel()
 	// Pay almost everything: leftover after the fee is below min-UTxO.
 	got, _, bob, _ := buildPay(t, 9_700_000, 10_000_000)
 	tx := decode(t, got.Tx)
@@ -152,6 +157,7 @@ func TestPayDustChangeFoldedIntoFee(t *testing.T) {
 }
 
 func TestPayWitnessVerifies(t *testing.T) {
+	t.Parallel()
 	got, alice, _, _ := buildPay(t, 10_000_000, 50_000_000)
 	tx := decode(t, got.Tx)
 	ws := tx.Witnesses().Vkey()
@@ -174,6 +180,7 @@ func TestPayWitnessVerifies(t *testing.T) {
 }
 
 func TestPayUsesOnlyOffered(t *testing.T) {
+	t.Parallel()
 	got, _, _, us := buildPay(t, 10_000_000, 30_000_000, 40_000_000, 50_000_000)
 	offered := map[string]bool{}
 	for _, u := range us {
@@ -190,6 +197,7 @@ func TestPayUsesOnlyOffered(t *testing.T) {
 }
 
 func TestPayDeterministic(t *testing.T) {
+	t.Parallel()
 	a, _, _, _ := buildPay(t, 10_000_000, 30_000_000, 40_000_000)
 	b, _, _, _ := buildPay(t, 10_000_000, 30_000_000, 40_000_000)
 	if !bytes.Equal(a.Tx, b.Tx) {
@@ -198,6 +206,7 @@ func TestPayDeterministic(t *testing.T) {
 }
 
 func TestPayInsufficientIsTyped(t *testing.T) {
+	t.Parallel()
 	alice, bob := testWallets(t)
 	b := New(testParams())
 	_, err := b.Pay(context.Background(), alice, Payment{
@@ -210,6 +219,7 @@ func TestPayInsufficientIsTyped(t *testing.T) {
 }
 
 func TestPayAcceptedByFakeChain(t *testing.T) {
+	t.Parallel()
 	alice, bob := testWallets(t)
 	slots, err := sched.NewSlots(1000, 100)
 	if err != nil {
@@ -239,6 +249,7 @@ func TestPayAcceptedByFakeChain(t *testing.T) {
 }
 
 func TestPayTipRaisesTheFee(t *testing.T) {
+	t.Parallel()
 	base, alice, bob, us := buildPay(t, 2_000_000, 50_000_000)
 	got, err := New(testParams()).Pay(context.Background(), alice, Payment{
 		Inputs: us, To: bob.Address(), Amount: 2_000_000, TTL: 5000, Tip: 300_000,
@@ -256,6 +267,7 @@ func TestPayTipRaisesTheFee(t *testing.T) {
 // MinCoinTxOut of the output it creates is no more. For a base address it
 // is about 1 ADA, half the 2 ADA a wallet rule of thumb pays.
 func TestMinPaymentIsTheLedgerMinimum(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	to := h.store.Wallet(2).Address()
 	floor := h.b.MinPayment(to)
@@ -295,6 +307,7 @@ func TestMinPaymentIsTheLedgerMinimum(t *testing.T) {
 // 2.2 ADA coin, every build either fails or has every output at or above
 // the ledger's minimum.
 func TestNoChangeBelowMinUtxo(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	bob := h.store.Wallet(2)
 	fund, err := h.b.Pay(ctx, h.alice, Payment{Inputs: h.spend().Inputs, TTL: h.spend().TTL, To: bob.Address(), Amount: 2_200_000})

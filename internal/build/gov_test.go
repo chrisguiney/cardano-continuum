@@ -13,6 +13,7 @@ import (
 )
 
 func TestDRepRegisterVotePropose(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	drep := h.store.DRepSigner(1)
 	pay := h.alice.PaymentKeyHash()
@@ -78,6 +79,7 @@ func TestDRepRegisterVotePropose(t *testing.T) {
 }
 
 func TestCommitteeHotKeyAuthAndVote(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.registerStake()
 	prop, err := h.b.Gov().Propose(ctx, h.alice, Proposal{Spend: h.spend()})
@@ -117,6 +119,7 @@ func TestCommitteeHotKeyAuthAndVote(t *testing.T) {
 }
 
 func TestDRepRetirement(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	drep := h.store.DRepSigner(1)
 	pay := h.alice.PaymentKeyHash()
@@ -149,6 +152,7 @@ func TestDRepRetirement(t *testing.T) {
 // Every action type a fitted network proposes builds a proposal the
 // ledger accepts, holding the governance action deposit.
 func TestProposeActionTypes(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.registerStake()
 	deposits := uint64(h.pp.KeyDeposit)

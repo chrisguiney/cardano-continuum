@@ -7,6 +7,7 @@ import (
 // TestBurnSpendsMemory: the burn loop's memory grows with n squared and
 // tracks steps/160, so declaring its measured units declares work done.
 func TestBurnSpendsMemory(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	var prev int64
 	for _, n := range []int{50, 100} {
@@ -37,6 +38,7 @@ func TestBurnSpendsMemory(t *testing.T) {
 }
 
 func TestBurnSize(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	const want = 5_000_000
 	req := Mint{Spend: h.spend(), Policy: Burn(BurnSize(want)), Name: []byte("burn"), Quantity: 1, Redeemer: unitDatum(), Collateral: 12_000_000}

@@ -22,6 +22,7 @@ func (h *harness) registerStake() {
 }
 
 func TestRegisterStake(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	sp := h.spend()
 	got, err := h.b.Stake().RegisterStake(ctx, h.alice, sp)
@@ -48,6 +49,7 @@ func TestRegisterStake(t *testing.T) {
 }
 
 func TestDelegateRegistersAndDelegates(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	pool := h.registerPool(9)
 	sp := h.spend()
@@ -72,6 +74,7 @@ func TestDelegateRegistersAndDelegates(t *testing.T) {
 }
 
 func TestDeregisterStakeRefunds(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.registerStake()
 	sp := h.spend()
@@ -90,6 +93,7 @@ func TestDeregisterStakeRefunds(t *testing.T) {
 }
 
 func TestDelegateVoteThenWithdraw(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.registerStake()
 

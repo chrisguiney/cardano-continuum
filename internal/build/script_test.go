@@ -15,6 +15,7 @@ import (
 )
 
 func TestScriptsCompileFromSource(t *testing.T) {
+	t.Parallel()
 	for _, s := range []Script{AlwaysSucceeds, FreeMint} {
 		prog, err := syn.Parse(s.Source)
 		if err != nil {
@@ -103,6 +104,7 @@ func (h *harness) lock(amount uint64) (Built, common.Utxo) {
 }
 
 func TestScriptLockAndUnlock(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	sp := h.spend()
 	req := Lock{Spend: sp, Script: AlwaysSucceeds, Amount: 5_000_000, Datum: unitDatum()}
@@ -143,6 +145,7 @@ func TestScriptLockAndUnlock(t *testing.T) {
 }
 
 func TestMint(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	sp := h.spend()
 	req := Mint{Spend: sp, Policy: FreeMint, Name: []byte("continuum"), Quantity: 1000, Redeemer: unitDatum()}
@@ -180,6 +183,7 @@ func TestMint(t *testing.T) {
 // contract locks where it always did, and every other index has its own
 // hash and unlocks on the fake chain.
 func TestContractsHaveTheirOwnAddresses(t *testing.T) {
+	t.Parallel()
 	if Contract(0).Hash() != AlwaysSucceeds.Hash() {
 		t.Fatal("contract 0 is not AlwaysSucceeds")
 	}
@@ -219,6 +223,7 @@ func TestContractsHaveTheirOwnAddresses(t *testing.T) {
 // from a pure-ADA input, and a wallet whose every coin carried tokens
 // could never call a script again.
 func TestTokensLeaveTheChangePure(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	mint := func() Built {
 		t.Helper()

@@ -12,6 +12,7 @@ import (
 )
 
 func TestFanOutPaysEveryOutputAndChangeBack(t *testing.T) {
+	t.Parallel()
 	var seed rng.Seed
 	seed[31] = 9
 	s, err := keys.New(seed, 0)
@@ -55,6 +56,7 @@ func TestFanOutPaysEveryOutputAndChangeBack(t *testing.T) {
 }
 
 func TestFanOutInsufficientIsTyped(t *testing.T) {
+	t.Parallel()
 	alice, bob := testWallets(t)
 	_, err := New(testParams()).FanOut(context.Background(), alice, Spend{
 		Inputs: []common.Utxo{utxo(alice.Address(), 0, 3_000_000)}, TTL: 900,
@@ -66,6 +68,7 @@ func TestFanOutInsufficientIsTyped(t *testing.T) {
 }
 
 func TestFanOutNeedsAnOutput(t *testing.T) {
+	t.Parallel()
 	alice, _ := testWallets(t)
 	if _, err := New(testParams()).FanOut(context.Background(), alice, Spend{
 		Inputs: []common.Utxo{utxo(alice.Address(), 0, 30_000_000)}, TTL: 900,

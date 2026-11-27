@@ -40,6 +40,7 @@ func (h *harness) registerPool(id keys.ActorID) [28]byte {
 }
 
 func TestPoolRegistration(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	sp := h.spend()
 	req := h.poolReq(9, sp)
@@ -83,6 +84,7 @@ func TestPoolRegistration(t *testing.T) {
 }
 
 func TestPoolRetirement(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.registerPool(9)
 	cold, _ := h.store.PoolSigner(9)
