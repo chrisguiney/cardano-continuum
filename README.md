@@ -175,7 +175,8 @@ so give it a mirror the pod reaches (chart value `operator.registryMirror`,
 
 ### End-to-end tests
 
-`make e2e` (about an hour; `go test -short` skips the slowest) runs
+`make e2e` (about 90 minutes on a small cluster, bounded by `E2E_TIMEOUT`,
+default 150m; `go test -short` skips the slowest) runs
 `test/e2e` against a cluster you provide. It never picks a cluster itself:
 `E2E_CONTEXT` must name the kubectl context, and every call is pinned to it.
 

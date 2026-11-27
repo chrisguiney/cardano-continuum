@@ -224,10 +224,10 @@ scenarios: ## Regenerate the scenario library from TLA_REPO at TLA_REF (Mode A t
 # as the nodes name it, when that differs.
 E2E_CONTEXT ?=
 E2E_CLUSTER_REGISTRY ?=
-E2E_TIMEOUT ?= 100m
+E2E_TIMEOUT ?= 150m
 
 .PHONY: e2e
-e2e: require-registry ## Run the e2e suite against E2E_CONTEXT (about an hour; go test -short skips the slowest)
+e2e: require-registry ## Run the e2e suite against E2E_CONTEXT (about 90 minutes on a small cluster; go test -short skips the slowest)
 	@test -n "$(E2E_CONTEXT)" || { echo "E2E_CONTEXT is not set: name the kubectl context of the cluster to test"; exit 1; }
 	E2E_CONTEXT='$(E2E_CONTEXT)' CONTINUUM_E2E_CLUSTER_REGISTRY='$(E2E_CLUSTER_REGISTRY)' \
 	CONTINUUM_REGISTRY='$(CONTINUUM_REGISTRY)' CONTINUUM_REGISTRY_INSECURE='$(CONTINUUM_REGISTRY_INSECURE)' CONTINUUM_PLATFORM='$(PLATFORM)' \
