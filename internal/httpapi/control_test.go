@@ -129,3 +129,25 @@ func TestLogControlsRememberIDsAcrossRestart(t *testing.T) {
 		t.Fatalf("%d records", n)
 	}
 }
+
+// TestLoggedControlIsEngineControl: a submitted control lands in the log
+// as the engine's Control body, every field carried.
+func TestLoggedControlIsEngineControl(t *testing.T) {
+	log := &eventlog.MemLog{}
+	lc, err := NewLogControls(context.Background(), log, func() sched.Time { return 5 })
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := Control{RequestID: "r1", Op: OpSetWeights, K: 3, Weights: map[string]float64{"send": 2}, Scenario: "s"}
+	if _, err := lc.Submit(context.Background(), c); err != nil {
+		t.Fatal(err)
+	}
+
+	var body []byte
+	if err := log.Scan(context.Background(), 1, func(r eventlog.Record) error { body = r.Body; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"request_id":"r1","op":"set_weights","k":3,"weights":{"send":2},"scenario":"s"}`; string(body) != want {
+		t.Fatalf("body %s, want %s", body, want)
+	}
+}

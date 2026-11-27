@@ -51,7 +51,7 @@ func (q *controlQueue) Submit(_ context.Context, c httpapi.Control) (httpapi.Rec
 	if len(q.seen) >= maxQueuedControls {
 		return httpapi.Receipt{}, httpapi.ErrTooManyControls
 	}
-	body, err := eventlog.Encode(c)
+	body, err := eventlog.Encode(c.Input())
 	if err != nil {
 		return httpapi.Receipt{}, fmt.Errorf("encode control %s: %w", c.RequestID, err)
 	}

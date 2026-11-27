@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"sync"
 
+	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/httpapi/view"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
@@ -43,16 +44,30 @@ var (
 	reScenario  = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`)
 )
 
-// Control is a request to steer a run. It is the body of a Control input
-// record, so its JSON names are part of the log format. K is the
-// amplification factor, Weights override intent weights by name, and
-// Scenario names a scenario to inject.
+// Control is a request to steer a run, as the API takes it. The log
+// carries it as an engine.Control (Input), whose names are the log format.
 type Control struct {
-	RequestID string             `json:"request_id"`
-	Op        Op                 `json:"op"`
-	K         uint32             `json:"k,omitempty"`
-	Weights   map[string]float64 `json:"weights,omitempty"`
-	Scenario  string             `json:"scenario,omitempty"`
+	// RequestID makes the request idempotent.
+	RequestID string `json:"request_id"`
+	// Op is the operation.
+	Op Op `json:"op"`
+	// K is the amplification factor.
+	K uint32 `json:"k,omitempty"`
+	// Weights override intent weights by name.
+	Weights map[string]float64 `json:"weights,omitempty"`
+	// Scenario names a scenario to inject.
+	Scenario string `json:"scenario,omitempty"`
+}
+
+// Input is c as the body of a Control input record.
+func (c Control) Input() engine.Control {
+	return engine.Control{
+		RequestID: c.RequestID,
+		Op:        string(c.Op),
+		K:         c.K,
+		Weights:   c.Weights,
+		Scenario:  c.Scenario,
+	}
 }
 
 // Receipt says where a control landed. Duplicate is true when the request
@@ -183,7 +198,7 @@ func NewLogControls(ctx context.Context, log ControlLog, at func() sched.Time) (
 		if r.Kind != eventlog.KindControl {
 			return nil
 		}
-		var body Control
+		var body engine.Control
 		if err := eventlog.Decode(r.Body, &body); err != nil {
 			return fmt.Errorf("control record seq %d: %w", r.Seq, err)
 		}
@@ -210,7 +225,7 @@ func (l *LogControls) Submit(ctx context.Context, c Control) (Receipt, error) {
 	if len(l.seen) >= maxControls {
 		return Receipt{}, ErrTooManyControls
 	}
-	body, err := eventlog.Encode(c)
+	body, err := eventlog.Encode(c.Input())
 	if err != nil {
 		return Receipt{}, fmt.Errorf("encode control %s: %w", c.RequestID, err)
 	}

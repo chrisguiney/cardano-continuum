@@ -24,6 +24,7 @@ type (
 	BlockContent    = wire.BlockContent
 	ChainEvent      = wire.ChainEvent
 	Confirmed       = wire.Confirmed
+	Control         = wire.Control
 	Controlled      = wire.Controlled
 	Deployed        = wire.Deployed
 	Follower        = wire.Follower
