@@ -47,8 +47,6 @@ stray-methods internal/engine Runner 2
 stray-methods internal/engine pendingRec 2
 stray-methods internal/engine view 9
 stray-methods internal/oracle Finding 1
-stray-methods internal/policy Guard 2
-stray-methods internal/policy State 1
 stray-methods internal/profile rawAmount 1
 stray-methods internal/scenario Scenario 2
 stray-methods internal/sink builder 1

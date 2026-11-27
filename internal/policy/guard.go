@@ -102,25 +102,6 @@ type window struct {
 	d    Schedule
 }
 
-// horizon lists the schedules a decision taken now can still reach. They
-// depend on whether this epoch's transition has run, not on the epoch
-// number: before the epoch's first block the schedule in use is already
-// the mark the transition will install, and the next one is today's
-// delegation. The projection is the confirmed delegation with everything in
-// flight landed. Later schedules differ from the projection only by the
-// stake of retired pools, which the guard already counts as dark.
-func (s State) horizon(proj Schedule) ([]window, error) {
-	switch {
-	case s.Label > s.Epoch:
-		return nil, fmt.Errorf("last transition epoch %d is after epoch %d", s.Label, s.Epoch)
-	case s.Frozen():
-		return []window{{"set", s.Set}}, nil
-	case s.Label == s.Epoch:
-		return []window{{"set", s.Set}, {"mark", s.Mark}, {"projection", proj}}, nil
-	}
-	return []window{{"mark", s.Mark}, {"delegation", s.Deleg}, {"projection", proj}}, nil
-}
-
 var errNoEntry = errors.New("wallet has no confirmed stake entry")
 
 // project applies every delegation and undelegation in txs to the
@@ -211,4 +192,63 @@ func sumAfterLoss(byPool map[population.ActorID]uint64, margin int) uint64 {
 		}
 	}
 	return sum
+}
+
+// Endangered reports that the floor is breached, or will be, in a schedule
+// already on its way: any of the guard's three schedules, counting only the
+// pools that really forge (registered, planned live, pod running) and with
+// everything in flight landed. No margin is applied. Recovery must start on
+// this, not on a breach of the schedule in use alone: a pod that dies after
+// the epoch's last block can leave this epoch above the floor and the next
+// one below it, and waiting loses the epoch in which a move could land.
+func (g Guard) Endangered(s State) bool {
+	proj, err := project(s.Deleg, s.InFlight)
+	if err != nil {
+		return true
+	}
+	ws, err := s.horizon(proj)
+	if err != nil {
+		return true
+	}
+	f := map[population.ActorID]bool{}
+	for _, p := range s.Pools {
+		if p.Reg == Registered && p.Live && p.Running {
+			f[p.ID] = true
+		}
+	}
+	strict := Guard{cfg: Config{Floor: g.cfg.Floor}}
+	for _, w := range ws {
+		if !strict.meets(w, f).OK {
+			return true
+		}
+	}
+	return false
+}
+
+// Recover returns the recovery for s, or an empty Plan when s is not
+// Endangered or the ledger is Frozen (contract rules 12 to 14). Every list
+// is in ascending ID order, and move targets are chosen least projected
+// stake first, ties to the lower ID, so the plan depends only on s.
+func (g Guard) Recover(s State) Plan {
+	if s.Frozen() || !g.Endangered(s) {
+		return Plan{}
+	}
+	var p Plan
+	ret := s.retiring(nil)
+	f := map[population.ActorID]bool{}
+	for _, pl := range sortedPools(s.Pools) {
+		if pl.Reg != Registered || ret[pl.ID] {
+			continue // rule 9: a pool with a retirement in flight stays dark
+		}
+		if !pl.Live {
+			p.GoLive = append(p.GoLive, pl.ID)
+		}
+		if !pl.Running {
+			p.Repair = append(p.Repair, pl.ID)
+			continue
+		}
+		f[pl.ID] = true
+	}
+	p.Moves, p.Waiting = moves(s, f)
+	return p
 }

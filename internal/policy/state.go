@@ -17,6 +17,8 @@
 package policy
 
 import (
+	"fmt"
+
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 )
 
@@ -151,4 +153,23 @@ func (s State) forging(extra *Intent) map[population.ActorID]bool {
 		}
 	}
 	return out
+}
+
+// horizon lists the schedules a decision taken now can still reach. They
+// depend on whether this epoch's transition has run, not on the epoch
+// number: before the epoch's first block the schedule in use is already
+// the mark the transition will install, and the next one is today's
+// delegation. The projection is the confirmed delegation with everything in
+// flight landed. Later schedules differ from the projection only by the
+// stake of retired pools, which the guard already counts as dark.
+func (s State) horizon(proj Schedule) ([]window, error) {
+	switch {
+	case s.Label > s.Epoch:
+		return nil, fmt.Errorf("last transition epoch %d is after epoch %d", s.Label, s.Epoch)
+	case s.Frozen():
+		return []window{{"set", s.Set}}, nil
+	case s.Label == s.Epoch:
+		return []window{{"set", s.Set}, {"mark", s.Mark}, {"projection", proj}}, nil
+	}
+	return []window{{"mark", s.Mark}, {"delegation", s.Deleg}, {"projection", proj}}, nil
 }

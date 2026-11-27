@@ -7,37 +7,6 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 )
 
-// Endangered reports that the floor is breached, or will be, in a schedule
-// already on its way: any of the guard's three schedules, counting only the
-// pools that really forge (registered, planned live, pod running) and with
-// everything in flight landed. No margin is applied. Recovery must start on
-// this, not on a breach of the schedule in use alone: a pod that dies after
-// the epoch's last block can leave this epoch above the floor and the next
-// one below it, and waiting loses the epoch in which a move could land.
-func (g Guard) Endangered(s State) bool {
-	proj, err := project(s.Deleg, s.InFlight)
-	if err != nil {
-		return true
-	}
-	ws, err := s.horizon(proj)
-	if err != nil {
-		return true
-	}
-	f := map[population.ActorID]bool{}
-	for _, p := range s.Pools {
-		if p.Reg == Registered && p.Live && p.Running {
-			f[p.ID] = true
-		}
-	}
-	strict := Guard{cfg: Config{Floor: g.cfg.Floor}}
-	for _, w := range ws {
-		if !strict.meets(w, f).OK {
-			return true
-		}
-	}
-	return false
-}
-
 // Plan is the recovery the engine submits within the current epoch.
 type Plan struct {
 	// GoLive lists every registered dark pool with no retirement confirmed
@@ -54,34 +23,6 @@ type Plan struct {
 	// transaction in flight goes elsewhere; the engine cannot replace it
 	// and moves them once it lands or expires.
 	Waiting []population.ActorID
-}
-
-// Recover returns the recovery for s, or an empty Plan when s is not
-// Endangered or the ledger is Frozen (contract rules 12 to 14). Every list
-// is in ascending ID order, and move targets are chosen least projected
-// stake first, ties to the lower ID, so the plan depends only on s.
-func (g Guard) Recover(s State) Plan {
-	if s.Frozen() || !g.Endangered(s) {
-		return Plan{}
-	}
-	var p Plan
-	ret := s.retiring(nil)
-	f := map[population.ActorID]bool{}
-	for _, pl := range sortedPools(s.Pools) {
-		if pl.Reg != Registered || ret[pl.ID] {
-			continue // rule 9: a pool with a retirement in flight stays dark
-		}
-		if !pl.Live {
-			p.GoLive = append(p.GoLive, pl.ID)
-		}
-		if !pl.Running {
-			p.Repair = append(p.Repair, pl.ID)
-			continue
-		}
-		f[pl.ID] = true
-	}
-	p.Moves, p.Waiting = moves(s, f)
-	return p
 }
 
 func sortedPools(ps []Pool) []Pool {
