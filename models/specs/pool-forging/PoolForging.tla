@@ -380,19 +380,20 @@ BlankSecret(p) ==
 
 \* In English: "IssueWithoutBlank only: the engine reads the pod list,
 \* finds it empty and remembers that. The Secret still holds the old
-\* opcert, so a pod created after this read can start with it."
+\* opcert, so a pod created after this read can start with it. It also
+\* starts the re-issue of an opcert that came due before going live."
 \* Literally: "CheckPods of p is defined as: Mutation equals
 \*   "IssueWithoutBlank", retired of p is not true, want of p's phase equals
 \*   "live", cr of p's phase equals "dark", secret of p's gen does not equal
-\*   cr of p's gen, checked of p is not true, Objects of p is empty, checked
-\*   in the next state is checked with p set to true, and every other
-\*   variable is unchanged."
+\*   cr of p's gen or RotationDue of p, checked of p is not true, Objects
+\*   of p is empty, checked in the next state is checked with p set to
+\*   true, and every other variable is unchanged."
 CheckPods(p) ==
     /\ Mutation = "IssueWithoutBlank"
     /\ ~retired[p]
     /\ want[p].phase = "live"
     /\ cr[p].phase = "dark"
-    /\ secret[p].gen /= cr[p].gen
+    /\ (secret[p].gen /= cr[p].gen \/ RotationDue(p))
     /\ ~checked[p]
     /\ Objects(p) = {}
     /\ checked' = [checked EXCEPT ![p] = TRUE]
@@ -408,8 +409,9 @@ CheckPods(p) ==
 \* Literally: "IssueWith of p and recorded is defined as: retired of p is
 \*   not true, want of p's phase equals "live", cr of p's phase equals
 \*   "dark", and if Mutation equals "IssueWithoutBlank" then checked of p
-\*   is true and secret of p's gen does not equal cr of p's gen, else secret
-\*   of p equals Blank and EngineSeesNoPods of p; secret in the next state
+\*   is true and secret of p's gen does not equal cr of p's gen or
+\*   RotationDue of p, else secret of p equals Blank and EngineSeesNoPods
+\*   of p; secret in the next state
 \*   is secret with p set to the record whose ino is NextCounter of p, whose
 \*   kes is NextKes and whose gen is cr of p's gen; checked in the next
 \*   state is checked with p set to false; and if recorded then ectr in the
@@ -421,7 +423,7 @@ IssueWith(p, recorded) ==
     /\ want[p].phase = "live"
     /\ cr[p].phase = "dark"
     /\ IF Mutation = "IssueWithoutBlank"
-       THEN checked[p] /\ secret[p].gen /= cr[p].gen
+       THEN checked[p] /\ (secret[p].gen /= cr[p].gen \/ RotationDue(p))
        ELSE secret[p] = Blank /\ EngineSeesNoPods(p)
     /\ secret' = [secret EXCEPT ![p] =
                     [ino |-> NextCounter(p), kes |-> NextKes, gen |-> cr[p].gen]]
@@ -598,10 +600,12 @@ CreateMain(r, p) ==
 \* should not run: the pool is dark, the pod is the wrong implementation,
 \* or the pod runs an old image. The pod starts terminating; its process
 \* runs on until it is killed. RollSurge deletes an old-image pod only once
-\* a new-image pod is running."
+\* a new-image pod is running. DarkKeepsPod never deletes a pod for the
+\* pool going dark."
 \* Literally: "DeleteMain of r and q is defined as: q.role equals "main",
 \*   q.st is a member of the set of "pending" and "running", and obs of r
-\*   of q.pool's phase equals "dark", or q.impl does not equal obs of r of
+\*   of q.pool's phase equals "dark" and Mutation does not equal
+\*   "DarkKeepsPod", or q.impl does not equal obs of r of
 \*   q.pool's impl, or q.dig does not equal dig of q.pool and, if Mutation
 \*   equals "RollSurge", there exists an n in Objects of q.pool such that
 \*   n.role equals "main", n.dig equals dig of q.pool and n.st equals
@@ -610,7 +614,7 @@ CreateMain(r, p) ==
 DeleteMain(r, q) ==
     /\ q.role = "main"
     /\ q.st \in {"pending", "running"}
-    /\ \/ obs[r][q.pool].phase = "dark"
+    /\ \/ obs[r][q.pool].phase = "dark" /\ Mutation /= "DarkKeepsPod"
        \/ q.impl /= obs[r][q.pool].impl
        \/ /\ q.dig /= dig[q.pool]
           /\ Mutation = "RollSurge" =>
@@ -866,10 +870,45 @@ KesTick ==
 -----------------------------------------------------------------------------
 \* The whole system.
 
-\* In English: "Nothing happens. Keeps TLC from reporting the end of the
-\* bounded run as a deadlock."
-\* Literally: "Idle is defined as: vars is unchanged."
-Idle == UNCHANGED vars
+\* In English: "Pool p has a pod of its own that is running on a reachable
+\* node with a KES key valid now."
+\* Literally: "Forging of p is defined as: there exists a q in pods such
+\*   that q.pool equals p, q.role equals "main", q.st equals "running",
+\*   q.lost is not true and KesOk of q.cert.kes."
+Forging(p) ==
+    \E q \in pods :
+        q.pool = p /\ q.role = "main" /\ q.st = "running" /\ ~q.lost
+        /\ KesOk(q.cert.kes)
+
+\* In English: "Pool p has reached its plan and nothing is left to do for
+\* it: no scenario is on, every reconciler that refreshes sees the current
+\* spec, and the pool is retired with no key-holding process, dark with
+\* none, or live and forging on the planned implementation."
+\* Literally: "Settled of p is defined as: scen of p equals "off"; for all
+\*   r in Reconcilers, if Mutation does not equal "StaleLeader" or r is not
+\*   a member of Deposed then obs of r of p equals Snapshot of p; and in
+\*   the case want of p's phase equals "retired", retired of p and Forgers
+\*   of p is empty; in the case it equals "dark", cr of p's phase equals
+\*   "dark" and Forgers of p is empty; in every other case cr of p's phase
+\*   equals "live", cr of p's impl equals want of p's impl and Forging of
+\*   p."
+Settled(p) ==
+    /\ scen[p] = "off"
+    /\ \A r \in Reconcilers :
+          (Mutation /= "StaleLeader" \/ r \notin Deposed) => obs[r][p] = Snapshot(p)
+    /\ CASE want[p].phase = "retired" -> retired[p] /\ Forgers(p) = {}
+         [] want[p].phase = "dark" -> cr[p].phase = "dark" /\ Forgers(p) = {}
+         [] OTHER -> /\ cr[p].phase = "live" /\ cr[p].impl = want[p].impl
+                     /\ Forging(p)
+
+\* In English: "The run is over: every pool has reached its plan. Any other
+\* state with no step left is a pool stuck short of its plan, which TLC's
+\* deadlock check reports."
+\* Literally: "Done is defined as: for all p in Pools, Settled of p, and
+\*   vars is unchanged."
+Done ==
+    /\ \A p \in Pools : Settled(p)
+    /\ UNCHANGED vars
 
 \* In English: "The plans the engine can make for a pool."
 \* Literally: "Plans is defined as the set of records whose impl is a member
@@ -909,7 +948,7 @@ KubeStep(q) == Start(q) \/ Kill(q) \/ Release(q)
 NodeResolved(q) == NodeHeal(q) \/ NodeDead(q)
 
 \* In English: "A step is an engine step, an operator step, a cluster step,
-\* a block, a clock tick, or nothing."
+\* a block, a clock tick, or the end of the run."
 \* Literally: "Next is defined as: there exists a p in Pools such that
 \*   EngineStep of p, or IssueCrash of p, or ScenarioStart of p, or
 \*   ImageRoll of p, or EngineCacheCatchUp of p, or SeenCatchUp of p, or
@@ -917,7 +956,7 @@ NodeResolved(q) == NodeHeal(q) \/ NodeDead(q)
 \*   an r in Reconcilers such that Observe of r and p or OperatorStep of r
 \*   and p; or there exists a q in pods such that KubeStep of q, or
 \*   NodeResolved of q, or PodDies of q, or NodeLost of q, or ForceDelete of
-\*   q, or LostRelease of q, or Forge of q; or KesTick; or Idle."
+\*   q, or LostRelease of q, or Forge of q; or KesTick; or Done."
 Next ==
     \/ \E p \in Pools :
           \/ EngineStep(p) \/ IssueCrash(p) \/ ScenarioStart(p)
@@ -929,7 +968,7 @@ Next ==
           \/ PodDies(q) \/ NodeLost(q) \/ ForceDelete(q) \/ LostRelease(q)
           \/ Forge(q)
     \/ KesTick
-    \/ Idle
+    \/ Done
 
 \* In English: "What must eventually happen if it stays possible: the
 \* engine's own steps, every reconciler's refresh and actions, the
@@ -1092,16 +1131,6 @@ NoForgeAfterRetire == \A p \in Pools : retired[p] => Forgers(p) = {}
 
 -----------------------------------------------------------------------------
 \* Liveness.
-
-\* In English: "Pool p has a pod of its own that is running on a reachable
-\* node with a KES key valid now."
-\* Literally: "Forging of p is defined as: there exists a q in pods such
-\*   that q.pool equals p, q.role equals "main", q.st equals "running",
-\*   q.lost is not true and KesOk of q.cert.kes."
-Forging(p) ==
-    \E q \in pods :
-        q.pool = p /\ q.role = "main" /\ q.st = "running" /\ ~q.lost
-        /\ KesOk(q.cert.kes)
 
 \* In English: "A pool that should forge eventually forges, and keeps
 \* forging: once the requests and the faults stop, a pool planned live is

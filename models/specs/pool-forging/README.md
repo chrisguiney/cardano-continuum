@@ -135,11 +135,11 @@ the harness controls. Two things follow for the code:
 | `ForgedBlocksValid` | no forged block had a counter below the chain's or more than one above it (`SpecCounterOk`) | `ForgingDoubleIssueBug` |
 | `CounterNeverReused` | no two different opcerts of a pool were forged with the same counter, across a rotation, a restart or a switch | `ForgingReissueSameCounterBug`, `ForgingStaleCounterBug`, `ForgingIssueWithoutBlankBug` |
 | `KesValidForSlot` | no block was forged with a KES key that starts after the block's period | `ForgingKesFromWallClockBug` |
-| `SwitchCarriesCounter` | the Secret's opcert and every running process's opcert has a counter the ledger accepts now | (`ForgingDoubleIssueBug` also breaks it) |
+| `SwitchCarriesCounter` | the Secret's opcert and every running process's opcert has a counter the ledger accepts now | `ForgingBookCounterSecretBug` |
 | `NoDarkByHarness` | a pool planned and written live never has a running pod whose KES key is not valid for the current period | `ForgingRotateAtExpiryBug` |
 | `NoForgeAfterRetire` | once retirement has taken effect nothing holds the pool's keys and runs | `ForgingRetireBeforeGoneBug`, `ForgingEngineCachedListBug` |
 | `LiveForges` (liveness) | with fair steps, a pool planned live ends up forging for good | `ForgingGenerationRaceBug`, `ForgingKesFromGenesisBug` |
-| `DarkStops` (liveness) | with fair steps, a pool planned dark or retired ends up with no key-holding process, and a pool planned retired is retired | - |
+| `DarkStops` (liveness) | with fair steps, a pool planned dark or retired ends up with no key-holding process, and a pool planned retired is retired | `ForgingDarkKeepsPodBug` |
 
 "Counter strictly increasing" is checked on what reaches the chain. Two
 opcerts may share a counter if the first was never forged with and no process
@@ -157,7 +157,10 @@ million distinct states in four minutes without finishing, so each passing
 config turns some bounds down; between them they cover every fault. TLC 2.19 (tla2tools 1.7.4, as
 `make models-install` pins), `-workers auto`. A counterexample's length is
 given in states. A violated config stops at its first counterexample, so its
-count is not the whole state space.
+count is not the whole state space. Every config checks for deadlock: a run ends in `Done`,
+where every pool has reached its plan (`Settled`: retired, dark or forging
+as planned, no scenario on, every refreshing reconciler current); any other
+state with no step left fails the config.
 
 | Config | Mutation or probe | Bounds changed | Expected | TLC reported |
 | --- | --- | --- | --- | --- |
@@ -176,8 +179,11 @@ count is not the whole state space.
 | `ForgingRollSurgeBug` | `RollSurge` | kes 0, req 1, crash 0, death 0, loss 0 | `AtMostOneForger` | violated, 62 distinct, trace 10 |
 | `ForgingNoFinalizerBug` | `NoFinalizer` | kes 0, dig 0, req 1, crash 0, death 0 | `AtMostOneForger` | violated, 51 distinct, trace 11 |
 | `ForgingLostIsGoneBug` | `LostIsGone` | kes 0, req 2, crash 0, death 0 | `AtMostOneForger` | violated, 2,527 distinct, trace 13 |
+| `ForgingGenerationRaceFixed` | none | as `ForgingGenerationRaceBug` | `LiveForges` holds | 81 distinct |
 | `ForgingGenerationRaceBug` | `StaleLeader` | two reconcilers, kes 0, dig 0, req 1, crash 0, death 0, loss 0, fair | `LiveForges` | violated, 33 distinct, lasso of 12 states |
 | `ForgingDoubleIssueBug` | `BookCounter` | dig 0, crash 0, death 0, loss 0 | `ForgedBlocksValid` | violated, 9,216 distinct, trace 14 |
+| `ForgingBookCounterSecretBug` | `BookCounter` | dig 0, crash 0, death 0, loss 0 | `SwitchCarriesCounter` | violated: the jump is in the Secret before a block is forged |
+| `ForgingDarkKeepsPodBug` | `DarkKeepsPod` | kes 0, dig 0, req 2, crash 0, death 0, loss 0, fair, no deadlock check (the stuck dark pool is the finding) | `DarkStops` | violated |
 | `ForgingReissueSameCounterBug` | `BookCounter` | dig 0, death 0, loss 0 | `CounterNeverReused` | violated, 70,771 distinct, trace 21 |
 | `ForgingStaleCounterBug` | `StaleCounter` | dig 0, crash 0, death 0, loss 0 | `CounterNeverReused` | violated, 25,944 distinct, trace 22 |
 | `ForgingIssueWithoutBlankBug` | `IssueWithoutBlank` | two reconcilers, kes 1, dig 0, req 1, crash 0, death 0, loss 0 | `CounterNeverReused` | violated, 1,103 distinct, trace 19 |
