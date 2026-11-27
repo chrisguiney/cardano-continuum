@@ -8,6 +8,8 @@ import (
 	"net"
 	"sync"
 
+	"github.com/blinklabs-io/gouroboros/ledger/conway"
+
 	"github.com/chrisguiney/cardano-continuum/internal/cli/internal/serving"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
@@ -102,14 +104,14 @@ type liveServer struct {
 // The findings page is the engine's own set, which the loop fills as it
 // logs each finding; findings may be nil, and the page then folds them
 // from the log.
-func newLiveServer(ctx context.Context, l engine.Log, db *store.DB, slots sched.Slots, govLife uint64, findings *oracle.Set, pv poolView) (*liveServer, error) {
+func newLiveServer(ctx context.Context, l engine.Log, db *store.DB, slots sched.Slots, govLife uint64, findings *oracle.Set, pv poolView, cur *conway.ConwayProtocolParameters) (*liveServer, error) {
 	proj, hub := view.NewProjection(), stream.NewHub(4096, 64, 256)
 	feed := stream.NewFeed(proj, hub)
 	var names view.Names
 	if db != nil {
 		names = db
 	}
-	ex := serving.NewExplorer(slots, pv.K, serving.DefaultBlocks, names, pv.Kube, pv.Tips, nil)
+	ex := serving.NewExplorer(slots, pv.K, serving.DefaultBlocks, names, pv.Kube, pv.Tips, cur, nil)
 	proj.Observe(ex.Apply)
 	if err := l.Scan(ctx, 1, func(r eventlog.Record) error { feed.Apply(r); return nil }); err != nil {
 		hub.Close()

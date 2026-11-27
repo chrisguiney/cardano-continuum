@@ -92,7 +92,7 @@ func RunWith(ctx context.Context, args []string, out io.Writer, open kube.Opener
 		return errors.New("--explorer-blocks must be at least 1")
 	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	ex := serving.NewExplorer(slots, 0, *keep, cfg.Names, cfg.Kube, cfg.Tips, log)
+	ex := serving.NewExplorer(slots, 0, *keep, cfg.Names, cfg.Kube, cfg.Tips, nil, log)
 	cfg.Projection.Observe(ex.Apply)
 	return serve(ctx, serveParams{log: *logPath, addr: *addr, controls: *controls, cfg: cfg, hub: hub, explorer: ex}, out)
 }

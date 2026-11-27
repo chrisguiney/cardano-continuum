@@ -92,7 +92,7 @@ func TestControlQueueIsIdempotent(t *testing.T) {
 // reach its feed with the seqs the log gave them.
 func TestFeedLogNumbersRecords(t *testing.T) {
 	mem := &eventlog.MemLog{}
-	s, err := newLiveServer(context.Background(), mem, nil, testSlots(t), 0, nil, poolView{})
+	s, err := newLiveServer(context.Background(), mem, nil, testSlots(t), 0, nil, poolView{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestLiveServeFailureEndsTheRun(t *testing.T) {
 	d := &engine.Deps{Log: &eventlog.MemLog{}}
 	lf := Flags{Serve: ln.Addr().String()}
 	log := slog.New(slog.DiscardHandler)
-	ctx, stop, err := liveServe(context.Background(), d, nil, engine.Config{Slots: testSlots(t)}, lf, nil, log)
+	ctx, stop, err := liveServe(context.Background(), d, nil, engine.Config{Slots: testSlots(t)}, lf, nil, nil, log)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -154,6 +154,9 @@ type liveRun struct {
 	r     *engine.Runner
 	stop  func() error
 	undo  []func()
+	// params are the node's protocol parameters at start, which the
+	// explorer reads parameter changes' current values from.
+	params *conway.ConwayProtocolParameters
 }
 
 // later registers a release for close; releases run in reverse order.
@@ -200,6 +203,7 @@ func (lr *liveRun) open(ctx context.Context, sf simflags.Flags, lf Flags) (conte
 	if lr.cfg, err = liveConfig(sf, lf, want, np, seed); err != nil {
 		return nil, err
 	}
+	lr.params = np.chain
 	lr.cfg.Adversaries = cleared
 	db, err := lr.openState(ctx, lf.State)
 	if err != nil {
@@ -258,7 +262,7 @@ func (lr *liveRun) start(ctx context.Context, lf Flags, n node.Node, q *node.Que
 	if lt != nil {
 		lr.later(lt.start(ctx, lr.log))
 	}
-	ctx, stop, err := liveServe(ctx, &lr.deps, db, lr.cfg, lf, lt, lr.log)
+	ctx, stop, err := liveServe(ctx, &lr.deps, db, lr.cfg, lf, lt, lr.params, lr.log)
 	if err != nil {
 		return nil, err
 	}
@@ -363,6 +367,8 @@ func guard(ctx context.Context, log *slog.Logger, q *node.Querier, want chain.Ge
 type nodeParams struct {
 	build             build.Params
 	nOpt, govLifetime uint64
+	// chain is the node's protocol parameters as it answered.
+	chain *conway.ConwayProtocolParameters
 }
 
 func queryParams(ctx context.Context, q *node.Querier) (nodeParams, error) {
@@ -374,7 +380,12 @@ func queryParams(ctx context.Context, q *node.Querier) (nodeParams, error) {
 	if !ok {
 		return nodeParams{}, fmt.Errorf("node is not in Conway: protocol parameters are %T", pp)
 	}
-	return nodeParams{build: build.ParamsFromConway(cp, 0), nOpt: uint64(cp.NOpt), govLifetime: cp.GovActionValidityPeriod}, nil
+	return nodeParams{
+		build:       build.ParamsFromConway(cp, 0),
+		nOpt:        uint64(cp.NOpt),
+		govLifetime: cp.GovActionValidityPeriod,
+		chain:       cp,
+	}, nil
 }
 
 // checkFaucet refuses a fresh run whose faucet does not hold its genesis
@@ -459,14 +470,14 @@ func livePlan(d *engine.Deps, cfg engine.Config, lf Flags, magic uint32, log *sl
 // liveServe starts the live API when --serve is set, wrapping the engine's
 // log so the API follows it. The returned context ends when ctx does or the
 // API fails; stop ends the server, waits for it, and returns its error.
-func liveServe(ctx context.Context, d *engine.Deps, db *store.DB, cfg engine.Config, lf Flags, lt *liveTips, log *slog.Logger) (context.Context, func() error, error) {
+func liveServe(ctx context.Context, d *engine.Deps, db *store.DB, cfg engine.Config, lf Flags, lt *liveTips, cur *conway.ConwayProtocolParameters, log *slog.Logger) (context.Context, func() error, error) {
 	if lf.Serve == "" {
 		return ctx, func() error { return nil }, nil
 	}
 	if err := serving.CheckAddr(lf.Serve, false); err != nil {
 		return nil, nil, err
 	}
-	s, err := newLiveServer(ctx, d.Log, db, cfg.Slots, cfg.GovLifetime, d.Findings, lt.poolView(cfg.K))
+	s, err := newLiveServer(ctx, d.Log, db, cfg.Slots, cfg.GovLifetime, d.Findings, lt.poolView(cfg.K), cur)
 	if err != nil {
 		return nil, nil, err
 	}

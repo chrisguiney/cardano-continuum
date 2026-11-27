@@ -4,6 +4,8 @@ package serving
 import (
 	"log/slog"
 
+	"github.com/blinklabs-io/gouroboros/ledger/conway"
+
 	"github.com/chrisguiney/cardano-continuum/internal/explorer"
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
 	"github.com/chrisguiney/cardano-continuum/internal/httpapi"
@@ -16,10 +18,15 @@ import (
 const DefaultBlocks = 2000
 
 // NewExplorer returns the chain explorer fed from the projection's records.
-// Its per-block limits are the protocol parameters the fake chain enforces,
-// which a live network's genesis matches by default.
-func NewExplorer(slots sched.Slots, k uint64, keep int, names view.Names, kube view.Kube, tips view.Tips, log *slog.Logger) *httpapi.Explorer {
+// cur are the protocol parameters in force, which a parameter change's
+// current values and the per-block limits come from: a live run's node's,
+// or, nil, the ones the fake chain starts with, which a live network's
+// genesis matches by default.
+func NewExplorer(slots sched.Slots, k uint64, keep int, names view.Names, kube view.Kube, tips view.Tips, cur *conway.ConwayProtocolParameters, log *slog.Logger) *httpapi.Explorer {
 	pp := fakechain.DefaultParams()
+	if cur != nil {
+		pp = *cur
+	}
 	return httpapi.NewExplorer(httpapi.ExplorerOptions{
 		Keep: keep, K: k, Slots: &slots, Params: &pp, Names: names, Kube: kube, Tips: tips, Logger: log,
 		Limits: explorer.Limits{
