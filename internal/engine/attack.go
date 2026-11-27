@@ -214,7 +214,7 @@ func (e *Engine) strike(ctx context.Context, at sched.Time, id population.ActorI
 	e.pc.Excite(at)
 	e.jr.Emit(at, KindAttack, id, body)
 	for _, b := range s.txs {
-		e.emitSubmitted(at, &p, b, s.inputs)
+		e.in.emitSubmitted(at, &p, b, s.inputs)
 	}
 	return "", nil
 }
@@ -268,7 +268,7 @@ func refs(coins []Coin) []Ref {
 // dust pays every payee one output of exactly its min-UTxO.
 func (e *Engine) dust(ctx context.Context, at sched.Time, id population.ActorID, intent uint64, step adversary.Step) (shot, string, error) {
 	outs := make([]build.Output, len(step.Payees))
-	s := shot{rec: wire.Pending{Args: wire.Args{Kind: dustKind}}, want: mistake.Expect(0, false), ttl: e.ttl(at, false, false)}
+	s := shot{rec: wire.Pending{Args: wire.Args{Kind: dustKind}}, want: mistake.Expect(0, false), ttl: e.in.ttl(at, false, false)}
 	for i, p := range step.Payees {
 		outs[i] = build.Output{To: build.AlwaysSucceeds.Address(e.cfg.NetworkID), Amount: dustGuess}
 		if !p.Script {
@@ -332,7 +332,7 @@ func (e *Engine) atMinimum(tx []byte, outs []build.Output) (bool, error) {
 // step bids a tip.
 func (e *Engine) grab(ctx context.Context, at sched.Time, id population.ActorID, intent uint64, step adversary.Step) (shot, string, error) {
 	ref := Ref{Tx: TxID(step.Spend.Ref.Tx), Index: step.Spend.Ref.Index}
-	s := shot{rec: wire.Pending{Args: wire.Args{Kind: unlockKind, Locked: &ref, Amount: step.Spend.Lovelace}}, ttl: e.ttl(at, false, true)}
+	s := shot{rec: wire.Pending{Args: wire.Args{Kind: unlockKind, Locked: &ref, Amount: step.Spend.Lovelace}}, ttl: e.in.ttl(at, false, true)}
 	// The honest spend it races may land first.
 	s.want = expect(e.cfg.Build, 0, true, specs[unlockKind].again)
 	coins, why := e.fund(id, intent, scriptHeadroom)
@@ -351,7 +351,7 @@ func (e *Engine) grab(ctx context.Context, at sched.Time, id population.ActorID,
 // malformed builds a valid self-payment and mutates it, or raw-builds a
 // steal of the victim's output.
 func (e *Engine) malformed(ctx context.Context, at sched.Time, id population.ActorID, intent uint64, step adversary.Step) (shot, string, error) {
-	s := shot{rec: wire.Pending{Args: wire.Args{To: uint64(id), Amount: minPayment}}, ttl: e.ttl(at, false, false), mutation: step.Mutation.String()}
+	s := shot{rec: wire.Pending{Args: wire.Args{To: uint64(id), Amount: minPayment}}, ttl: e.in.ttl(at, false, false), mutation: step.Mutation.String()}
 	s.want = adversary.Expect(step.Mutation)
 	coins, why := e.fund(id, intent, minPayment+feeHeadroom)
 	if why != "" {
@@ -412,7 +412,7 @@ func mutantID(tx []byte) common.Blake2b256 {
 
 // race pays each payee from the same inputs.
 func (e *Engine) race(ctx context.Context, at sched.Time, id population.ActorID, intent uint64, step adversary.Step) (shot, string, error) {
-	s := shot{rec: wire.Pending{Args: wire.Args{To: uint64(step.Payees[0].Actor), Amount: minPayment}}, want: mistake.Expect(0, false), ttl: e.ttl(at, false, false)}
+	s := shot{rec: wire.Pending{Args: wire.Args{To: uint64(step.Payees[0].Actor), Amount: minPayment}}, want: mistake.Expect(0, false), ttl: e.in.ttl(at, false, false)}
 	coins, why := e.fund(id, intent, minPayment+feeHeadroom)
 	if why != "" {
 		return shot{}, why, nil
@@ -439,7 +439,7 @@ var gapToken = []byte("gap")
 // what the builder measured it spend, which must land between the block
 // and transaction limits.
 func (e *Engine) gap(ctx context.Context, at sched.Time, id population.ActorID, intent uint64, step adversary.Step) (shot, string, error) {
-	s := shot{rec: wire.Pending{Args: wire.Args{To: uint64(id)}}, want: adversary.GapExpect(), ttl: e.ttl(at, false, false)}
+	s := shot{rec: wire.Pending{Args: wire.Args{To: uint64(id)}}, want: adversary.GapExpect(), ttl: e.in.ttl(at, false, false)}
 	coins, why := e.fund(id, intent, 2*adversary.GapCollateral+scriptHeadroom)
 	if why != "" {
 		return shot{}, why, nil

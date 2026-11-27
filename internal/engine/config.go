@@ -25,9 +25,10 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/blinklabs-io/gouroboros/ledger/conway"
 	"slices"
 	"strings"
+
+	"github.com/blinklabs-io/gouroboros/ledger/conway"
 
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 

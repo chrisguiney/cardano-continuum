@@ -34,7 +34,7 @@ func (e *Engine) Snapshot() ([]byte, error) {
 	sv := e.win.Saved()
 	nextID, deposits := e.pay.Counters()
 	s := snapshot{Version: snapshotVersion, Now: e.clk.Now(), NextIntent: nextID, Conf: sv.Conf, Fees: sv.Fees, Foreign: sv.Foreign, RefillAt: e.refillAt, Deposits: deposits, Market: e.pc.Market(), Lost: e.lost,
-		Contracts: e.contracts, DeployAt: e.deployAt, DeployN: e.deployN}
+		Contracts: e.in.n, DeployAt: e.in.at, DeployN: e.in.drawn}
 	for _, id := range e.co.IDs() {
 		a, _ := e.co.Get(id)
 		st := e.co.Rec(id)
@@ -93,13 +93,13 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 	e.clk.Restore(s.Now)
 	e.pc.SetMarket(s.Market)
 	e.paused, e.rateK, e.waves, e.adoptions, e.stalled, e.lost = s.Paused, s.RateK, s.Waves, s.Adoptions, s.Stalled, s.Lost
-	e.contracts, e.deployAt, e.deployN = max(s.Contracts, 1), s.DeployAt, s.DeployN
-	for i := uint64(1); i < e.contracts; i++ {
-		if err := e.bookContract(i); err != nil {
+	e.in.n, e.in.at, e.in.drawn = max(s.Contracts, 1), s.DeployAt, s.DeployN
+	for i := uint64(1); i < e.in.n; i++ {
+		if err := e.in.bookContract(i); err != nil {
 			return nil, err
 		}
 	}
-	e.pushDeploy()
+	e.in.pushDeploy()
 	if len(s.Weights) > 0 {
 		e.weights = map[profile.IntentKind]float64{}
 		for _, w := range s.Weights {
@@ -369,12 +369,12 @@ func (h hooks) Frustrate(at sched.Time, id population.ActorID) error {
 
 // Attempt implements pay.Builder.
 func (h hooks) Attempt(ctx context.Context, at sched.Time, p *wire.Pending) (build.Built, []Ref, uint64, string, error) {
-	return h.e.attemptOf(ctx, at, p)
+	return h.e.in.attemptOf(ctx, at, p)
 }
 
 // Submitted implements pay.Builder.
 func (h hooks) Submitted(at sched.Time, p *wire.Pending, built build.Built, inputs []Ref) {
-	h.e.emitSubmitted(at, p, built, inputs)
+	h.e.in.emitSubmitted(at, p, built, inputs)
 }
 
 // logged is the ledger's Committer inside the pure engine. It writes

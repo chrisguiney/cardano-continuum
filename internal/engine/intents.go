@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"math/big"
 	"math/rand/v2"
 	"slices"
@@ -14,10 +15,10 @@ import (
 	"github.com/blinklabs-io/gouroboros/cbor"
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 	"github.com/blinklabs-io/plutigo/data"
-
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/clock"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/cohort"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/pay"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
@@ -29,6 +30,79 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/submit"
 )
+
+// intend turns the chosen intent into a pending record and starts it. A
+// kind with no transaction (idle, go_dark, go_live) never reaches it.
+func (e *Engine) intend(ctx context.Context, at sched.Time, a population.Actor, st *cohort.Actor, in agenda.Intent, gov build.ActionType, r *rand.Rand) error {
+	p, why := e.in.prepare(at, a, in, r)
+	if p != nil {
+		p.GovType = string(gov)
+	}
+	if why == "" {
+		var err error
+		if why, err = e.start(ctx, at, p); err != nil {
+			return err
+		}
+	}
+	if why != "" {
+		e.jr.Emit(at, KindSkipped, a.ID, Skipped{Kind: string(in.Kind), Why: why})
+	}
+	return nil
+}
+
+// start builds and reserves the first attempt of p and starts its retry
+// machine. It returns why the intent was skipped, if it was.
+func (e *Engine) start(ctx context.Context, at sched.Time, p *wire.Pending) (string, error) {
+	id := e.pay.Next()
+	p.ID = id
+	built, inputs, ttl, why, err := e.in.attemptOf(ctx, at, p)
+	if why != "" || err != nil {
+		return why, err
+	}
+	if err := e.pay.Reserve(ctx, id, population.ActorID(p.Actor), TxID(built.ID), inputs, ttl); err != nil {
+		return "reserve: " + err.Error(), nil
+	}
+	e.pay.Claim(id)
+	p.Tx, p.TTL, p.Cbor, p.Awaiting, p.Txs = TxID(built.ID), ttl, built.Tx, true, []TxID{TxID(built.ID)}
+	if err := e.retry.Begin(p); err != nil {
+		return "", err
+	}
+	e.pay.Add(p)
+	if p.Kind == "" && !p.Refill {
+		if st := e.co.Rec(population.ActorID(p.Actor)); st != nil {
+			st.Remember(population.ActorID(p.To))
+		}
+	}
+	e.pc.Excite(at)
+	e.in.emitSubmitted(at, p, built, inputs)
+	return "", e.react(ctx, at, p, built.Fee)
+}
+
+// settle accounts for a settled attempt of intent p: the deposit it paid
+// or refunded, a locked output it freed, and the lifecycle edge it causes.
+func (e *Engine) settle(at sched.Time, p *wire.Pending, tx TxID) error {
+	if out := e.pay.Deposit(specs[p.KindOf()].deposit(e, p)); out > 0 {
+		e.win.Reclaim(out)
+	}
+	if p.Kind == unlockKind {
+		// The lock's script output counted as foreign when it settled.
+		e.win.Reclaim(p.Amount)
+	}
+	return e.co.Life.Settled(at, population.ActorID(p.Actor), profile.IntentKind(p.Kind), tx)
+}
+
+// intent is the engine's turning of an agenda intent into a transaction:
+// the contracts it may lock at, the choice of its payee and parts, and the
+// building of each attempt.
+type intent struct {
+	contracts
+	chooser
+	maker
+}
+
+func newIntent(e *Engine) *intent {
+	return &intent{contracts: contracts{e: e, n: 1, at: population.Never}, chooser: chooser{e}, maker: maker{e}}
+}
 
 // Every agenda intent with a transaction goes the same way: prepare fills
 // in what the intent names only by kind (payee, pool, proposal, locked
@@ -194,24 +268,6 @@ func buildVote(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p 
 	return e.builder.Gov().Vote(ctx, w, v)
 }
 
-// Voter classes as Submitted names them.
-const (
-	voterDRep = "drep"
-	voterSPO  = "spo"
-)
-
-// voterOf is the voter an actor votes as: its pool, as an SPO, when it
-// operates one, else its DRep key.
-func (e *Engine) voterOf(id population.ActorID) (chain.Voter, string) {
-	if pool, ok := e.co.Ring.PoolOf(id); ok {
-		return chain.Voter{Kind: common.VoterTypeStakingPoolKeyHash, Hash: pool}, voterSPO
-	}
-	return chain.Voter{Kind: common.VoterTypeDRepKeyHash, Hash: common.Blake2b224(e.co.Ring.DRep(id))}, voterDRep
-}
-
-// choiceNames are a vote's choices by common.GovVote value.
-var choiceNames = map[uint8]string{common.GovVoteNo: "no", common.GovVoteYes: "yes", common.GovVoteAbstain: "abstain"}
-
 func buildMint(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *wire.Pending) (build.Built, error) {
 	q := int64(p.Amount)
 	if p.Kind == string(profile.IntentBurn) {
@@ -239,7 +295,7 @@ func buildPool(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p 
 	if err != nil {
 		return build.Built{}, err
 	}
-	pledge, cost, margin := e.poolTerms(id, p.ID)
+	pledge, cost, margin := poolTerms(e, id, p.ID)
 	reg := build.PoolRegistration{
 		Spend: sp, Cold: cold, VRFKeyHash: pk.VRFVKeyHash, Pledge: pledge, Cost: cost, Margin: margin,
 	}
@@ -265,35 +321,74 @@ func datumKey(d common.Datum) []byte {
 	return raw
 }
 
-// intend turns the chosen intent into a pending record and starts it. A
-// kind with no transaction (idle, go_dark, go_live) never reaches it.
-func (e *Engine) intend(ctx context.Context, at sched.Time, a population.Actor, st *cohort.Actor, in agenda.Intent, gov build.ActionType, r *rand.Rand) error {
-	p, why := e.prepare(at, a, in, r)
-	if p != nil {
-		p.GovType = string(gov)
+// poolTerms are the pledge, cost and margin a pool actor registers or
+// updates with: draws from the population's fitted distributions on a
+// stream named by the intent, so a rebuild offers the same terms. A pool
+// of no population registers the minimum terms.
+func poolTerms(e *Engine, id population.ActorID, intent uint64) (pledge, cost uint64, margin *big.Rat) {
+	pledge, cost, margin = 1_000_000, e.cfg.Build.MinPoolCost, big.NewRat(1, 100)
+	st := e.co.Rec(id)
+	if st == nil {
+		return pledge, cost, margin
 	}
-	if why == "" {
-		var err error
-		if why, err = e.start(ctx, at, p); err != nil {
-			return err
-		}
+	pop, ok := e.cfg.population(st.Prof.Name)
+	if !ok || pop.Pool == nil {
+		return pledge, cost, margin
 	}
-	if why != "" {
-		e.jr.Emit(at, KindSkipped, a.ID, Skipped{Kind: string(in.Kind), Why: why})
-	}
-	return nil
+	a, _ := e.co.Get(id)
+	r := a.Stream("pool-terms", strconv.FormatUint(intent, 10))
+	pledge = lovelaceOf(pop.Pool.Pledge.Sample(r))
+	cost = max(lovelaceOf(pop.Pool.Cost.Sample(r)), e.cfg.Build.MinPoolCost)
+	// A margin is a rational on chain; millionths are finer than any pool
+	// sets.
+	m := min(max(pop.Pool.Margin.Sample(r), 0), 1)
+	return pledge, cost, big.NewRat(int64(math.Round(m*1e6)), 1e6)
 }
 
+// maxTerm caps a drawn pledge or cost: a lognormal tail can pass the
+// lovelace supply.
+const maxTerm = 45_000_000_000_000_000
+
+func lovelaceOf(x float64) uint64 {
+	if math.IsNaN(x) || x <= 0 {
+		return 0
+	}
+	return uint64(min(x, maxTerm))
+}
+
+// chooser fills in an intent's pending record from what the intent names
+// only by kind, or says why none can be made.
+type chooser struct{ e *Engine }
+
+// Voter classes as Submitted names them.
+const (
+	voterDRep = "drep"
+	voterSPO  = "spo"
+)
+
+// voterOf is the voter an actor votes as: its pool, as an SPO, when it
+// operates one, else its DRep key.
+func voterOf(e *Engine, id population.ActorID) (chain.Voter, string) {
+	if pool, ok := e.co.Ring.PoolOf(id); ok {
+		return chain.Voter{Kind: common.VoterTypeStakingPoolKeyHash, Hash: pool}, voterSPO
+	}
+	return chain.Voter{Kind: common.VoterTypeDRepKeyHash, Hash: common.Blake2b224(e.co.Ring.DRep(id))}, voterDRep
+}
+
+// choiceNames are a vote's choices by common.GovVote value.
+var choiceNames = map[uint8]string{common.GovVoteNo: "no", common.GovVoteYes: "yes", common.GovVoteAbstain: "abstain"}
+
 // prepare fills in a pending record for in, or says why it cannot be made.
-func (e *Engine) prepare(at sched.Time, a population.Actor, in agenda.Intent, r *rand.Rand) (*wire.Pending, string) {
+func (c chooser) prepare(at sched.Time, a population.Actor, in agenda.Intent, r *rand.Rand) (*wire.Pending, string) {
+	e := c.e
 	p := &wire.Pending{Actor: uint64(a.ID), Args: wire.Args{Kind: string(in.Kind), To: uint64(in.Target)}}
 	switch in.Kind {
 	case profile.IntentSend:
-		return e.prepareSend(a, p, r)
+		return c.prepareSend(a, p, r)
 	case profile.IntentRegisterStake:
 		// The view shows only registrations in blocks: a second one sent
 		// beside one in flight fails StakeKeyRegisteredDELEG.
-		if e.win.View().StakeRegistered(a.ID) || e.registering(a.ID) {
+		if e.win.View().StakeRegistered(a.ID) || c.registering(a.ID) {
 			return nil, "stake key registered or being registered"
 		}
 	case profile.IntentRegisterDRep:
@@ -304,7 +399,7 @@ func (e *Engine) prepare(at sched.Time, a population.Actor, in agenda.Intent, r 
 		if _, ok := e.co.Ring.PoolOf(in.Target); !ok {
 			return nil, fmt.Sprintf("actor %d operates no pool", in.Target)
 		}
-		if e.registering(a.ID) {
+		if c.registering(a.ID) {
 			return nil, "stake key being registered"
 		}
 		p.Register = !e.win.View().StakeRegistered(a.ID)
@@ -318,12 +413,12 @@ func (e *Engine) prepare(at sched.Time, a population.Actor, in agenda.Intent, r 
 			return nil, err.Error()
 		}
 		p.Action, p.Choice = &ref, voteChoice(r)
-		voter, _ := e.voterOf(a.ID)
+		voter, _ := voterOf(e, a.ID)
 		p.Power = e.win.View().VotingPower(voter)
 	case profile.IntentMint:
 		p.Amount = mintQuantity
 	case profile.IntentBurn:
-		if p.Amount = e.tokens(a.ID); p.Amount == 0 {
+		if p.Amount = c.tokens(a.ID); p.Amount == 0 {
 			return nil, "nothing to burn"
 		}
 	case profile.IntentRegisterPool:
@@ -340,7 +435,7 @@ func (e *Engine) prepare(at sched.Time, a population.Actor, in agenda.Intent, r 
 			return nil, "DRep not registered or retiring"
 		}
 	case profile.IntentScriptCall:
-		e.prepareScript(a.ID, p, r)
+		c.prepareScript(a.ID, p, r)
 	case profile.IntentRetirePool:
 		p.Epoch = e.cfg.Slots.EpochAt(at) + 1
 	case profile.IntentWithdraw:
@@ -358,7 +453,8 @@ func (e *Engine) prepare(at sched.Time, a population.Actor, in agenda.Intent, r 
 
 // registering reports whether an unfinished intent of the actor registers
 // its stake key.
-func (e *Engine) registering(id population.ActorID) bool {
+func (c chooser) registering(id population.ActorID) bool {
+	e := c.e
 	for q := range e.pay.All() {
 		if q.Actor == uint64(id) && (q.Kind == string(profile.IntentRegisterStake) || q.Kind == string(profile.IntentDelegate) && q.Register) {
 			return true
@@ -367,7 +463,8 @@ func (e *Engine) registering(id population.ActorID) bool {
 	return false
 }
 
-func (e *Engine) prepareSend(a population.Actor, p *wire.Pending, r *rand.Rand) (*wire.Pending, string) {
+func (c chooser) prepareSend(a population.Actor, p *wire.Pending, r *rand.Rand) (*wire.Pending, string) {
+	e := c.e
 	var targets []population.ActorID
 	for _, id := range e.co.IDs() {
 		// Nobody pays an adversary.
@@ -381,7 +478,7 @@ func (e *Engine) prepareSend(a population.Actor, p *wire.Pending, r *rand.Rand) 
 	if len(targets) == 0 {
 		return nil, "no payee"
 	}
-	p.Kind, p.To = "", uint64(e.payee(a, targets, r))
+	p.Kind, p.To = "", uint64(c.payee(a, targets, r))
 	bal := e.Spendable(uint64(a.ID))
 	floor := e.builder.MinPayment(e.co.Wallet(population.ActorID(p.To)).Address())
 	p.Amount = paymentSize(e.co.Rec(a.ID).Prof.Amount, bal, floor, r)
@@ -392,7 +489,8 @@ func (e *Engine) prepareSend(a population.Actor, p *wire.Pending, r *rand.Rand) 
 // pays one of the counterparties it paid before, if one is still around:
 // the fitted care is the share of a unit's outputs that pay an address it
 // paid before (lab/population_fit.py). Otherwise anyone in targets.
-func (e *Engine) payee(a population.Actor, targets []population.ActorID, r *rand.Rand) population.ActorID {
+func (c chooser) payee(a population.Actor, targets []population.ActorID, r *rand.Rand) population.ActorID {
+	e := c.e
 	var known []population.ActorID
 	for _, id := range e.co.Rec(a.ID).Paid {
 		if _, ok := slices.BinarySearch(targets, id); ok {
@@ -408,7 +506,8 @@ func (e *Engine) payee(a population.Actor, targets []population.ActorID, r *rand
 // prepareScript unlocks the actor's oldest locked output not already being
 // unlocked, contract by contract, or locks a new one at a contract drawn
 // by usage (pickContract).
-func (e *Engine) prepareScript(id population.ActorID, p *wire.Pending, r *rand.Rand) {
+func (c chooser) prepareScript(id population.ActorID, p *wire.Pending, r *rand.Rand) {
+	e := c.e
 	busy := map[Ref]bool{}
 	for q := range e.pay.All() {
 		// An honest actor knows its own unlocks, not an adversary's.
@@ -417,7 +516,7 @@ func (e *Engine) prepareScript(id population.ActorID, p *wire.Pending, r *rand.R
 		}
 	}
 	want := datumKey(actorDatum(id))
-	for c := range e.contracts {
+	for c := range e.in.n {
 		for _, u := range e.win.View().UtxosAt(build.Contract(c).Address(e.cfg.NetworkID)) {
 			d := u.Output.Datum()
 			ref := Ref{Tx: TxID(u.Id.Id()), Index: u.Id.Index()}
@@ -428,11 +527,12 @@ func (e *Engine) prepareScript(id population.ActorID, p *wire.Pending, r *rand.R
 			return
 		}
 	}
-	p.Kind, p.Amount, p.Contract = lockKind, lockAmount, e.pickContract(r)
+	p.Kind, p.Amount, p.Contract = lockKind, lockAmount, e.in.pickContract(r)
 }
 
 // tokens is the quantity of the mint token the actor holds at the tip.
-func (e *Engine) tokens(id population.ActorID) uint64 {
+func (c chooser) tokens(id population.ActorID) uint64 {
+	e := c.e
 	policy := build.FreeMint.Hash()
 	var sum uint64
 	for _, u := range e.win.View().UtxosAt(e.co.Wallet(id).Address()) {
@@ -470,35 +570,11 @@ func parseProposal(id agenda.ProposalID) (Ref, error) {
 	return Ref{Tx: TxID(raw), Index: uint32(n)}, nil
 }
 
-// start builds and reserves the first attempt of p and starts its retry
-// machine. It returns why the intent was skipped, if it was.
-func (e *Engine) start(ctx context.Context, at sched.Time, p *wire.Pending) (string, error) {
-	id := e.pay.Next()
-	p.ID = id
-	built, inputs, ttl, why, err := e.attemptOf(ctx, at, p)
-	if why != "" || err != nil {
-		return why, err
-	}
-	if err := e.pay.Reserve(ctx, id, population.ActorID(p.Actor), TxID(built.ID), inputs, ttl); err != nil {
-		return "reserve: " + err.Error(), nil
-	}
-	e.pay.Claim(id)
-	p.Tx, p.TTL, p.Cbor, p.Awaiting, p.Txs = TxID(built.ID), ttl, built.Tx, true, []TxID{TxID(built.ID)}
-	if err := e.retry.Begin(p); err != nil {
-		return "", err
-	}
-	e.pay.Add(p)
-	if p.Kind == "" && !p.Refill {
-		if st := e.co.Rec(population.ActorID(p.Actor)); st != nil {
-			st.Remember(population.ActorID(p.To))
-		}
-	}
-	e.pc.Excite(at)
-	e.emitSubmitted(at, p, built, inputs)
-	return "", e.react(ctx, at, p, built.Fee)
-}
+// maker builds an intent's attempts and logs them.
+type maker struct{ e *Engine }
 
-func (e *Engine) emitSubmitted(at sched.Time, p *wire.Pending, built build.Built, inputs []Ref) {
+func (m maker) emitSubmitted(at sched.Time, p *wire.Pending, built build.Built, inputs []Ref) {
+	e := m.e
 	attack := p.Attack
 	if attack == "" && e.isAdversary(population.ActorID(p.Actor)) {
 		attack = coverTraffic
@@ -508,7 +584,7 @@ func (e *Engine) emitSubmitted(at sched.Time, p *wire.Pending, built build.Built
 		Mistakes: p.Carried, Attack: attack, Action: p.GovType, Contract: p.Contract,
 	}
 	if p.Kind == string(profile.IntentVote) && p.Action != nil {
-		_, s.Voter = e.voterOf(population.ActorID(p.Actor))
+		_, s.Voter = voterOf(e, population.ActorID(p.Actor))
 		s.Proposal = chain.GovID{Tx: chain.TxID(p.Action.Tx), Index: p.Action.Index}.String()
 		s.Choice, s.Power = choiceNames[p.Choice], p.Power
 	}
@@ -517,7 +593,8 @@ func (e *Engine) emitSubmitted(at sched.Time, p *wire.Pending, built build.Built
 
 // attemptOf builds one attempt of p on inputs the planner offers its
 // intent. A failed build is a skip reason, not an error.
-func (e *Engine) attemptOf(ctx context.Context, at sched.Time, p *wire.Pending) (build.Built, []Ref, uint64, string, error) {
+func (m maker) attemptOf(ctx context.Context, at sched.Time, p *wire.Pending) (build.Built, []Ref, uint64, string, error) {
+	e := m.e
 	sp := specs[p.KindOf()]
 	a := population.ActorID(p.Actor)
 	avail := e.pay.Coins(a, plan.IntentID(p.ID))
@@ -526,7 +603,7 @@ func (e *Engine) attemptOf(ctx context.Context, at sched.Time, p *wire.Pending) 
 	if coins == nil {
 		return build.Built{}, nil, 0, fmt.Sprintf("spendable %d below %d", pay.SumCoins(avail), need), nil
 	}
-	ttl := e.ttl(at, sp.guarded, sp.script)
+	ttl := m.ttl(at, sp.guarded, sp.script)
 	if ttl == 0 {
 		return build.Built{}, nil, 0, "too close to the epoch boundary", nil
 	}
@@ -568,7 +645,8 @@ func (e *Engine) attemptOf(ctx context.Context, at sched.Time, p *wire.Pending) 
 // ttl is an attempt's invalid-hereafter slot. A guarded step's ends with
 // the current epoch, so the epoch its effect reaches is known when the
 // guard runs; zero means too little of the epoch is left.
-func (e *Engine) ttl(at sched.Time, guarded, script bool) uint64 {
+func (m maker) ttl(at sched.Time, guarded, script bool) uint64 {
+	e := m.e
 	// An overdue event runs at its own time, but its attempt is sent at
 	// the Tick's (tickTo), so the interval starts there; a rebuild runs at
 	// a block's time, which can lag the block's own slot.
@@ -590,15 +668,107 @@ func (e *Engine) ttl(at sched.Time, guarded, script bool) uint64 {
 	return ttl
 }
 
-// settle accounts for a settled attempt of intent p: the deposit it paid
-// or refunded, a locked output it freed, and the lifecycle edge it causes.
-func (e *Engine) settle(at sched.Time, p *wire.Pending, tx TxID) error {
-	if out := e.pay.Deposit(specs[p.KindOf()].deposit(e, p)); out > 0 {
-		e.win.Reclaim(out)
+// contracts are the deployed contracts.
+//
+// Contract 0 (build.AlwaysSucceeds) exists from genesis. A file with a
+// contract population deploys more at its new_rate per genesis wallet per
+// day: a deployment is the moment its address becomes one wallets lock at,
+// so it has no transaction of its own. Each contract draws a usage weight
+// from the population's Pareto, and a lock picks its contract in
+// proportion to the weights, so a few contracts take most calls.
+type contracts struct {
+	e *Engine
+	// n is how many contracts are deployed (contract 0 from genesis); at is
+	// the next deployment, drawn its draw.
+	n     uint64
+	at    sched.Time
+	drawn uint64
+}
+
+// deployRate is new contracts per second, zero without a contract
+// population.
+func (ct *contracts) deployRate() float64 {
+	e := ct.e
+	cp, ok := e.cfg.contractParams()
+	if !ok {
+		return 0
 	}
-	if p.Kind == unlockKind {
-		// The lock's script output counted as foreign when it settled.
-		e.win.Reclaim(p.Amount)
+	wallets := 0
+	for _, co := range e.cfg.Cohorts {
+		if p, _ := e.cfg.Profiles.Get(co.Profile); p.Kind == profile.Wallet && co.Profile != proposerName {
+			wallets += co.Count
+		}
 	}
-	return e.co.Life.Settled(at, population.ActorID(p.Actor), profile.IntentKind(p.Kind), tx)
+	return cp.New * float64(wallets) / secondsPerDay
+}
+
+func (ct *contracts) scheduleDeploy(now sched.Time) {
+	e := ct.e
+	ct.drawn++
+	r := e.cfg.Seed.Derive("deploy", strconv.FormatUint(ct.drawn, 10)).Rand()
+	ct.at = sched.NextArrival(r, ct.deployRate(), nil, now)
+	ct.pushDeploy()
+}
+
+func (ct *contracts) pushDeploy() {
+	e := ct.e
+	if ct.at != population.Never && ct.at != 0 {
+		e.clk.Push(ct.at, clock.Event{Kind: clock.Deploy})
+	}
+}
+
+// deploy makes the next contract available.
+func (ct *contracts) deploy(at sched.Time) error {
+	e := ct.e
+	i := ct.n
+	if err := ct.bookContract(i); err != nil {
+		return err
+	}
+	ct.n++
+	e.jr.Emit(at, KindDeployed, 0, Deployed{Contract: i, Address: build.Contract(i).Name})
+	ct.scheduleDeploy(at)
+	return nil
+}
+
+func (ct *contracts) bookContract(i uint64) error {
+	e := ct.e
+	if err := e.win.Book().AddAddress(build.Contract(i).Address(e.cfg.NetworkID), scriptActor); err != nil {
+		return fmt.Errorf("engine: book contract %d: %w", i, err)
+	}
+	return nil
+}
+
+// Contracts is the number of contracts deployed, contract 0 included.
+func (ct *contracts) count() int { return int(ct.n) }
+
+// usage is contract i's usage weight.
+func (ct *contracts) usage(i uint64) float64 {
+	e := ct.e
+	cp, ok := e.cfg.contractParams()
+	if !ok {
+		return 1
+	}
+	return cp.Usage.Sample(e.cfg.Seed.Derive("contract", strconv.FormatUint(i, 10)).Rand())
+}
+
+// pickContract draws the contract a lock goes to. With one contract it
+// draws nothing, so a file without contracts locks as it always did.
+func (ct *contracts) pickContract(r *rand.Rand) uint64 {
+	if ct.n <= 1 {
+		return 0
+	}
+	ws := make([]float64, ct.n)
+	var sum float64
+	for i := range ws {
+		ws[i] = ct.usage(uint64(i))
+		sum += ws[i]
+	}
+	u := r.Float64() * sum
+	for i, w := range ws {
+		if u < w {
+			return uint64(i)
+		}
+		u -= w
+	}
+	return ct.n - 1
 }

@@ -136,7 +136,7 @@ func (e *Engine) injectSPOProbe(ctx context.Context, at sched.Time) (string, err
 	if !ok {
 		return "no registered pool", nil
 	}
-	voter, _ := e.voterOf(id)
+	voter, _ := voterOf(e, id)
 	return e.start(ctx, at, &wire.Pending{Actor: uint64(id), Args: wire.Args{Kind: string(profile.IntentVote)}, Gov: wire.Gov{Action: &ref, Choice: common.GovVoteYes, Power: e.win.View().VotingPower(voter), Probe: true}})
 }
 

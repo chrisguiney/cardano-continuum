@@ -2,19 +2,12 @@ package engine
 
 import (
 	"fmt"
-	"math"
-	"math/big"
-	"math/rand/v2"
 	"slices"
-	"strconv"
 
 	"github.com/chrisguiney/cardano-continuum/internal/build"
-	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/clock"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/cohort"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/pace"
-	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
-	"github.com/chrisguiney/cardano-continuum/internal/sched"
 )
 
 // A fitted profile file's populations (profile.Population) become actors
@@ -196,128 +189,5 @@ func subject(st *cohort.Actor) pace.Subject {
 	return pace.Subject{State: &st.Pace, Prof: &st.Prof, Policy: st.Policy, Rate: st.Rate, Drawer: st}
 }
 
-// poolTerms are the pledge, cost and margin a pool actor registers or
-// updates with: draws from the population's fitted distributions on a
-// stream named by the intent, so a rebuild offers the same terms. A pool
-// of no population registers the minimum terms.
-func (e *Engine) poolTerms(id population.ActorID, intent uint64) (pledge, cost uint64, margin *big.Rat) {
-	pledge, cost, margin = 1_000_000, e.cfg.Build.MinPoolCost, big.NewRat(1, 100)
-	st := e.co.Rec(id)
-	if st == nil {
-		return pledge, cost, margin
-	}
-	pop, ok := e.cfg.population(st.Prof.Name)
-	if !ok || pop.Pool == nil {
-		return pledge, cost, margin
-	}
-	a, _ := e.co.Get(id)
-	r := a.Stream("pool-terms", strconv.FormatUint(intent, 10))
-	pledge = lovelaceOf(pop.Pool.Pledge.Sample(r))
-	cost = max(lovelaceOf(pop.Pool.Cost.Sample(r)), e.cfg.Build.MinPoolCost)
-	// A margin is a rational on chain; millionths are finer than any pool
-	// sets.
-	m := min(max(pop.Pool.Margin.Sample(r), 0), 1)
-	return pledge, cost, big.NewRat(int64(math.Round(m*1e6)), 1e6)
-}
-
-// maxTerm caps a drawn pledge or cost: a lognormal tail can pass the
-// lovelace supply.
-const maxTerm = 45_000_000_000_000_000
-
-func lovelaceOf(x float64) uint64 {
-	if math.IsNaN(x) || x <= 0 {
-		return 0
-	}
-	return uint64(min(x, maxTerm))
-}
-
-// Contracts.
-//
-// Contract 0 (build.AlwaysSucceeds) exists from genesis. A file with a
-// contract population deploys more at its new_rate per genesis wallet per
-// day: a deployment is the moment its address becomes one wallets lock at,
-// so it has no transaction of its own. Each contract draws a usage weight
-// from the population's Pareto, and a lock picks its contract in
-// proportion to the weights, so a few contracts take most calls.
-
-// deployRate is new contracts per second, zero without a contract
-// population.
-func (e *Engine) deployRate() float64 {
-	c, ok := e.cfg.contractParams()
-	if !ok {
-		return 0
-	}
-	wallets := 0
-	for _, co := range e.cfg.Cohorts {
-		if p, _ := e.cfg.Profiles.Get(co.Profile); p.Kind == profile.Wallet && co.Profile != proposerName {
-			wallets += co.Count
-		}
-	}
-	return c.New * float64(wallets) / secondsPerDay
-}
-
-func (e *Engine) scheduleDeploy(now sched.Time) {
-	e.deployN++
-	r := e.cfg.Seed.Derive("deploy", strconv.FormatUint(e.deployN, 10)).Rand()
-	e.deployAt = sched.NextArrival(r, e.deployRate(), nil, now)
-	e.pushDeploy()
-}
-
-func (e *Engine) pushDeploy() {
-	if e.deployAt != population.Never && e.deployAt != 0 {
-		e.clk.Push(e.deployAt, clock.Event{Kind: clock.Deploy})
-	}
-}
-
-// deploy makes the next contract available.
-func (e *Engine) deploy(at sched.Time) error {
-	i := e.contracts
-	if err := e.bookContract(i); err != nil {
-		return err
-	}
-	e.contracts++
-	e.jr.Emit(at, KindDeployed, 0, Deployed{Contract: i, Address: build.Contract(i).Name})
-	e.scheduleDeploy(at)
-	return nil
-}
-
-func (e *Engine) bookContract(i uint64) error {
-	if err := e.win.Book().AddAddress(build.Contract(i).Address(e.cfg.NetworkID), scriptActor); err != nil {
-		return fmt.Errorf("engine: book contract %d: %w", i, err)
-	}
-	return nil
-}
-
 // Contracts is the number of contracts deployed, contract 0 included.
-func (e *Engine) Contracts() int { return int(e.contracts) }
-
-// usage is contract i's usage weight.
-func (e *Engine) usage(i uint64) float64 {
-	c, ok := e.cfg.contractParams()
-	if !ok {
-		return 1
-	}
-	return c.Usage.Sample(e.cfg.Seed.Derive("contract", strconv.FormatUint(i, 10)).Rand())
-}
-
-// pickContract draws the contract a lock goes to. With one contract it
-// draws nothing, so a file without contracts locks as it always did.
-func (e *Engine) pickContract(r *rand.Rand) uint64 {
-	if e.contracts <= 1 {
-		return 0
-	}
-	ws := make([]float64, e.contracts)
-	var sum float64
-	for i := range ws {
-		ws[i] = e.usage(uint64(i))
-		sum += ws[i]
-	}
-	u := r.Float64() * sum
-	for i, w := range ws {
-		if u < w {
-			return uint64(i)
-		}
-		u -= w
-	}
-	return e.contracts - 1
-}
+func (e *Engine) Contracts() int { return e.in.count() }

@@ -85,11 +85,7 @@ type Engine struct {
 	pay   *pay.Pay
 	retry *pay.Retry
 	pc    *pace.Pace
-	// contracts is how many contracts are deployed (contract 0 from
-	// genesis); deployAt is the next deployment, deployN its draw.
-	contracts uint64
-	deployAt  sched.Time
-	deployN   uint64
+	in    *intent
 
 	guard policy.Guard
 	// dark is the pool plan: pools the engine wants not forging. down are
@@ -182,8 +178,8 @@ func New(cfg Config) (*Engine, error) {
 		return nil, fmt.Errorf("engine: view: %w", err)
 	}
 	e.co.Births.Start(0)
-	if e.deployRate() > 0 {
-		e.scheduleDeploy(0)
+	if e.in.deployRate() > 0 {
+		e.in.scheduleDeploy(0)
 	}
 	e.jr.Drop() // genesis spawns are configuration, not decisions
 	return e, nil
@@ -215,9 +211,10 @@ func newEmpty(cfg Config) (*Engine, error) {
 		pay:  pay.New(),
 		win:  window.New(chain.Config{K: cfg.K, Slots: cfg.Slots, NOpt: cfg.NOpt, GovLifetime: cfg.GovLifetime}),
 		dark: map[population.ActorID]bool{}, down: map[population.ActorID]bool{}, repairs: map[population.ActorID]bool{},
-		images: map[population.ActorID]string{}, contracts: 1, deployAt: population.Never,
-		advs: map[population.ActorID]adversary.Policy{}, costs: adversary.NewLedger(), contested: map[Ref]bool{},
+		images: map[population.ActorID]string{},
+		advs:   map[population.ActorID]adversary.Policy{}, costs: adversary.NewLedger(), contested: map[Ref]bool{},
 	}
+	e.in = newIntent(e)
 	e.retry = pay.NewRetry(pay.Spec{Policy: cfg.retry(), Diagnoser: diag}, e.pay,
 		pay.Env{Actors: hooks{e}, Builder: hooks{e}, Journal: &e.jr, Sched: evsched{&e.clk}, Chain: e.win})
 	if e.guard, err = policy.New(cfg.floor()); err != nil {
@@ -366,7 +363,7 @@ func (e *Engine) run(ctx context.Context, at sched.Time, ev clock.Event) error {
 	case clock.Adopt:
 		e.adopt(at, ev.Intent)
 	case clock.Deploy:
-		return e.deploy(at)
+		return e.in.deploy(at)
 	}
 	return nil
 }
