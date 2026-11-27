@@ -72,8 +72,14 @@ retry machine never chooses inputs itself.
   somebody else spending a group's input K deep; settled expiry of a sent
   attempt.
 - **The planner's view**, per attempt, catching up at its own pace.
-- **Restarts**: records, counters and fixes are on disk; the view resumes
-  at the settled point; the machine's state is rebuilt from the records.
+- **Restarts**, in two forms (`Recovery`). `"rebuild"` is contract rule 7
+  (`submit.Restart`): records, counters and fixes are on disk, the view
+  resumes at the settled point, and each machine is rebuilt from the
+  records. `"replay"` is what the engine does: its checkpoint and event log
+  (`specs/engine-recovery`, design A) restore the records, the view and
+  every machine as they were, and the only thing lost is the answer to a
+  decided send, whose bytes may have reached the node. That attempt counts
+  as sent (the Sender's resumed intents, `SubmitResult.Resend`).
 - **Liveness**, under weak fairness of the machine, the planner, burial and
   time. The node need never include anything.
 
@@ -123,6 +129,7 @@ property it names and must fail.
 | `Retry` | nothing: base bounds | pass |
 | `RetryHighCompetence` | the actor always names a reported class | pass |
 | `RetryRestart` | one restart at any point, no outside spend | pass |
+| `RetryRestartReplay` | the same, with the engine's restart (`Recovery = "replay"`) | pass |
 | `RetryTwoIntents` | two intents, one restart; safety only | pass |
 | `RetryRebuildOnOwnSpendBug` | any rejection is a refusal, including "inputs spent" to a resubmit | `IntentAtMostOnce` |
 | `RetryRefuseOnDiagnosisBug` | the refusal is decided from the actor's diagnosis | `IntentAtMostOnce` |
@@ -131,6 +138,7 @@ property it names and must fail.
 | `RetryReleaseOnRollbackBug` | a rollback writes the attempt off and rebuilds | `IntentAtMostOnce` |
 | `RetryBypassReserveBug` | a rebuild chooses inputs without `Reserve`'s conflict rule | `IntentAtMostOnce` |
 | `RetryRestartForgetsSentBug` | after a restart, unfinished attempts count as never sent | `IntentAtMostOnce` |
+| `RetryReplayForgetsSentBug` | the engine's restart does not mark an interrupted send as sent | `IntentAtMostOnce` |
 | `RetryReleaseOnGiveUpBug` | giving up writes every unfinished attempt off | `DeadIsDead` |
 | `RetryResetOnRollbackBug` | a rollback resets the submission counter | `AttemptsBounded` |
 | `RetryFixUndoesBug` | a fix replaces earlier fixes | `NoRegression` |
@@ -159,7 +167,11 @@ an attempt rebuilt on a fresh input after an outside spend settles.
 - **Bypass Reserve.** A drop notice for an attempt in an unseen block, and
   a rebuild on the other input group.
 - **Restart forgets sent.** Accepted, included, restart, resent, "inputs
-  spent", refused: the rebuild-on-own-spend order through a restart.
+  spent", refused: the rebuild-on-own-spend order through a restart. In the
+  engine's form the send is decided, its bytes reach the node, the process
+  dies before the answer is logged; the restarted engine sends the same
+  bytes, a block holds the first copy, and "inputs spent" reads as a
+  refusal.
 - **Release on give-up.** Two sends with no answer, both arrived; the
   actor gives up and the planner writes off an attempt in a mempool.
 - **Reset on rollback.** One send, included, rolled back, counter reset,
@@ -193,6 +205,7 @@ competing for the machine:
 | `Retry` | 1,109,832 | 383,236 | 25 | 66 s |
 | `RetryHighCompetence` | 471,614 | 161,602 | 25 | 13 s |
 | `RetryRestart` | 761,172 | 276,956 | 26 | 23 s |
+| `RetryRestartReplay` | 1,363,954 | 477,456 | 26 | 75 s |
 | `RetryTwoIntents` | 83,536,484 | 18,845,236 | 29 | 110-200 s |
 
 The liveness check is most of `Retry`'s time. `RetryTwoIntents` is safety
@@ -253,7 +266,8 @@ Rules:
    `Unknown` are not proof.
    `submit.Outcome.Dead()` (any rejection) is sound only for a first send.
 3. **sentBefore** is true once any send of these bytes returned Accepted or
-   Unreached, and for every unfinished attempt after a restart.
+   Unreached, and after a restart for every unfinished attempt (rebuild) or
+   for every send the crash interrupted (replay, `RetryRestartReplay`).
 4. **Several targets**: an attempt is rejected only when every target
    rejected it; one Accepted or Unreached answer makes it sent.
 5. **Attempts** counts sends, is persisted with the intent and is never
@@ -264,6 +278,10 @@ Rules:
 7. **Restart**: rebuild each machine from the records: an intent with an
    unfinished attempt goes to Submit on the newest, sending the same bytes;
    one without goes to Build; Done and GaveUp stay.
+   The engine does not take this path: it restores every machine from its
+   checkpoint and log, so a crashed run's log matches an uninterrupted one
+   byte for byte, and marks the interrupted sends instead (rule 3).
+   `RetryRestartReplay` checks that form.
 
 ### Mistakes and expected verdicts (node 39)
 
@@ -307,6 +325,31 @@ Rules:
 - The FORMAL-METHODS plan's `RetryMisdiagnosisLoopBug` is split:
   `RetryNoPatienceBug` (liveness) and `RetryFixUndoesBug` (safety).
   `RetryResetOnRollbackBug` fails `AttemptsBounded`, not liveness.
+
+## Code map
+
+| Model | Code |
+|---|---|
+| the machine (`ms`, `cur`, `tries`, `fixed`, `sent`) | `submit.Machine` and the pure `submit.Step` in `internal/submit/step.go`; the model's `rejected` is the code's `Diagnosing` |
+| `Build` | `pay.Retry.rebuild` through `pay.Pay.Reserve` (`internal/engine/internal/pay/retry.go`, `pay.go`); a fix is `mistake.Carry` (`internal/mistake/mistake.go`) |
+| `Submit` | a `SendTx` action, sent by `send.Sender` (`internal/engine/internal/send/send.go`); several targets are `submit.Fanout` and `submit.Aggregate` (`internal/submit/submit.go`) |
+| `Refusal(t, v)` | `submit.Outcome.Refutes` and `submit.Intrinsic`, carried out by `pay.Retry.refuse`; a one-shot intent uses `pay.Refusable` |
+| `Classify` | the `Diagnose` action, answered by `mistake.Diagnoser.Diagnose` (`internal/mistake/sample.go`) |
+| `Confirm`, `RolledBack`, `Dropped`, `Lost`, `Done` | `pay.Retry.InBlock`, `LeftView`, `Dropped`, `Release` (`submit.Dead`) and `Settle` |
+| `GiveUp` | the `GiveUp` action; it releases nothing |
+| `Sync` (planner settles and writes off) | `pay.Pay.Advance` over `plan.Ledger.Advance` (see `specs/planner-reservations`) |
+| `Restart`, `Recovery = "replay"` | the checkpoint and log replay (`specs/engine-recovery`); `send.New`'s resumed intents set `SubmitResult.Resend`. `submit.Restart` is the `"rebuild"` form and is not called by the engine |
+| `Expected(t)`, `OracleSound` | `mistake.Expect` and `mistake.Expected.Pass`, filed by the oracle (`internal/oracle/finding.go`) |
+
+`submit.Intrinsic` lists more classes than the model's two: every one whose
+rule reads only the transaction and the protocol parameters
+(`MissingVKeyWitnesses` is the model's `MissingSigner`; also
+`InvalidWitnesses`, the `WrongNetwork` classes, `OutputTooSmall`,
+`OutputTooBig`, `OutputBootAddrAttrs`, `MaxTxSize`, `InputSetEmpty`,
+`NonDisjointRefInputs`, `Undecodable`), as rule 2 allows.
+
+Of the tests listed above, the full-machine ones (node 40) and
+`PropSubmitMatchesModel` are not in the tree yet.
 
 ## Go tests this model asks for
 

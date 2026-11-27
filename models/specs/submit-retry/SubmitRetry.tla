@@ -52,7 +52,13 @@ CONSTANTS
     MaxEvictions,  \* how many times the local mempool evicts a transaction
     MaxAdv,        \* how many times somebody else spends an intent's input
     MaxRestarts,   \* how many times the engine restarts
+    Recovery,      \* "rebuild": a restart rebuilds each machine from the
+                   \* records (contract rule 7, submit.Restart); "replay":
+                   \* the engine's checkpoint and log restore every machine
+                   \* as it was, and only an interrupted send counts as sent
     Mutation       \* "none", or one deliberate mistake (see the README)
+
+ASSUME Recovery \in {"rebuild", "replay"}
 
 Intents == 1..NumIntents
 Slots == 1..MaxSlots
@@ -455,9 +461,7 @@ Expire(t) ==
 \* disk. The view resumes at the settled point. Every unfinished attempt is
 \* treated as sent, and the newest is sent again, same bytes (it may never
 \* have gone out). Mutation RestartForgetsSent treats them as never sent."
-Restart ==
-    /\ n.restart < MaxRestarts
-    /\ n' = [n EXCEPT !.restart = @ + 1]
+RestartRebuild ==
     /\ view' = [t \in Txs |-> IF view[t] = "deep" THEN "deep" ELSE "none"]
     /\ sent' = [t \in Txs |-> IF st[t] = "live"
                               THEN Mutation # "RestartForgetsSent" ELSE sent[t]]
@@ -468,6 +472,30 @@ Restart ==
                    ELSE IF live(i) = {} THEN "build"
                    ELSE "submit"]
     /\ UNCHANGED <<truth, st, grp, mist, aview, tries, inj, fixed, vd, diag, total, ever>>
+
+\* In English: "The engine restarts from its checkpoint and log (design A
+\* of specs/engine-recovery): the records, the view and every machine are
+\* as they were, since each was rebuilt from logged inputs. The one thing a
+\* crash can lose is the answer to a send that was decided: the bytes may
+\* have reached the node (Interrupted). So the attempt of a machine waiting
+\* to send counts as sent (the Sender's resumed intents,
+\* SubmitResult.Resend). Mutation RestartForgetsSent drops that mark."
+Interrupted(t) == st[t] = "live" /\ ms[t[1]] = "submit" /\ t[2] = cur[t[1]]
+RestartReplay ==
+    /\ \E arrived \in [Txs -> BOOLEAN] :
+         /\ \A t \in Txs : arrived[t] => Interrupted(t) /\ Fails(t) = {}
+         /\ reached' = [t \in Txs |-> reached[t] \/ arrived[t]]
+         /\ inmp' = [t \in Txs |-> inmp[t] \/ arrived[t]]
+    /\ sent' = [t \in Txs |->
+                   IF Interrupted(t)
+                   THEN sent[t] \/ Mutation # "RestartForgetsSent"
+                   ELSE sent[t]]
+    /\ UNCHANGED <<chain, exp, adv, st, grp, mist, view, aview, machine>>
+
+Restart ==
+    /\ n.restart < MaxRestarts
+    /\ n' = [n EXCEPT !.restart = @ + 1]
+    /\ IF Recovery = "rebuild" THEN RestartRebuild ELSE RestartReplay
 
 -----------------------------------------------------------------------------
 \* The environment: anything the ledger allows.
