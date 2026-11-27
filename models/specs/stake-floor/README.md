@@ -104,9 +104,19 @@ chosen.
 - **`PolicyLooksAhead` is not a separate invariant.** `FloorHolds` is checked
   in every state, including the traces where the engine stops deciding after
   a step, which is what `PolicyLooksAhead` asks.
-- **Liveness is a safety invariant.** `NoFreeze` (every epoch has a block)
-  and `RecoverBound` stand in for `[]<>(ForgingStake > 0)`, under the timing
-  assumptions in `Boundary`.
+- **Liveness is mostly a safety invariant.** `NoFreeze` (every epoch has a
+  block) and `RecoverBound` stand in for `[]<>(ForgingStake > 0)`, under the
+  timing assumptions in `Boundary`. A literal "the floor is eventually
+  restored" says nothing in a run bounded by `MaxEpoch` (a death in the last
+  epoch has no epoch left). What liveness does check is the second timing
+  assumption: `RecoveryFinishes` (`FloorRecoverLive`), that once the floor
+  is endangered the engine's own fair steps always finish the recovery
+  `Boundary` waits for. It needs a fair `Block` too: without it a wallet
+  whose earlier delegation is still in flight while a block could land is
+  never free to move, and the recovery waits for ever.
+- **Deadlock checking is on.** The run ends in `Done`, at `epoch =
+  MaxEpoch`; before that a state with no step would be a `Boundary` whose
+  timing assumptions cannot be met. None of the safety configs has one.
 - **No Apalache config.** Integers stay at 0..6; the guard's arithmetic is
   linear, and the property tests in the Go list cover realistic stake sizes.
 - **Bounds on the engine.** `MaxMoves` and `MaxDarks` cap the guarded moves
@@ -140,6 +150,7 @@ chosen.
 | `RetiredOnlyAtBoundary` | the census calls a pool Retired only once a transition has retired it | `FloorRetireMarkedEarlyBug` |
 | `NoFreeze` | no epoch passes without a block | `FloorRecoverFreezeBug`, `FloorRecoverWorstCaseBug` |
 | `RecoverBound` | unless the ledger froze, the floor is back within `RecoverEpochs` epochs of the latest pod death | `FloorRecoverInTwoBug`, `FloorRecoverNoRedelegateBug`, `FloorRecoverLateBug`, `FloorPlanIsForgingBug` |
+| `RecoveryFinishes` (liveness, `LiveSpec`) | once the floor is endangered, the engine eventually finishes its recovery or the danger passes; fair: `GoLive`, `Repair`, the recovery's own moves, `Block` | `FloorRecoverNoMoveLiveBug` |
 
 ## Configs and state counts
 
@@ -161,6 +172,8 @@ the reason in its row.
 | `FloorMargin` | none | `Floor = 30`, `FaultMargin = 1`, `MaxFaults = 1` | all hold | 3,520,332 distinct, 12,358,724 generated, depth 25 |
 | `FloorRecover` | none | recovery setting | `RecoverBound`, `RetiredOnlyAtBoundary` hold | 124,008 distinct, 343,110 generated, depth 30 |
 | `FloorRecoverRepair` | none | recovery setting, `RecoverEpochs = 1`, `Repairable = TRUE` | `RecoverBound`, `NoFreeze` hold | 1,407,693 distinct, 6,187,718 generated, depth 28 |
+| `FloorRecoverLive` | none | recovery setting, fair (`LiveSpec`) | `RecoveryFinishes` holds | 124,008 distinct |
+| `FloorRecoverNoMoveLiveBug` | `NoMove` | recovery setting, fair; deadlock check off (the epoch that cannot end is the finding) | `RecoveryFinishes` | violated |
 | `FloorGateOnLiveBug` | `GateOnLive` | - | `FloorHolds` | violated, 281 distinct, trace 3 |
 | `FloorThisEpochOnlyBug` | `ThisEpochOnly` | - | `FloorHolds` | violated, 16,408 distinct, trace 9 |
 | `FloorNextEpochOnlyBug` | `NextEpochOnly` | - | `FloorHolds` | violated, 18,531 distinct, trace 8 |
@@ -171,16 +184,22 @@ the reason in its row.
 | `FloorIgnoreInflightBug` | `IgnoreInflight` | - | `FloorHolds` | violated, 26,457 distinct, trace 7 |
 | `FloorNoMarginBug` | `NoMargin` | `Floor = 30`, `FaultMargin = 1`, `MaxFaults = 1` | `FloorHolds` | violated, 424 distinct, trace 3 |
 | `FloorPlanIsForgingBug` | `PlanIsForging` | recovery setting, `RecoverEpochs = 1`, `Repairable = TRUE` | `RecoverBound` | violated, 871 distinct, trace 6 |
-| `FloorRecoverInTwoBug` | none | recovery setting, `RecoverEpochs = 2` | `RecoverBound` | violated, 36,380 distinct, trace 14 |
+| `FloorRecoverInTwoBug` | none (limit) | recovery setting, `RecoverEpochs = 2` | `RecoverBound` | violated, 36,380 distinct, trace 14 |
 | `FloorRecoverLateBug` | `RecoverOnBreach` | recovery setting, `RecoverEpochs = 1`, `Repairable = TRUE` | `RecoverBound` | violated, 537,318 distinct, trace 17 |
-| `FloorRecoverFreezeBug` | none | recovery setting | `NoFreeze` | violated, 3,419 distinct, trace 11 |
+| `FloorRecoverFreezeBug` | none (limit) | recovery setting | `NoFreeze` | violated, 3,419 distinct, trace 11 |
 | `FloorRecoverNoRedelegateBug` | `NoRedelegate` | recovery setting | `RecoverBound` | violated, 2,846 distinct, trace 12 |
-| `FloorRecoverWorstCaseBug` | none | recovery setting, `MaxFaults = 1`, `Repairable = TRUE`, `BlocksBelowFloor = FALSE` | `NoFreeze` | violated, 1,759 distinct, trace 6 |
+| `FloorRecoverWorstCaseBug` | none (limit) | recovery setting, `MaxFaults = 1`, `Repairable = TRUE`, `BlocksBelowFloor = FALSE` | `NoFreeze` | violated, 1,759 distinct, trace 6 |
 | `FloorProbeDarkBug` | probe | - | `ProbeNeverDark` | violated: reachable, 2 distinct, trace 2 |
 | `FloorProbeLagBug` | probe | - | `ProbeNoLag` | violated: reachable, 241 distinct, trace 5 |
 | `FloorProbeRetiredBug` | probe | - | `ProbeNeverRetired` | violated: reachable, 2,643 distinct, trace 8 |
 | `FloorProbeReregisterCancelsBug` | probe | - | `ProbeNoCancel` | violated: reachable, 2,346 distinct, trace 6 |
 | `FloorProbeLongBreachBug` | probe | recovery setting | `ProbeShortBreach` | violated: reachable, 516 distinct, trace 7 |
+
+The three "limit" configs (`FloorRecoverInTwoBug`, `FloorRecoverFreezeBug`,
+`FloorRecoverWorstCaseBug`) mutate nothing: they are the unmodified rule at
+bounds it does not meet, and document its limits (how fast recovery can be,
+and when a death beyond the margin freezes the ledger), not defects. They
+need no Fixed config.
 
 ## What it decides
 
@@ -293,26 +312,43 @@ engine's policy. Each names the config that fails without it.
 
 ## Code map
 
-The guard is pure, in `internal/policy`; the engine's side of it is
+Models cardano-continuum at `72c4fb0`. The guard is pure, in
+`internal/policy`; the engine's side of it is
 `internal/engine/internal/floor`, whose package comment maps each contract
-rule. In short:
+rule.
 
-| Model | Code |
-|---|---|
-| `Allowed` | `policy.Guard.Check` (`internal/policy/guard.go`); `TestPolicyAgreesWithModel` (`internal/policy/model_test.go`) compares it with a transliteration over the model's domain |
-| `GoDark`, `Retire`, `Delegate` (guarded) | `floor.Floor.Check`, the one gate for every intent that can lower forging stake (`internal/engine/internal/floor/floor.go`) |
-| `GoLive` | `floor.Floor.SetTier` (never guarded) |
-| `Fail` | `floor.Floor.PodStatus` |
-| `Repair` | `floor.Floor.Recover`, through its repair step |
-| the guard's input (rule 3) | `floor.Floor.State`, from `chain.View.PolicyState` (`internal/chain/view.go`) and the in-flight list `Floor.inflight` |
-| `Block`, `Boundary` (the transition label, `set`, `mark`) | `epochs.next` in `internal/chain/ledger.go` and `View.PolicyState` (`internal/chain/view.go`, helpers in `policy.go`), which key the schedules on whether this epoch's transition ran |
-| recovery (rules 12 to 14) | `policy.Guard.Endangered` and `policy.Guard.Recover`, run by `Floor.Recover` after every block and pod event |
-| census (rule 11) | `internal/population` (`state.go`) and the engine's cohort, `internal/engine/internal/cohort` |
-| rule 10 (TTL inside the epoch) | the guarded kinds of the intent spec (`internal/engine/internal/intent/spec.go`) and `Maker.TTL` (`make.go`) |
+| Model | Code | What |
+|---|---|---|
+| `Allowed` | `internal/policy/guard.go:55` (`Guard.Check`), `:135` (`Guard.meets`) | `TestPolicyAgreesWithModel` (`internal/policy/model_test.go:273`) compares it with a transliteration over the model's domain |
+| `GoDark`, `Retire`, `Delegate` (guarded) | `internal/engine/internal/floor/floor.go:234` (`Floor.Check`) | the one gate for every intent that can lower forging stake |
+| `GoLive` | `internal/engine/internal/floor/floor.go:261` (`Floor.SetTier`) | never guarded |
+| `Fail` | `internal/engine/internal/floor/floor.go:280` (`Floor.PodStatus`) | |
+| `Repair` | `internal/engine/internal/floor/floor.go:292` (`Floor.Recover`, its repair step) | |
+| the guard's input (rule 3) | `internal/engine/internal/floor/floor.go:177` (`Floor.State`), from `internal/chain/view.go:320` (`View.PolicyState`) and the in-flight list | |
+| `Block`, `Boundary` (the transition label, `set`, `mark`) | `internal/chain/ledger.go:68` (`epochs.next`) and `internal/chain/view.go:320` (`View.PolicyState`, helpers in `internal/chain/policy.go`) | the schedules are keyed on whether this epoch's transition ran |
+| recovery, `RecoveryDone`, `Endangered` (rules 12 to 14) | `internal/policy/guard.go:204` (`Guard.Endangered`), `:232` (`Guard.Recover`), run by `internal/engine/internal/floor/floor.go:292` (`Floor.Recover`) after every block and pod event | |
+| census (rule 11) | `internal/population/state.go` and `internal/engine/internal/cohort` | |
+| rule 10 (TTL inside the epoch) | the guarded kinds of `internal/engine/internal/intent/spec.go` and `internal/engine/internal/intent/make.go:100` (`Maker.TTL`) | |
+| `Reregister` | not issued by the engine | an environment step the guard must survive |
+| `Done` | the end of the bounded run | not code |
 
 Rule 10 has a second user since this model: a governance vote on a
 proposal in its last epoch takes the same epoch-bounded TTL
 (`specs/governance-change`).
+
+### Drift
+
+Where the model deliberately differs from the code or the ledger (from the
+deviations above and "Not modelled"):
+
+| Id | Code | Model | Why | Config |
+|---|---|---|---|---|
+| S1 | leader election is a VRF lottery over the `set` snapshot | an epoch has a block iff the forging share of the schedule meets `Floor` (unless `BlocksBelowFloor`) | the floor is what the guard must buy; the lottery is not continuum's | all |
+| S2 | a devnet's pools and wallets are many, with any stake | three pools (3, 1, 2 units) and four wallets | every decision is close to the line at `Floor = 70` | all |
+| S3 | the engine reacts to a block or pod event within one epoch | `Boundary` waits for `RecoveryDone` once `Endangered` | the timing assumption the plan states; `FloorRecoverLateBug` drops it | `FloorRecover*` |
+| S4 | an empty epoch's effect on the ledger is read from dingo, unverified against cardano-ledger | an empty epoch freezes the ledger (`Frozen`) | the conservative reading; if wrong, `NoFreeze` still states what the floor must buy | all |
+| S5 | the engine's moves and go-dark steps are unbounded | `MaxMoves`, `MaxDarks`, one cancellation | without them the passing configs do not finish | all |
+| S6 | `go` snapshot feeds rewards | not modelled | it plays no part in leader election | - |
 
 ## Go tests the model implies
 

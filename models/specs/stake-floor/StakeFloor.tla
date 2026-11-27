@@ -1,6 +1,6 @@
 ----------------------------- MODULE StakeFloor -----------------------------
 (***************************************************************************)
-(* The engine's stake-floor guard, before any guard code exists.           *)
+(* The engine's stake-floor guard.                                        *)
 (*                                                                         *)
 (* The population manager and the operator agenda decide when a pool goes *)
 (* dark, retires, or when a wallet moves its delegation. The chain feels   *)
@@ -35,6 +35,20 @@
 (* Each value of Mutation replaces one part of the rule with a simpler one *)
 (* a Go guard would plausibly use; a *Bug.cfg shows what it breaks. The    *)
 (* README lists them.                                                      *)
+(*                                                                         *)
+(* Models cardano-continuum at 72c4fb0; README.md has the code map and    *)
+(* the drift table.                                                        *)
+(*   Allowed   internal/policy/guard.go:55                Guard.Check      *)
+(*   GoDark, Retire, Delegate                                              *)
+(*             internal/engine/internal/floor/floor.go:234 Floor.Check     *)
+(*   GoLive    internal/engine/internal/floor/floor.go:261 Floor.SetTier   *)
+(*   Fail      internal/engine/internal/floor/floor.go:280 Floor.PodStatus *)
+(*   Repair    internal/engine/internal/floor/floor.go:292 Floor.Recover   *)
+(*   Endangered, RecoveryDone                                              *)
+(*             internal/policy/guard.go:204,232  Endangered, Recover       *)
+(*   Block, Boundary                                                       *)
+(*             internal/chain/ledger.go:68        epochs.next              *)
+(*             internal/chain/view.go:320         View.PolicyState         *)
 (*                                                                         *)
 (* HOW TO READ THE SYMBOLS: see specs/hello/Hello.tla.                     *)
 (***************************************************************************)
@@ -406,7 +420,8 @@ Reregister(p) ==
 \* retired. Guarded unless the move only adds forging stake; mutation
 \* UnguardedDelegate never guards it. Moves that are not Adds happen at
 \* most MaxMoves times in a run; the recovery's Adds moves are not
-\* bounded, so the bound never stops a recovery."
+\* bounded, so the bound never stops a recovery. Mutation NoMove: the
+\* recovery never submits those Adds moves."
 \* Literally: "Delegate of w and q is defined as: pend of w is NoTx, q is in
 \*   Targets and not deleg of w, q in Pools implies reg of q is not
 \*   "retired"; Adds of w and q, or n.moves is less than MaxMoves and
@@ -417,7 +432,7 @@ Delegate(w, q) ==
     /\ pend[w] = NoTx
     /\ q \in Targets \ {deleg[w]}
     /\ q \in Pools => reg[q] # "retired"
-    /\ \/ Adds(w, q)
+    /\ \/ Adds(w, q) /\ Mutation # "NoMove"
        \/ /\ n.moves < MaxMoves
           /\ \/ Mutation = "UnguardedDelegate"
              \/ Allowed(plan, [pend EXCEPT ![w] = q], pret)
@@ -580,19 +595,44 @@ Boundary ==
 UpdateDry ==
     dry' = IF epoch' # epoch THEN ~FloorOk' ELSE (dry \/ ~FloorOk')
 
+\* In English: "The run is over: it has reached its last epoch. Before
+\* that the only thing that ends an epoch is Boundary, gated by the two
+\* timing assumptions; a state before MaxEpoch where nothing can happen is
+\* an assumption the model cannot meet, which TLC's deadlock check reports."
+\* Literally: "Done is defined as: epoch equals MaxEpoch and nothing
+\*   changes."
+Done ==
+    /\ epoch = MaxEpoch
+    /\ UNCHANGED vars
+
 \* Literally: "Next is defined as: one of the steps below happens, and
-\*   UpdateDry."
+\*   UpdateDry; or Done."
 Next ==
-    /\ \/ \E p \in Pools : GoDark(p) \/ GoLive(p) \/ Repair(p) \/ Reregister(p) \/ Fail(p)
-       \/ \E p \in Pools, r \in 1..(MaxEpoch + RetireMax) : Retire(p, r)
-       \/ \E w \in Wallets, q \in Targets : Delegate(w, q)
-       \/ Block
-       \/ Boundary
-    /\ UpdateDry
+    \/ /\ \/ \E p \in Pools : GoDark(p) \/ GoLive(p) \/ Repair(p) \/ Reregister(p) \/ Fail(p)
+          \/ \E p \in Pools, r \in 1..(MaxEpoch + RetireMax) : Retire(p, r)
+          \/ \E w \in Wallets, q \in Targets : Delegate(w, q)
+          \/ Block
+          \/ Boundary
+       /\ UpdateDry
+    \/ Done
 
 \* Literally: "Spec is defined as: Init, and always Next or nothing
 \*   changes."
 Spec == Init /\ [][Next]_vars
+
+\* In English: "The same behaviours, where every step of the engine's
+\* recovery that stays possible is eventually taken: bringing a pool
+\* live, repairing a pod, and moving a wallet onto a pool the guard
+\* counts as forging; and a block that can be made is made, which lands
+\* what is in flight (the chain's side of Boundary's first timing
+\* assumption). The environment, the guarded decisions and the epoch
+\* clock get no fairness."
+LiveSpec ==
+    /\ Spec
+    /\ WF_vars(Block /\ UpdateDry)
+    /\ \A p \in Pools : WF_vars(GoLive(p) /\ UpdateDry)
+    /\ \A p \in Pools : WF_vars(Repair(p) /\ UpdateDry)
+    /\ \A w \in Wallets : WF_vars(\E q \in Pools : Adds(w, q) /\ Delegate(w, q) /\ UpdateDry)
 
 -----------------------------------------------------------------------------
 \* Invariants.
@@ -647,6 +687,19 @@ NoFreeze == ~Frozen
 \* Literally: "RecoverBound is defined as: Frozen, or dryRun is at most
 \*   RecoverEpochs."
 RecoverBound == Frozen \/ dryRun <= RecoverEpochs
+
+-----------------------------------------------------------------------------
+\* Liveness (LiveSpec).
+
+\* In English: "Once the floor is endangered, the engine eventually
+\* finishes its recovery, or the danger passes. Boundary assumes the
+\* recovery finishes within the epoch; this checks that the engine's own
+\* steps can always get there, so the assumption never waits for ever.
+\* With RecoverBound it gives the floor back. (A literal 'the floor is
+\* eventually restored' says nothing in a run bounded by MaxEpoch: a death
+\* in the last epoch has no epoch left to recover in.)"
+RecoveryFinishes ==
+    (Recovery /\ Endangered) ~> (RecoveryDone \/ ~Endangered)
 
 -----------------------------------------------------------------------------
 \* Reachability probes: each claims a situation never happens; the Probe

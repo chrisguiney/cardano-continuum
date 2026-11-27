@@ -17,6 +17,8 @@ FloorRecover.cfg	pass	-	124008	30	2
 FloorRecoverFreezeBug.cfg	fails	NoFreeze	-	-	1
 FloorRecoverInTwoBug.cfg	fails	RecoverBound	-	-	1
 FloorRecoverLateBug.cfg	fails	RecoverBound	-	-	9
+FloorRecoverLive.cfg	pass	-	124008	30	8
+FloorRecoverNoMoveLiveBug.cfg	fails	RecoveryFinishes	-	-	2
 FloorRecoverNoRedelegateBug.cfg	fails	RecoverBound	-	-	1
 FloorRecoverRepair.cfg	pass	-	1407693	28	24
 FloorRecoverWorstCaseBug.cfg	fails	NoFreeze	-	-	1
