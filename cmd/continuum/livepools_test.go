@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"log/slog"
+	"net"
 	"testing"
+	"time"
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
@@ -113,4 +115,29 @@ func testSlots(t *testing.T) sched.Slots {
 		t.Fatal(err)
 	}
 	return s
+}
+
+// TestLiveServeFailureEndsTheRun: a live API that cannot serve cancels the
+// run's context and reports its error, instead of logging it and carrying on.
+func TestLiveServeFailureEndsTheRun(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+	d := &engine.Deps{Log: &eventlog.MemLog{}}
+	lf := liveFlags{serve: ln.Addr().String()}
+	log := slog.New(slog.DiscardHandler)
+	ctx, stop, err := liveServe(context.Background(), d, nil, engine.Config{Slots: testSlots(t)}, lf, nil, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-ctx.Done():
+	case <-time.After(10 * time.Second):
+		t.Fatal("the run was not cancelled after the live API failed")
+	}
+	if err := stop(); err == nil {
+		t.Fatal("stop returned nil for a live API that failed to listen")
+	}
 }

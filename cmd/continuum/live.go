@@ -16,6 +16,7 @@ import (
 
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 	"github.com/blinklabs-io/gouroboros/ledger/conway"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
 	"github.com/chrisguiney/cardano-continuum/internal/build"
@@ -190,11 +191,11 @@ func runLive(ctx context.Context, sf simFlags, lf liveFlags, epochs uint64) erro
 	if lt != nil {
 		defer lt.start(ctx, log)()
 	}
-	stop, err := liveServe(ctx, &deps, db, cfg, lf, lt, log)
+	ctx, stop, err := liveServe(ctx, &deps, db, cfg, lf, lt, log)
 	if err != nil {
 		return err
 	}
-	defer stop()
+	defer func() { _ = stop() }()
 	r, err := engine.Start(ctx, cfg, deps)
 	if err != nil {
 		return err
@@ -203,7 +204,7 @@ func runLive(ctx context.Context, sf simFlags, lf liveFlags, epochs uint64) erro
 	if epochs > 0 {
 		end = cfg.Slots.EpochStart(epochs)
 	}
-	return follow(ctx, log, cfg, r, fl, clock, end, lf.report)
+	return errors.Join(follow(ctx, log, cfg, r, fl, clock, end, lf.report), stop())
 }
 
 // viewEvery is the simulated time between view monitor queries: each asks
@@ -384,26 +385,27 @@ func livePlan(d *engine.Deps, cfg engine.Config, lf liveFlags, magic uint32, log
 }
 
 // liveServe starts the live API when --serve is set, wrapping the engine's
-// log so the API follows it. The returned stop ends the server and waits.
-func liveServe(ctx context.Context, d *engine.Deps, db *store.DB, cfg engine.Config, lf liveFlags, lt *liveTips, log *slog.Logger) (func(), error) {
+// log so the API follows it. The returned context ends when ctx does or the
+// API fails; stop ends the server, waits for it, and returns its error.
+func liveServe(ctx context.Context, d *engine.Deps, db *store.DB, cfg engine.Config, lf liveFlags, lt *liveTips, log *slog.Logger) (context.Context, func() error, error) {
 	if lf.serve == "" {
-		return func() {}, nil
+		return ctx, func() error { return nil }, nil
 	}
 	if err := checkAddr(lf.serve, false); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	s, err := newLiveServer(ctx, d.Log, db, cfg.Slots, cfg.GovLifetime, d.Findings, lt.poolView(cfg.K))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	d.Log, d.Controls = s.log, s.controls
 	ctx, cancel := context.WithCancel(ctx)
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		if err := s.serve(ctx, lf.serve, log); err != nil {
-			log.Error("live api", "err", err)
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		if err := s.serve(gctx, lf.serve, log); err != nil {
+			return fmt.Errorf("live api: %w", err)
 		}
-	}()
-	return func() { cancel(); <-done }, nil
+		return nil
+	})
+	return gctx, func() error { cancel(); return g.Wait() }, nil
 }
