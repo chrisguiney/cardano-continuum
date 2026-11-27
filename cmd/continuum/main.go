@@ -48,7 +48,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/cli/image"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/profiles"
 	cliscenario "github.com/chrisguiney/cardano-continuum/internal/cli/scenario"
-	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/kube"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/serve"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/lines"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
@@ -101,7 +101,7 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 	case "bisect":
 		return clibisect.Run(ctx, args[1:], out)
 	case "serve":
-		return cmdServe(ctx, args[1:], out, kube.Open)
+		return serve.Run(ctx, args[1:], out)
 	case "harvest":
 		return harvest.Run(ctx, args[1:], out)
 	case "vectors":

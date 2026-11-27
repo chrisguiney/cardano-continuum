@@ -1,4 +1,4 @@
-package main
+package serve
 
 import (
 	"context"
@@ -8,11 +8,11 @@ import (
 	"io"
 	"log/slog"
 	"net"
-	"net/netip"
 	"os"
 
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/kube"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/serving"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
@@ -26,11 +26,16 @@ import (
 
 const serveUsage = "usage: continuum serve --log EVENTS.LOG [--store DB] [--addr HOST:PORT] [--controls] [--control LOG] [--explorer-blocks N] [--network N [--namespace NS] [--kubeconfig PATH]]"
 
-// cmdServe serves the web UI and its API over an event log. It reads the log
+// Run serves the web UI and its API over an event log. It reads the log
 // without ever repairing it, so it can follow a run that is still writing;
 // --controls makes it the log's writer, which is only safe on a log no
 // engine is appending to.
-func cmdServe(ctx context.Context, args []string, out io.Writer, open kube.Opener) error {
+func Run(ctx context.Context, args []string, out io.Writer) error {
+	return RunWith(ctx, args, out, kube.Open)
+}
+
+// RunWith is Run over a cluster opener, so a test supplies a fake cluster.
+func RunWith(ctx context.Context, args []string, out io.Writer, open kube.Opener) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	logPath := fs.String("log", "", "event log to serve (required)")
 	control := fs.String("control", "", "control run log (same seed, no adversaries), for the Adversaries page's deltas")
@@ -41,7 +46,7 @@ func cmdServe(ctx context.Context, args []string, out io.Writer, open kube.Opene
 	network := fs.String("network", "", "ContinuumNetwork to read pool status from")
 	ns := fs.String("namespace", "default", "namespace of the network and its pools")
 	kubeconfig := fs.String("kubeconfig", "", "kubeconfig path (default: KUBECONFIG rules)")
-	keep := fs.Int("explorer-blocks", defaultExplorerBlocks, "newest blocks the explorer keeps in full; older ones keep a compact index entry")
+	keep := fs.Int("explorer-blocks", serving.DefaultBlocks, "newest blocks the explorer keeps in full; older ones keep a compact index entry")
 	slotMs := fs.Int64("slot-ms", 1000, "slot length in milliseconds, for the epoch")
 	epochSlots := fs.Uint64("epoch-slots", 600, "slots per epoch, for the epoch")
 	govLife := fs.Uint64("gov-lifetime", fakechain.DefaultParams().GovActionValidityPeriod, "governance action lifetime in epochs, for each proposal's last epoch")
@@ -51,7 +56,7 @@ func cmdServe(ctx context.Context, args []string, out io.Writer, open kube.Opene
 	if *logPath == "" || fs.NArg() != 0 {
 		return errors.New(serveUsage)
 	}
-	if err := checkAddr(*addr, *remote); err != nil {
+	if err := serving.CheckAddr(*addr, *remote); err != nil {
 		return err
 	}
 	slots, err := sched.NewSlots(sched.Time(*slotMs), *epochSlots)
@@ -87,7 +92,7 @@ func cmdServe(ctx context.Context, args []string, out io.Writer, open kube.Opene
 		return errors.New("--explorer-blocks must be at least 1")
 	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	ex := newExplorer(slots, 0, *keep, cfg.Names, cfg.Kube, cfg.Tips, log)
+	ex := serving.NewExplorer(slots, 0, *keep, cfg.Names, cfg.Kube, cfg.Tips, log)
 	cfg.Projection.Observe(ex.Apply)
 	return serve(ctx, serveParams{log: *logPath, addr: *addr, controls: *controls, cfg: cfg, hub: hub, explorer: ex}, out)
 }
@@ -140,23 +145,6 @@ func serve(ctx context.Context, p serveParams, out io.Writer) error {
 		terr = nil
 	}
 	return errors.Join(serr, terr)
-}
-
-// checkAddr refuses a listen address that is not loopback unless the
-// operator asked for it: the API has no authentication.
-func checkAddr(addr string, allowRemote bool) error {
-	host, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		return fmt.Errorf("--addr: %w", err)
-	}
-	if allowRemote || host == "localhost" {
-		return nil
-	}
-	ip, err := netip.ParseAddr(host)
-	if err != nil || !ip.IsLoopback() {
-		return fmt.Errorf("--addr %s is not loopback; the API has no authentication (use --allow-remote to override)", addr)
-	}
-	return nil
 }
 
 // openExistingStore opens a store that must already exist: serving must not

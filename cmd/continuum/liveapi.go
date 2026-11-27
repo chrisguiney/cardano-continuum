@@ -8,6 +8,7 @@ import (
 	"net"
 	"sync"
 
+	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/serving"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/httpapi"
@@ -108,7 +109,7 @@ func newLiveServer(ctx context.Context, l engine.Log, db *store.DB, slots sched.
 	if db != nil {
 		names = db
 	}
-	ex := newExplorer(slots, pv.K, defaultExplorerBlocks, names, pv.Kube, pv.Tips, nil)
+	ex := serving.NewExplorer(slots, pv.K, serving.DefaultBlocks, names, pv.Kube, pv.Tips, nil)
 	proj.Observe(ex.Apply)
 	if err := l.Scan(ctx, 1, func(r eventlog.Record) error { feed.Apply(r); return nil }); err != nil {
 		hub.Close()

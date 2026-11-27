@@ -22,6 +22,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/kube"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/serving"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/genesis"
@@ -457,7 +458,7 @@ func liveServe(ctx context.Context, d *engine.Deps, db *store.DB, cfg engine.Con
 	if lf.serve == "" {
 		return ctx, func() error { return nil }, nil
 	}
-	if err := checkAddr(lf.serve, false); err != nil {
+	if err := serving.CheckAddr(lf.serve, false); err != nil {
 		return nil, nil, err
 	}
 	s, err := newLiveServer(ctx, d.Log, db, cfg.Slots, cfg.GovLifetime, d.Findings, lt.poolView(cfg.K))
