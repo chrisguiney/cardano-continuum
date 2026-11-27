@@ -47,4 +47,3 @@ stray-methods internal/engine pendingRec 2
 stray-methods internal/engine view 9
 stray-methods internal/oracle Finding 1
 stray-methods internal/sink builder 1
-stray-methods internal/tla rawTx 1

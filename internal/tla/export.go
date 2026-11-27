@@ -315,18 +315,6 @@ func live(u map[string]Output) map[string]Output {
 	return out
 }
 
-func (r rawTx) abstract() AbstractTx {
-	tx := r.AbstractTx
-	sort.Strings(tx.Ins)
-	sort.Strings(tx.Coll)
-	sort.Strings(tx.Refs)
-	if r.Ret.Coin >= 0 {
-		ret := r.Ret
-		tx.Ret = &ret
-	}
-	return tx
-}
-
 func sortVerdicts(vs []Verdict) {
 	key := func(v Verdict) string {
 		b, _ := json.Marshal(v.Tx)

@@ -356,3 +356,15 @@ func writeVectorFile(path string, vs []Vector) error {
 	}
 	return f.Close()
 }
+
+func (r rawTx) abstract() AbstractTx {
+	tx := r.AbstractTx
+	sort.Strings(tx.Ins)
+	sort.Strings(tx.Coll)
+	sort.Strings(tx.Refs)
+	if r.Ret.Coin >= 0 {
+		ret := r.Ret
+		tx.Ret = &ret
+	}
+	return tx
+}
