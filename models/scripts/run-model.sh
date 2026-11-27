@@ -21,7 +21,8 @@
 # $TMPDIR/continuum-tlc.lock; TLC_LOCK_WAIT seconds to wait for it, default
 # 3600), each with a private java.io.tmpdir and -metadir, so concurrent runs
 # cannot rewrite each other's extracted modules or delete each other's states.
-# bin/_java caps the heap (TLC_HEAP, default 6g).
+# bin/_java caps the heap (TLC_HEAP, default 6g). TLC_OUT=<dir> keeps each
+# config's TLC output there as <Config>.out (traces included).
 #
 # The outcome is read from TLC's output with the patterns of
 # internal/tla/outcome.go (Classify); keep the two in step.
@@ -202,6 +203,9 @@ for cfg in "${cfgs[@]}"; do
   tlc_pid=""
   secs=$((SECONDS - start))
   rm -rf "$work/states-$name"
+  if [[ -n "${TLC_OUT:-}" ]]; then
+    mkdir -p "$TLC_OUT" && cp "$out" "$TLC_OUT/$name.out"
+  fi
 
   classify "$code"
   judge "$cfg"

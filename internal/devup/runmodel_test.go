@@ -163,12 +163,17 @@ func TestRunModelNamedProperty(t *testing.T) {
 }
 
 // A passing config passes on TLC's completion line, and a violation in it
-// names the property.
+// names the property. TLC_OUT keeps each config's TLC output.
 func TestRunModelPassingConfig(t *testing.T) {
 	t.Parallel()
 	models := modelDir(t, map[string]tlcCase{"M": {twoProps, passOut, 0}})
-	if out, code := runModel(t, models, "TLC_RECORD=1"); code != 0 || !strings.Contains(out, "pass   M.cfg") {
+	keep := t.TempDir()
+	if out, code := runModel(t, models, "TLC_RECORD=1", "TLC_OUT="+keep); code != 0 || !strings.Contains(out, "pass   M.cfg") {
 		t.Fatalf("exit %d:\n%s", code, out)
+	}
+
+	if got, err := os.ReadFile(filepath.Join(keep, "M.out")); err != nil || string(got) != passOut {
+		t.Fatalf("TLC_OUT kept %q, %v; want the TLC output", got, err)
 	}
 
 	write(t, models, "specs/m/M.out", sprintf(invOut, "Safe"))

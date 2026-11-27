@@ -14,7 +14,8 @@
   `TLC_RECORD=1` rewrites it from the run instead. Runs take a per-user lock
   (`TLC_LOCK`, waiting up to `TLC_LOCK_WAIT` seconds), so only one TLC runs
   at a time, and each run has its own `java.io.tmpdir` and `-metadir`. Run
-  for each directory by `make models`.
+  for each directory by `make models`. `TLC_OUT=<dir>` keeps each config's
+  TLC output (and so its trace) as `<dir>/<Config>.out`.
 - `changed-models.sh BASE`: prints the model directories a change since
   `BASE` can affect: the specs it touched, the specs whose README or `.tla`
   names a Go file or package it touched, or every spec when the runner, the
