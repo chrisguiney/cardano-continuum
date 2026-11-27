@@ -1,0 +1,17 @@
+config	verdict	property	distinct	depth	secs
+EngineConfirmAtDepthZeroBug.cfg	fails	StableOnly	-	-	1
+EngineIntersectAtTipBug.cfg	fails	CursorAgrees	-	-	0
+EngineLogAfterEffectBug.cfg	fails	LogBeforeEffect	-	-	1
+EngineNoUndoBug.cfg	fails	NeverHalted	-	-	1
+EngineNoUndoLiveBug.cfg	fails	CatchesUp	-	-	2
+EngineProbeOfflineRollbackBug.cfg	fails	ProbeNoOfflineRollback	-	-	1
+EngineProbeTailReplayBug.cfg	fails	ProbeNoTailReplay	-	-	0
+EngineSplitCommitBug.cfg	fails	CheckpointConsistent	-	-	1
+EngineStable.cfg	pass	-	437364	36	2
+EngineStableLive.cfg	pass	-	14205	25	4
+EngineStableTwoActors.cfg	pass	-	201498	25	2
+EngineUndo.cfg	pass	-	437364	37	3
+EngineUndoLive.cfg	pass	-	14205	25	3
+EngineUndoProbeDurableUnwindBug.cfg	fails	ProbeNoDurableUnwind	-	-	0
+EngineUndoTwoActors.cfg	pass	-	201498	25	2
+EngineUnloggedClockBug.cfg	fails	ReplayReproduces	-	-	1

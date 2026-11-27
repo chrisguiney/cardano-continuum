@@ -1,0 +1,3 @@
+config	verdict	property	distinct	depth	secs
+Hello.cfg	pass	-	11	8	0
+HelloBug.cfg	fails	NeverDoneAfterPong	-	-	0
