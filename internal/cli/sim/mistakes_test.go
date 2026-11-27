@@ -12,6 +12,7 @@ import (
 // profiles, whose competence falls below 1; the summary reports them, and
 // the replay command line must agree with the run's.
 func TestFakeRunMistakesFlag(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dir := filepath.Join(t.TempDir(), "run")
 	flags := []string{"--seed", "4", "--wallets", "30", "--epoch-slots", "120"}

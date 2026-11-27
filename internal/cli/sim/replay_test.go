@@ -29,6 +29,7 @@ func fakeRun(t *testing.T) string {
 }
 
 func TestReplayImageOnFakeLogIsANoOp(t *testing.T) {
+	t.Parallel()
 	log := fakeRun(t)
 	var out bytes.Buffer
 	args := []string{"--image", "dingo=reg/dingo:x", "--seed", "7", "--wallets", "6", "--epoch-slots", "60", log}
@@ -41,6 +42,7 @@ func TestReplayImageOnFakeLogIsANoOp(t *testing.T) {
 }
 
 func TestReplayImageRejectsABadAssignment(t *testing.T) {
+	t.Parallel()
 	args := []string{"--image", "nonsense", "--seed", "7", fakeRun(t)}
 	if err := Replay(context.Background(), args, &bytes.Buffer{}); err == nil {
 		t.Fatal("want an error for --image without impl=ref")
@@ -71,6 +73,7 @@ func liveDeps(t *testing.T, log string, same bool) (rerun.Deps, *kubetest.Fake) 
 }
 
 func TestReplayImageLiveRefusesOnMismatch(t *testing.T) {
+	t.Parallel()
 	log := fakeRun(t)
 	deps, fc := liveDeps(t, log, false)
 	args := []string{"--image", "dingo=reg/dingo:x", "--live", "--network", "net", "--seed", "7", log}
@@ -84,6 +87,7 @@ func TestReplayImageLiveRefusesOnMismatch(t *testing.T) {
 }
 
 func TestReplayImageLiveSetsTheNetworkImage(t *testing.T) {
+	t.Parallel()
 	log := fakeRun(t)
 	deps, fc := liveDeps(t, log, true)
 	var out bytes.Buffer
@@ -97,6 +101,7 @@ func TestReplayImageLiveSetsTheNetworkImage(t *testing.T) {
 }
 
 func TestReplayImageLiveNeedsANetwork(t *testing.T) {
+	t.Parallel()
 	log := fakeRun(t)
 	deps, _ := liveDeps(t, log, true)
 	if err := ReplayWith(context.Background(), []string{"--image", "dingo=x", "--live", log}, &bytes.Buffer{}, deps); err == nil {

@@ -8,6 +8,7 @@ import (
 )
 
 func TestRunNeedsFakeOrNode(t *testing.T) {
+	t.Parallel()
 	var out bytes.Buffer
 	err := run(context.Background(), []string{"run", "--out", t.TempDir()}, &out)
 	if err == nil || !strings.Contains(err.Error(), "--node") {

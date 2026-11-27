@@ -17,6 +17,7 @@ import (
 // with one seed write byte-identical logs, replay reproduces them, and a
 // replay under another seed is refused.
 func TestDeterminismCLIRuns(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dir := t.TempDir()
 	flags := []string{"--seed", "3", "--wallets", "30", "--epoch-slots", "120"}
@@ -58,6 +59,7 @@ func TestDeterminismCLIRuns(t *testing.T) {
 // A fake run's genesis actors never reach the log as Spawned records, so the
 // run's store is the only place their profiles are written.
 func TestFakeRunStoresActorProfiles(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dir := filepath.Join(t.TempDir(), "run")
 	var out bytes.Buffer
@@ -87,6 +89,7 @@ func TestFakeRunStoresActorProfiles(t *testing.T) {
 // TestFakeRunM3: the shipped honest population runs on the fake chain with
 // its operators on genesis pools: stake delegates and value is conserved.
 func TestFakeRunM3(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dir := filepath.Join(t.TempDir(), "run")
 	var out bytes.Buffer
