@@ -1,6 +1,7 @@
 package chain
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"maps"
@@ -8,8 +9,10 @@ import (
 
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 
+	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/check"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
+	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 )
 
@@ -58,9 +61,8 @@ type View struct {
 	settledH uint64
 
 	utxos
-	stake map[common.Blake2b224]StakeState
-	pools map[common.Blake2b224]PoolState
-	dreps map[common.Blake2b224]bool
+	accounts
+	registry
 	// epoch state: see ledger.go
 	ep epochState
 	// governance state: see gov.go
@@ -69,8 +71,6 @@ type View struct {
 	// window holds the blocks above the settled point, oldest first. It is
 	// never longer than K.
 	window []undo
-
-	returns map[population.ActorID]float64
 }
 
 // StakeState is a tracked stake credential.
@@ -130,13 +130,12 @@ func New(cfg Config, s State) (*View, error) {
 	}
 	v := &View{
 		cfg: cfg, tip: s.At, height: s.Height, settled: s.At, settledH: s.Height,
-		utxos: newUtxos(cfg.Book),
-		stake: map[common.Blake2b224]StakeState{},
-		pools: map[common.Blake2b224]PoolState{},
-		dreps: map[common.Blake2b224]bool{},
-		ep:    epochState{label: s.Label, frozen: s.Frozen, mark: slices.Clone(s.Mark), set: slices.Clone(s.Set)},
-		props: map[GovID]proposal{},
-		votes: map[voteKey]uint8{},
+		utxos:    newUtxos(cfg.Book),
+		accounts: newAccounts(cfg.Book),
+		registry: newRegistry(cfg.Book),
+		ep:       epochState{label: s.Label, frozen: s.Frozen, mark: slices.Clone(s.Mark), set: slices.Clone(s.Set)},
+		props:    map[GovID]proposal{},
+		votes:    map[voteKey]uint8{},
 	}
 	for _, p := range s.Proposals {
 		v.props[p.ID] = proposal{expires: p.Expires, typ: p.Type, pools: p.Pools, deposit: p.Deposit}
@@ -165,6 +164,42 @@ func (v *View) Tip() Point { return v.tip }
 // Settled is the K-deep point: the newest block that has had K successors
 // in the view. It never moves back.
 func (v *View) Settled() Point { return v.settled }
+
+// Epoch is the epoch of the tip's slot.
+func (v *View) Epoch() uint64 { return v.cfg.Slots.EpochOfSlot(v.tip.Slot) }
+
+// PoolRegistered reports whether the pool actor's pool is registered and
+// not yet past its retirement epoch.
+func (v *View) PoolRegistered(id population.ActorID) bool {
+	pool, ok := v.cfg.Book.poolOf[id]
+	return ok && v.live(pool, v.Epoch())
+}
+
+// Pools lists the registered pools the book names, by actor ID, with the
+// returns last given to SetReturns. Stake is what is delegated to the pool
+// now; Saturation is the stake cap, the tracked delegated total over nOpt
+// (zero without Config.NOpt). The total counts only what the book names, so
+// on a devnet where the engine's population holds all stake it is the
+// network's.
+func (v *View) Pools() []agenda.PoolInfo {
+	per, total := v.poolStake()
+	var limit profile.Lovelace
+	if v.cfg.NOpt > 0 {
+		limit = profile.Lovelace(total / v.cfg.NOpt)
+	}
+	var out []agenda.PoolInfo
+	for id, st := range v.pools {
+		actor := v.cfg.Book.pools[id]
+		if v.live(st.ID, v.Epoch()) {
+			out = append(out, agenda.PoolInfo{
+				ID: actor, ROI: v.returns[actor],
+				Stake: profile.Lovelace(per[id]), Saturation: limit,
+			})
+		}
+	}
+	slices.SortFunc(out, func(a, b agenda.PoolInfo) int { return cmp.Compare(a.ID, b.ID) })
+	return out
+}
 
 // Apply folds b onto the tip. It returns the effects in transaction order,
 // then a Settled effect for each block b gave its Kth successor.
@@ -212,7 +247,7 @@ func (v *View) applyTx(tx Tx, u *undo) []Effect {
 		eff = append(eff, Effect{Kind: Created, Tx: tx.Hash, Ref: r, Utxo: c})
 	}
 	for _, c := range tx.Certs {
-		if v.applyCert(c, u) {
+		if applyCert(&v.accounts, &v.registry, c, u) {
 			eff = append(eff, Effect{Kind: CertSeen, Tx: tx.Hash, Cert: c})
 		}
 	}
@@ -314,9 +349,8 @@ func (v *View) Confirmed() *View {
 func (v *View) clone() *View {
 	c := *v
 	c.utxos = v.utxos.clone()
-	c.stake = maps.Clone(v.stake)
-	c.pools = maps.Clone(v.pools)
-	c.dreps = maps.Clone(v.dreps)
+	c.accounts = v.accounts.clone()
+	c.registry = v.registry.clone()
 	c.props = maps.Clone(v.props)
 	c.votes = maps.Clone(v.votes)
 	c.window = slices.Clone(v.window)

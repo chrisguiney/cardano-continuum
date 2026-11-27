@@ -263,23 +263,6 @@ func (v *View) Voted(actor population.ActorID, p agenda.ProposalID) bool {
 	return false
 }
 
-// DReps lists the registered DRep actors, by ID.
-func (v *View) DReps() []population.ActorID {
-	var out []population.ActorID
-	for cred := range v.dreps {
-		out = append(out, v.cfg.Book.dreps[cred])
-	}
-	slices.Sort(out)
-	return out
-}
-
-// VoteDelegated reports that the actor's stake credential has a vote
-// delegation.
-func (v *View) VoteDelegated(actor population.ActorID) bool {
-	cred, ok := v.cfg.Book.stakeOf[actor]
-	return ok && v.stake[cred].Votes
-}
-
 // VotingPower is the lovelace behind a voter's vote now: for a DRep the
 // stake of every credential that delegates its vote to it, for a pool the
 // stake delegated to the pool. A committee member's vote is one vote, not

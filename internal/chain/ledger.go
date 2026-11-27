@@ -70,31 +70,11 @@ func (v *View) newEpoch(b Block, u *undo) {
 	case ep > v.ep.label+1:
 		v.ep.frozen = true
 	default:
-		v.ep.set, v.ep.mark = v.ep.mark, v.distribution()
+		v.ep.set, v.ep.mark = v.ep.mark, v.distribution(v.credStake())
 		v.ep.label = ep
-		v.reap(ep, u)
+		v.reap(ep, &v.accounts, u)
 	}
 	u.epoch = &old
-}
-
-// reap retires the pools whose retirement epoch is at most ep.
-func (v *View) reap(ep uint64, u *undo) {
-	for _, id := range sortedKeys(v.pools) {
-		p := v.pools[id]
-		if !p.Retiring || p.RetireAt > ep || p.Retired {
-			continue
-		}
-		remember(&u.pools, v.pools, id)
-		p.Retired = true
-		v.pools[id] = p
-		for _, cred := range sortedKeys(v.stake) {
-			if s := v.stake[cred]; s.Delegated && s.Pool == id {
-				remember(&u.stake, v.stake, cred)
-				s.Delegated, s.Pool = false, common.Blake2b224{}
-				v.stake[cred] = s
-			}
-		}
-	}
 }
 
 func (v *View) restoreEpoch(u undo) {
@@ -103,22 +83,9 @@ func (v *View) restoreEpoch(u undo) {
 	}
 }
 
-// distribution is the stake of every registered, delegated credential.
-func (v *View) distribution() Snapshot {
-	stake := v.credStake()
-	var out Snapshot
-	for _, cred := range sortedKeys(v.stake) {
-		s := v.stake[cred]
-		if n := stake[cred]; s.Registered && s.Delegated && n > 0 {
-			out = append(out, StakeEntry{Cred: cred, Pool: s.Pool, Stake: n})
-		}
-	}
-	return out
-}
-
 // poolStake is the lovelace delegated to each pool now, and the total.
 func (v *View) poolStake() (map[common.Blake2b224]uint64, uint64) {
-	per := v.distribution().ByPool()
+	per := v.distribution(v.credStake()).ByPool()
 	var total uint64
 	for _, n := range per {
 		total += n

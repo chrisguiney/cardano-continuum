@@ -28,7 +28,7 @@ func (v *View) PolicyState(epoch uint64, pods agenda.Pods, inflight []policy.Int
 		Label:    v.ep.label,
 		Set:      v.schedule(v.ep.set),
 		Mark:     v.schedule(v.ep.mark),
-		Deleg:    c.delegation(),
+		Deleg:    c.delegation(c.credStake()),
 		InFlight: slices.Clone(inflight),
 	}
 	for _, id := range sortedKeys(c.pools) {
@@ -59,25 +59,6 @@ func (v *View) schedule(s Snapshot) policy.Schedule {
 		out = append(out, policy.Delegation{
 			Wallet: v.cfg.Book.stake[e.Cred], Pool: v.cfg.Book.pools[e.Pool], Stake: e.Stake,
 		})
-	}
-	return out
-}
-
-// delegation is the confirmed delegation: every registered credential, with
-// pool zero for one delegated nowhere the book names.
-func (v *View) delegation() policy.Schedule {
-	stake := v.credStake()
-	var out policy.Schedule
-	for _, cred := range sortedKeys(v.stake) {
-		s := v.stake[cred]
-		if !s.Registered {
-			continue
-		}
-		d := policy.Delegation{Wallet: v.cfg.Book.stake[cred], Stake: stake[cred]}
-		if s.Delegated {
-			d.Pool = v.cfg.Book.pools[s.Pool]
-		}
-		out = append(out, d)
 	}
 	return out
 }
