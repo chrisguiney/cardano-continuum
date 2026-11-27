@@ -145,6 +145,9 @@ export interface Score {
   target?: number;
   proposal?: string;
   why: string;
+  // weight is the multiplier the draw applied to value; absent on older logs
+  // and on scores that were not drawn from.
+  weight?: number;
 }
 export interface Decision {
   id: number;
@@ -154,6 +157,8 @@ export interface Decision {
   profile?: string;
   intent?: string;
   scores?: Score[];
+  // clock is the intent kind whose fitted clock fired, for pools and DReps.
+  clock?: string;
   body?: unknown;
 }
 export interface Receipt {

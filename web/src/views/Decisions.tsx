@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Feed, foldDecisions, type EventSourceLike, type FeedFilter, type FeedRow, type FeedState, type IdleMode, type IdleRun } from "../lib/feed";
+import { chances, clamp, percent } from "../lib/chance";
 import { simTime } from "../lib/format";
 import { FIELD_HELP, VIEW_BLURB } from "../lib/help";
 import { useEnums } from "../lib/meta";
@@ -7,7 +8,7 @@ import { usePoll } from "../lib/hooks";
 import { buildQuery, parseQuery, writeQuery } from "../lib/query";
 import type { Decision, Snapshot } from "../lib/types";
 import { Link } from "./common";
-import { Blurb } from "./fields";
+import { Blurb, HelpTip } from "./fields";
 import { DecisionFilterBar, type DecisionFilterState } from "./filterbars";
 
 const CAP = 500;
@@ -29,24 +30,53 @@ function IdleRow({ r }: { r: IdleRun }) {
   );
 }
 
-function Why({ d }: { d: Decision }) {
+function Th({ id, k }: { id: string; k: string }) {
+  const h = FIELD_HELP[k]!;
+  return <th>{h.label} <HelpTip id={id} label={h.label} text={h.help} /></th>;
+}
+
+/** Why lists the scored options of a decision with the chance each had. */
+export function Why({ d }: { d: Decision }) {
   if (!d.scores?.length && d.body === undefined) return null;
+  const scores = d.scores ?? [];
+  const pct = chances(scores);
+  const pre = `why-${d.id}`;
   return (
     <details>
-      <summary>{d.scores?.length ? `why (${d.scores.length} scored)` : "body"}</summary>
-      {d.scores?.length ? (
-        <table class="scores">
-          <thead><tr><th>Intent</th><th>Score</th><th>Why</th></tr></thead>
-          <tbody>
-            {d.scores.map((s, i) => (
-              <tr key={i} class={s.kind === d.intent ? "chosen" : undefined}>
-                <td>{s.kind}{s.kind === d.intent ? " (chosen)" : ""}</td>
-                <td class="num">{s.value.toFixed(3)}</td>
-                <td>{s.why}</td>
+      <summary>{scores.length ? `why (${scores.length} scored)` : "body"}</summary>
+      {scores.length ? (
+        <>
+          <table class="scores">
+            <thead>
+              <tr>
+                <Th id={`${pre}-intent`} k="intent" />
+                <Th id={`${pre}-score`} k="score" />
+                <Th id={`${pre}-weight`} k="weight" />
+                <Th id={`${pre}-chance`} k="chance" />
+                <th>Why</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {scores.map((s, i) => (
+                <tr key={i} class={s.kind === d.intent ? "chosen" : undefined}>
+                  <td>{s.kind}{s.kind === d.intent ? " (chosen)" : ""}</td>
+                  <td class="num">{s.value.toFixed(3)}</td>
+                  <td class="num">{+clamp(s.weight ?? 1).toFixed(3)}</td>
+                  <td class="num">
+                    {pct[i]! > 0 ? percent(pct[i]!) : (
+                      <>— <HelpTip id={`${pre}-z${i}`} label="a zero chance" text={`${s.why}. ${FIELD_HELP.zero_score!.help}`} /></>
+                    )}
+                  </td>
+                  <td>{s.why}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p class="muted">
+            Chance = score x weight / total; idle scores 1 as the baseline.
+            {d.clock ? ` Chosen among ${d.clock} options after its fitted clock fired.` : ""}
+          </p>
+        </>
       ) : (
         <pre>{JSON.stringify(d.body, null, 1)}</pre>
       )}
