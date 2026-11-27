@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
@@ -720,5 +721,27 @@ func TestBlockContentIsOpaque(t *testing.T) {
 	var got BlockApplied
 	if err := Decode(with, &got); err != nil || !bytes.Equal(got.Content, []byte{0xa0}) {
 		t.Fatalf("content round trip: %v %x", err, got.Content)
+	}
+}
+
+// A write that fails and then cannot cut its torn tail must report both
+// errors and refuse further appends: the file and the index disagree.
+func TestAppendReportsFailedTruncate(t *testing.T) {
+	ctx := context.Background()
+	l, err := Open(filepath.Join(t.TempDir(), "log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Closing the descriptor makes both the write and the truncate fail.
+	if err := l.f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	err = l.Append(ctx, block(t, 1, 1))
+	if err == nil || !strings.Contains(err.Error(), "truncate") {
+		t.Fatalf("Append error %v does not report the failed truncate", err)
+	}
+	err = l.Append(ctx, block(t, 1, 1))
+	if err == nil || !strings.Contains(err.Error(), "log failed") {
+		t.Fatalf("second Append error %v, want the log marked failed", err)
 	}
 }

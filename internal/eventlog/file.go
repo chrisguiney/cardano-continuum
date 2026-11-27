@@ -15,11 +15,14 @@ import (
 type FileLog struct {
 	f *os.File
 
-	mu      sync.Mutex // protects offs, size, durable, closed
+	mu      sync.Mutex // protects offs, size, durable, closed, failed
 	offs    []int64    // offs[i] is the file offset of seq i+1
 	size    int64
 	durable uint64
 	closed  bool
+	// failed is set when a torn tail could not be cut: the file and the
+	// index disagree, so every later write is refused.
+	failed error
 }
 
 // Open opens or creates the log at path. A final frame that is incomplete,
@@ -108,6 +111,9 @@ func (l *FileLog) Append(ctx context.Context, recs ...Record) error {
 	if l.closed {
 		return os.ErrClosed
 	}
+	if l.failed != nil {
+		return fmt.Errorf("eventlog: log failed: %w", l.failed)
+	}
 	var buf []byte
 	offs := make([]int64, 0, len(recs))
 	next := uint64(len(l.offs)) + 1
@@ -123,8 +129,12 @@ func (l *FileLog) Append(ctx context.Context, recs ...Record) error {
 	if _, err := l.f.WriteAt(buf, l.size); err != nil {
 		// A partial write leaves a torn tail; cut it so the index and
 		// file agree.
-		_ = l.f.Truncate(l.size)
-		return fmt.Errorf("eventlog: append: %w", err)
+		werr := fmt.Errorf("eventlog: append: %w", err)
+		if terr := l.f.Truncate(l.size); terr != nil {
+			l.failed = fmt.Errorf("eventlog: truncate torn tail: %w", terr)
+			return errors.Join(werr, l.failed)
+		}
+		return werr
 	}
 	l.size += int64(len(buf))
 	l.offs = append(l.offs, offs...)
