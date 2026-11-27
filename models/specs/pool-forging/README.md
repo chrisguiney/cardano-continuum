@@ -327,27 +327,42 @@ opcert issuer. Each names the config that fails without it.
 
 ## Code map
 
-The operator side is implemented; the engine's opcert issuer is not. The
-engine writes a pool's plan (dark or live) through `steer.PoolPlan` and the
-pools feed (`internal/engine/internal/feeds/pools.go`, applied by
-`internal/cli/live/livepools.go`), and the only opcert it makes is
-counter 0 at genesis (`internal/genesis/genesis.go`, `keys.Store.OpCert`).
-Rules 12 to 20 and the engine-issuer tests above are still a contract for
-code that does not exist.
+Models cardano-continuum at `72c4fb0`. The operator side is implemented;
+the engine's opcert issuer is not. The engine writes a pool's plan (dark or
+live) through `steer.PoolPlan` and the pools feed
+(`internal/engine/internal/feeds/pools.go:34`, `Pools.Poll`, applied by
+`internal/cli/live/livepools.go:63`, `livePools.Sync`), and the only opcert
+it makes is counter 0 at genesis (`internal/genesis/genesis.go:126`,
+`keys.Store.OpCert` at `internal/keys/keys.go:195`). Rules 12 to 20 and the
+engine-issuer tests below are still a contract for code that does not exist.
 
-| Model | Code |
-|---|---|
-| the name is the fence (rule 1) | `render.Name` and `render.PodName` (`internal/operator/render/names.go`), one per `PoolID` whatever the driver or digest; replicas 1 in `render.Render` (`render.go`) |
-| `CreateMain` (rule 2: the create is the acquire) | `pool.applier.create` (`internal/operator/pool/apply.go`); `AlreadyExists` is requeued |
-| finalizer from the first moment (rule 3) | `render.Render` puts `render.Finalizer` on the keyed pod template and posts that it did |
-| `CreateDup` (rule 4) | `render.RoleDuplicate` has its own name; `pool.planner.keys` (`internal/operator/pool/plan.go`) refuses a duplicate that names the pool's Secret, or whose Secret is gone |
-| `Release`, `LostRelease` (rules 5 to 7) | `fence.Releasable` (`internal/operator/fence/release.go`) and `fence.Release.Unfence`, a UID- and resourceVersion-preconditioned patch (`fence.go`); the Node is read live (`fence.ReadNode`, `nodes.go`) |
-| `ImageRoll` (rule 9) | `pool.applier.update`, an in-place StatefulSet update; `image.Roll` and `image.NeedsRoll` (`internal/operator/image/select.go`) |
-| `DeleteMain` on a switch (rule 10) | `pool.applier.drop`: foreground deletion, so the create under the same name fails with `AlreadyExists` until the pod object is gone |
-| stale snapshot (rule 11, `ForgingGenerationRaceBug`) | `Pools.newest`, called by `Pools.Reconcile`, skips a spec older than the newest generation seen (`internal/operator/pool/pool.go`) |
-| `Gate`, `Start` (no Secret, no start) | the `keys-gate` init container in `render.Render` (`rogue.go` for the forger image) |
-| `Forge` | the node, or `internal/forger` for a rogue pool, which uses only certificates the engine issued |
-| `Hold`, `BlankSecret`, `CheckPods`, `Issue`, `IssueCrash`, `GoLive`, `Retire`, `ScenarioEnd`, `ScenarioClose`, `EngineCacheCatchUp`, `SeenCatchUp` | not implemented |
+| Model | Code | What |
+|---|---|---|
+| the name is the fence (rule 1) | `internal/operator/render/names.go:79` (`Name`), `:92` (`PodName`); replicas 1 in `internal/operator/render/render.go:62` (`Render`) | one name per `PoolID`, whatever the driver or digest |
+| `CreateMain` (rule 2: the create is the acquire) | `internal/operator/pool/apply.go:91` (`applier.create`) | `AlreadyExists` is requeued |
+| finalizer from the first moment (rule 3) | `internal/operator/render/render.go:62` (`Render`), `internal/operator/render/names.go:34` (`Finalizer`) | on the keyed pod template |
+| `CreateDup` (rule 4) | `internal/operator/render/names.go:45` (`RoleDuplicate`), `internal/operator/pool/plan.go:89` (`planner.keys`) | own name; refused when it names the pool's Secret or its Secret is gone |
+| `Release`, `LostRelease` (rules 5 to 7) | `internal/operator/fence/release.go:33` (`Releasable`), `internal/operator/fence/fence.go:81` (`Release.Unfence`), `internal/operator/fence/nodes.go:50` (`ReadNode`) | a UID- and resourceVersion-preconditioned patch; the Node is read live |
+| `ImageRoll` (rule 9) | `internal/operator/pool/apply.go:125` (`applier.update`), `internal/operator/image/select.go:55` (`NeedsRoll`), `:64` (`Roll`) | an in-place StatefulSet update |
+| `DeleteMain` on a switch (rule 10) | `internal/operator/pool/apply.go:209` (`applier.drop`) | foreground deletion: the create under the same name fails until the pod object is gone |
+| `Observe` and the stale snapshot (rule 11) | `internal/operator/pool/pool.go:104` (`Pools.Reconcile`), `:139` (`Pools.newest`) | a spec older than the newest generation seen is skipped |
+| `Gate`, `Start` (no Secret, no start) | `internal/operator/render/render.go:214` (the `keys-gate` init container) | |
+| `Forge` | the node, or `internal/forger` for a rogue pool | uses only certificates the engine issued |
+| `Request` | `internal/engine/internal/feeds/pools.go:34` (`Pools.Poll`) | the engine's plan for a pool |
+| `Hold`, `BlankSecret`, `CheckPods`, `Issue`, `IssueCrash`, `GoLive`, `Retire`, `ScenarioEnd`, `ScenarioClose`, `EngineCacheCatchUp`, `SeenCatchUp` | not implemented | a contract for the engine's issuer |
+| `KubeStep`, `PodDies`, `NodeLost`, `NodeResolved`, `ForceDelete`, `KesTick` | Kubernetes, the kubelet and the chain | not continuum code |
+
+### Drift
+
+Where the model deliberately differs from the code:
+
+| Id | Code | Model | Why | Config |
+|---|---|---|---|---|
+| F1 | the engine's issuer (rules 12 to 20) does not exist | it is modelled as designed | the model is its contract | `Forging`, the engine Bug configs |
+| F2 | a reconciler's informer cache delivers watch events | `Observe` copies the current spec; a stale snapshot is the older value kept | only the order of what a reconciler sees matters | `ForgingOverlap`, `ForgingGenerationRaceBug` |
+| F3 | Kubernetes pods, StatefulSets and Secrets | one record per pod, a Secret per pool | the fence depends on names and object lifetimes only | all |
+| F4 | KES periods derive from slots | `period` advances by `KesTick`, which waits for a due rotation | the timing assumption in `KesTick`'s comment | all |
+| F5 | the deposed leader is any reconciler | `Deposed` names `r2` | breaks symmetry on purpose; only one config deposes | `ForgingGenerationRaceBug`, `ForgingGenerationRaceFixed` |
 
 ## Go tests the model implies
 
