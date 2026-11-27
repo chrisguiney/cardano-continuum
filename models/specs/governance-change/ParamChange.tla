@@ -263,12 +263,21 @@ Init ==
     /\ lagv = FALSE
     /\ vdone = {}
 
+\* In English: "The run is over: it has reached its last epoch. Before
+\* that, Tick is always possible, so this is the only state the model
+\* means to end in; any other state with no step is a stuck proposer or
+\* node, which TLC's deadlock check reports."
+Done ==
+    /\ epoch = MaxEpoch
+    /\ UNCHANGED vars
+
 Next ==
     \/ Propose
     \/ \E v \in Voters, i \in Ids : Vote(v, i)
     \/ \E t \in pend : Land(t)
     \/ Tick
     \/ Move
+    \/ Done
 
 Spec == Init /\ [][Next]_vars
 
