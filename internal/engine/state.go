@@ -39,19 +39,7 @@ func (e *Engine) Snapshot() ([]byte, error) {
 	ct := e.in.Saved()
 	s := snapshot{Version: snapshotVersion, Now: e.clk.Now(), NextIntent: nextID, Conf: sv.Conf, Fees: sv.Fees, Foreign: sv.Foreign, RefillAt: e.fc.At(), Deposits: deposits, Market: e.pc.Market(), Lost: e.jd.Lost(),
 		Contracts: ct.N, DeployAt: ct.At, DeployN: ct.Drawn}
-	for _, id := range e.co.IDs() {
-		a, _ := e.co.Get(id)
-		st := e.co.Rec(id)
-		s.Actors = append(s.Actors, actorRec{
-			ID: uint64(id), Profile: a.Profile, State: string(a.State), Born: a.Born, Changed: a.Changed,
-			Frustration: a.Frustration, Competence: a.Competence, HazardAt: st.HazardAt, HazardTo: string(st.HazardTo), ActAt: st.ActAt, Draws: st.Draws, Booting: st.Booting,
-			Owed: st.Owed, Paid: idList(st.Paid), FollowUp: st.FollowUp, Waits: st.Waits,
-		})
-	}
-	for i := range e.co.Births.Len() {
-		name, at, n := e.co.Births.Stream(i)
-		s.Births = append(s.Births, birthRec{Profile: name, At: at, N: n})
-	}
+	s.Actors, s.Births = e.co.Save()
 	s.Window = e.win.Volatile()
 	for _, id := range e.pay.IDs() {
 		s.Pending = append(s.Pending, recOf(e.pay.Get(id)))
@@ -112,19 +100,8 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 	}
 	e.st.Load(ss)
 	e.fl.Load(floor.Saved{Dark: s.Dark, Down: s.Down, Repairs: s.Repairs, Stalled: s.Stalled})
-	for _, r := range s.Actors {
-		if err := e.restoreActor(r); err != nil {
-			return nil, err
-		}
-	}
-	if len(s.Births) != e.co.Births.Len() {
-		return nil, fmt.Errorf("engine: snapshot has %d birth streams, config %d", len(s.Births), e.co.Births.Len())
-	}
-	for i, r := range s.Births {
-		if name, _, _ := e.co.Births.Stream(i); r.Profile != name {
-			return nil, fmt.Errorf("engine: snapshot birth stream %q, config %q", r.Profile, name)
-		}
-		e.co.Births.Resume(i, r.At, r.N)
+	if err := e.co.Load(cfg.Profiles, s.Actors, s.Births); err != nil {
+		return nil, err
 	}
 	if cfg.Faucet > 0 {
 		e.fc.Resume(s.RefillAt)
@@ -186,41 +163,6 @@ func (e *Engine) restoreLedger(s snapshot) error {
 		if err := e.win.Push(b, vb); err != nil {
 			return fmt.Errorf("engine: snapshot window: %w", err)
 		}
-	}
-	return nil
-}
-
-func (e *Engine) restoreActor(r actorRec) error {
-	p, ok := e.cfg.Profiles.Get(r.Profile)
-	if !ok {
-		return fmt.Errorf("engine: snapshot actor %d has unknown profile %q", r.ID, r.Profile)
-	}
-	a := e.co.Revive(p, r.Born)
-	if uint64(a.ID) != r.ID {
-		return fmt.Errorf("engine: snapshot actor %d out of order (got %d)", r.ID, a.ID)
-	}
-	if err := e.co.Life.Walk(a, population.State(r.State), r.Changed); err != nil {
-		return err
-	}
-	if err := e.co.Pop().SetFrustration(a.ID, r.Frustration); err != nil {
-		return err
-	}
-	if err := e.co.Pop().SetCompetence(a.ID, r.Competence); err != nil {
-		return err
-	}
-	st := e.co.Register(a, p)
-	st.HazardAt, st.HazardTo, st.ActAt, st.Draws = r.HazardAt, population.State(r.HazardTo), r.ActAt, r.Draws
-	st.Booting = r.Booting
-	st.Owed = r.Owed
-	st.FollowUp, st.Waits = r.FollowUp, r.Waits
-	for _, id := range r.Paid {
-		st.Paid = append(st.Paid, population.ActorID(id))
-	}
-	if st.HazardAt != population.Never {
-		st.HazardH = e.clk.Push(st.HazardAt, clock.Event{Kind: clock.Hazard, Actor: a.ID})
-	}
-	if st.ActAt != population.Never {
-		st.ActH = e.clk.Push(st.ActAt, clock.Event{Kind: clock.Act, Actor: a.ID})
 	}
 	return nil
 }
@@ -509,14 +451,6 @@ func (e *Engine) holdings() map[population.ActorID]*cohort.Holding {
 		for _, u := range us {
 			of(id).AddTokens(u)
 		}
-	}
-	return out
-}
-
-func idList(ids []population.ActorID) []uint64 {
-	out := make([]uint64, len(ids))
-	for i, id := range ids {
-		out[i] = uint64(id)
 	}
 	return out
 }

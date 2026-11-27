@@ -16,6 +16,8 @@
 package cohort
 
 import (
+	"fmt"
+
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
@@ -38,6 +40,8 @@ const Script = population.ActorID(keys.FaucetID - 1)
 type Scheduler interface {
 	// Hazard schedules an actor's hazard event.
 	Hazard(at sched.Time, id population.ActorID) sched.Handle
+	// Act schedules an actor's next act.
+	Act(at sched.Time, id population.ActorID) sched.Handle
 	// Birth schedules a birth stream's next birth.
 	Birth(at sched.Time, idx int) sched.Handle
 	// Cancel removes a scheduled event.
@@ -112,4 +116,91 @@ func New(sp Spec, v Env) *Cohort {
 	return &Cohort{Roster: r, Life: l,
 		Births: &Births{life: l, seed: sp.Seed, sched: v.Sched, emit: v.Emit},
 		Idents: &Idents{r: r, proposer: sp.Proposer, att: v.Att, chain: v.Chain}}
+}
+
+// Profiles looks a profile up by name.
+type Profiles interface {
+	Get(name string) (profile.Profile, bool)
+}
+
+// Save returns the snapshot's sections the cohort owns: every actor,
+// ascending, and the birth streams in the order they were added.
+func (c *Cohort) Save() ([]wire.ActorRec, []wire.BirthRec) {
+	var actors []wire.ActorRec
+	for _, id := range c.IDs() {
+		a, _ := c.Get(id)
+		st := c.Rec(id)
+		paid := make([]uint64, len(st.Paid))
+		for i, p := range st.Paid {
+			paid[i] = uint64(p)
+		}
+		actors = append(actors, wire.ActorRec{
+			ID: uint64(id), Profile: a.Profile, State: string(a.State), Born: a.Born, Changed: a.Changed,
+			Frustration: a.Frustration, Competence: a.Competence, HazardAt: st.HazardAt, HazardTo: string(st.HazardTo), ActAt: st.ActAt, Draws: st.Draws, Booting: st.Booting,
+			Owed: st.Owed, Paid: paid, FollowUp: st.FollowUp, Waits: st.Waits,
+		})
+	}
+	var births []wire.BirthRec
+	for i := range c.Births.Len() {
+		name, at, n := c.Births.Stream(i)
+		births = append(births, wire.BirthRec{Profile: name, At: at, N: n})
+	}
+	return actors, births
+}
+
+// Load rebuilds the actors and birth streams a Save recorded. Each actor is
+// respawned from the census seed, which reproduces its traits, walked to its
+// recorded state and given its pending hazard and act again. The birth
+// streams must be the ones the cohort was built with, in the same order.
+func (c *Cohort) Load(ps Profiles, actors []wire.ActorRec, births []wire.BirthRec) error {
+	for _, r := range actors {
+		if err := c.revive(ps, r); err != nil {
+			return err
+		}
+	}
+	if len(births) != c.Births.Len() {
+		return fmt.Errorf("engine: snapshot has %d birth streams, config %d", len(births), c.Births.Len())
+	}
+	for i, r := range births {
+		if name, _, _ := c.Births.Stream(i); r.Profile != name {
+			return fmt.Errorf("engine: snapshot birth stream %q, config %q", r.Profile, name)
+		}
+		c.Births.Resume(i, r.At, r.N)
+	}
+	return nil
+}
+
+func (c *Cohort) revive(ps Profiles, r wire.ActorRec) error {
+	p, ok := ps.Get(r.Profile)
+	if !ok {
+		return fmt.Errorf("engine: snapshot actor %d has unknown profile %q", r.ID, r.Profile)
+	}
+	a := c.Revive(p, r.Born)
+	if uint64(a.ID) != r.ID {
+		return fmt.Errorf("engine: snapshot actor %d out of order (got %d)", r.ID, a.ID)
+	}
+	if err := c.Life.Walk(a, population.State(r.State), r.Changed); err != nil {
+		return err
+	}
+	if err := c.Pop().SetFrustration(a.ID, r.Frustration); err != nil {
+		return err
+	}
+	if err := c.Pop().SetCompetence(a.ID, r.Competence); err != nil {
+		return err
+	}
+	st := c.Register(a, p)
+	st.HazardAt, st.HazardTo, st.ActAt, st.Draws = r.HazardAt, population.State(r.HazardTo), r.ActAt, r.Draws
+	st.Booting = r.Booting
+	st.Owed = r.Owed
+	st.FollowUp, st.Waits = r.FollowUp, r.Waits
+	for _, id := range r.Paid {
+		st.Paid = append(st.Paid, population.ActorID(id))
+	}
+	if st.HazardAt != population.Never {
+		st.HazardH = c.env.Sched.Hazard(st.HazardAt, a.ID)
+	}
+	if st.ActAt != population.Never {
+		st.ActH = c.env.Sched.Act(st.ActAt, a.ID)
+	}
+	return nil
 }

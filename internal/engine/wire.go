@@ -96,8 +96,8 @@ type snapshot struct {
 	Version    uint32              `cbor:"1,keyasint"`
 	Now        sched.Time          `cbor:"2,keyasint"`
 	NextIntent uint64              `cbor:"3,keyasint"`
-	Actors     []actorRec          `cbor:"4,keyasint"`
-	Births     []birthRec          `cbor:"5,keyasint"`
+	Actors     []wire.ActorRec     `cbor:"4,keyasint"`
+	Births     []wire.BirthRec     `cbor:"5,keyasint"`
 	Conf       eventlog.ChainPoint `cbor:"6,keyasint"`
 	Window     []blockRec          `cbor:"7,keyasint"`
 	Pending    []pendingRec        `cbor:"8,keyasint"`
@@ -141,36 +141,6 @@ type snapshot struct {
 type ledgerBlob struct {
 	Version uint32 `cbor:"1,keyasint"`
 	Data    []byte `cbor:"2,keyasint"`
-}
-
-type actorRec struct {
-	ID          uint64     `cbor:"1,keyasint"`
-	Profile     string     `cbor:"2,keyasint"`
-	State       string     `cbor:"3,keyasint"`
-	Born        sched.Time `cbor:"4,keyasint"`
-	Changed     sched.Time `cbor:"5,keyasint"`
-	Frustration float64    `cbor:"6,keyasint"`
-	HazardAt    sched.Time `cbor:"7,keyasint"`
-	HazardTo    string     `cbor:"8,keyasint"`
-	ActAt       sched.Time `cbor:"9,keyasint"`
-	Draws       uint64     `cbor:"10,keyasint"`
-	Competence  float64    `cbor:"11,keyasint"`
-	// Booting marks a population actor's wake drawn at the boot rate.
-	Booting bool `cbor:"12,keyasint,omitempty"`
-	// Owed is the follow-ups the actor owes (engine.go, nextAct).
-	Owed uint32 `cbor:"13,keyasint,omitempty"`
-	// Paid are the actor's known payees, most recent last.
-	Paid []uint64 `cbor:"15,keyasint,omitempty"`
-	// FollowUp marks the pending wake as excited (engine.go, act).
-	FollowUp bool `cbor:"16,keyasint,omitempty"`
-	// Waits is the blocks the pending follow-up has waited.
-	Waits uint8 `cbor:"17,keyasint,omitempty"`
-}
-
-type birthRec struct {
-	Profile string     `cbor:"1,keyasint"`
-	At      sched.Time `cbor:"2,keyasint"`
-	N       uint64     `cbor:"3,keyasint"`
 }
 
 type blockRec = wire.Block
