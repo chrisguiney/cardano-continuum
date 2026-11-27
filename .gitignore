@@ -4,6 +4,10 @@
 # Downloaded Java and TLA+ tools. Recreate with `make models-install`.
 .tools/
 
+# TLC's working directory, left in a model directory when a run is cut short
+# (run-model.sh removes it after each config).
+/models/specs/*/states/
+
 # Build outputs at the module root and in bin/ (models/bin holds committed wrappers).
 /bin/
 /dist/

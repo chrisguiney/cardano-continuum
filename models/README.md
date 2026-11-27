@@ -8,4 +8,5 @@ TLA+ models and the tooling to check them.
 
 `make models-install` installs a pinned Java and TLA+ tools into
 `models/.tools` (gitignored); `make models` checks every directory under
-`specs/`.
+`specs/`, and `make models-changed BASE=origin/main` checks only the ones a
+change since `BASE` touched (every one if the runner or the tools changed).

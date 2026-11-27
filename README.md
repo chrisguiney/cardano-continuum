@@ -209,6 +209,10 @@ make models-install
 make models
 ```
 
+`make models-changed` checks only the models changed since `BASE`
+(default `origin/main`), or all of them when the model runner or its tools
+changed.
+
 ## Licence
 
 Apache License 2.0. See [LICENSE](LICENSE).

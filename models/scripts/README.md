@@ -6,3 +6,7 @@
 - `run-model.sh specs/<dir>`: checks every config in a model directory. A
   config named `*Bug.cfg` must report a violation or deadlock; every other
   config must pass. Run for each directory by `make models`.
+- `changed-models.sh BASE`: prints the model directories a change since
+  `BASE` can affect: the specs it touched, or every spec when `scripts/` or
+  `bin/` changed (each spec is self-contained, extending only the standard
+  modules). `make models-changed BASE=origin/main` checks only those.
