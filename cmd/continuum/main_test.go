@@ -12,6 +12,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/store"
+	"go.uber.org/goleak"
 )
 
 // TestDeterminismCLIRuns is `make determinism`'s double run: two fake runs
@@ -129,3 +130,5 @@ func TestFakeRunM3(t *testing.T) {
 		t.Fatalf("submitted by kind: %v", kinds)
 	}
 }
+
+func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
