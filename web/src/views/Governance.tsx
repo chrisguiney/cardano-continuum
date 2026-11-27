@@ -84,13 +84,13 @@ export function ProposalTable({ proposals }: { proposals: ProposalRow[] }) {
         </thead>
         <tbody>
           {proposals.map((p) => (
-            <tr key={p.id} class={p.status === "open" ? undefined : "dim"}>
+            <tr key={p.id} class={p.status === "expired" ? "dim" : undefined}>
               <td><ProposalLink id={p.id} /></td>
               <td>{p.type || "unknown"}{p.summary && <div class="muted">{p.summary}</div>}</td>
               <td><Actor id={p.proposer} profile={p.profile} /></td>
               <td class="num">{ada(p.deposit_lovelace)}</td>
               <td class="num">{p.expires_epoch === undefined ? "–" : `epoch ${p.expires_epoch}`}</td>
-              <td><span class={`tag ${p.status === "open" ? "ok" : "warn"}`}>{p.status}</span></td>
+              <td><span class={`tag ${p.status === "open" || p.status === "ratified" ? "ok" : "warn"}`}>{p.status}</span></td>
               {CLASSES.map((c) => {
                 const t = p.tally[c];
                 if (c === "spo" && !p.spo_may_vote) return <td key={c} class="muted" title="the ledger does not let stake pools vote on this action">not eligible</td>;

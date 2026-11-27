@@ -50,8 +50,8 @@ type GovernanceView struct {
 }
 
 // ProposalRow is one governance action. Status is open or expired, or
-// unknown without a slot schedule; the chain view does not ratify, so an
-// enacted action shows as expired once its last epoch passes.
+// unknown without a slot schedule, or ratified when the votes the run saw
+// meet the thresholds (ratified).
 type ProposalRow struct {
 	ID           string           `json:"id"`
 	Type         string           `json:"type"`
@@ -254,6 +254,36 @@ func (g *govFold) rollback(slot uint64) {
 	}
 }
 
+// enactable are the action types the run proposes that a devnet can
+// enact: the network proposer's parameter changes and treasury
+// withdrawals. Info actions never enact, and honest voters contest the
+// rest.
+var enactable = map[string]bool{"parameter_change": true, "treasury_withdrawals": true}
+
+// ratified reports that p's votes meet the devnet genesis thresholds
+// (internal/genesis renderConway): two thirds of the committee votes cast
+// and at least two seats, 67% of the DRep power that voted yes or no, and
+// for a security-group parameter change 51% of the pool power likewise.
+// It is an estimate from the votes alone: the ledger also counts the stake
+// of DReps and pools that did not vote, as no, which the run's log does
+// not carry, and enacts at the epoch boundary after ratifying.
+func ratified(p ProposalRow) bool {
+	if !enactable[p.Type] {
+		return false
+	}
+	cc, d := p.Tally[classCommittee], p.Tally[classDRep]
+	if cc.Yes < 2 || 3*cc.Yes < 2*(cc.Yes+cc.No) || !share(d, 67) {
+		return false
+	}
+	return !p.PoolsMayVote || share(p.Tally[classSPO], 51)
+}
+
+// share reports that yes power is at least pct percent of yes and no power,
+// and positive.
+func share(t Tally, pct uint64) bool {
+	return t.YesPower > 0 && 100*t.YesPower >= pct*(t.YesPower+t.NoPower)
+}
+
 // view builds the GovernanceView at tip. profileOf names an actor's
 // profile; slots may be nil.
 func (g *govFold) view(slots *sched.Slots, tip uint64, life uint64, profileOf func(uint64) string) GovernanceView {
@@ -297,6 +327,12 @@ func (g *govFold) view(slots *sched.Slots, tip uint64, life uint64, profileOf fu
 		t := out.Proposals[i].Tally[v.Voter]
 		t.add(v.Choice, v.Power)
 		out.Proposals[i].Tally[v.Voter] = t
+	}
+
+	for i := range out.Proposals {
+		if out.Proposals[i].Status != "unknown" && ratified(out.Proposals[i]) {
+			out.Proposals[i].Status = "ratified"
+		}
 	}
 	pools := map[uint64]int{}
 	for i := len(g.recent) - 1; i >= 0 && len(out.Votes) < maxRecentVotes; i-- {

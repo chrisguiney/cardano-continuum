@@ -25,7 +25,7 @@ function Header({ d }: { d: GovDetail }) {
         <dt><Term k="gov_lifetime" /></dt>
         <dd>{p.expires_epoch === undefined ? "–" : `last epoch ${p.expires_epoch}`} <span class="muted">({d.lifetime_epochs} epochs from submission{d.epoch !== undefined ? `, now epoch ${d.epoch}` : ""})</span></dd>
         <dt><Term k="status" /></dt>
-        <dd><span class={`tag ${p.status === "open" ? "ok" : "warn"}`}>{p.status}</span> <span class="muted">not ratified here <Tip k="ratification" /></span></dd>
+        <dd><span class={`tag ${p.status === "open" || p.status === "ratified" ? "ok" : "warn"}`}>{p.status}</span> <span class="muted">{p.status === "ratified" ? "by the votes the run saw" : "ratified once its votes meet the thresholds"} <Tip k="ratification" /></span></dd>
         {c && <><dt><Term k="anchor" /></dt><dd><AnchorLine a={c.anchor} /></dd></>}
         {c && <><dt><Term k="prev_action" /></dt><dd><PrevLink c={c} /></dd></>}
       </dl>
