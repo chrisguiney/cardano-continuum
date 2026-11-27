@@ -6,7 +6,6 @@
 files cmd/continuum 35
 files internal/chain 27
 files internal/engine 45
-func-length cmd/continuum runLive 85
 members cmd/continuum simFlags 22
 members internal/agenda world 22
 members internal/chain View 67

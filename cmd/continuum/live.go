@@ -121,90 +121,155 @@ func liveConfig(sf simFlags, lf liveFlags, g chain.Genesis, np nodeParams, seed 
 	return cfg, nil
 }
 
+// runLive runs the engine against a live node until epochs end (0: until
+// stopped).
 func runLive(ctx context.Context, sf simFlags, lf liveFlags, epochs uint64) error {
 	if lf.state == "" || lf.genesis == "" {
 		return errors.New("run: a live run needs --state and --genesis")
 	}
 	log := slog.New(slog.NewJSONHandler(os.Stderr, nil))
-	seed, err := readSeed(os.Getenv(seedEnv))
+	ctx, lr, err := openLive(ctx, sf, lf, log)
 	if err != nil {
 		return err
+	}
+	defer lr.close()
+	return lr.loop(ctx, lf, epochs)
+}
+
+// liveRun is an opened live run: what runLive builds before its loop and
+// releases after it.
+type liveRun struct {
+	log   *slog.Logger
+	cfg   engine.Config
+	deps  engine.Deps
+	clock sched.Clock
+	fl    *eventlog.FileLog
+	r     *engine.Runner
+	stop  func() error
+	undo  []func()
+}
+
+// later registers a release for close; releases run in reverse order.
+func (lr *liveRun) later(f func()) { lr.undo = append(lr.undo, f) }
+
+func (lr *liveRun) close() {
+	for i := len(lr.undo) - 1; i >= 0; i-- {
+		lr.undo[i]()
+	}
+}
+
+// openLive connects to the node, opens the run's state, and starts the
+// engine. The returned context ends when ctx does or the live API fails;
+// on error everything opened so far is released.
+func openLive(ctx context.Context, sf simFlags, lf liveFlags, log *slog.Logger) (context.Context, *liveRun, error) {
+	lr := &liveRun{log: log}
+	ctx, err := lr.open(ctx, sf, lf)
+	if err != nil {
+		lr.close()
+		return nil, nil, err
+	}
+	return ctx, lr, nil
+}
+
+func (lr *liveRun) open(ctx context.Context, sf simFlags, lf liveFlags) (context.Context, error) {
+	seed, err := readSeed(os.Getenv(seedEnv))
+	if err != nil {
+		return nil, err
 	}
 	want, err := readGenesis(lf.genesis)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	node := chain.Node{Network: lf.network, Address: lf.node, Magic: want.Magic, Log: log}
+	node := chain.Node{Network: lf.network, Address: lf.node, Magic: want.Magic, Log: lr.log}
 	q := chain.NewQuerier(node)
-	cleared, err := guard(ctx, log, q, want)
+	cleared, err := guard(ctx, lr.log, q, want)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	np, err := queryParams(ctx, q)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	cfg, err := liveConfig(sf, lf, want, np, seed)
+	if lr.cfg, err = liveConfig(sf, lf, want, np, seed); err != nil {
+		return nil, err
+	}
+	lr.cfg.Adversaries = cleared
+	db, err := lr.openState(ctx, lf.state)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	cfg.Adversaries = cleared
-	if err := os.MkdirAll(lf.state, 0o750); err != nil {
-		return err
-	}
-	fl, err := eventlog.Open(filepath.Join(lf.state, "events.log"))
-	if err != nil {
-		return err
-	}
-	defer func() { _ = fl.Close() }()
-	db, err := store.Open(ctx, filepath.Join(lf.state, "state.db"), store.WithLog(fl))
-	if err != nil {
-		return err
-	}
-	defer func() { _ = db.Close() }()
-	if fl.LastSeq() == 0 {
-		if err := checkFaucet(ctx, q, cfg); err != nil {
-			return err
+	if lr.fl.LastSeq() == 0 {
+		if err := checkFaucet(ctx, q, lr.cfg); err != nil {
+			return nil, err
 		}
 	}
+	return lr.start(ctx, lf, node, q, want, db)
+}
+
+// openState opens the run's event log and store under dir.
+func (lr *liveRun) openState(ctx context.Context, dir string) (*store.DB, error) {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return nil, err
+	}
+	fl, err := eventlog.Open(filepath.Join(dir, "events.log"))
+	if err != nil {
+		return nil, err
+	}
+	lr.fl = fl
+	lr.later(func() { _ = fl.Close() })
+	db, err := store.Open(ctx, filepath.Join(dir, "state.db"), store.WithLog(fl))
+	if err != nil {
+		return nil, err
+	}
+	lr.later(func() { _ = db.Close() })
+	return db, nil
+}
+
+// start connects the node, wires the engine's dependencies and starts it.
+func (lr *liveRun) start(ctx context.Context, lf liveFlags, node chain.Node, q *chain.Querier, want chain.Genesis, db *store.DB) (context.Context, error) {
 	dial := func(ctx context.Context) (net.Conn, error) {
 		var d net.Dialer
 		return d.DialContext(ctx, lf.network, lf.node)
 	}
-	live := engine.NewLive(node, submit.NewLocal(dial, want.Magic), cfg.K, log)
+	live := engine.NewLive(node, submit.NewLocal(dial, want.Magic), lr.cfg.K, lr.log)
 	live.Start(ctx)
-	defer func() {
+	lr.later(func() {
 		c, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 		defer cancel()
 		if err := live.Close(c); err != nil {
-			log.Warn("live node close", "err", err)
+			lr.log.Warn("live node close", "err", err)
 		}
-	}()
-	clock := sched.NewWall(want.Start)
-	deps := engine.Deps{Clock: clock, Log: fl, Store: db, Node: live, CheckpointEvery: 200, Logger: log,
+	})
+	lr.clock = sched.NewWall(want.Start)
+	lr.deps = engine.Deps{Clock: lr.clock, Log: lr.fl, Store: db, Node: live, CheckpointEvery: 200, Logger: lr.log,
 		Viewer: liveViewer{q: q, node: oracle.Node{Impl: "node", Pool: lf.node}}, ViewEvery: viewEvery,
 		Findings: oracle.NewSet()}
-	lt, err := livePlan(&deps, cfg, lf, want.Magic, log)
+	lt, err := livePlan(&lr.deps, lr.cfg, lf, want.Magic, lr.log)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if lt != nil {
-		defer lt.start(ctx, log)()
+		lr.later(lt.start(ctx, lr.log))
 	}
-	ctx, stop, err := liveServe(ctx, &deps, db, cfg, lf, lt, log)
+	ctx, stop, err := liveServe(ctx, &lr.deps, db, lr.cfg, lf, lt, lr.log)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer func() { _ = stop() }()
-	r, err := engine.Start(ctx, cfg, deps)
-	if err != nil {
-		return err
+	lr.stop = stop
+	lr.later(func() { _ = stop() })
+	if lr.r, err = engine.Start(ctx, lr.cfg, lr.deps); err != nil {
+		return nil, err
 	}
+	return ctx, nil
+}
+
+// loop follows the node until epochs end and stops the live API.
+func (lr *liveRun) loop(ctx context.Context, lf liveFlags, epochs uint64) error {
 	end := sched.Time(math.MaxInt64)
 	if epochs > 0 {
-		end = cfg.Slots.EpochStart(epochs)
+		end = lr.cfg.Slots.EpochStart(epochs)
 	}
-	return errors.Join(follow(ctx, log, cfg, r, fl, clock, end, lf.report), stop())
+	return errors.Join(follow(ctx, lr.log, lr.cfg, lr.r, lr.fl, lr.clock, end, lf.report), lr.stop())
 }
 
 // viewEvery is the simulated time between view monitor queries: each asks
