@@ -40,7 +40,6 @@ nesting internal/scenario SampleVectors 4
 stray-methods cmd/continuum kubeCluster 1
 stray-methods cmd/continuum simFlags 3
 stray-methods internal/chain View 35
-stray-methods internal/devbuild Builder 3
 stray-methods internal/engine Config 6
 stray-methods internal/engine Engine 125
 stray-methods internal/engine Runner 2
