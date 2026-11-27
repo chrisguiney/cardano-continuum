@@ -23,12 +23,18 @@ const BlobVersion = 3
 // settled point, and every unfinished attempt. The blocks above the settled
 // point are not stored; chain-sync replays them after ResumePoint.
 type disk struct {
-	SettledSlot uint64       `json:"settled_slot"`
+	// SettledSlot is the settled point's slot.
+	SettledSlot uint64 `json:"settled_slot"`
+	// SettledHash is the settled point's hash; nil at origin.
 	SettledHash eventlog.Hex `json:"settled_hash"`
-	Utxos       []Utxo       `json:"utxos"`
-	Attempts    []record     `json:"attempts"`
-	Paid        []IntentID   `json:"paid"`
-	NextSeq     uint64       `json:"next_seq"`
+	// Utxos are the outputs at the settled point, by Ref.
+	Utxos []Utxo `json:"utxos"`
+	// Attempts are the unfinished attempts, by seq.
+	Attempts []record `json:"attempts"`
+	// Paid are the intents a settled attempt finished, ascending.
+	Paid []IntentID `json:"paid"`
+	// NextSeq is the last seq a Reserve gave.
+	NextSeq uint64 `json:"next_seq"`
 }
 
 // encode returns the canonical encoding of s, sorted so equal states give

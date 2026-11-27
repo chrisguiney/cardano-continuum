@@ -52,12 +52,15 @@ const (
 
 // ChainPoint is a slot and block hash.
 type ChainPoint struct {
+	// Slot is the block's slot.
 	Slot uint64 `json:"slot"`
-	Hash Hex    `json:"hash"`
+	// Hash is the block's header hash; nil at origin.
+	Hash Hex `json:"hash"`
 }
 
 // BlockApplied is the body of a BlockApplied input.
 type BlockApplied struct {
+	// Point is the block applied.
 	Point ChainPoint `json:"point"`
 	// Content is what the engine reads from the block, in the engine's own
 	// encoding; the log never interprets it. It has to be in the input
@@ -67,16 +70,22 @@ type BlockApplied struct {
 
 // RolledBack is the body of a RolledBack input: the chain is now at To.
 type RolledBack struct {
+	// To is the point the chain rolled back to.
 	To ChainPoint `json:"to"`
 }
 
 // HeaderBody is the body of the header record, which must be seq 1. It holds
 // a fingerprint of the root seed, never the seed.
 type HeaderBody struct {
-	SeedFingerprint Hex    `json:"seed_fingerprint"`
-	ProfileHash     Hex    `json:"profile_hash"`
-	GenesisHash     Hex    `json:"genesis_hash"`
-	BinaryVersion   string `json:"binary_version"`
+	// SeedFingerprint is a hash of a value derived from the root seed.
+	SeedFingerprint Hex `json:"seed_fingerprint"`
+	// ProfileHash is the hash of the profile set the run used.
+	ProfileHash Hex `json:"profile_hash"`
+	// GenesisHash is the hash of the engine's genesis fingerprint,
+	// including the log format version.
+	GenesisHash Hex `json:"genesis_hash"`
+	// BinaryVersion is the build that wrote the log.
+	BinaryVersion string `json:"binary_version"`
 }
 
 // Frame layout: u32 length of (version byte + payload), u32 CRC-32C of those
