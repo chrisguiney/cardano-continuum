@@ -25,13 +25,12 @@ spec:
     maxPools: 3
 `
 
-// TestCRDsInstall applies the generated CRDs, waits for them to be
+// TestCRDsInstall applies the chart's CRDs, waits for them to be
 // established, accepts a valid ContinuumNetwork and rejects one whose
-// topology policy is outside the enum.
+// topology policy is outside the enum. The CRDs stay: other installs on the
+// cluster may hold resources of them.
 func TestCRDsInstall(t *testing.T) {
-	dir := filepath.Join(repoRoot(t), "config", "crd", "bases")
-	kube(t, "", "apply", "-f", dir)
-	t.Cleanup(func() { _, _ = kubectl(t.Context(), "", "delete", "-f", dir, "--ignore-not-found") })
+	kube(t, "", "apply", "-f", filepath.Join(repoRoot(t), "charts", "continuum", "crds"))
 	for _, crd := range []string{"continuumnetworks", "continuumpools"} {
 		kube(t, "", "wait", "--for=condition=Established", "--timeout=60s",
 			"crd/"+crd+".continuum.blinklabs.io")

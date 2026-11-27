@@ -5,18 +5,11 @@ package e2e
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"github.com/chrisguiney/cardano-continuum/internal/genesis"
-	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
 
 const enginePod = "continuum-engine-0"
@@ -51,7 +44,7 @@ type started struct {
 	LogSeq uint64 `json:"log_seq"`
 }
 
-// TestPayments deploys the engine (deploy/engine) against pool 0's
+// TestPayments enables the chart's engine against pool 0's
 // node-to-client bridge with 20 wallets that the genesis faucet funds, and
 // lets them pay each other for two epochs. Mid-run the engine pod is
 // deleted; the replacement must resume from its store and keep paying. At
@@ -63,9 +56,10 @@ func TestPayments(t *testing.T) {
 		t.Skip("takes about 25 minutes")
 	}
 	spec := genesis.Default()
-	ns, pods, start := bootNetwork(t, spec)
-	p0 := poolObject(0)
-	deployEngine(t, ns, fmt.Sprintf("%s.%s.svc.cluster.local:%d", render.Name(&p0), ns, render.NtCPort))
+	b := bootNetwork(t, spec, 0)
+	ns, pods, start := b.ns, b.pods, b.start
+	// The engine's own defaults for profiles and scale, with no adversaries.
+	deployEngine(t, b.release, "engine.profiles=m1", "engine.wallets=20", "engine.scale=1", "engine.attacks=[]")
 
 	epoch := time.Duration(spec.EpochLength) * spec.SlotLength
 	var before progress
@@ -110,51 +104,13 @@ func TestPayments(t *testing.T) {
 	agreeTips(t, ns, pods, "", spec)
 }
 
-// deployEngine applies deploy/engine with the ko-built continuum image,
-// pointed at node.
-func deployEngine(t *testing.T, ns, node string) { deployEngineWith(t, ns, node, false) }
-
-// deployEngineWith deploys the engine with args in place of its default
-// population, and with rbac under the continuum-engine service account
-// (engineRBAC), whose token it then mounts.
-func deployEngineWith(t *testing.T, ns, node string, rbac bool, args ...string) {
+// deployEngine enables the chart's engine in r with sets and waits for its
+// pod to be ready.
+func deployEngine(t *testing.T, r *release, sets ...string) {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join(repoRoot(t), "deploy", "engine", "statefulset.yaml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	sts := string(raw)
-	const from = "image: continuum\n"
-	if strings.Count(sts, from) != 1 {
-		t.Fatalf("deploy/engine/statefulset.yaml: want exactly one %q", from)
-	}
-	sts = strings.Replace(sts, from, "image: "+koBuild(t, "continuum")+"\n", 1)
-	if len(args) > 0 {
-		const wallets = "            - --wallets=20\n"
-		if strings.Count(sts, wallets) != 1 {
-			t.Fatalf("deploy/engine/statefulset.yaml: want exactly one %q", wallets)
-		}
-		var b strings.Builder
-		for _, a := range args {
-			b.WriteString("            - " + a + "\n")
-		}
-		sts = strings.Replace(sts, wallets, b.String(), 1)
-	}
-	if rbac {
-		const token = "      automountServiceAccountToken: false\n"
-		if strings.Count(sts, token) != 1 {
-			t.Fatalf("deploy/engine/statefulset.yaml: want exactly one %q", token)
-		}
-		sts = strings.Replace(sts, token, "      serviceAccountName: continuum-engine\n      automountServiceAccountToken: true\n", 1)
-	}
-	apply(t, ns, corev1.ConfigMap{
-		TypeMeta:   metav1.TypeMeta{APIVersion: "v1", Kind: "ConfigMap"},
-		ObjectMeta: metav1.ObjectMeta{Name: "continuum-engine"},
-		Data:       map[string]string{"node": node},
-	})
-	kube(t, sts, "-n", ns, "apply", "-f", "-")
+	r.upgrade(t, append([]string{"engine.enabled=true"}, sets...)...)
 	poll(t, 5*time.Minute, 5*time.Second, "the engine pod to be ready", func(ctx context.Context) (bool, error) {
-		_, err := kubectl(ctx, "", "-n", ns, "wait", "--for=condition=Ready", "--timeout=5s", "pod/"+enginePod)
+		_, err := kubectl(ctx, "", "-n", r.ns, "wait", "--for=condition=Ready", "--timeout=5s", "pod/"+enginePod)
 		return err == nil, nil
 	})
 }

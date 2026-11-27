@@ -30,10 +30,11 @@ type ResolverConfig struct {
 	// plain HTTP. Every other registry is HTTPS only.
 	InsecureRegistries []string
 	// Mirrors maps a registry host as image references name it to the host
-	// the operator fetches manifests from. A developer registry is pushed
-	// to as localhost:<port>, which inside the operator's pod is the pod
-	// itself; the nodes' containerd maps it separately (hack/kind-up.sh).
-	// The scheme follows the original host's InsecureRegistries entry.
+	// the operator fetches manifests from. A developer registry pushed to as
+	// localhost:<port> is, inside the operator's pod, the pod itself; the
+	// nodes' container runtime maps such a name by its own configuration,
+	// which the cluster's setup owns. The scheme follows the original
+	// host's InsecureRegistries entry.
 	Mirrors map[string]string
 }
 

@@ -1,16 +1,12 @@
 # deploy
 
-Hand-written Kubernetes manifests for the system's components. `hack/up.sh`
-(`make up`) applies the operator, genesis and engine ones, substituting image
-references and the namespace; the end-to-end tests apply the genesis and
-engine ones too.
+Hand-written Kubernetes manifests that are not part of the cluster install.
+The system itself installs with the Helm chart in
+[`charts/continuum`](../charts/continuum/README.md) (`make up`).
 
 | Directory | Component |
 |---|---|
-| [`operator/`](operator/README.md) | the operator |
-| [`genesis/`](genesis/README.md) | the genesis Job |
-| [`engine/`](engine/README.md) | the engine StatefulSet and its RBAC |
-| [`lab/`](lab/README.md) | the calibration notebook (not applied by `make up`) |
+| [`lab/`](lab/README.md) | the calibration notebook |
 
 The CRDs and the operator's ClusterRole are generated, in
-[`config/`](../config/README.md).
+[`config/`](../config/README.md), and copied into the chart.

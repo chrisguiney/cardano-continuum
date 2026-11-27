@@ -105,12 +105,10 @@ chart-check: ## Lint and render the Helm chart (default and non-default values)
 	$(HELM) template continuum $(CHART) -n chart-check -f $(CHART)/ci/nondefault-values.yaml >/dev/null
 	@node=$$(go run ./hack/devup node chart-check) && $(HELM) template continuum $(CHART) -n chart-check | grep -qF -- "--node=$$node" || { echo "the chart's engine does not dial pool 0's bridge ($$node)"; exit 1; }
 
-# ko and kind run at pinned versions and are never added to go.mod, so a
-# developer needs only Go and Docker.
+# ko runs at a pinned version and is never added to go.mod, so a developer
+# needs only Go and Docker.
 KO_VERSION := v0.19.1
 KO := go run github.com/google/ko@$(KO_VERSION)
-KIND_VERSION := v0.33.0
-KIND := go run sigs.k8s.io/kind@$(KIND_VERSION)
 
 # Developer registry. CONTINUUM_REGISTRY is host[:port][/path]; there is no
 # default, so a push without it fails instead of reaching a public registry.
@@ -218,21 +216,22 @@ scenarios: ## Regenerate the scenario library from TLA_REPO at TLA_REF (Mode A t
 	@test -n "$(TLA_REPO)" -a -n "$(TLA_REF)" || { echo "set TLA_REPO and TLA_REF"; exit 2; }
 	go run ./cmd/continuum scenario harvest --repo "$(TLA_REPO)" --ref "$(TLA_REF)" --out "$(SCENARIOS_OUT)" --walks $(WALKS)
 
-# kind e2e. kind-up starts a throwaway plain-HTTP registry next to the cluster;
-# e2e points CONTINUUM_REGISTRY at it. kind-down removes both.
-E2E_PORT ?= 5001
+# e2e runs against an existing cluster of any distribution. E2E_CONTEXT
+# names its kubectl context and is required: the suite never falls back to
+# the current context. Each test installs the chart into its own
+# continuum-e2e-* namespace and removes it. CONTINUUM_REGISTRY must be a
+# registry the cluster pulls from; E2E_CLUSTER_REGISTRY is the same registry
+# as the nodes name it, when that differs.
+E2E_CONTEXT ?=
+E2E_CLUSTER_REGISTRY ?=
 E2E_TIMEOUT ?= 100m
 
-.PHONY: kind-up kind-down e2e
-kind-up: ## Start the kind cluster and its plain-HTTP registry (names continuum-e2e*)
-	KIND="$(KIND)" CONTINUUM_E2E_PORT=$(E2E_PORT) hack/kind-up.sh
-
-kind-down: ## Remove the kind cluster and the registry
-	KIND="$(KIND)" hack/kind-down.sh
-
-e2e: kind-up ## Run the kind e2e suite (about an hour; go test -short skips the slowest)
-	CONTINUUM_REGISTRY=localhost:$(E2E_PORT)/continuum CONTINUUM_REGISTRY_INSECURE=true \
-	CONTINUUM_KO="$(KO)" CONTINUUM_DINGO_SRC="$(DINGO_SRC)" CONTINUUM_GOUROBOROS_SRC="$(GOUROBOROS_SRC)" \
+.PHONY: e2e
+e2e: require-registry ## Run the e2e suite against E2E_CONTEXT (about an hour; go test -short skips the slowest)
+	@test -n "$(E2E_CONTEXT)" || { echo "E2E_CONTEXT is not set: name the kubectl context of the cluster to test"; exit 1; }
+	E2E_CONTEXT='$(E2E_CONTEXT)' CONTINUUM_E2E_CLUSTER_REGISTRY='$(E2E_CLUSTER_REGISTRY)' \
+	CONTINUUM_REGISTRY='$(CONTINUUM_REGISTRY)' CONTINUUM_REGISTRY_INSECURE='$(CONTINUUM_REGISTRY_INSECURE)' CONTINUUM_PLATFORM='$(PLATFORM)' \
+	CONTINUUM_KO="$(KO)" CONTINUUM_HELM="$(HELM)" CONTINUUM_DINGO_SRC="$(DINGO_SRC)" CONTINUUM_GOUROBOROS_SRC="$(GOUROBOROS_SRC)" \
 	CONTINUUM_OVERLAY_MODE="$(MODE)" go test -tags e2e -count=1 -timeout $(E2E_TIMEOUT) -v ./test/e2e/...
 
 # make images builds the images the chart runs and pushes them to

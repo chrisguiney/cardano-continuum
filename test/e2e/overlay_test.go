@@ -5,6 +5,7 @@ package e2e
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"os"
 	"strconv"
@@ -21,13 +22,8 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
 
-const (
-	// clusterRegistry is the registry's address on the kind network, which
-	// the operator resolves against and the nodes pull from.
-	clusterRegistry = "continuum-e2e-registry:5000"
-	// dingoSocket is where the operator's dingo driver puts the node socket.
-	dingoSocket = "/tmp/node.socket"
-)
+// dingoSocket is where the operator's dingo driver puts the node socket.
+const dingoSocket = "/tmp/node.socket"
 
 // TestGouroborosOverlayCanary runs one dingo pool on an image built from
 // dingo plus a gouroboros checkout, next to cardano-node pools, and requires
@@ -55,24 +51,11 @@ func TestGouroborosOverlayCanary(t *testing.T) {
 	}
 
 	spec := genesis.Default()
-	ns := newNS(t)
-	registry := clusterRegistry + "/continuum"
-	installOperator(t, ns, "--registry", registry, "--registry-insecure")
-	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.WithoutCancel(t.Context()), 3*time.Minute)
-		defer cancel()
-		_, _ = kubectl(ctx, "", "-n", ns, "delete", "continuumpools", "--all", "--wait=true", "--timeout=60s")
-		_, _ = kubectl(ctx, "", "-n", ns, "wait", "--for=delete", "pod", "-l", render.LabelWorkload, "--timeout=100s")
-	})
-	prepullNodeImage(t, ns)
-	kube(t, genesisResources, "-n", ns, "apply", "-f", "-")
-	deployGenesis(t, ns, 90*time.Second)
-	read := genesisReader(t, ns)
-	publishGenesis(t, ns, read, spec)
-	pods := applyNetwork(t, ns, spec)
-
-	// The cluster pulls by the in-cluster registry name; the push used the host's.
-	ref := clusterRegistry + built.Ref[strings.Index(built.Ref, "/"):]
+	// The operator resolves the overlay image by the name the cluster pulls.
+	b := bootNetwork(t, spec, 0, "operator.registry="+clusterRegistry(t),
+		fmt.Sprintf("operator.registryInsecure=%t", os.Getenv("CONTINUUM_REGISTRY_INSECURE") == "true"))
+	ns, pods, start := b.ns, b.pods, b.start
+	ref := clusterRef(t, built.Ref)
 	dingo := v1alpha1.ContinuumPool{
 		TypeMeta:   metav1.TypeMeta{APIVersion: v1alpha1.GroupVersion.String(), Kind: "ContinuumPool"},
 		ObjectMeta: metav1.ObjectMeta{Name: "dingo"},
@@ -97,8 +80,6 @@ func TestGouroborosOverlayCanary(t *testing.T) {
 	checkOverlayStatus(t, ns, mode, gouroSha)
 
 	pod := render.PodName(render.Name(&dingo))
-	start := systemStart(t, read("config/"+genesis.ShelleyFile))
-	requireOneChain(t, ns, pods, spec, start)
 	deadline := start.Add(10 * time.Minute)
 	poll(t, time.Until(deadline), 15*time.Second, "dingo to follow the chain", func(ctx context.Context) (bool, error) {
 		cn := tips(ctx, ns, pods, spec.Magic)
@@ -118,7 +99,7 @@ func TestGouroborosOverlayCanary(t *testing.T) {
 // buildOverlay builds and pushes the overlay image to the host-side registry.
 func buildOverlay(t *testing.T, dingoSrc, gouroSrc string, mode devbuild.Mode) v1alpha1.ResolvedImage {
 	t.Helper()
-	set, err := image.NewSettings(mustEnv(t, "CONTINUUM_REGISTRY"), new(true), os.Getenv, "", image.WithPush())
+	set, err := image.NewSettings(mustEnv(t, "CONTINUUM_REGISTRY"), nil, os.Getenv, "", image.WithPush())
 	if err != nil {
 		t.Fatal(err)
 	}

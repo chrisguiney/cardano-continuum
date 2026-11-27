@@ -59,25 +59,6 @@ spec:
       emptyDir: {}
 `
 
-// prepullYAML binds the genesis volume to a node and pulls nodeImage there
-// before the Job fixes systemStart, so the pools do not start late.
-const prepullYAML = `apiVersion: v1
-kind: Pod
-metadata:
-  name: prepull
-spec:
-  terminationGracePeriodSeconds: 0
-  containers:
-    - name: main
-      image: ` + nodeImage + `
-      command: [sleep, "3600"]
-      volumeMounts:
-        - {name: genesis, mountPath: /genesis}
-  volumes:
-    - name: genesis
-      persistentVolumeClaim: {claimName: continuum-genesis}
-`
-
 // epochsWanted is how many epochs the chain must pass; two crosses two
 // epoch boundaries.
 const epochsWanted = 2
@@ -92,11 +73,11 @@ func TestDefaultGenesisForges(t *testing.T) {
 	}
 	spec := genesis.Default()
 	ns := newNS(t)
-	kube(t, genesisResources, "-n", ns, "apply", "-f", "-")
-	kube(t, prepullYAML, "-n", ns, "apply", "-f", "-")
-	kube(t, "", "-n", ns, "wait", "--for=condition=Ready", "--timeout=8m", "pod/prepull")
-	kube(t, "", "-n", ns, "delete", "pod", "prepull", "--wait=false")
-	deployGenesis(t, ns, 60*time.Second)
+	// The Job pulls nodeImage before it fixes systemStart, and binds the
+	// genesis volume to its node, where the pool pods then run.
+	installChart(t, ns, genesisParts, startDelay(60*time.Second), "nodeImages.cardanoNode="+nodeImage,
+		fmt.Sprintf("pools.cardanoNode=%d", spec.Pools), "pools.dingo=0")
+	waitGenesis(t, ns)
 	for i := range spec.Pools {
 		kube(t, fmt.Sprintf(poolYAML, i), "-n", ns, "apply", "-f", "-")
 	}

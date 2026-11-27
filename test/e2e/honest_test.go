@@ -13,42 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/genesis"
-	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
-
-// engineRBAC lets the engine patch its network's ContinuumPools (the pool
-// plan) and read their status (pod health).
-const engineRBAC = `apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: continuum-engine
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: continuum-engine
-rules:
-  - apiGroups: [continuum.blinklabs.io]
-    resources: [continuumpools]
-    verbs: [get, list, watch, patch]
-  - apiGroups: [continuum.blinklabs.io]
-    resources: [continuumnetworks]
-    verbs: [get]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: continuum-engine
-subjects:
-  - kind: ServiceAccount
-    name: continuum-engine
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: continuum-engine
-`
 
 // TestHonestM3 runs the shipped honest population (about 30 wallets, two
 // DReps' worth of civic actors and the four genesis pools' operators) on a
@@ -64,18 +30,12 @@ func TestHonestM3(t *testing.T) {
 	}
 	spec := genesis.Default()
 	spec.Pools = 4
-	ns, pods, start := bootNetworkWith(t, spec, func(i int) v1alpha1.ContinuumPool {
-		p := poolObject(i)
-		if i == spec.Pools-1 {
-			p.Spec.Implementation = v1alpha1.Dingo
-		}
-		return p
-	})
-	p0 := poolObject(0)
-	kube(t, engineRBAC, "-n", ns, "apply", "-f", "-")
-	deployEngineWith(t, ns, fmt.Sprintf("%s.%s.svc.cluster.local:%d", render.Name(&p0), ns, render.NtCPort), true,
-		"--profiles=m3", "--wallets=30", "--pools=4", fmt.Sprintf("--genesis-pools=%d", spec.Pools), "--floor=60",
-		"--network=devnet", "--namespace="+ns, "--serve=127.0.0.1:8088")
+	b := bootNetwork(t, spec, 1)
+	ns, pods, start := b.ns, b.pods, b.start
+	// The chart passes --genesis-pools (4), --network and --namespace, and
+	// serves on the pod's loopback port 8088.
+	deployEngine(t, b.release, "engine.profiles=m3", "engine.wallets=30", "engine.pools=4", "engine.scale=1",
+		"engine.attacks=[]", `engine.extraArgs=["--floor=60"]`, "engine.ui.port=8088")
 
 	epoch := time.Duration(spec.EpochLength) * spec.SlotLength
 	poll(t, time.Until(start.Add(epoch+time.Minute)), 15*time.Second, "the engine in epoch 1", func(ctx context.Context) (bool, error) {
@@ -160,7 +120,7 @@ func agreeTips(t *testing.T, ns string, nodes []string, dingo string, s genesis.
 func portForward(t *testing.T, ns, pod string, port int) string {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.WithoutCancel(t.Context()))
-	cmd := exec.CommandContext(ctx, "kubectl", "-n", ns, "port-forward", "pod/"+pod, fmt.Sprintf(":%d", port))
+	cmd := exec.CommandContext(ctx, "kubectl", "--context", kubeContext, "-n", ns, "port-forward", "pod/"+pod, fmt.Sprintf(":%d", port))
 	out, err := cmd.StdoutPipe()
 	if err != nil {
 		cancel()

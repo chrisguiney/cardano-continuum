@@ -5,8 +5,7 @@ package e2e
 import (
 	"context"
 	"encoding/json"
-	"os"
-	"path/filepath"
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -16,76 +15,34 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	"github.com/chrisguiney/cardano-continuum/internal/genesis"
+	"github.com/chrisguiney/cardano-continuum/internal/genesis/publish"
 )
-
-// seedHex is a fixed run seed: 32 bytes, hex encoded.
-const seedHex = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
 // busybox is only used to read files off the genesis volume.
 const busybox = "busybox:1.37.0"
 
-const genesisResources = `apiVersion: v1
-kind: Secret
-metadata:
-  name: continuum-seed
-stringData:
-  seed: ` + seedHex + `
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: continuum-genesis
-spec:
-  accessModes: [ReadWriteOnce]
-  resources:
-    requests:
-      storage: 100Mi
-`
+// genesisParts installs the genesis Job alone: no operator, network or engine.
+var genesisParts = parts{genesis: true}
 
-// startDelayArg is the argument of deploy/genesis/job.yaml that deployGenesis
-// rewrites.
-const startDelayArg = "-start-delay=60s"
+// startDelay sets the genesis Job's -start-delay.
+func startDelay(d time.Duration) string { return "genesis.startDelay=" + d.String() }
 
-// deployGenesis renders the default spec into the continuum-genesis volume of
-// ns with deploy/genesis/job.yaml and waits for the Job to finish. The job's
-// start delay is replaced by delay. The Job qualifies pool host names with
-// its own namespace.
-func deployGenesis(t *testing.T, ns string, delay time.Duration, args ...string) {
+// waitGenesis waits for the chart's genesis Job in ns to complete.
+func waitGenesis(t *testing.T, ns string) {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join(repoRoot(t), "deploy", "genesis", "job.yaml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	job := string(raw)
-	for from, to := range map[string]string{
-		"image: continuum-genesis": "image: " + koBuild(t, "continuum-genesis"),
-		startDelayArg:              "-start-delay=" + delay.String(),
-	} {
-		if strings.Count(job, from) != 1 {
-			t.Fatalf("deploy/genesis/job.yaml: want exactly one %q", from)
-		}
-		job = strings.Replace(job, from, to, 1)
-	}
-	// Extra continuum-genesis flags go after -out, the Job's first argument.
-	const out = "            - -out=/genesis\n"
-	if len(args) > 0 && strings.Count(job, out) != 1 {
-		t.Fatalf("deploy/genesis/job.yaml: want exactly one %q", out)
-	}
-	for _, a := range args {
-		job = strings.Replace(job, out, out+"            - "+a+"\n", 1)
-	}
-	kube(t, genesisResources, "-n", ns, "apply", "-f", "-")
-	kube(t, job, "-n", ns, "apply", "-f", "-")
-	poll(t, 4*time.Minute, 2*time.Second, "genesis job to complete", func(ctx context.Context) (bool, error) {
-		out, err := kubectl(ctx, "", "-n", ns, "get", "job", "continuum-genesis", "-o", "json")
+	poll(t, 10*time.Minute, 2*time.Second, "genesis job to complete", func(ctx context.Context) (bool, error) {
+		out, err := kubectl(ctx, "", "-n", ns, "get", "job", "-l", "app=continuum-genesis", "-o", "json")
 		if err != nil {
 			return false, err
 		}
-		var j batchv1.Job
-		if err := json.Unmarshal([]byte(out), &j); err != nil {
+		var jobs batchv1.JobList
+		if err := json.Unmarshal([]byte(out), &jobs); err != nil {
 			return false, err
 		}
-		for _, c := range j.Status.Conditions {
+		if len(jobs.Items) != 1 {
+			return false, nil
+		}
+		for _, c := range jobs.Items[0].Status.Conditions {
 			if c.Status != corev1.ConditionTrue {
 				continue
 			}
@@ -130,11 +87,19 @@ spec:
 	return read
 }
 
-// TestGenesisJob runs the genesis Job from deploy/genesis and reads the
-// default spec back from the volume.
+// publishedShelley is the Shelley genesis the Job published to ns.
+func publishedShelley(t *testing.T, ns string) string {
+	t.Helper()
+	return kube(t, "", "-n", ns, "get", "configmap", "devnet-genesis", "-o", `jsonpath={.data.shelley-genesis\.json}`)
+}
+
+// TestGenesisJob installs the chart's genesis Job alone, reads the default
+// spec back from the volume and requires the Job to have published the
+// configuration and every pool's keys.
 func TestGenesisJob(t *testing.T) {
 	ns := newNS(t)
-	deployGenesis(t, ns, 60*time.Second)
+	installChart(t, ns, genesisParts, startDelay(60*time.Second))
+	waitGenesis(t, ns)
 
 	read := genesisReader(t, ns)
 
@@ -155,9 +120,20 @@ func TestGenesisJob(t *testing.T) {
 		shelley.ActiveSlotsCoeff != want.ActiveSlotsCoeff || shelley.NetworkMagic != want.Magic {
 		t.Errorf("shelley genesis = %+v, want default spec %+v", shelley, want)
 	}
-	for i := range want.Pools {
+	if got := publishedShelley(t, ns); got != read("config/"+genesis.ShelleyFile) {
+		t.Error("the published Shelley genesis differs from the volume's")
+	}
+
+	pools := 4 // the chart's default pools: three cardano-node and one dingo
+	for i := range pools {
 		for _, f := range []string{"kes.skey", "vrf.skey", "opcert.cert", "topology.json"} {
-			read("pools/" + string(rune('0'+i)) + "/" + f)
+			read(fmt.Sprintf("pools/%d/%s", i, f))
+		}
+		keys := kube(t, "", "-n", ns, "get", "secret", fmt.Sprintf("keys-%d", i), "-o", "jsonpath={.data}")
+		for _, f := range publish.KeyFiles {
+			if !strings.Contains(keys, `"`+f+`"`) {
+				t.Errorf("secret keys-%d lacks %s", i, f)
+			}
 		}
 	}
 }

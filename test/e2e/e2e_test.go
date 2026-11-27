@@ -1,11 +1,15 @@
 //go:build e2e
 
-// Package e2e runs continuum against a kind cluster started by `make
-// kind-up`. Run it with `make e2e`.
+// Package e2e runs continuum against an existing Kubernetes cluster of any
+// distribution, installing it with the Helm chart. Run it with
+// `make e2e E2E_CONTEXT=<kubectl context>`.
 //
-// Every kubectl call is pinned to the e2e cluster's context so a stray run
-// cannot touch the developer's own cluster. Waits poll with a deadline and
-// never sleep blindly.
+// The suite refuses to run unless E2E_CONTEXT names the context explicitly,
+// and every kubectl and helm call is pinned to it, so a stray run never
+// lands on whatever the current context is. Each test installs into a
+// namespace of its own (prefix continuum-e2e-) and removes it after; the
+// CRDs are applied and left in place, since other installs on the cluster
+// may use them. Waits poll with a deadline and never sleep blindly.
 package e2e
 
 import (
@@ -21,9 +25,17 @@ import (
 	"time"
 )
 
-// kubeContext is the context kind creates for the cluster named in
-// hack/kind-up.sh.
-const kubeContext = "kind-continuum-e2e"
+// kubeContext is E2E_CONTEXT, the kubectl context of the cluster under test.
+var kubeContext string
+
+func TestMain(m *testing.M) {
+	kubeContext = os.Getenv("E2E_CONTEXT")
+	if kubeContext == "" {
+		fmt.Fprintln(os.Stderr, "E2E_CONTEXT is not set: name the kubectl context of the cluster to test (make e2e E2E_CONTEXT=...)")
+		os.Exit(2)
+	}
+	os.Exit(m.Run())
+}
 
 // nsPrefix prefixes every namespace the tests create.
 const nsPrefix = "continuum-e2e-"

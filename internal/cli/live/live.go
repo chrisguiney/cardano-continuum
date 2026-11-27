@@ -326,7 +326,7 @@ func follow(ctx context.Context, log *slog.Logger, cfg engine.Config, r *engine.
 	}
 }
 
-// report logs one progress record. Its keys are what the kind e2e reads.
+// report logs one progress record. Its keys are what the e2e suite reads.
 func report(ctx context.Context, log *slog.Logger, cfg engine.Config, r *engine.Runner, l engine.Log, clock sched.Clock) error {
 	t, err := engine.AuditLog(context.WithoutCancel(ctx), l)
 	if err != nil {
