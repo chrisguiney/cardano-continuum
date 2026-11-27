@@ -6,8 +6,9 @@ rejects it, or does not answer; the actor waits, resubmits the same bytes,
 or reads the rejection, decides what it got wrong, fixes that and builds
 again. A low-competence actor decides wrongly. After `Patience`
 submissions it gives up. Meanwhile blocks include, bury and roll back its
-attempts, and the planner hears about them late. `SubmitRetry.tla` decides
-the retry machine's rules before the retry code exists.
+attempts, and the planner hears about them late. `SubmitRetry.tla` decided
+the retry machine's rules before the retry code existed; the
+[code map](#code-map) pins the commit it now models.
 
 Run it with `make models` (all models) or
 `models/scripts/run-model.sh specs/submit-retry`.
@@ -81,7 +82,8 @@ retry machine never chooses inputs itself.
   decided send, whose bytes may have reached the node. That attempt counts
   as sent (the Sender's resumed intents, `SubmitResult.Resend`).
 - **Liveness**, under weak fairness of the machine, the planner, burial and
-  time. The node need never include anything.
+  time (`FairSpec`), in the `*Live` configs. The node need never include
+  anything.
 
 ## What is not modelled
 
@@ -121,16 +123,36 @@ see; they are what the oracle would otherwise blame on the node.
 
 ## Configs
 
-Passing configs check everything above. A `*Bug.cfg` checks the one
-property it names and must fail.
+Safety and liveness are split: a passing safety config checks every
+invariant and both action properties under `Spec` (TLC can use every
+worker), and its `*Live` twin checks `Terminates` and `AttemptsEnd` under
+`FairSpec` at the same bounds. A `*Bug.cfg` checks the one property it names
+and must fail.
+
+TLC's deadlock check is on. A run ends in `Finished`: every intent done or
+given up and every attempt settled, written off or never built (`Done(i)`
+is already the machine's step to "done"). Any other state with no step is
+a stuck machine or planner. `RetryNoExpiryLiveBug` and
+`RetryRestartForgetsSentBug` turn the check off, with the reason in the
+config: each reaches a stuck attempt that is also a deadlock, and the
+property it names is what it gives teeth to.
+
+What the deadlock check found: `RestartForgetsSent` breaks two things, not
+one. Besides the double payment, an attempt sent with no answer, whose
+actor then gave up, is never written off after the restart: only a sent
+attempt ages out (`Expire`), and nothing else ever moves it. TLC reported
+that deadlock before the double payment, so
+`RetryRestartForgetsSentStuckBug` now names it. The unmutated rules have no
+such state.
 
 | Config | Changes | Expected |
 |---|---|---|
-| `Retry` | nothing: base bounds | pass |
-| `RetryHighCompetence` | the actor always names a reported class | pass |
-| `RetryRestart` | one restart at any point, no outside spend | pass |
-| `RetryRestartReplay` | the same, with the engine's restart (`Recovery = "replay"`) | pass |
+| `Retry`, `RetryLive` | nothing: base bounds | pass |
+| `RetryHighCompetence`, `RetryHighCompetenceLive` | the actor always names a reported class | pass |
+| `RetryRestart`, `RetryRestartLive` | one restart at any point, no outside spend | pass |
+| `RetryRestartReplay`, `RetryRestartReplayLive` | the same, with the engine's restart (`Recovery = "replay"`) | pass |
 | `RetryTwoIntents` | two intents, one restart; safety only | pass |
+| `RetryReleaseOnGiveUpFixed` | `RetryReleaseOnGiveUpBug`'s bounds (patience of two), the rule unchanged | pass |
 | `RetryRebuildOnOwnSpendBug` | any rejection is a refusal, including "inputs spent" to a resubmit | `IntentAtMostOnce` |
 | `RetryRefuseOnDiagnosisBug` | the refusal is decided from the actor's diagnosis | `IntentAtMostOnce` |
 | `RetryRefuseOnUnreachedBug` | no answer is a refusal | `IntentAtMostOnce` |
@@ -138,6 +160,7 @@ property it names and must fail.
 | `RetryReleaseOnRollbackBug` | a rollback writes the attempt off and rebuilds | `IntentAtMostOnce` |
 | `RetryBypassReserveBug` | a rebuild chooses inputs without `Reserve`'s conflict rule | `IntentAtMostOnce` |
 | `RetryRestartForgetsSentBug` | after a restart, unfinished attempts count as never sent | `IntentAtMostOnce` |
+| `RetryRestartForgetsSentStuckBug` | the same | `Deadlock` (`\* EXPECT: Deadlock`) |
 | `RetryReplayForgetsSentBug` | the engine's restart does not mark an interrupted send as sent | `IntentAtMostOnce` |
 | `RetryReleaseOnGiveUpBug` | giving up writes every unfinished attempt off | `DeadIsDead` |
 | `RetryResetOnRollbackBug` | a rollback resets the submission counter | `AttemptsBounded` |
@@ -145,6 +168,10 @@ property it names and must fail.
 | `RetryNoPatienceBug` | no attempt cap | `Terminates` |
 | `RetrySingleExpectedVerdictBug` | the oracle expects one class, for the first mistake | `OracleSound` |
 | `RetryOracleIgnoresResubmitBug` | the oracle treats a resubmit as a fresh transaction | `OracleSound` |
+| `RetrySettleOnBlockBug` | the planner settles an attempt at first sight in a block | `SettledIsFinal` |
+| `RetryNoSlotReuseBug` | a dead slot is never reused; two slots for a patience of three | `SlotsSuffice` |
+| `RetryRestartReopensBug` | a restart rebuilds a finished machine too | `FinalIsFinal` |
+| `RetryNoExpiryLiveBug` | an attempt is never written off for its time-to-live | `AttemptsEnd` |
 | `RetryProbe*Bug` (six) | nothing; each denies a state that must be reachable | its `ProbeNo*` |
 
 The probes show the passing configs do not pass for want of states: an
@@ -197,21 +224,28 @@ outside spend, no restart. Intents share nothing in this abstraction, so
 one intent is the base and `RetryTwoIntents` shows the product with a
 restart.
 
-TLC 2.19 (tla2tools 1.7.4), 14 workers, with another model checker
-competing for the machine:
+TLC 2.19 (tla2tools 1.7.4), `-workers auto` on 14 cores; a `*Live` config
+checks liveness on one worker whatever `-workers` says:
 
-| Config | States generated | Distinct states | Depth | Time |
-|---|---|---|---|---|
-| `Retry` | 1,109,832 | 383,236 | 25 | 66 s |
-| `RetryHighCompetence` | 471,614 | 161,602 | 25 | 13 s |
-| `RetryRestart` | 761,172 | 276,956 | 26 | 23 s |
-| `RetryRestartReplay` | 1,363,954 | 477,456 | 26 | 75 s |
-| `RetryTwoIntents` | 83,536,484 | 18,845,236 | 29 | 110-200 s |
+| Config | Distinct states | Depth | Time |
+|---|---|---|---|
+| `Retry` | 383,236 | 25 | 2 s |
+| `RetryLive` | 383,236 | 25 | 28 s |
+| `RetryHighCompetence` | 161,602 | 25 | 2 s |
+| `RetryHighCompetenceLive` | 161,602 | 25 | 13 s |
+| `RetryRestart` | 276,956 | 26 | 2 s |
+| `RetryRestartLive` | 276,956 | 26 | 34 s |
+| `RetryRestartReplay` | 477,456 | 26 | 4 s |
+| `RetryRestartReplayLive` | 477,456 | 26 | 34 s |
+| `RetryReleaseOnGiveUpFixed` | 46,452 | | 2 s |
+| `RetryTwoIntents` | 18,845,236 | 29 | 88 s |
 
-The liveness check is most of `Retry`'s time. `RetryTwoIntents` is safety
-only and keeps one mistake kind: with two it passed at 128 million states
-generated, over four minutes. The whole directory checks in under four
-minutes; each `*Bug.cfg` stops at its counterexample within seconds.
+Before the split, `Retry` checked both halves in 27 s; its safety half now
+takes 2 s with every worker. `RetryTwoIntents` is safety only and keeps one
+mistake kind: with two it passed at 128 million states generated, over four
+minutes. `verdicts.tsv` holds the current counts and times, and the runner
+compares every run with it; turning the deadlock check on changed no
+distinct count. Each `*Bug.cfg` stops at its counterexample within seconds.
 
 ## RETRY STATE MACHINE CONTRACT
 
@@ -328,18 +362,42 @@ Rules:
 
 ## Code map
 
-| Model | Code |
-|---|---|
-| the machine (`ms`, `cur`, `tries`, `fixed`, `sent`) | `submit.Machine` and the pure `submit.Step` in `internal/submit/step.go`; the model's `rejected` is the code's `Diagnosing` |
-| `Build` | `pay.Retry.rebuild` through `pay.Pay.Reserve` (`internal/engine/internal/pay/retry.go`, `pay.go`); a fix is `mistake.Carry` (`internal/mistake/mistake.go`) |
-| `Submit` | a `SendTx` action, sent by `send.Sender` (`internal/engine/internal/send/send.go`); several targets are `submit.Fanout` and `submit.Aggregate` (`internal/submit/submit.go`) |
-| `Refusal(t, v)` | `submit.Outcome.Refutes` and `submit.Intrinsic`, carried out by `pay.Retry.refuse`; a one-shot intent uses `pay.Refusable` |
-| `Classify` | the `Diagnose` action, answered by `mistake.Diagnoser.Diagnose` (`internal/mistake/sample.go`) |
-| `Confirm`, `RolledBack`, `Dropped`, `Lost`, `Done` | `pay.Retry.InBlock`, `LeftView`, `Dropped`, `Release` (`submit.Dead`) and `Settle` |
-| `GiveUp` | the `GiveUp` action; it releases nothing |
-| `Sync` (planner settles and writes off) | `pay.Pay.Advance` over `plan.Ledger.Advance` (see `specs/planner-reservations`) |
-| `Restart`, `Recovery = "replay"` | the checkpoint and log replay (`specs/engine-recovery`); `send.New`'s resumed intents set `SubmitResult.Resend`. `submit.Restart` is the `"rebuild"` form and is not called by the engine |
-| `Expected(t)`, `OracleSound` | `mistake.Expect` and `mistake.Expected.Pass`, filed by the oracle (`internal/oracle/finding.go`) |
+Models cardano-continuum at `72c4fb0`. The package comment of
+`internal/engine/internal/pay/pay.go` maps each action of this model and of
+`planner-reservations` to the code.
+
+| Model | Code | What |
+|---|---|---|
+| the machine (`ms`, `cur`, `tries`, `fixed`, `sent`) | `internal/submit/step.go:80` (`submit.Machine`), `:244` (`submit.Step`) | the model's `rejected` is the code's `Diagnosing` |
+| `Build` | `internal/engine/internal/pay/retry.go:343` (`Retry.rebuild`) through `internal/engine/internal/pay/pay.go:139` (`Pay.Reserve`); a fix is `internal/mistake/mistake.go:240` (`mistake.Carry`) | the next attempt, through `Reserve` |
+| `Submit` | a `SendTx` action (`internal/engine/internal/pay/retry.go:300`), sent by `internal/engine/internal/send/send.go:58` (`Sender.Send`); several targets are `internal/submit/submit.go:224` (`Fanout`) and `:175` (`Aggregate`) | every send counts against patience |
+| `Refusal(t, v)` | `internal/submit/submit.go:138` (`Outcome.Refutes`), `:160` (`Intrinsic`), carried out by `internal/engine/internal/pay/retry.go:327` (`Retry.refuse`); a one-shot intent uses `internal/engine/internal/pay/pay.go:263` (`Refusable`) | decided once, from the node's answer |
+| `Classify` | `internal/engine/internal/pay/retry.go:121` (`Retry.Answer`) and the `Diagnose` action, answered by `internal/mistake/sample.go:64` (`Diagnoser.Diagnose`) | the diagnosis only chooses the fix |
+| `Confirm` | `internal/engine/internal/pay/retry.go:144` (`Retry.InBlock`) | confirmed is not settled |
+| `RolledBack` | `internal/engine/internal/pay/retry.go:163` (`Retry.LeftView`) | counter and fixes stay |
+| `Dropped` | `internal/engine/internal/pay/retry.go:184` (`Retry.Dropped`) | releases nothing |
+| `Lost` | `internal/engine/internal/pay/retry.go:198` (`Retry.Release`, `submit.Dead`) | rebuild |
+| `Done` | `internal/engine/internal/pay/retry.go:128` (`Retry.Settle`) | paid |
+| `GiveUp` | the `GiveUp` action (`internal/engine/internal/pay/retry.go:314`) | releases nothing |
+| `Sync`, `SyncAdv`, `Expire` (planner settles and writes off) | `internal/engine/internal/pay/pay.go:150` (`Pay.Advance`) over `internal/plan/ledger.go:134` (`plan.Ledger.Advance`; see `specs/planner-reservations`) | |
+| `Restart`, `Recovery = "replay"` | the checkpoint and log replay (`specs/engine-recovery`); `internal/engine/internal/send/send.go:42` (`send.New`) marks resumed intents, which sets `SubmitResult.Resend` | `internal/submit/step.go:401` (`submit.Restart`) is the `"rebuild"` form and is not called by the engine |
+| `Expected(t)`, `OracleSound` | `internal/mistake/mistake.go:265` (`mistake.Expect`), `:315` (`Expected.Pass`), filed by the oracle (`internal/oracle/finding.go`) | |
+| `Include`, `Bury`, `Rollback`, `Evict`, `Steal` | the node and other wallets | not continuum code |
+
+### Drift
+
+Where the model deliberately differs from the code:
+
+| Id | Code | Model | Why | Config |
+|---|---|---|---|---|
+| R1 | attempts spend real inputs, chosen by the planner | input groups: attempts of an intent in one group share an input | `planner-reservations` checks input choice; see [How it refines planner-reservations](#how-it-refines-planner-reservations) | all |
+| R2 | the chain is blocks and slots; the planner's view is `plan.Ledger` | per attempt `none`, `block` or `deep`, in the truth and in the view | only an attempt's depth matters to the machine | all |
+| R3 | the engine restarts from its checkpoint and log (`Recovery = "replay"`) | both that and `"rebuild"` (`submit.Restart`, uncalled) | `"rebuild"` is the stricter contract; both must pass | `RetryRestart`, `RetryRestartReplay` |
+| R4 | `submit.Intrinsic` lists many classes | two (`FeeTooSmall`, `MissingSigner`) and `BadInputs` | one chain-independent class per rule kind is enough | all |
+| R5 | backoff delays with jitter between a rejection and a rebuild | no time: the wait is the gap between `Classify` and `Build` | the model has no clocks | - |
+| R6 | the actor's competence and learning are probabilities | `"low"` means any diagnosis is possible | TLA+ has no probabilities | `Retry`, `RetryHighCompetence` |
+| R7 | several submit targets, aggregated | one aggregated answer | `Aggregate` is a pure fold the contract fixes | - |
+| R8 | intents may contend for one output | intents share nothing | `planner-reservations` checks contention | `RetryTwoIntents` |
 
 `submit.Intrinsic` lists more classes than the model's two: every one whose
 rule reads only the transaction and the protocol parameters
