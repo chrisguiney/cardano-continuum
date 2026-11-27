@@ -40,10 +40,28 @@ import (
 // is a decision: only the first occurrence of an ID is logged, and replay
 // regenerates it from the same inputs.
 
-// sample draws the intent's mistake from its first honest attempt. The
+// judge is the oracle bridge: the findings logged, the invariant monitors,
+// the genesis total value conservation counts from, what settled payments
+// lost to wrong addresses, and the block the current input applied.
+type judge struct {
+	e *Engine
+	// findings are the oracle findings logged so far, monitors the invariant
+	// checks, genesis the lovelace value conservation counts from and lost
+	// what settled payments sent to wrong addresses.
+	findings *oracle.Set
+	monitors []oracle.Monitor
+	genesis  uint64
+	lost     uint64
+	// budget is the block the current input applied, for the block-budget
+	// monitor.
+	budget *oracle.BlockBudget
+}
+
+// Sample draws the intent's mistake from its first honest attempt. The
 // stream is the actor's, named by the intent, so it is the same draw
 // whatever else the actor did.
-func (e *Engine) sample(p *wire.Pending, w keys.Wallet, built build.Built) {
+func (j *judge) Sample(p *wire.Pending, w keys.Wallet, built build.Built) {
+	e := j.e
 	if !e.cfg.Mistakes {
 		return
 	}
@@ -52,7 +70,7 @@ func (e *Engine) sample(p *wire.Pending, w keys.Wallet, built build.Built) {
 	// The engine's scripts (build.AlwaysSucceeds, build.FreeMint) accept
 	// any redeemer, so a wrong one is no mistake: the node rightly
 	// accepts it. Withheld mistakes cannot run yet (mistake.Withheld).
-	ok := mistake.Applicable(built.Tx, e.mistakeCtx(p, w)).Without(withheldKinds)
+	ok := mistake.Applicable(built.Tx, j.Ctx(p, w)).Without(withheldKinds)
 	p.Injected = mistake.Sample(t, ok, a.Stream("mistake", strconv.FormatUint(p.ID, 10)))
 }
 
@@ -67,15 +85,15 @@ var withheldKinds = func() mistake.KindSet {
 	return s
 }()
 
-// mutate makes the mistakes the attempt carries in the honest built. A
+// Mutate makes the mistakes the attempt carries in the honest built. A
 // mistake that this attempt's shape does not allow (its rebuild lost the
 // change output, say) is left out of it, and Carried says so.
-func (e *Engine) mutate(p *wire.Pending, w keys.Wallet, built build.Built) (build.Built, error) {
+func (j *judge) Mutate(p *wire.Pending, w keys.Wallet, built build.Built) (build.Built, error) {
 	p.Carried, p.Lost = mistake.Carry(p.Injected, p.M.Fixed), 0
 	if p.Carried == 0 {
 		return built, nil
 	}
-	tx, want, err := mistake.Inject(built.Tx, p.Carried, e.mistakeCtx(p, w))
+	tx, want, err := mistake.Inject(built.Tx, p.Carried, j.Ctx(p, w))
 	if errors.Is(err, mistake.ErrNotApplicable) || errors.Is(err, mistake.ErrNoSigner) {
 		p.Carried = 0
 		return built, nil
@@ -91,9 +109,10 @@ func (e *Engine) mutate(p *wire.Pending, w keys.Wallet, built build.Built) (buil
 	return built, nil
 }
 
-// mistakeCtx is what Inject needs to re-sign an edited body: every key the
+// Ctx is what Inject needs to re-sign an edited body: every key the
 // actor's transactions are signed with.
-func (e *Engine) mistakeCtx(p *wire.Pending, w keys.Wallet) mistake.Ctx {
+func (j *judge) Ctx(p *wire.Pending, w keys.Wallet) mistake.Ctx {
+	e := j.e
 	id := population.ActorID(p.Actor)
 	signers := []keys.Signer{w.PaymentSigner(), w.StakeSigner()}
 	if id != faucetActor {
@@ -114,11 +133,12 @@ func (e *Engine) mistakeCtx(p *wire.Pending, w keys.Wallet) mistake.Ctx {
 // would also make the node report the redeemers' pointers wrong.
 var staleInput = shelley.ShelleyTransactionInput{TxId: common.Blake2b256(bytes.Repeat([]byte{0xff}, 32))}
 
-// judge compares the node's answers to the current attempt with the
+// Judge compares the node's answers to the current attempt with the
 // verdict set its mistakes call for. "Inputs spent" is expected once the
 // attempt was sent, or an earlier unfinished attempt it conflicts with may
 // be at a node. A DoubleSubmit's second send always follows the first.
-func (e *Engine) judge(at sched.Time, p *wire.Pending, r SubmitResult, out submit.Outcome) error {
+func (j *judge) Judge(at sched.Time, p *wire.Pending, r SubmitResult, out submit.Outcome) error {
+	e := j.e
 	node := oracle.Node{Impl: "node"}
 	if r.Node != nil {
 		node = *r.Node
@@ -148,7 +168,7 @@ func (e *Engine) judge(at sched.Time, p *wire.Pending, r SubmitResult, out submi
 		a.Expected, a.Answers = &again, []oracle.Answer{{Node: node, Outcome: answerOutcome(*r.Again)}}
 		fs = append(fs, oracle.Judge(a, e.cfg.Run)...)
 	}
-	return e.report(at, fs)
+	return j.Report(at, fs)
 }
 
 // expect is mistake.ExpectOn the run's parameters, plus the classes a node names beside "inputs
@@ -189,35 +209,41 @@ func answerOutcome(a Answer) submit.Outcome {
 	return o
 }
 
-// watch runs the invariant monitors over the engine's state after an input:
+// Watch runs the invariant monitors over the engine's state after an input:
 // value, the settled point's move since before it (from), the intents that
 // ended in it, the reservations and the stake floor, plus whatever the
 // nodes answered (views).
-func (e *Engine) watch(at sched.Time, from eventlog.ChainPoint, views []oracle.ViewCheck, tips []oracle.Branch) error {
+func (j *judge) Watch(at sched.Time, from eventlog.ChainPoint, views []oracle.ViewCheck, tips []oracle.Branch) error {
+	e := j.e
 	before, _ := chain.PointFromLog(from)
 	conf, _ := chain.PointFromLog(e.win.Confirmed())
 	res := oracle.ReservationsOf(e.pay.Reads())
 	s := oracle.Snapshot{
 		Seq: e.jr.Seq(), Run: e.cfg.Run,
-		Value:        &oracle.Value{Genesis: e.genesis, Utxo: e.Supply(), At: conf},
+		Value:        &oracle.Value{Genesis: j.genesis, Utxo: e.Supply(), At: conf},
 		Ends:         e.jr.Ends(),
 		Reservations: &res,
 		Settled:      &oracle.SettledMove{From: before, To: conf},
 		Views:        views,
 		Tips:         tips,
-		Budget:       e.budget,
+		Budget:       j.budget,
 	}
 	// Without pools there is no forging stake to hold a floor: the fake
 	// chain forges anyway, so the floor and liveness are not evaluable.
 	if pol := e.floorState(at); len(pol.Pools) > 0 {
 		s.Policy = &pol
 	}
-	return e.report(at, oracle.Check(s, e.monitors))
+	return j.Report(at, oracle.Check(s, j.monitors))
 }
 
 // blockBudget sums the execution units a block's transactions declare, for
 // the block-budget monitor; nil when the run has no block budget.
-func (e *Engine) blockBudget(at eventlog.ChainPoint, txs []TxDigest) *oracle.BlockBudget {
+func (j *judge) Block(at eventlog.ChainPoint, txs []TxDigest) {
+	j.budget = j.blockBudget(at, txs)
+}
+
+func (j *judge) blockBudget(at eventlog.ChainPoint, txs []TxDigest) *oracle.BlockBudget {
+	e := j.e
 	max := e.cfg.Build.MaxBlockExUnits
 	if max.Memory == 0 && max.Steps == 0 {
 		return nil
@@ -233,9 +259,10 @@ func (e *Engine) blockBudget(at eventlog.ChainPoint, txs []TxDigest) *oracle.Blo
 	return b
 }
 
-// monitorSnapshot fills in the engine's side of each view the runner
+// Snapshot fills in the engine's side of each view the runner
 // asked a node for: the settled balances, at the settled point.
-func (e *Engine) monitorSnapshot(at sched.Time, from eventlog.ChainPoint, m MonitorSnapshot) error {
+func (j *judge) Snapshot(at sched.Time, from eventlog.ChainPoint, m MonitorSnapshot) error {
+	e := j.e
 	conf, _ := chain.PointFromLog(e.win.Confirmed())
 	bal := map[population.ActorID]uint64{}
 	for id, v := range e.Balances() {
@@ -244,12 +271,13 @@ func (e *Engine) monitorSnapshot(at sched.Time, from eventlog.ChainPoint, m Moni
 	for i := range m.Views {
 		m.Views[i].At, m.Views[i].Engine = conf, bal
 	}
-	return e.watch(at, from, m.Views, m.Tips)
+	return j.Watch(at, from, m.Views, m.Tips)
 }
 
-// report logs each finding the set has not seen.
-func (e *Engine) report(at sched.Time, fs []oracle.Finding) error {
-	for _, f := range e.findings.Add(fs...) {
+// Report logs each finding the set has not seen.
+func (j *judge) Report(at sched.Time, fs []oracle.Finding) error {
+	e := j.e
+	for _, f := range j.findings.Add(fs...) {
 		rec, err := f.Record(at)
 		if err != nil {
 			return err
@@ -261,4 +289,13 @@ func (e *Engine) report(at sched.Time, fs []oracle.Finding) error {
 
 // Findings is the set of findings this engine has logged. It is safe for
 // concurrent use, so an API may serve it while the loop runs.
-func (e *Engine) Findings() *oracle.Set { return e.findings }
+func (e *Engine) Findings() *oracle.Set { return e.jd.findings }
+
+// Begin starts an input: no block has been applied yet.
+func (j *judge) Begin() { j.budget = nil }
+
+// AddLost counts lovelace a settled payment sent to a wrong address.
+func (j *judge) AddLost(n uint64) { j.lost += n }
+
+// Lost is the lovelace settled payments sent to addresses nobody holds.
+func (j *judge) Lost() uint64 { return j.lost }

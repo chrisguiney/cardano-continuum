@@ -381,7 +381,7 @@ func (e *Engine) mutant(id population.ActorID, w keys.Wallet, coins []Coin, base
 	m := step.Mutation
 	if ks, ok := m.Mistake(); ok {
 		p.Actor = uint64(id)
-		tx, _, err := mistake.Inject(base.Tx, ks, e.mistakeCtx(p, w))
+		tx, _, err := mistake.Inject(base.Tx, ks, e.jd.Ctx(p, w))
 		if err == mistake.ErrNotApplicable {
 			return nil, 0, nil
 		}
@@ -525,7 +525,7 @@ func (e *Engine) judgeAttack(at sched.Time, p *wire.Pending, r SubmitResult, out
 		fs = append(fs, oracle.Judge(ra, e.cfg.Run)...)
 		taken = taken || ans.Verdict == VerdictAccepted
 	}
-	return e.report(at, fs)
+	return e.jd.Report(at, fs)
 }
 
 // Shared implements adversary.Sight: the honest locked outputs at the

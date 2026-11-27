@@ -135,11 +135,11 @@ func (r roster) Paid(id population.ActorID) []population.ActorID { return r.Rec(
 type ihooks struct{ e *Engine }
 
 // Sample implements intent.Judge.
-func (h ihooks) Sample(p *wire.Pending, w keys.Wallet, built build.Built) { h.e.sample(p, w, built) }
+func (h ihooks) Sample(p *wire.Pending, w keys.Wallet, built build.Built) { h.e.jd.Sample(p, w, built) }
 
 // Mutate implements intent.Judge.
 func (h ihooks) Mutate(p *wire.Pending, w keys.Wallet, built build.Built) (build.Built, error) {
-	return h.e.mutate(p, w, built)
+	return h.e.jd.Mutate(p, w, built)
 }
 
 // Utxos implements intent.Spend.

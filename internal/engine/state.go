@@ -35,7 +35,7 @@ func (e *Engine) Snapshot() ([]byte, error) {
 	sv := e.win.Saved()
 	nextID, deposits := e.pay.Counters()
 	ct := e.in.Saved()
-	s := snapshot{Version: snapshotVersion, Now: e.clk.Now(), NextIntent: nextID, Conf: sv.Conf, Fees: sv.Fees, Foreign: sv.Foreign, RefillAt: e.refillAt, Deposits: deposits, Market: e.pc.Market(), Lost: e.lost,
+	s := snapshot{Version: snapshotVersion, Now: e.clk.Now(), NextIntent: nextID, Conf: sv.Conf, Fees: sv.Fees, Foreign: sv.Foreign, RefillAt: e.refillAt, Deposits: deposits, Market: e.pc.Market(), Lost: e.jd.lost,
 		Contracts: ct.N, DeployAt: ct.At, DeployN: ct.Drawn}
 	for _, id := range e.co.IDs() {
 		a, _ := e.co.Get(id)
@@ -94,7 +94,7 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 	// Between inputs the last Tick's time is the clock.
 	e.clk.Restore(s.Now)
 	e.pc.SetMarket(s.Market)
-	e.paused, e.rateK, e.waves, e.adoptions, e.stalled, e.lost = s.Paused, s.RateK, s.Waves, s.Adoptions, s.Stalled, s.Lost
+	e.paused, e.rateK, e.waves, e.adoptions, e.stalled, e.jd.lost = s.Paused, s.RateK, s.Waves, s.Adoptions, s.Stalled, s.Lost
 	if err := e.in.Load(intent.State{N: s.Contracts, At: s.DeployAt, Drawn: s.DeployN}); err != nil {
 		return nil, err
 	}
@@ -421,7 +421,7 @@ func (e *Engine) Balances() map[uint64]uint64 {
 }
 
 // Lost is the lovelace settled payments sent to addresses nobody holds.
-func (e *Engine) Lost() uint64 { return e.lost }
+func (e *Engine) Lost() uint64 { return e.jd.Lost() }
 
 // Supply is everything the settled state accounts for: owned outputs, fees,
 // outputs to addresses outside the population (locked script outputs among

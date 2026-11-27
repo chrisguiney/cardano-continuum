@@ -101,16 +101,7 @@ type Engine struct {
 	waves     uint64
 	adoptions []adoption
 	images    map[population.ActorID]string
-	// findings are the oracle findings logged so far, monitors the
-	// invariant checks, genesis the lovelace value conservation counts
-	// from and lost what settled payments sent to wrong addresses.
-	findings *oracle.Set
-	monitors []oracle.Monitor
-	genesis  uint64
-	lost     uint64
-	// budget is the block the current input applied, for the block-budget
-	// monitor.
-	budget *oracle.BlockBudget
+	jd        *judge
 
 	// advs are the adversaries' attack policies and costs their cost
 	// account; contested are the shared outputs an adversary tried to
@@ -214,13 +205,13 @@ func newEmpty(cfg Config) (*Engine, error) {
 	if e.guard, err = policy.New(cfg.floor()); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrConfig, err)
 	}
-	e.findings, e.monitors = oracle.NewSet(), oracle.Monitors(cfg.K, e.guard)
+	e.jd = &judge{e: e, findings: oracle.NewSet(), monitors: oracle.Monitors(cfg.K, e.guard)}
 	funds, err := cfg.Genesis()
 	if err != nil {
 		return nil, err
 	}
 	for _, f := range funds {
-		e.genesis += f.Lovelace
+		e.jd.genesis += f.Lovelace
 	}
 	if err := e.win.Book().AddAddress(build.AlwaysSucceeds.Address(cfg.NetworkID), scriptActor); err != nil {
 		return nil, fmt.Errorf("engine: book: %w", err)
@@ -263,7 +254,7 @@ func newEmpty(cfg Config) (*Engine, error) {
 // decisions it caused, in order.
 func (e *Engine) Handle(ctx context.Context, in eventlog.Record) ([]eventlog.Record, error) {
 	e.jr.Begin(in.Seq)
-	e.budget = nil
+	e.jd.Begin()
 	from := e.win.Confirmed()
 	var err error
 	switch in.Kind {
@@ -281,8 +272,8 @@ func (e *Engine) Handle(ctx context.Context, in eventlog.Record) ([]eventlog.Rec
 			}
 		}
 		if err = e.applyBlock(ctx, in.At, blockRec{Point: b.Point, Txs: c.Txs, Number: c.Number}); err == nil {
-			e.budget = e.blockBudget(b.Point, c.Txs)
-			err = e.watch(in.At, from, nil, nil)
+			e.jd.Block(b.Point, c.Txs)
+			err = e.jd.Watch(in.At, from, nil, nil)
 		}
 	case eventlog.KindRolledBack:
 		var b eventlog.RolledBack
@@ -290,7 +281,7 @@ func (e *Engine) Handle(ctx context.Context, in eventlog.Record) ([]eventlog.Rec
 			return nil, fmt.Errorf("engine: decode rollback: %w", err)
 		}
 		if err = e.rollback(ctx, b.To); err == nil {
-			err = e.watch(in.At, from, nil, nil)
+			err = e.jd.Watch(in.At, from, nil, nil)
 		}
 	case eventlog.KindControl:
 		var c control
@@ -309,7 +300,7 @@ func (e *Engine) Handle(ctx context.Context, in eventlog.Record) ([]eventlog.Rec
 		if err = eventlog.Decode(in.Body, &m); err != nil {
 			return nil, fmt.Errorf("engine: decode monitor snapshot: %w", err)
 		}
-		err = e.monitorSnapshot(in.At, from, m)
+		err = e.jd.Snapshot(in.At, from, m)
 	case eventlog.KindSubmitResult:
 		var r SubmitResult
 		if err = eventlog.Decode(in.Body, &r); err != nil {
@@ -425,7 +416,7 @@ func (e *Engine) submitResult(ctx context.Context, at sched.Time, r SubmitResult
 		if err != nil {
 			return err
 		}
-		if err := e.judge(at, p, r, out); err != nil {
+		if err := e.jd.Judge(at, p, r, out); err != nil {
 			return err
 		}
 		return e.refillResult(ctx, at, p, r)
@@ -438,7 +429,7 @@ func (e *Engine) submitResult(ctx context.Context, at sched.Time, r SubmitResult
 		// The process that died before logging may have sent these bytes.
 		p.M.Sent = true
 	}
-	if err := e.judge(at, p, r, out); err != nil {
+	if err := e.jd.Judge(at, p, r, out); err != nil {
 		return err
 	}
 	return e.retry.Answer(ctx, at, p, out, pay.Reason(r))
@@ -480,7 +471,7 @@ func (e *Engine) applyBlock(ctx context.Context, at sched.Time, b blockRec) erro
 		}
 		// Every attempt carries a WrongAddress mistake (it has no fix), so
 		// the current one's loss is the settled one's.
-		e.lost += p.Lost
+		e.jd.AddLost(p.Lost)
 		if err := e.settle(at, p, TxID(tx)); err != nil {
 			return err
 		}
