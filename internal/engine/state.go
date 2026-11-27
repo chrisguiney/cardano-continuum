@@ -1,8 +1,6 @@
 package engine
 
 import (
-	"bytes"
-	"cmp"
 	"context"
 	"fmt"
 	"maps"
@@ -71,8 +69,7 @@ func (e *Engine) Snapshot() ([]byte, error) {
 	for _, id := range slices.Sorted(mapKeys(e.images)) {
 		s.Images = append(s.Images, imageRec{Pool: uint64(id), Ref: e.images[id]})
 	}
-	s.Charges = e.adv.costs.Entries()
-	s.Contested = slices.SortedFunc(maps.Keys(e.adv.contested), cmpLogRef)
+	s.Charges, s.Contested = e.adv.Save()
 	if s.View, err = encodeView(e.win.View().Base()); err != nil {
 		return nil, err
 	}
@@ -111,9 +108,6 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 	for _, r := range s.Images {
 		e.images[population.ActorID(r.Pool)] = r.Ref
 	}
-	for _, r := range s.Contested {
-		e.adv.contested[r] = true
-	}
 	for i, a := range e.adoptions {
 		if !a.Done {
 			e.clk.Push(a.At, clock.Event{Kind: clock.Adopt, Intent: uint64(i)})
@@ -139,7 +133,7 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 		e.clk.Push(e.refillAt, clock.Event{Kind: clock.Refill})
 	}
 	// After restoreActor: the actors' ceilings are set, the spends restored.
-	e.adv.costs.Restore(s.Charges)
+	e.adv.Load(s.Charges, s.Contested)
 	if err := e.restoreLedger(s); err != nil {
 		return nil, err
 	}
@@ -296,12 +290,12 @@ func (c evsched) Birth(at sched.Time, idx int) sched.Handle {
 type hooks struct{ e *Engine }
 
 func (h hooks) Arm(id population.ActorID, p profile.Profile, pol agenda.Policy) agenda.Policy {
-	return h.e.adv.arm(id, p, pol)
+	return h.e.adv.Arm(id, p, pol)
 }
 
-func (h hooks) Adversary(id population.ActorID) bool { return h.e.adv.isAdversary(id) }
+func (h hooks) Adversary(id population.ActorID) bool { return h.e.adv.Adversary(id) }
 
-func (h hooks) Spent(id population.ActorID) uint64 { return h.e.adv.costs.Total(id) }
+func (h hooks) Spent(id population.ActorID) uint64 { return h.e.adv.Spent(id) }
 
 func (h hooks) Clocks(a population.Actor, p profile.Profile) ([]wire.Clock, profile.IntentKind) {
 	cs, boot, _ := h.e.pc.Clocks(a, p)
@@ -520,8 +514,4 @@ func idList(ids []population.ActorID) []uint64 {
 		out[i] = uint64(id)
 	}
 	return out
-}
-
-func cmpLogRef(a, b Ref) int {
-	return cmp.Or(bytes.Compare(a.Tx[:], b.Tx[:]), cmp.Compare(a.Index, b.Index))
 }

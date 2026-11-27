@@ -7,10 +7,12 @@ import (
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/build"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/attack"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/cohort"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/intent"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
+	"github.com/chrisguiney/cardano-continuum/internal/plan"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
@@ -60,7 +62,7 @@ func (e *Engine) start(ctx context.Context, at sched.Time, p *wire.Pending) (str
 	}
 	e.pc.Excite(at)
 	e.in.Submitted(at, p, built, inputs)
-	return "", e.adv.react(ctx, at, p, built.Fee)
+	return "", e.adv.React(ctx, at, p, built.Fee)
 }
 
 // settle accounts for a settled attempt of intent p: the deposit it paid
@@ -102,7 +104,7 @@ func intentSpec(e *Engine) intent.Spec {
 			hotKind: {Headroom: feeHeadroom, Build: func(ctx context.Context, w keys.Wallet, sp build.Spend, p *wire.Pending) (build.Built, error) {
 				return buildHot(ctx, e, w, sp, p)
 			}},
-			dustKind: {Headroom: feeHeadroom, Build: oneShotBuild},
+			dustKind: {Headroom: feeHeadroom, Build: attack.OneShot},
 		},
 	}
 }
@@ -130,12 +132,18 @@ func (r roster) Profile(id population.ActorID) *profile.Profile {
 // Paid implements intent.Roster.
 func (r roster) Paid(id population.ActorID) []population.ActorID { return r.Rec(id).Paid }
 
-// ihooks is the adversaries and the planner ledger as the intent component
-// reaches them.
+// ihooks is the adversaries and the planner ledger as the intent and
+// attack components reach them.
 type ihooks struct{ e *Engine }
 
 // Utxos implements intent.Spend.
 func (h ihooks) Utxos(w keys.Wallet, coins []Coin) []common.Utxo { return h.e.ledgerUtxos(w, coins) }
 
 // Adversary implements intent.Spend.
-func (h ihooks) Adversary(id population.ActorID) bool { return h.e.adv.isAdversary(id) }
+func (h ihooks) Adversary(id population.ActorID) bool { return h.e.adv.Adversary(id) }
+
+// Settled implements attack.Spend.
+func (h ihooks) Settled() []plan.Utxo { return h.e.pay.Reads().Settled() }
+
+// Holder implements attack.Spend.
+func (h ihooks) Holder(ref plan.Ref) (plan.IntentID, bool) { return h.e.pay.Reads().Holder(ref) }

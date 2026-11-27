@@ -101,7 +101,7 @@ func (e *Engine) needy() ([]build.Output, []uint64, []uint64) {
 			break
 		}
 		// An adversary spends its own budget, never the faucet's.
-		if a, _ := e.co.Get(id); a.State == population.Abandoned || e.adv.isAdversary(id) {
+		if a, _ := e.co.Get(id); a.State == population.Abandoned || e.adv.Adversary(id) {
 			continue
 		}
 		st := e.co.Rec(id)

@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/chrisguiney/cardano-continuum/internal/adversary"
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/attack"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/clock"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/cohort"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/floor"
@@ -100,7 +100,7 @@ type Engine struct {
 	jd *judge.Judge
 
 	// adv is the adversaries: policies, cost accounts, contested outputs.
-	adv *attack
+	adv *attack.Attack
 }
 
 // New returns a fresh engine at time zero holding the genesis population and
@@ -188,7 +188,6 @@ func newEmpty(cfg Config) (*Engine, error) {
 		win:    window.New(chain.Config{K: cfg.K, Slots: cfg.Slots, NOpt: cfg.NOpt, GovLifetime: cfg.GovLifetime}),
 		images: map[population.ActorID]string{},
 	}
-	e.adv = &attack{e: e, advs: map[population.ActorID]adversary.Policy{}, costs: adversary.NewLedger(), contested: map[Ref]bool{}, mk: &maker{e: e}}
 	e.retry = pay.NewRetry(pay.Spec{Policy: cfg.retry(), Diagnoser: diag}, e.pay,
 		pay.Env{Actors: hooks{e}, Builder: hooks{e}, Journal: &e.jr, Sched: evsched{&e.clk}, Chain: e.win})
 	if e.fl, err = floor.New(floor.Spec{Guard: cfg.floor(), Slots: cfg.Slots, SimulatedPods: cfg.SimulatedPods},
@@ -221,6 +220,7 @@ func newEmpty(cfg Config) (*Engine, error) {
 		cohort.Env{Sched: evsched{&e.clk}, Emit: &e.jr, Chain: e.win, Att: hooks{e}, Pace: hooks{e}})
 	e.jd = judge.New(judgeSpec(e, genesis), judgeEnv(e))
 	e.in = intent.New(intentSpec(e), intentEnv(e))
+	e.adv = attack.New(attackSpec(e), attackEnv(e))
 	if err := e.co.Ring.Gen.Book(); err != nil {
 		return nil, err
 	}
@@ -373,8 +373,8 @@ func (e *Engine) act(ctx context.Context, at sched.Time, id population.ActorID) 
 	case !e.fl.Check(at, d.Intent):
 	case d.Intent.Kind == agenda.GoDark, d.Intent.Kind == agenda.GoLive:
 		e.fl.Take(at, d.Intent)
-	case isAttack(d.Intent.Kind):
-		if err := e.adv.attack(ctx, at, a, d.Intent, r); err != nil {
+	case attack.IsKind(d.Intent.Kind):
+		if err := e.adv.Strike(ctx, at, a, d.Intent, r); err != nil {
 			return err
 		}
 	default:
@@ -400,7 +400,7 @@ func (e *Engine) submitResult(ctx context.Context, at sched.Time, r SubmitResult
 		return e.retry.Dropped(ctx, at, r)
 	}
 	if p.Attack != "" {
-		return e.adv.attackResult(ctx, at, p, r)
+		return e.adv.Result(ctx, at, p, r)
 	}
 	if p.Refill {
 		out, err := pay.Outcome(r)

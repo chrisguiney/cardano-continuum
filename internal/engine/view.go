@@ -146,3 +146,17 @@ func (v view) Dark(pool population.ActorID) bool { return v.e.fl.Dark(pool) }
 
 // PodRunning implements agenda.Pods.
 func (v view) PodRunning(pool population.ActorID) bool { return v.e.fl.PodRunning(pool) }
+
+// Shared implements adversary.Sight.
+func (v view) Shared() []adversary.Locked { return v.e.adv.Shared() }
+
+// Payees implements adversary.Sight.
+func (v view) Payees() []population.ActorID { return v.e.adv.Payees() }
+
+// Victims implements adversary.Sight.
+func (v view) Victims() []adversary.Coin { return v.e.adv.Victims() }
+
+// Remaining implements adversary.View.
+func (v view) Remaining(id population.ActorID) uint64 { return v.e.adv.Remaining(id) }
+
+var _ adversary.View = view{}
