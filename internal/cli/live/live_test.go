@@ -1,6 +1,7 @@
 package live
 
 import (
+	"flag"
 	"testing"
 	"time"
 
@@ -51,5 +52,28 @@ func TestLiveConfig(t *testing.T) {
 	g.SlotLength = 1500 * time.Microsecond
 	if _, err := liveConfig(sf, lf, g, bp, seed); err == nil {
 		t.Fatal("a slot length that is not whole milliseconds was accepted")
+	}
+}
+
+// TestServeRemote: --serve refuses a non-loopback address, which the API's
+// lack of authentication makes an exposure, unless --allow-remote says so.
+func TestServeRemote(t *testing.T) {
+	for _, tc := range []struct {
+		args []string
+		ok   bool
+	}{
+		{[]string{"--serve=127.0.0.1:8088"}, true},
+		{[]string{"--serve=0.0.0.0:8088"}, false},
+		{[]string{"--serve=0.0.0.0:8088", "--allow-remote"}, true},
+	} {
+		var lf Flags
+		fs := flag.NewFlagSet("run", flag.ContinueOnError)
+		lf.Register(fs)
+		if err := fs.Parse(tc.args); err != nil {
+			t.Fatal(err)
+		}
+		if err := checkServe(lf); (err == nil) != tc.ok {
+			t.Errorf("%v: checkServe = %v, want ok %v", tc.args, err, tc.ok)
+		}
 	}
 }

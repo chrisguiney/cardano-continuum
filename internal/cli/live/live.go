@@ -54,6 +54,7 @@ type Flags struct {
 	GPools      int
 	PoolStake   uint64
 	Serve       string
+	AllowRemote bool
 	KubeNetwork string
 	Namespace   string
 	Kubeconfig  string
@@ -72,6 +73,7 @@ func (l *Flags) Register(fs *flag.FlagSet) {
 	fs.IntVar(&l.GPools, "genesis-pools", genesis.Default().Pools, "pools the devnet genesis registers, operated by the first --pools operators")
 	fs.Uint64Var(&l.PoolStake, "pool-stake", genesis.Default().PoolStake, "lovelace each genesis pool's owner holds delegated to it")
 	fs.StringVar(&l.Serve, "serve", "", "serve the web UI and its API from the live engine on this loopback address")
+	fs.BoolVar(&l.AllowRemote, "allow-remote", false, "accept a non-loopback --serve address; the API has no authentication")
 	fs.StringVar(&l.KubeNetwork, "network", "", "ContinuumNetwork whose pools the engine's pool plan patches and whose pod health it reads")
 	fs.StringVar(&l.Namespace, "namespace", "default", "namespace of --network")
 	fs.StringVar(&l.Kubeconfig, "kubeconfig", "", "kubeconfig path (default: KUBECONFIG rules, or in-cluster)")
@@ -467,6 +469,9 @@ func livePlan(d *engine.Deps, cfg engine.Config, lf Flags, magic uint32, log *sl
 	return lt, nil
 }
 
+// checkServe refuses a non-loopback --serve unless --allow-remote is set.
+func checkServe(lf Flags) error { return serving.CheckAddr(lf.Serve, lf.AllowRemote) }
+
 // liveServe starts the live API when --serve is set, wrapping the engine's
 // log so the API follows it. The returned context ends when ctx does or the
 // API fails; stop ends the server, waits for it, and returns its error.
@@ -474,7 +479,7 @@ func liveServe(ctx context.Context, d *engine.Deps, db *store.DB, cfg engine.Con
 	if lf.Serve == "" {
 		return ctx, func() error { return nil }, nil
 	}
-	if err := serving.CheckAddr(lf.Serve, false); err != nil {
+	if err := checkServe(lf); err != nil {
 		return nil, nil, err
 	}
 	s, err := newLiveServer(ctx, d.Log, db, cfg.Slots, cfg.GovLifetime, d.Findings, lt.poolView(cfg.K), cur)
