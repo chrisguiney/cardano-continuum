@@ -19,8 +19,8 @@
 //     a feasible rollback never reaches it.
 //   - Confirmed(s) and s.pts: Confirmed, Points and Tip. Points always start
 //     at the confirmed point, so FindIntersect never falls back to origin.
-//   - The checkpoint's st: Saved, Volatile and View().Base(). Restart's
-//     replay of a checkpoint is Open, then Blocks and Push per saved block.
+//   - The checkpoint's st: Save. Restart's replay of a checkpoint is Load,
+//     then Blocks and Push per saved block.
 //
 // Tick, the log, the checkpoint and Restart are not here: the clock
 // package and the engine's Runner own them.
@@ -68,20 +68,27 @@ type Members interface {
 type Window struct {
 	// cfg.Book is the window's own book.
 	cfg chain.Config
-	// conf only moves forward; blocks are the volatile blocks above it,
+	// sv.Conf only moves forward; blocks are the volatile blocks above it,
 	// oldest first.
-	conf   eventlog.ChainPoint
+	sv     Saved
 	blocks []wire.Block
 	view   *chain.View
-	// fees and foreign are what confirmed blocks paid in fees and to
-	// addresses outside the population.
-	fees, foreign uint64
 }
 
-// Saved is the window's durable state besides the view and blocks.
+// Saved is the window's durable state besides the view and blocks: the
+// confirmed point, and what confirmed blocks paid in fees and to addresses
+// outside the population.
 type Saved struct {
 	Conf          eventlog.ChainPoint
 	Fees, Foreign uint64
+}
+
+// Image is the window's section of a snapshot: its durable counters, the
+// volatile blocks oldest first, and the view at the confirmed point.
+type Image struct {
+	Saved
+	Blocks []wire.Block
+	View   wire.ViewRec
 }
 
 // Cut is a rollback the window has checked: the point it unwinds to and how
@@ -107,13 +114,34 @@ func (w *Window) Open(s chain.State, sv Saved) error {
 	if err != nil {
 		return err
 	}
-	w.view, w.conf, w.fees, w.foreign = v, sv.Conf, sv.Fees, sv.Foreign
+	w.view, w.sv = v, sv
 	return nil
 }
 
 // Saved is the window's durable state besides the view and blocks.
-func (w *Window) Saved() Saved {
-	return Saved{Conf: w.conf, Fees: w.fees, Foreign: w.foreign}
+func (w *Window) Saved() Saved { return w.sv }
+
+// Save is the window's snapshot section.
+func (w *Window) Save() (Image, error) {
+	v, err := encodeView(w.view.Base())
+	if err != nil {
+		return Image{}, err
+	}
+	return Image{Saved: w.sv, Blocks: slices.Clone(w.blocks), View: v}, nil
+}
+
+// Load opens the view a Save recorded at its confirmed point. It does not
+// replay img.Blocks: the planner ledger folds the same blocks, so the
+// composite feeds each to both through Blocks and Push, oldest first.
+func (w *Window) Load(img Image) error {
+	s, err := decodeView(img.View)
+	if err != nil {
+		return err
+	}
+	if err := w.Open(s, img.Saved); err != nil {
+		return fmt.Errorf("engine: snapshot view: %w", err)
+	}
+	return nil
 }
 
 // Book names the actors the view tracks.
@@ -149,9 +177,9 @@ func (w *Window) Confirm(m Members) {
 	for uint64(len(w.blocks)) > w.cfg.K {
 		b := w.blocks[0]
 		fees, foreign := tally(b, m)
-		w.fees += fees
-		w.foreign += foreign
-		w.conf = b.Point
+		w.sv.Fees += fees
+		w.sv.Foreign += foreign
+		w.sv.Conf = b.Point
 		w.blocks = slices.Delete(w.blocks, 0, 1)
 	}
 	check.Post(uint64(len(w.blocks)) <= w.cfg.K, "window: Confirm leaves at most K volatile blocks")
@@ -161,7 +189,7 @@ func (w *Window) Confirm(m Members) {
 // the confirmed one is refused: durable state never unwinds.
 func (w *Window) Check(p eventlog.ChainPoint) (Cut, error) {
 	keep := -1
-	if samePoint(p, w.conf) {
+	if samePoint(p, w.sv.Conf) {
 		keep = 0
 	}
 	for i := len(w.blocks) - 1; i >= 0 && keep < 0; i-- {
@@ -170,8 +198,8 @@ func (w *Window) Check(p eventlog.ChainPoint) (Cut, error) {
 		}
 	}
 	if keep < 0 {
-		if p.Slot < w.conf.Slot {
-			return Cut{}, fmt.Errorf("%w: slot %d, confirmed slot %d", ErrRollbackBelowConfirmed, p.Slot, w.conf.Slot)
+		if p.Slot < w.sv.Conf.Slot {
+			return Cut{}, fmt.Errorf("%w: slot %d, confirmed slot %d", ErrRollbackBelowConfirmed, p.Slot, w.sv.Conf.Slot)
 		}
 		return Cut{}, fmt.Errorf("%w: slot %d", ErrUnknownPoint, p.Slot)
 	}
@@ -192,33 +220,30 @@ func (w *Window) Rollback(c Cut) ([]wire.Block, error) {
 }
 
 // Confirmed is the K-deep point durable state comes from.
-func (w *Window) Confirmed() eventlog.ChainPoint { return w.conf }
+func (w *Window) Confirmed() eventlog.ChainPoint { return w.sv.Conf }
 
 // Tip is the last block applied.
 func (w *Window) Tip() eventlog.ChainPoint {
 	if n := len(w.blocks); n > 0 {
 		return w.blocks[n-1].Point
 	}
-	return w.conf
+	return w.sv.Conf
 }
 
 // Points are the intersection points, oldest first: the confirmed point and
 // every volatile block above it, so FindIntersect never has to fall back
 // below the confirmed point.
 func (w *Window) Points() []eventlog.ChainPoint {
-	out := []eventlog.ChainPoint{w.conf}
+	out := []eventlog.ChainPoint{w.sv.Conf}
 	for _, b := range w.blocks {
 		out = append(out, b.Point)
 	}
 	return out
 }
 
-// Volatile is a copy of the blocks above the confirmed point, oldest first.
-func (w *Window) Volatile() []wire.Block { return slices.Clone(w.blocks) }
-
 // Reclaim takes n back out of the foreign count, not below zero: value the
 // population got back from outside it after it had counted as foreign.
-func (w *Window) Reclaim(n uint64) { w.foreign -= min(w.foreign, n) }
+func (w *Window) Reclaim(n uint64) { w.sv.Foreign -= min(w.sv.Foreign, n) }
 
 // Utxo is a lovelace-only output paying addr at r.
 func Utxo(addr common.Address, r wire.Ref, lovelace uint64) common.Utxo {

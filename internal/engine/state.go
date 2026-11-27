@@ -34,13 +34,16 @@ func blake2b256(b []byte) common.Blake2b256 { return common.Blake2b256Hash(b) }
 // Snapshot implements eventlog.Engine: the whole state in canonical CBOR,
 // the ledger's blob included.
 func (e *Engine) Snapshot() ([]byte, error) {
-	sv := e.win.Saved()
+	wi, err := e.win.Save()
+	if err != nil {
+		return nil, err
+	}
 	nextID, deposits := e.pay.Counters()
 	ct := e.in.Saved()
-	s := snapshot{Version: snapshotVersion, Now: e.clk.Now(), NextIntent: nextID, Conf: sv.Conf, Fees: sv.Fees, Foreign: sv.Foreign, RefillAt: e.fc.At(), Deposits: deposits, Market: e.pc.Market(), Lost: e.jd.Lost(),
+	s := snapshot{Version: snapshotVersion, Now: e.clk.Now(), NextIntent: nextID, Conf: wi.Conf, Fees: wi.Fees, Foreign: wi.Foreign, RefillAt: e.fc.At(), Deposits: deposits, Market: e.pc.Market(), Lost: e.jd.Lost(),
 		Contracts: ct.N, DeployAt: ct.At, DeployN: ct.Drawn}
 	s.Actors, s.Births = e.co.Save()
-	s.Window = e.win.Volatile()
+	s.Window, s.View = wi.Blocks, wi.View
 	for _, id := range e.pay.IDs() {
 		s.Pending = append(s.Pending, recOf(e.pay.Get(id)))
 	}
@@ -60,9 +63,6 @@ func (e *Engine) Snapshot() ([]byte, error) {
 		s.Images = append(s.Images, imageRec{Pool: uint64(id), Ref: ss.Images[id]})
 	}
 	s.Charges, s.Contested = e.adv.Save()
-	if s.View, err = encodeView(e.win.View().Base()); err != nil {
-		return nil, err
-	}
 	return eventlog.Encode(s)
 }
 
@@ -137,12 +137,8 @@ func (e *Engine) restoreLedger(s snapshot) error {
 	if conf, _ := chain.PointFromLog(s.Conf); led.ResumePoint() != conf {
 		return fmt.Errorf("engine: snapshot ledger settled at slot %d, engine confirmed slot %d", led.ResumePoint().Slot, s.Conf.Slot)
 	}
-	vs, err := decodeView(s.View)
-	if err != nil {
+	if err := e.win.Load(window.Image{Saved: window.Saved{Conf: s.Conf, Fees: s.Fees, Foreign: s.Foreign}, View: s.View}); err != nil {
 		return err
-	}
-	if err := e.win.Open(vs, window.Saved{Conf: s.Conf, Fees: s.Fees, Foreign: s.Foreign}); err != nil {
-		return fmt.Errorf("engine: snapshot view: %w", err)
 	}
 	ctx := context.Background()
 	for _, b := range s.Window {

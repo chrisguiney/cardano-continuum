@@ -1,6 +1,12 @@
 package wire
 
-import "github.com/chrisguiney/cardano-continuum/internal/sched"
+import (
+	"github.com/blinklabs-io/gouroboros/ledger/common"
+
+	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
+	"github.com/chrisguiney/cardano-continuum/internal/sched"
+)
 
 // The records below are the components' sections of the engine snapshot.
 // Their encoding is the snapshot's: changing a field or a key changes the
@@ -37,4 +43,27 @@ type BirthRec struct {
 	Profile string     `cbor:"1,keyasint"`
 	At      sched.Time `cbor:"2,keyasint"`
 	N       uint64     `cbor:"3,keyasint"`
+}
+
+// ViewRec is chain.State in the snapshot. Outputs travel as CBOR, since a
+// ledger output is an interface.
+type ViewRec struct {
+	At        eventlog.ChainPoint   `cbor:"1,keyasint"`
+	Height    uint64                `cbor:"2,keyasint"`
+	Utxos     []UtxoRec             `cbor:"3,keyasint"`
+	Stake     []chain.StakeState    `cbor:"4,keyasint"`
+	Pools     []chain.PoolState     `cbor:"5,keyasint"`
+	DReps     []common.Blake2b224   `cbor:"6,keyasint"`
+	Label     uint64                `cbor:"7,keyasint"`
+	Frozen    bool                  `cbor:"8,keyasint"`
+	Mark      chain.Snapshot        `cbor:"9,keyasint"`
+	Set       chain.Snapshot        `cbor:"10,keyasint"`
+	Proposals []chain.ProposalState `cbor:"11,keyasint"`
+	Votes     []chain.VoteState     `cbor:"12,keyasint"`
+}
+
+// UtxoRec is one output of the view, its CBOR as the block carried it.
+type UtxoRec struct {
+	Ref Ref    `cbor:"1,keyasint"`
+	Out []byte `cbor:"2,keyasint"`
 }

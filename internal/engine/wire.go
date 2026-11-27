@@ -123,7 +123,7 @@ type snapshot struct {
 	Images    []imageRec  `cbor:"25,keyasint,omitempty"`
 	// View is the chain view at the confirmed point; the window is replayed
 	// onto it on restore.
-	View viewRec `cbor:"13,keyasint"`
+	View wire.ViewRec `cbor:"13,keyasint"`
 	// Lost is the lovelace settled payments sent to wrong addresses.
 	Lost uint64 `cbor:"26,keyasint,omitempty"`
 	// Charges are the adversaries' spends by epoch; Contested the shared
