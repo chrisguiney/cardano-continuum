@@ -11,6 +11,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
+	"go.uber.org/goleak"
 )
 
 // hash224 returns a credential or pool hash filled with b.
@@ -135,3 +136,5 @@ func kinds(eff []Effect) []EffectKind {
 	}
 	return out
 }
+
+func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
