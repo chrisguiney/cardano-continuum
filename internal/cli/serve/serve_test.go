@@ -98,6 +98,7 @@ func (s served) getJSON(t *testing.T, path string, v any) int {
 }
 
 func TestServeOverFinishedRun(t *testing.T) {
+	t.Parallel()
 	log := fakeRunLog(t)
 	srv, stop := startServe(t, "--log", log, "--epoch-slots", "60")
 	defer stop()
@@ -123,6 +124,7 @@ func TestServeOverFinishedRun(t *testing.T) {
 }
 
 func TestServeControlsAppendToTheLog(t *testing.T) {
+	t.Parallel()
 	log := fakeRunLog(t)
 	before := controlCount(t, log, eventlog.KindControl)
 	srv, stop := startServe(t, "--log", log, "--controls", "--epoch-slots", "60")
@@ -158,6 +160,7 @@ func controlCount(t *testing.T, path, kind string) int {
 }
 
 func TestServeUsageErrors(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	var out strings.Builder
 	for _, args := range [][]string{
@@ -173,6 +176,7 @@ func TestServeUsageErrors(t *testing.T) {
 }
 
 func TestServeServesTheWebUI(t *testing.T) {
+	t.Parallel()
 	log := fakeRunLog(t)
 	srv, stop := startServe(t, "--log", log, "--epoch-slots", "60")
 	defer stop()

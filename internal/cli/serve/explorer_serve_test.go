@@ -52,6 +52,7 @@ func explorerGolden(t *testing.T, name string, v any) {
 // TestServeExplorerGoldens serves a seed-7 fake run and compares the
 // explorer's answers with goldens: the block list, a block, a transaction
 // with an actor behind it, the address it pays and the epoch.
+// Not parallel: rewrites its golden files under -update-explorer.
 func TestServeExplorerGoldens(t *testing.T) {
 	log := seedRunLog(t, "7")
 	srv, stop := startServe(t, "--log", log, "--epoch-slots", "60")

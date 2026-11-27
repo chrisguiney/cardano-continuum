@@ -47,6 +47,7 @@ func (lf liarFollower) Next() (engine.ChainEvent, bool, error) {
 // TestServeShowsFatalFinding: a node reporting a block that creates value
 // gives a fatal finding, which `continuum serve` lists at /api/findings.
 func TestServeShowsFatalFinding(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	sf := simflags.Flags{
 		Run:        simflags.Run{Seed: 9},

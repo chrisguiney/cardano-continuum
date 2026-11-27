@@ -11,6 +11,7 @@ import (
 // TestDeterminismCLIAttack runs a control and an attack fake run on one
 // seed, replays the attack run, and compares the two logs.
 func TestDeterminismCLIAttack(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dir := t.TempDir()
 	flags := []string{"--seed", "7", "--wallets", "12", "--epoch-slots", "120", "--profiles", "m3"}
@@ -45,6 +46,7 @@ func TestDeterminismCLIAttack(t *testing.T) {
 }
 
 func TestAttackFlagRefusesUnknown(t *testing.T) {
+	t.Parallel()
 	err := run(context.Background(), []string{"run", "--fake", "--attack", "teleport", "--out", t.TempDir()}, &bytes.Buffer{})
 	if err == nil || !strings.Contains(err.Error(), "teleport") {
 		t.Fatalf("unknown attack: %v", err)
@@ -55,6 +57,7 @@ func TestAttackFlagRefusesUnknown(t *testing.T) {
 // attack's inconsistent genesis, so the adversary attacks; the summary
 // names the step and the run files no fatal finding.
 func TestGapAttackRun(t *testing.T) {
+	t.Parallel()
 	var out bytes.Buffer
 	args := []string{"run", "--fake", "--epochs", "1", "--out", t.TempDir(), "--seed", "7", "--wallets", "12",
 		"--epoch-slots", "120", "--profiles", "m3", "--attack", "exunits-block-gap"}

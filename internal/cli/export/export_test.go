@@ -66,6 +66,7 @@ func tableRows(t *testing.T, dir, table string) int64 {
 }
 
 func TestExportRoundTrip(t *testing.T) {
+	t.Parallel()
 	logPath := fakeLog(t)
 	out := filepath.Join(t.TempDir(), "pq")
 	var buf bytes.Buffer
@@ -99,6 +100,7 @@ func TestExportRoundTrip(t *testing.T) {
 }
 
 func TestExportIncrementalAppends(t *testing.T) {
+	t.Parallel()
 	logPath := fakeLog(t)
 	recs := readLog(t, logPath)
 	dir := t.TempDir()
@@ -139,6 +141,7 @@ func TestExportIncrementalAppends(t *testing.T) {
 }
 
 func TestExportUsage(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	for _, args := range [][]string{{"export"}, {"export", "x.log"}, {"export", "--out", "d"}} {
 		if err := run(context.Background(), args, &buf); err == nil {

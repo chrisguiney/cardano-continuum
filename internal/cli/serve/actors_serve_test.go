@@ -92,6 +92,7 @@ func secrets(n int) [][]byte {
 	return out
 }
 
+// Not parallel: rewrites its golden files under -update.
 func TestServeAdversariesAndActors(t *testing.T) {
 	control, attack := attackedRun(t)
 	srv, stop := startServe(t, "--log", filepath.Join(attack, "events.log"), "--store", filepath.Join(attack, "store.db"),
