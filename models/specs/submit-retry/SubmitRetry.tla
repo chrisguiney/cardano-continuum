@@ -1,6 +1,26 @@
 ---------------------------- MODULE SubmitRetry ----------------------------
 (***************************************************************************)
-(* The submitter's retry machine, before the retry code exists.            *)
+(* The submitter's retry machine.                                          *)
+(*                                                                         *)
+(* Models cardano-continuum at 72c4fb0; README.md has the code map and     *)
+(* the drift table.                                                        *)
+(*   Build      internal/engine/internal/pay/retry.go:343  Retry.rebuild   *)
+(*              internal/engine/internal/pay/pay.go:139    Pay.Reserve     *)
+(*   Submit     internal/engine/internal/pay/retry.go:300  SendTx action   *)
+(*              internal/engine/internal/send/send.go:58   Sender.Send     *)
+(*   Refusal    internal/submit/submit.go:138              Outcome.Refutes *)
+(*   Classify   internal/engine/internal/pay/retry.go:121  Retry.Answer    *)
+(*              internal/mistake/sample.go:64              Diagnose        *)
+(*   Confirm    internal/engine/internal/pay/retry.go:144  Retry.InBlock   *)
+(*   RolledBack internal/engine/internal/pay/retry.go:163  Retry.LeftView  *)
+(*   Lost       internal/engine/internal/pay/retry.go:198  Retry.Release   *)
+(*   Dropped    internal/engine/internal/pay/retry.go:184  Retry.Dropped   *)
+(*   Done       internal/engine/internal/pay/retry.go:128  Retry.Settle    *)
+(*   GiveUp     internal/engine/internal/pay/retry.go:314  GiveUp action   *)
+(*   machine    internal/submit/step.go:244                submit.Step     *)
+(*   Sync       internal/engine/internal/pay/pay.go:150    Pay.Advance     *)
+(*   Restart    internal/engine/internal/send/send.go:42   send.New Resend *)
+(*   Expected   internal/mistake/mistake.go:265            mistake.Expect  *)
 (*                                                                         *)
 (* An actor pays once per intent. Its transaction may carry mistakes the   *)
 (* mistake injector put there. The submitter sends it, a node answers      *)
@@ -225,18 +245,22 @@ CanLand(t) ==
        /\ \A u \in Mates(t) : chain[u] # "deep"
 
 \* In English: "The slots intent i may build in: never used, or holding an
-\* attempt that is dead and truly can never land."
+\* attempt that is dead and truly can never land. Mutation NoSlotReuse
+\* never reuses a slot."
 Free(i) == {s \in Slots : LET t == <<i, s>> IN
-                st[t] = "unused" \/ (st[t] = "dead" /\ ~CanLand(t))}
+                \/ st[t] = "unused"
+                \/ Mutation # "NoSlotReuse" /\ st[t] = "dead" /\ ~CanLand(t)}
 
 \* In English: "The records once the planner looks at view vw and seen
 \* outside spends av: an unfinished attempt K deep is settled; one whose
 \* input is spent K deep, by a conflicting attempt or by somebody else, is
-\* dead; the rest stay."
+\* dead; the rest stay. Mutation SettleOnBlock settles an attempt as soon
+\* as the view has it in a block."
 Reaped(vw, av) ==
     [t \in Txs |->
         IF st[t] # "live" THEN st[t]
-        ELSE IF vw[t] = "deep" THEN "settled"
+        ELSE IF vw[t] = "deep" \/ (Mutation = "SettleOnBlock" /\ vw[t] = "block")
+             THEN "settled"
         ELSE IF av[AdvOf(t)] \/ \E u \in Mates(t) : vw[u] = "deep"
              THEN "dead"
         ELSE "live"]
@@ -449,8 +473,10 @@ SyncAdv(a) ==
 
 \* In English: "The immovable chain passes t's time-to-live without t: t is
 \* dead, and the planner says so (settled expiry). Only an attempt that
-\* was sent ages out here; one still waiting to be sent is the machine's."
+\* was sent ages out here; one still waiting to be sent is the machine's.
+\* Mutation NoExpiry never writes an attempt off for its time-to-live."
 Expire(t) ==
+    /\ Mutation # "NoExpiry"
     /\ st[t] = "live" /\ sent[t] /\ chain[t] = "none"
     /\ exp' = [exp EXCEPT ![t] = TRUE]
     /\ inmp' = [inmp EXCEPT ![t] = FALSE]
@@ -460,7 +486,8 @@ Expire(t) ==
 \* In English: "The engine restarts. Records, counters and fixes are on
 \* disk. The view resumes at the settled point. Every unfinished attempt is
 \* treated as sent, and the newest is sent again, same bytes (it may never
-\* have gone out). Mutation RestartForgetsSent treats them as never sent."
+\* have gone out). Mutation RestartForgetsSent treats them as never sent;
+\* RestartReopens rebuilds a finished machine as well."
 RestartRebuild ==
     /\ view' = [t \in Txs |-> IF view[t] = "deep" THEN "deep" ELSE "none"]
     /\ sent' = [t \in Txs |-> IF st[t] = "live"
@@ -468,7 +495,7 @@ RestartRebuild ==
     /\ LET live(i) == {t[2] : t \in {u \in Of(i) : st[u] = "live"}} IN
        /\ cur' = [i \in Intents |-> IF live(i) = {} THEN cur[i] ELSE Max(live(i))]
        /\ ms' = [i \in Intents |->
-                   IF ms[i] \in Final THEN ms[i]
+                   IF ms[i] \in Final /\ Mutation # "RestartReopens" THEN ms[i]
                    ELSE IF live(i) = {} THEN "build"
                    ELSE "submit"]
     /\ UNCHANGED <<truth, st, grp, mist, aview, tries, inj, fixed, vd, diag, total, ever>>
@@ -546,12 +573,23 @@ Steal(a) ==
     /\ n' = [n EXCEPT !.adv = @ + 1]
     /\ UNCHANGED <<reached, chain, exp, planner, machine>>
 
+\* In English: "The run is over, in the state the model means to end in:
+\* every intent is done or given up, and every attempt is settled, written
+\* off or never built. (Done(i) is the machine's own step to "done", so the
+\* terminal is called Finished.) Any other state with no step is a stuck
+\* machine or planner, which TLC's deadlock check reports."
+Finished ==
+    /\ \A i \in Intents : ms[i] \in Final
+    /\ \A t \in Txs : st[t] # "live"
+    /\ UNCHANGED vars
+
 Next ==
     \/ \E i \in Intents : Machine(i)
     \/ \E t \in Txs : Sync(t) \/ Expire(t) \/ Include(t) \/ Bury(t)
                       \/ Rollback(t) \/ Evict(t)
     \/ \E a \in Adv : SyncAdv(a) \/ Steal(a)
     \/ Restart
+    \/ Finished
 
 \* In English: "The machine, the planner and time keep moving; burying a
 \* block is fair too. The node need never include anything, and the
