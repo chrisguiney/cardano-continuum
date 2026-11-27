@@ -1,10 +1,10 @@
-import type { ComponentChildren } from "preact";
-import { useState } from "preact/hooks";
+import type { ReactNode } from "react";
+import { useState } from "react";
 import { browserEnv, copyText } from "../lib/clipboard";
 import { navigate } from "../lib/router";
 import { HelpTip } from "./fields";
 
-export function Link({ to, children }: { to: string; children: ComponentChildren }) {
+export function Link({ to, children }: { to: string; children: ReactNode }) {
   return (
     <a
       href={to}
@@ -21,7 +21,7 @@ export function Link({ to, children }: { to: string; children: ComponentChildren
 
 export function ErrorNote({ error }: { error: string | null }) {
   return error ? (
-    <p class="error" role="alert">
+    <p className="error" role="alert">
       Could not load: {error}
     </p>
   ) : null;
@@ -29,10 +29,10 @@ export function ErrorNote({ error }: { error: string | null }) {
 
 export function Stat({ label, value, sub, help }: { label: string; value: string; sub?: string; help?: string }) {
   return (
-    <div class="stat">
-      <div class="stat-label">{label}{help && <HelpTip id={`stat-${label.replace(/\W+/g, "-")}`} label={label} text={help} />}</div>
-      <div class="stat-value">{value}</div>
-      {sub && <div class="stat-sub">{sub}</div>}
+    <div className="stat">
+      <div className="stat-label">{label}{help && <HelpTip id={`stat-${label.replace(/\W+/g, "-")}`} label={label} text={help} />}</div>
+      <div className="stat-value">{value}</div>
+      {sub && <div className="stat-sub">{sub}</div>}
     </div>
   );
 }
@@ -47,7 +47,7 @@ export function CopyButton({ value, label }: { value: string; label: string }) {
     });
   };
   return (
-    <button type="button" class="copy ghost" onClick={click} aria-label={`Copy ${label}`}>
+    <button type="button" className="copy ghost" onClick={click} aria-label={`Copy ${label}`}>
       {state === "ok" ? "Copied" : state === "fail" ? "Copy failed" : "Copy"}
     </button>
   );

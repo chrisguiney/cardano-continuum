@@ -1,4 +1,4 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useState } from "react";
 import { getJSON } from "./api";
 
 /** Enums mirrors GET /api/meta/enums: the value sets the server validates against. */

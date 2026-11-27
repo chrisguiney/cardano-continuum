@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { render } from "preact-render-to-string";
+import { renderToStaticMarkup as render } from "react-dom/server";
 import { ScenarioTable, WeightGrid } from "../src/views/Controls";
 import type { ScenarioInfo } from "../src/lib/meta";
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { render } from "preact-render-to-string";
+import { renderToStaticMarkup as render } from "react-dom/server";
 import { groupParams, govPath, securityNames } from "../src/lib/govdetail";
 import { GOV_GLOSSARY, GOV_HELP } from "../src/lib/govhelp";
 import { GLOSSARY } from "../src/lib/help";
@@ -60,7 +60,7 @@ describe("governance action page", () => {
     const html = render(<GovBody d={detail(security)} />);
     for (const t of ["maxTxSize", "20,000", "16,384", "bytes", "maxTxExUnits", "20,000,000 mem, 10,000,000,000 steps", "16,500,000 mem", "dRepDeposit", "600,000,000"]) expect(html, t).toContain(t);
     for (const g of ["network", "governance"]) expect(html, g).toContain(`>${g}<`);
-    expect(html).toContain("The most memory and CPU steps one transaction's scripts may use.");
+    expect(html).toContain("The most memory and CPU steps one transaction&#x27;s scripts may use.");
     expect(html).toContain("security group");
     expect(html).toContain("31".repeat(28));
     expect(html).toContain("Current value");

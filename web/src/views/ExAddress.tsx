@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useState, type ReactNode } from "react";
 import { blockLink, lovelaceText } from "../lib/explorer";
 import type { ActorRef, AddressDetail } from "../lib/extypes";
 import { usePoll } from "../lib/hooks";
@@ -8,7 +8,7 @@ import { Addr, Assets, Facts, HashLink, OutputCells, Pager, Section, TxHash } fr
 const PAGE = 25;
 
 function Owner({ a }: { a?: ActorRef }) {
-  return a ? <Link to={`/actors/${a.id}`}>{a.name || `actor ${a.id}`}{a.role ? ` (${a.role})` : ""}</Link> : <span class="muted">no continuum actor</span>;
+  return a ? <Link to={`/actors/${a.id}`}>{a.name || `actor ${a.id}`}{a.role ? ` (${a.role})` : ""}</Link> : <span className="muted">no continuum actor</span>;
 }
 
 /** AddressBody shows an address's balance, owner, unspent outputs and history. */
@@ -19,7 +19,7 @@ export function AddressBody({ a, onPage }: { a: AddressDetail; onPage: (offset: 
         <Facts rows={[
           ["Address", <HashLink value={a.address} n={a.address.length} label="address" />],
           ["Owner", <Owner a={a.actor} />],
-          ...(a.stake ? ([["Stake address", <span><Addr value={a.stake} /> <Owner a={a.stake_actor} /></span>]] as [string, preact.ComponentChildren][]) : []),
+          ...(a.stake ? ([["Stake address", <span><Addr value={a.stake} /> <Owner a={a.stake_actor} /></span>]] as [string, ReactNode][]) : []),
           ["Balance", lovelaceText(a.balance)],
           ["Tokens", <Assets items={a.assets} />],
           ["Unspent outputs", String(a.utxo_total)],
@@ -27,8 +27,8 @@ export function AddressBody({ a, onPage }: { a: AddressDetail; onPage: (offset: 
         ]} />
       </Section>
       <Section id="a-utxo" title={`Unspent outputs (${a.utxo_total})`}>
-        {a.utxos.length === 0 ? <p class="muted">No unspent outputs.</p> : (
-          <div class="table-wrap">
+        {a.utxos.length === 0 ? <p className="muted">No unspent outputs.</p> : (
+          <div className="table-wrap">
             <table>
               <thead><tr><th>Output</th><th>Address</th><th>ADA</th><th>Tokens</th><th>Datum</th><th>Reference script</th></tr></thead>
               <tbody>{a.utxos.map((o) => <tr key={`${o.tx}#${o.index}`}><td><TxHash value={o.tx ?? ""} n={12} />{`#${o.index}`}</td><OutputCells o={o} lovelace={lovelaceText(o.lovelace)} /></tr>)}</tbody>
@@ -37,7 +37,7 @@ export function AddressBody({ a, onPage }: { a: AddressDetail; onPage: (offset: 
         )}
       </Section>
       <Section id="a-hist" title={`History (${a.tx_count})`}>
-        <div class="table-wrap">
+        <div className="table-wrap">
           <table>
             <thead><tr><th>Transaction</th><th>Block</th><th>Slot</th></tr></thead>
             <tbody>{a.history.map((h) => <tr key={h.hash}><td><TxHash value={h.hash} n={24} /></td><td><Link to={blockLink(h.block)}>{`#${h.height}`}</Link></td><td>{h.slot}</td></tr>)}</tbody>
@@ -55,7 +55,7 @@ export function ExAddress({ addr }: { addr: string }) {
   return (
     <>
       <h1>Address</h1>
-      <p class="muted"><Link to="/explorer">All blocks</Link></p>
+      <p className="muted"><Link to="/explorer">All blocks</Link></p>
       <ErrorNote error={error} />
       {data && <AddressBody a={data} onPage={setOffset} />}
     </>

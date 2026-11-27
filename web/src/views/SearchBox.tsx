@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useState, type FormEvent } from "react";
 import { FIELD_HELP } from "../lib/help";
 import { runSearch } from "../lib/search";
 import { navigate } from "../lib/router";
@@ -11,7 +11,7 @@ import { HelpTip } from "./fields";
 export function SearchBox() {
   const [q, setQ] = useState("");
   const [msg, setMsg] = useState("");
-  const submit = (e: Event) => {
+  const submit = (e: FormEvent) => {
     e.preventDefault();
     void runSearch(q).then((r) => {
       if (r.ok) {
@@ -24,8 +24,8 @@ export function SearchBox() {
     });
   };
   return (
-    <form class="search" role="search" aria-label="Search the chain" onSubmit={submit}>
-      <label for="search-q" class="sr">Search</label>
+    <form className="search" role="search" aria-label="Search the chain" onSubmit={submit}>
+      <label htmlFor="search-q" className="sr">Search</label>
       <input
         id="search-q"
         type="search"
@@ -33,11 +33,11 @@ export function SearchBox() {
         placeholder="Block, tx, address, pool, actor"
         aria-describedby="search-tip"
         maxLength={200}
-        onInput={(e) => setQ(e.currentTarget.value)}
+        onChange={(e) => setQ(e.currentTarget.value)}
       />
       <button type="submit">Search</button>
       <HelpTip id="search-tip" label={FIELD_HELP.search!.label} text={FIELD_HELP.search!.help} />
-      {msg && <span class="search-msg" role="alert">{msg}</span>}
+      {msg && <span className="search-msg" role="alert">{msg}</span>}
     </form>
   );
 }

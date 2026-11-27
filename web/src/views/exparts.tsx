@@ -1,4 +1,4 @@
-import type { ComponentChildren } from "preact";
+import { Fragment, type ReactNode } from "react";
 import { addrLink, blockLink, poolLink, txLink, usage } from "../lib/explorer";
 import type { Asset, Output, PoolRef } from "../lib/extypes";
 import { short } from "../lib/format";
@@ -6,9 +6,9 @@ import { CopyButton, Link } from "./common";
 
 /** HashLink is a shortened hash that links to its view and carries a copy button. */
 export function HashLink({ value, to, n = 10, label }: { value: string; to?: string; n?: number; label: string }) {
-  const text = <span class="mono" title={value}>{short(value, n)}</span>;
+  const text = <span className="mono" title={value}>{short(value, n)}</span>;
   return (
-    <span class="hash">
+    <span className="hash">
       {to ? <Link to={to}>{text}</Link> : text}
       <CopyButton value={value} label={label} />
     </span>
@@ -22,8 +22,8 @@ export const Addr = ({ value }: { value: string }) => <HashLink value={value} to
 /** PoolChip names the pool that issued a block: a continuum pool by name and implementation, else the id. */
 export function PoolChip({ issuer, pool }: { issuer: string; pool?: PoolRef }) {
   return (
-    <span class="hash">
-      <Link to={poolLink(issuer)}>{pool ? <span title={issuer}>{pool.name} <span class="muted">({pool.impl})</span></span> : <span class="mono" title={issuer}>{short(issuer, 10)}</span>}</Link>
+    <span className="hash">
+      <Link to={poolLink(issuer)}>{pool ? <span title={issuer}>{pool.name} <span className="muted">({pool.impl})</span></span> : <span className="mono" title={issuer}>{short(issuer, 10)}</span>}</Link>
     </span>
   );
 }
@@ -32,10 +32,10 @@ export function PoolChip({ issuer, pool }: { issuer: string; pool?: PoolRef }) {
 export function UsageBar({ used, limit, title, name }: { used: number; limit: number; title: string; name: string }) {
   const u = usage(used, limit);
   return (
-    <span class="usage" title={title}>
-      <span class="usage-name">{name}</span>
-      <span class="usage-bar" role="img" aria-label={`${name}: ${u.text} of the block limit used`}><span style={{ width: `${u.pct}%` }} /></span>
-      <span class="usage-text">{u.text}</span>
+    <span className="usage" title={title}>
+      <span className="usage-name">{name}</span>
+      <span className="usage-bar" role="img" aria-label={`${name}: ${u.text} of the block limit used`}><span style={{ width: `${u.pct}%` }} /></span>
+      <span className="usage-text">{u.text}</span>
     </span>
   );
 }
@@ -44,7 +44,7 @@ export function Pager({ offset, limit, total, onPage }: { offset: number; limit:
   const from = total === 0 ? 0 : offset + 1;
   const to = Math.min(total, offset + limit);
   return (
-    <nav class="pager" aria-label="Pages">
+    <nav className="pager" aria-label="Pages">
       <button type="button" onClick={() => onPage(Math.max(0, offset - limit))} disabled={offset === 0}>Newer</button>
       <span role="status">{from.toLocaleString("en-US")} to {to.toLocaleString("en-US")} of {total.toLocaleString("en-US")}</span>
       <button type="button" onClick={() => onPage(offset + limit)} disabled={offset + limit >= total}>Older</button>
@@ -52,23 +52,23 @@ export function Pager({ offset, limit, total, onPage }: { offset: number; limit:
   );
 }
 
-export function Section({ id, title, children }: { id: string; title: string; children: ComponentChildren }) {
+export function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   return (
-    <section class="card" aria-labelledby={id}>
+    <section className="card" aria-labelledby={id}>
       <h2 id={id}>{title}</h2>
       {children}
     </section>
   );
 }
 
-export function Facts({ rows }: { rows: [string, ComponentChildren][] }) {
+export function Facts({ rows }: { rows: [string, ReactNode][] }) {
   return (
-    <dl class="glossary">
+    <dl className="glossary">
       {rows.map(([k, v]) => (
-        <>
+        <Fragment key={k}>
           <dt>{k}</dt>
           <dd>{v}</dd>
-        </>
+        </Fragment>
       ))}
     </dl>
   );
@@ -76,13 +76,13 @@ export function Facts({ rows }: { rows: [string, ComponentChildren][] }) {
 
 /** Assets lists native tokens by policy and name; the full policy id is in the tooltip. */
 export function Assets({ items }: { items?: Asset[] }) {
-  if (!items || items.length === 0) return <span class="muted">none</span>;
+  if (!items || items.length === 0) return <span className="muted">none</span>;
   return (
-    <ul class="tokens">
+    <ul className="tokens">
       {items.map((a) => (
         <li key={a.policy + a.name}>
           <span title={`policy ${a.policy}, name ${a.name || "(empty)"}`}>{a.quantity} {a.name_text ?? (a.name ? short(a.name, 8) : "(unnamed)")}</span>
-          <span class="muted mono"> {short(a.policy, 8)}</span>
+          <span className="muted mono"> {short(a.policy, 8)}</span>
         </li>
       ))}
     </ul>
@@ -98,12 +98,12 @@ export function OutputCells({ o, lovelace }: { o: Output; lovelace: string }) {
       <td><Assets items={o.assets} /></td>
       <td>
         {o.datum ? (
-          <span title={o.datum.hex ?? o.datum.hash}>{o.datum.kind === "inline" ? "inline " : "hash "}<span class="mono">{short(o.datum.hash, 10)}</span></span>
+          <span title={o.datum.hex ?? o.datum.hash}>{o.datum.kind === "inline" ? "inline " : "hash "}<span className="mono">{short(o.datum.hash, 10)}</span></span>
         ) : (
-          <span class="muted">none</span>
+          <span className="muted">none</span>
         )}
       </td>
-      <td>{o.script_ref ? <span title={o.script_ref.hash}>{o.script_ref.language} <span class="mono">{short(o.script_ref.hash, 10)}</span></span> : <span class="muted">none</span>}</td>
+      <td>{o.script_ref ? <span title={o.script_ref.hash}>{o.script_ref.language} <span className="mono">{short(o.script_ref.hash, 10)}</span></span> : <span className="muted">none</span>}</td>
     </>
   );
 }

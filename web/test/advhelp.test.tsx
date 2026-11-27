@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { render } from "preact-render-to-string";
+import { renderToStaticMarkup as render } from "react-dom/server";
 import { ADV_GLOSSARY, ADV_HELP } from "../src/lib/advhelp";
 import { honestImpact } from "../src/lib/adversaries";
 import type { AdversaryRow, AdversaryView } from "../src/lib/types";
@@ -28,7 +28,7 @@ function describedBy(html: string, label: string): string {
   expect(m, `a tip for ${label}`).not.toBeNull();
   const t = new RegExp(`id="${m![1]}" class="tip-text">([^<]*)<`).exec(html);
   expect(t, `text for ${label}`).not.toBeNull();
-  return t![1]!;
+  return t![1]!.replaceAll("&#x27;", "'");
 }
 
 describe("adversary definitions", () => {

@@ -1,4 +1,4 @@
-import type { ComponentChildren } from "preact";
+import type { ReactNode } from "react";
 import type { FieldHelp } from "../lib/help";
 import type { Option } from "../lib/meta";
 
@@ -9,18 +9,18 @@ import type { Option } from "../lib/meta";
  */
 export function HelpTip({ id, label, text }: { id: string; label: string; text: string }) {
   return (
-    <span class="tip">
-      <button type="button" class="tip-btn" aria-label={`About ${label}`} aria-describedby={id}>?</button>
-      <span role="tooltip" id={id} class="tip-text">{text}</span>
+    <span className="tip">
+      <button type="button" className="tip-btn" aria-label={`About ${label}`} aria-describedby={id}>?</button>
+      <span role="tooltip" id={id} className="tip-text">{text}</span>
     </span>
   );
 }
 
-function Frame({ id, help, children }: { id: string; help: FieldHelp; children: ComponentChildren }) {
+function Frame({ id, help, children }: { id: string; help: FieldHelp; children: ReactNode }) {
   return (
-    <div class="field">
-      <div class="field-head">
-        <label for={id}>{help.label}</label>
+    <div className="field">
+      <div className="field-head">
+        <label htmlFor={id}>{help.label}</label>
         <HelpTip id={`${id}-help`} label={help.label} text={help.help} />
       </div>
       {children}
@@ -45,9 +45,9 @@ export function SelectField({ id, label, help, value, options, allLabel = "All",
   return (
     <Frame id={id} help={h}>
       <select id={id} value={value} aria-describedby={`${id}-help`} onChange={(e) => onChange(e.currentTarget.value)}>
-        {allLabel !== null && <option value="" selected={value === ""}>{allLabel}</option>}
+        {allLabel !== null && <option value="">{allLabel}</option>}
         {options.map((o) => (
-          <option key={o.value} value={o.value} selected={o.value === value}>{o.label}</option>
+          <option key={o.value} value={o.value}>{o.label}</option>
         ))}
       </select>
     </Frame>
@@ -58,12 +58,12 @@ export function SelectField({ id, label, help, value, options, allLabel = "All",
 export function TextField({ id, help, value, placeholder, inputMode, onChange }: { id: string; help: FieldHelp; value: string; placeholder?: string; inputMode?: "numeric" | "text"; onChange: (v: string) => void }) {
   return (
     <Frame id={id} help={help}>
-      <input id={id} type="text" value={value} placeholder={placeholder} inputMode={inputMode} aria-describedby={`${id}-help`} onInput={(e) => onChange(e.currentTarget.value)} />
+      <input id={id} type="text" value={value} placeholder={placeholder} inputMode={inputMode} aria-describedby={`${id}-help`} onChange={(e) => onChange(e.currentTarget.value)} />
     </Frame>
   );
 }
 
 /** Blurb is the one-line description under a view's title. */
 export function Blurb({ text }: { text: string }) {
-  return <p class="blurb">{text}</p>;
+  return <p className="blurb">{text}</p>;
 }

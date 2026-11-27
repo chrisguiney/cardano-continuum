@@ -1,5 +1,6 @@
+import type { ReactElement } from "react";
 import { describe, expect, it } from "vitest";
-import { render } from "preact-render-to-string";
+import { renderToStaticMarkup as render } from "react-dom/server";
 import { SelectField, HelpTip } from "../src/views/fields";
 import { Help } from "../src/views/Help";
 import { GLOSSARY, FIELD_HELP, VIEW_BLURB } from "../src/lib/help";
@@ -97,7 +98,7 @@ describe("filters and the query string", () => {
 
 describe("filter bars", () => {
   const noop = () => {};
-  const bars: [string, preact.VNode, string[], string[]][] = [
+  const bars: [string, ReactElement, string[], string[]][] = [
     ["actors", <ActorFilters page={initialPage()} enums={enums} profiles={{ hodl: 3 }} states={{}} onFilter={noop} onLimit={noop} onSort={noop} />, ["f-profile", "f-kind", "f-state", "f-delegated", "f-sort", "f-dir", "f-limit"], ["hodl (3)", "wallet", "dormant"]],
     ["findings", <FindingFilterBar f={{ known: "false", kind: "", severity: "" }} enums={enums} onChange={noop} />, ["f-known", "f-severity", "f-fkind"], ["fatal", "wrong_class"]],
     ["decisions", <DecisionFilterBar f={{ actor: "", profile: "", kind: "", intent: "" }} enums={enums} profiles={{}} onChange={noop} />, ["f-actor", "f-dprofile", "f-dkind", "f-intent"], ["IntentChosen", "vote"]],

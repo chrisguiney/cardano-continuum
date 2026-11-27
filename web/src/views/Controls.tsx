@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useState } from "react";
 import { Blurb, HelpTip, SelectField, TextField } from "./fields";
 import { FIELD_HELP, VIEW_BLURB } from "../lib/help";
 import { useEnums, type ScenarioInfo } from "../lib/meta";
@@ -22,14 +22,14 @@ const describe = (b: ControlBody): string => {
 /** ScenarioTable lists every scenario with its argument and what it does. */
 export function ScenarioTable({ list }: { list: ScenarioInfo[] }) {
   return (
-    <table class="scenarios">
-      <caption class="sr">Scenarios</caption>
+    <table className="scenarios">
+      <caption className="sr">Scenarios</caption>
       <thead><tr><th>Name</th><th>Argument</th><th>What it does</th></tr></thead>
       <tbody>
         {list.map((s) => (
           <tr key={s.name}>
             <td><code>{s.name}</code></td>
-            <td>{s.arg ? <>{s.arg}{s.optional ? " (optional)" : ""}{s.example && <div class="muted">e.g. <code>{s.example}</code></div>}</> : <span class="muted">none</span>}</td>
+            <td>{s.arg ? <>{s.arg}{s.optional ? " (optional)" : ""}{s.example && <div className="muted">e.g. <code>{s.example}</code></div>}</> : <span className="muted">none</span>}</td>
             <td>{s.description}</td>
           </tr>
         ))}
@@ -41,11 +41,11 @@ export function ScenarioTable({ list }: { list: ScenarioInfo[] }) {
 /** WeightGrid is one number field per intent kind; an empty field keeps the profile's weight. */
 export function WeightGrid({ names, values, onChange }: { names: string[]; values: Record<string, string>; onChange: (name: string, v: string) => void }) {
   return (
-    <div class="weights">
+    <div className="weights">
       {names.map((name) => (
-        <label key={name} class="weight">
+        <label key={name} className="weight">
           <span>{name}</span>
-          <input type="number" min="0" max="1000" step="any" placeholder="profile" value={values[name] ?? ""} onInput={(e) => onChange(name, e.currentTarget.value)} />
+          <input type="number" min="0" max="1000" step="any" placeholder="profile" value={values[name] ?? ""} onChange={(e) => onChange(name, e.currentTarget.value)} />
         </label>
       ))}
     </div>
@@ -92,35 +92,35 @@ export function Controls() {
     <>
       <h1>Controls</h1>
       <Blurb text={VIEW_BLURB.controls!} />
-      <section class="card controls">
+      <section className="card controls">
         <h2>Run</h2>
-        <div class="row">
+        <div className="row">
           <button type="button" aria-describedby="h-pause" onClick={() => ask("pause")}>Pause</button>
           <button type="button" aria-describedby="h-resume" onClick={() => ask("resume")}>Resume</button>
           <HelpTip id="h-pause" label="Pause and Resume" text="Pause stops actors from acting and the chain from advancing in simulated time. Resume continues from where it stopped." />
-          <span id="h-resume" class="sr">Resume continues a paused run.</span>
+          <span id="h-resume" className="sr">Resume continues a paused run.</span>
         </div>
-        <div class="row">
+        <div className="row">
           <TextField id="c-k" help={FIELD_HELP.k!} value={input.k ?? ""} inputMode="numeric" onChange={(v) => setInput({ ...input, k: v })} />
           <button type="button" onClick={() => ask("set_k")}>Set k</button>
         </div>
       </section>
 
-      <section class="card controls">
+      <section className="card controls">
         <h2>
           {FIELD_HELP.weights!.label} <HelpTip id="h-weights" label={FIELD_HELP.weights!.label} text={FIELD_HELP.weights!.help} />
         </h2>
         <WeightGrid names={enums?.weight ?? []} values={input.weights ?? {}} onChange={setWeight} />
-        {!enums && <p class="muted">Loading intents…</p>}
-        <div class="row">
+        {!enums && <p className="muted">Loading intents…</p>}
+        <div className="row">
           <button type="button" onClick={() => ask("set_weights")}>Set weights</button>
-          <button type="button" class="ghost" onClick={() => setInput((i) => ({ ...i, weights: {} }))}>Clear form</button>
+          <button type="button" className="ghost" onClick={() => setInput((i) => ({ ...i, weights: {} }))}>Clear form</button>
         </div>
       </section>
 
-      <section class="card controls">
+      <section className="card controls">
         <h2>Scenarios</h2>
-        <div class="row">
+        <div className="row">
           <SelectField
             id="c-scenario"
             help={FIELD_HELP.scenario!}
@@ -140,18 +140,18 @@ export function Controls() {
           )}
           <button type="button" disabled={!input.scenario} onClick={() => ask("inject")}>Inject</button>
         </div>
-        {chosen && <p class="muted">{chosen.description}</p>}
+        {chosen && <p className="muted">{chosen.description}</p>}
         {scenarios.length > 0 && <ScenarioTable list={scenarios} />}
       </section>
 
       {pending && (
-        <div class="confirm" role="alertdialog" aria-label="Confirm control action">
+        <div className="confirm" role="alertdialog" aria-label="Confirm control action">
           <p><strong>{pending.text}</strong></p>
-          <button type="button" class="danger" disabled={busy} onClick={() => void confirm()}>Confirm</button>
-          <button type="button" class="ghost" disabled={busy} onClick={() => setPending(null)}>Cancel</button>
+          <button type="button" className="danger" disabled={busy} onClick={() => void confirm()}>Confirm</button>
+          <button type="button" className="ghost" disabled={busy} onClick={() => setPending(null)}>Cancel</button>
         </div>
       )}
-      {result && <p class={result.ok ? "banner ok" : "banner bad"} role="status">{result.text}</p>}
+      {result && <p className={result.ok ? "banner ok" : "banner bad"} role="status">{result.text}</p>}
     </>
   );
 }

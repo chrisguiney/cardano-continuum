@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "react";
 import { Feed, foldDecisions, type EventSourceLike, type FeedFilter, type FeedRow, type FeedState, type IdleMode, type IdleRun } from "../lib/feed";
 import { chances, clamp, percent } from "../lib/chance";
 import { simTime } from "../lib/format";
@@ -20,10 +20,10 @@ const FLUSH_MS = 300;
 function IdleRow({ r }: { r: IdleRun }) {
   const span = r.from === r.to ? simTime(r.from) : `${simTime(r.from)} – ${simTime(r.to)}`;
   return (
-    <li class="idle-run">
-      <span class="when">{span}</span>
-      <span class="kind">idle</span>
-      <span class="muted">
+    <li className="idle-run">
+      <span className="when">{span}</span>
+      <span className="kind">idle</span>
+      <span className="muted">
         {r.count.toLocaleString()} idle decision{r.count === 1 ? "" : "s"} from {r.actors.toLocaleString()} actor{r.actors === 1 ? "" : "s"}
       </span>
     </li>
@@ -46,7 +46,7 @@ export function Why({ d }: { d: Decision }) {
       <summary>{scores.length ? `why (${scores.length} scored)` : "body"}</summary>
       {scores.length ? (
         <>
-          <table class="scores">
+          <table className="scores">
             <thead>
               <tr>
                 <Th id={`${pre}-intent`} k="intent" />
@@ -58,11 +58,11 @@ export function Why({ d }: { d: Decision }) {
             </thead>
             <tbody>
               {scores.map((s, i) => (
-                <tr key={i} class={s.kind === d.intent ? "chosen" : undefined}>
+                <tr key={i} className={s.kind === d.intent ? "chosen" : undefined}>
                   <td>{s.kind}{s.kind === d.intent ? " (chosen)" : ""}</td>
-                  <td class="num">{s.value.toFixed(3)}</td>
-                  <td class="num">{+clamp(s.weight ?? 1).toFixed(3)}</td>
-                  <td class="num">
+                  <td className="num">{s.value.toFixed(3)}</td>
+                  <td className="num">{+clamp(s.weight ?? 1).toFixed(3)}</td>
+                  <td className="num">
                     {pct[i]! > 0 ? percent(pct[i]!) : (
                       <>— <HelpTip id={`${pre}-z${i}`} label="a zero chance" text={`${s.why}. ${FIELD_HELP.zero_score!.help}`} /></>
                     )}
@@ -72,7 +72,7 @@ export function Why({ d }: { d: Decision }) {
               ))}
             </tbody>
           </table>
-          <p class="muted">
+          <p className="muted">
             Chance = score x weight / total; idle scores 1 as the baseline.
             {d.clock ? ` Chosen among ${d.clock} options after its fitted clock fired.` : ""}
           </p>
@@ -167,7 +167,7 @@ export function Decisions() {
     <>
       <h1>Decisions</h1>
       <Blurb text={VIEW_BLURB.decisions!} />
-      <form class="filters" aria-label="Filter decisions" onSubmit={(e) => e.preventDefault()}>
+      <form className="filters" aria-label="Filter decisions" onSubmit={(e) => e.preventDefault()}>
         <DecisionFilterBar f={filt} enums={enums} profiles={snap?.population.by_profile ?? {}} onChange={(k, v) => setFilt((f) => ({ ...f, [k]: v }))} />
         <label title={FIELD_HELP.idle!.help}>
           {FIELD_HELP.idle!.label}{" "}
@@ -180,26 +180,26 @@ export function Decisions() {
         <button type="button" title={FIELD_HELP.pause!.help} aria-pressed={paused} onClick={() => setPaused((p) => !p)}>
           {paused ? `Resume${waiting ? ` (${waiting.toLocaleString()} new)` : ""}` : "Pause"}
         </button>
-        <span class={`tag ${state === "live" ? "ok" : "warn"}`} role="status">{paused ? "paused" : state}</span>
+        <span className={`tag ${state === "live" ? "ok" : "warn"}`} role="status">{paused ? "paused" : state}</span>
       </form>
-      {gap && <p class="banner warn">Some decisions were dropped before this connection could replay them.</p>}
-      <p class="muted">Newest first, last {CAP} rows shown.</p>
-      <ul class="feed">
+      {gap && <p className="banner warn">Some decisions were dropped before this connection could replay them.</p>}
+      <p className="muted">Newest first, last {CAP} rows shown.</p>
+      <ul className="feed">
         {rows.map((r) =>
           r.type === "idle" ? (
             <IdleRow key={`i${r.key}`} r={r} />
           ) : (
             <li key={r.d.id}>
-              <span class="when">{simTime(r.d.at)}</span>
-              <span class="kind">{r.d.kind}</span>
+              <span className="when">{simTime(r.d.at)}</span>
+              <span className="kind">{r.d.kind}</span>
               <Link to={`/actors/${r.d.actor}`}>actor {r.d.actor}</Link>
-              {r.d.profile && <span class="muted"> {r.d.profile}</span>}
+              {r.d.profile && <span className="muted"> {r.d.profile}</span>}
               {r.d.intent && <strong> {r.d.intent}</strong>}
               <Why d={r.d} />
             </li>
           ),
         )}
-        {rows.length === 0 && <li class="empty">Waiting for decisions…</li>}
+        {rows.length === 0 && <li className="empty">Waiting for decisions…</li>}
       </ul>
     </>
   );

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useEffect, useMemo, useState } from "react";
 import { Feed, appendDecision, type EventSourceLike, type FeedState } from "../lib/feed";
 import { ada, count, short, simTime } from "../lib/format";
 import { CLASSES, choiceLine, filterGov, sortProposals, yesShare, type GovFilter } from "../lib/governance";
@@ -16,23 +16,23 @@ const FEED_CAP = 100;
 const CLASS_LABEL: Record<string, string> = { drep: "DRep", spo: "SPO", committee: "Constitutional committee" };
 
 function Actor({ id, profile }: { id?: number; profile?: string }) {
-  if (id === undefined) return <span class="muted">not ours</span>;
+  if (id === undefined) return <span className="muted">not ours</span>;
   return (
     <>
       <Link to={`/actors/${id}`}>actor {id}</Link>
-      {profile && <span class="muted"> {profile}</span>}
+      {profile && <span className="muted"> {profile}</span>}
     </>
   );
 }
 
 function Share({ v }: { v: number | null }) {
-  return v === null ? <span class="muted">–</span> : <span>{(v * 100).toFixed(0)}% yes</span>;
+  return v === null ? <span className="muted">–</span> : <span>{(v * 100).toFixed(0)}% yes</span>;
 }
 
 /** VoteTable lists votes, newest first. */
 export function VoteTable({ votes, empty }: { votes: VoteRow[]; empty: string }) {
   return (
-    <div class="table-wrap">
+    <div className="table-wrap">
       <table>
         <thead>
           <tr><th>Slot</th><th>Voter</th><th>Actor</th><th>Proposal</th><th>Type</th><th>Choice</th><th>Power</th></tr>
@@ -40,16 +40,16 @@ export function VoteTable({ votes, empty }: { votes: VoteRow[]; empty: string })
         <tbody>
           {votes.map((v) => (
             <tr key={`${v.tx}-${v.proposal}-${v.voter}`}>
-              <td class="num">{count(v.slot)}</td>
+              <td className="num">{count(v.slot)}</td>
               <td>{CLASS_LABEL[v.voter] ?? v.voter}</td>
               <td><Actor id={v.actor} profile={v.profile} /></td>
               <td><ProposalLink id={v.proposal} /></td>
               <td>{v.type || "–"}</td>
               <td>{v.choice}</td>
-              <td class="num">{v.power > 0 ? ada(v.power) : "–"}</td>
+              <td className="num">{v.power > 0 ? ada(v.power) : "–"}</td>
             </tr>
           ))}
-          {votes.length === 0 && <tr><td colSpan={7} class="empty">{empty}</td></tr>}
+          {votes.length === 0 && <tr><td colSpan={7} className="empty">{empty}</td></tr>}
         </tbody>
       </table>
     </div>
@@ -73,7 +73,7 @@ const CLASS_TERM: Record<string, string> = { drep: "drep", spo: "spo", committee
 /** ProposalTable lists proposals, each linking to its page with a one-line summary of what it asks for. */
 export function ProposalTable({ proposals }: { proposals: ProposalRow[] }) {
   return (
-    <div class="table-wrap">
+    <div className="table-wrap">
       <table>
         <thead>
           <tr>
@@ -84,21 +84,21 @@ export function ProposalTable({ proposals }: { proposals: ProposalRow[] }) {
         </thead>
         <tbody>
           {proposals.map((p) => (
-            <tr key={p.id} class={p.status === "expired" ? "dim" : undefined}>
+            <tr key={p.id} className={p.status === "expired" ? "dim" : undefined}>
               <td><ProposalLink id={p.id} /></td>
-              <td>{p.type || "unknown"}{p.summary && <div class="muted">{p.summary}</div>}</td>
+              <td>{p.type || "unknown"}{p.summary && <div className="muted">{p.summary}</div>}</td>
               <td><Actor id={p.proposer} profile={p.profile} /></td>
-              <td class="num">{ada(p.deposit_lovelace)}</td>
-              <td class="num">{p.expires_epoch === undefined ? "–" : `epoch ${p.expires_epoch}`}</td>
-              <td><span class={`tag ${p.status === "open" || p.status === "ratified" ? "ok" : "warn"}`}>{p.status}</span></td>
+              <td className="num">{ada(p.deposit_lovelace)}</td>
+              <td className="num">{p.expires_epoch === undefined ? "–" : `epoch ${p.expires_epoch}`}</td>
+              <td><span className={`tag ${p.status === "open" || p.status === "ratified" ? "ok" : "warn"}`}>{p.status}</span></td>
               {CLASSES.map((c) => {
                 const t = p.tally[c];
-                if (c === "spo" && !p.spo_may_vote) return <td key={c} class="muted" title="the ledger does not let stake pools vote on this action">not eligible</td>;
+                if (c === "spo" && !p.spo_may_vote) return <td key={c} className="muted" title="the ledger does not let stake pools vote on this action">not eligible</td>;
                 return <td key={c}>{t ? <>{choiceLine(t)}<br /><Share v={yesShare(t)} /></> : "–"}</td>;
               })}
             </tr>
           ))}
-          {proposals.length === 0 && <tr><td colSpan={9} class="empty">No proposals on the chain yet.</td></tr>}
+          {proposals.length === 0 && <tr><td colSpan={9} className="empty">No proposals on the chain yet.</td></tr>}
         </tbody>
       </table>
     </div>
@@ -128,7 +128,7 @@ function Summary({ g }: { g: GovernanceView }) {
   const open = g.proposals.filter((p) => p.status === "open").length;
   const byClass = (c: string) => g.proposals.reduce((n, p) => n + (p.tally[c]?.yes ?? 0) + (p.tally[c]?.no ?? 0) + (p.tally[c]?.abstain ?? 0), 0);
   return (
-    <div class="stats">
+    <div className="stats">
       <Stat label="Proposals" value={count(g.proposals.length)} sub={`${count(open)} open${g.epoch !== undefined ? `, epoch ${g.epoch}` : ""}`} />
       {CLASSES.map((c) => <Stat key={c} label={`${CLASS_LABEL[c]} votes`} value={count(byClass(c))} />)}
       <Stat label="Lifetime" value={`${g.lifetime_epochs} epochs`} sub="a proposal stays open this long" />
@@ -147,37 +147,37 @@ export function Governance() {
     <>
       <h1>Governance</h1>
       <Blurb text={VIEW_BLURB.governance!} />
-      <form class="filters" aria-label="Filter governance" onSubmit={(e) => e.preventDefault()}>
+      <form className="filters" aria-label="Filter governance" onSubmit={(e) => e.preventDefault()}>
         <SelectField id="g-voter" help={FIELD_HELP.voter_class!} value={filt.voter} options={optionsOf(enums?.voter_class ?? [])} onChange={(v) => setFilt((f) => ({ ...f, voter: v }))} />
         <SelectField id="g-type" help={FIELD_HELP.action_type!} value={filt.type} options={optionsOf(enums?.action_type ?? [])} onChange={(v) => setFilt((f) => ({ ...f, type: v }))} />
       </form>
       <ErrorNote error={error} />
-      {!g && !error && <p class="muted">Loading…</p>}
+      {!g && !error && <p className="muted">Loading…</p>}
       {g && (
         <>
           <Summary g={g} />
           <h2>Proposals</h2>
-          <p class="muted">Votes are each voter's latest; power is the stake behind the vote in the engine's chain view.</p>
+          <p className="muted">Votes are each voter's latest; power is the stake behind the vote in the engine's chain view.</p>
           <ProposalTable proposals={proposals} />
           <h2>Votes on the chain</h2>
           <VoteTable votes={g.votes} empty="No votes on the chain yet." />
         </>
       )}
-      <h2>Vote decisions <span class={`tag ${state === "live" ? "ok" : "warn"}`} role="status">{state}</span></h2>
-      <p class="muted">The voters' vote intents and submissions as they happen, newest first, last {FEED_CAP}.</p>
-      <ul class="feed">
+      <h2>Vote decisions <span className={`tag ${state === "live" ? "ok" : "warn"}`} role="status">{state}</span></h2>
+      <p className="muted">The voters' vote intents and submissions as they happen, newest first, last {FEED_CAP}.</p>
+      <ul className="feed">
         {feed.map((d) => (
           <li key={d.id}>
-            <span class="when">{simTime(d.at)}</span>
-            <span class="kind">{d.kind}</span>
+            <span className="when">{simTime(d.at)}</span>
+            <span className="kind">{d.kind}</span>
             <Link to={`/actors/${d.actor}`}>actor {d.actor}</Link>
-            {d.profile && <span class="muted"> {d.profile}</span>}
+            {d.profile && <span className="muted"> {d.profile}</span>}
             {d.kind === "IntentChosen" && d.scores?.find((s) => s.kind === "vote" && s.proposal)?.why && (
               <span> {d.scores.find((s) => s.kind === "vote" && s.proposal)?.why}</span>
             )}
           </li>
         ))}
-        {feed.length === 0 && <li class="empty">Waiting for vote decisions…</li>}
+        {feed.length === 0 && <li className="empty">Waiting for vote decisions…</li>}
       </ul>
     </>
   );

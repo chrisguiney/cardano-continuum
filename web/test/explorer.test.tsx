@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { render } from "preact-render-to-string";
+import { renderToStaticMarkup as render } from "react-dom/server";
 import { navFor } from "../src/lib/nav";
 import { parseRoute } from "../src/lib/router";
 import { blocksPath, forkLines, lovelaceText, usage } from "../src/lib/explorer";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { render } from "preact-render-to-string";
+import { renderToStaticMarkup as render } from "react-dom/server";
 import { chances, percent } from "../src/lib/chance";
 import { Why } from "../src/views/Decisions";
 import { FIELD_HELP, GLOSSARY } from "../src/lib/help";
@@ -45,7 +45,7 @@ describe("why box", () => {
       const m = new RegExp(`aria-describedby="(why-7-${k})"`).exec(html);
       expect(m).not.toBeNull();
       expect(html).toContain(`id="why-7-${k}"`);
-      expect(html).toContain(h.help.replace(/&/g, "&amp;"));
+      expect(html).toContain(h.help.replace(/&/g, "&amp;").replace(/'/g, "&#x27;"));
     }
   });
   it("shows chance percentages, highlights the chosen row and dashes the zero", () => {

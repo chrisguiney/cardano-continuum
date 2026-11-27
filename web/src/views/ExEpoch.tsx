@@ -19,14 +19,14 @@ export function EpochBody({ e }: { e: EpochView }) {
         ]} />
       </Section>
       <Section id="e-pools" title="Blocks per pool against expected">
-        <p class="muted">The explorer does not see stake, so expected is an equal share of the epoch's blocks among the pools.</p>
-        <div class="table-wrap">
+        <p className="muted">The explorer does not see stake, so expected is an equal share of the epoch's blocks among the pools.</p>
+        <div className="table-wrap">
           <table>
             <thead><tr><th>Pool</th><th>Blocks</th><th>Expected</th></tr></thead>
             <tbody>
               {e.pools.map((p) => (
                 <tr key={p.pool}>
-                  <td><Link to={poolLink(p.pool)}>{p.resolved ? <>{p.resolved.name} <span class="muted">({p.resolved.impl})</span></> : <span class="mono" title={p.pool}>{p.pool.slice(0, 12)}…</span>}</Link></td>
+                  <td><Link to={poolLink(p.pool)}>{p.resolved ? <>{p.resolved.name} <span className="muted">({p.resolved.impl})</span></> : <span className="mono" title={p.pool}>{p.pool.slice(0, 12)}…</span>}</Link></td>
                   <td>{p.blocks}</td>
                   <td>{p.expected.toFixed(1)}</td>
                 </tr>
@@ -44,7 +44,7 @@ export function ExEpoch({ n }: { n: number }) {
   return (
     <>
       <h1>Epoch {n}</h1>
-      <p class="muted">
+      <p className="muted">
         <Link to="/explorer">All blocks</Link>
         {n > 0 && <> · <Link to={epochLink(n - 1)}>Previous epoch</Link></>} · <Link to={epochLink(n + 1)}>Next epoch</Link>
       </p>

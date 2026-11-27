@@ -18,11 +18,11 @@ export function Term({ k, id }: { k: string; id?: string }) {
 }
 
 export function AnchorLine({ a }: { a?: GovAnchor }) {
-  if (!a) return <span class="muted">none</span>;
+  if (!a) return <span className="muted">none</span>;
   return (
     <>
-      <span class="mono">{a.url || "no URL"}</span>
-      <div class="muted">hash <span class="mono" title={a.hash}>{a.hash}</span></div>
+      <span className="mono">{a.url || "no URL"}</span>
+      <div className="muted">hash <span className="mono" title={a.hash}>{a.hash}</span></div>
     </>
   );
 }
@@ -39,26 +39,26 @@ export function Account({ address, actor }: { address: string; actor?: { id: num
 
 function Params({ ps }: { ps: GovParam[] }) {
   return (
-    <div class="table-wrap">
+    <div className="table-wrap">
       <table>
         <thead>
           <tr>
             <th>Parameter</th><th><Term k="group" /></th><th><Term k="security_group" id="security-col" /></th>
-            <th class="num">New value</th><th class="num"><Term k="param_current" /></th><th>Unit</th>
+            <th className="num">New value</th><th className="num"><Term k="param_current" /></th><th>Unit</th>
           </tr>
         </thead>
         <tbody>
           {groupParams(ps).flatMap(([, rows]) => rows).map((p) => (
             <tr key={p.field}>
-              <td><strong>{p.name}</strong><div class="muted">{p.desc}</div></td>
+              <td><strong>{p.name}</strong><div className="muted">{p.desc}</div></td>
               <td>{p.group || "other"}</td>
-              <td>{p.security ? <span class="tag warn">security group</span> : <span class="muted">no</span>}</td>
-              <td class="num">{p.new}</td>
-              <td class="num">{p.current ?? <span class="muted">unknown</span>}</td>
+              <td>{p.security ? <span className="tag warn">security group</span> : <span className="muted">no</span>}</td>
+              <td className="num">{p.new}</td>
+              <td className="num">{p.current ?? <span className="muted">unknown</span>}</td>
               <td>{p.unit}</td>
             </tr>
           ))}
-          {ps.length === 0 && <tr><td colSpan={6} class="empty">This action changes no parameter.</td></tr>}
+          {ps.length === 0 && <tr><td colSpan={6} className="empty">This action changes no parameter.</td></tr>}
         </tbody>
       </table>
     </div>
@@ -67,14 +67,14 @@ function Params({ ps }: { ps: GovParam[] }) {
 
 function Treasury({ c }: { c: GovContent }) {
   return (
-    <div class="table-wrap">
+    <div className="table-wrap">
       <table>
-        <thead><tr><th>Recipient</th><th class="num">Amount</th></tr></thead>
+        <thead><tr><th>Recipient</th><th className="num">Amount</th></tr></thead>
         <tbody>
           {(c.withdrawals ?? []).map((w) => (
-            <tr key={w.address}><td><Account address={w.address} actor={w.actor} /></td><td class="num">{ada(w.lovelace)}</td></tr>
+            <tr key={w.address}><td><Account address={w.address} actor={w.actor} /></td><td className="num">{ada(w.lovelace)}</td></tr>
           ))}
-          <tr><th scope="row">Total</th><td class="num"><strong>{ada(c.total ?? 0)}</strong></td></tr>
+          <tr><th scope="row">Total</th><td className="num"><strong>{ada(c.total ?? 0)}</strong></td></tr>
         </tbody>
       </table>
     </div>
@@ -85,13 +85,13 @@ function Committee({ c }: { c: GovContent }) {
   const removed = c.removed ?? [];
   const added = c.added ?? [];
   return (
-    <dl class="traits">
+    <dl className="traits">
       <dt>Removed members</dt>
-      <dd>{removed.length ? <ul>{removed.map((m) => <li key={m} class="mono">{m}</li>)}</ul> : <span class="muted">none</span>}</dd>
+      <dd>{removed.length ? <ul>{removed.map((m) => <li key={m} className="mono">{m}</li>)}</ul> : <span className="muted">none</span>}</dd>
       <dt>Added members</dt>
-      <dd>{added.length ? <ul>{added.map((m) => <li key={m.credential}><span class="mono">{m.credential}</span> term ends epoch {m.epoch}</li>)}</ul> : <span class="muted">none</span>}</dd>
+      <dd>{added.length ? <ul>{added.map((m) => <li key={m.credential}><span className="mono">{m.credential}</span> term ends epoch {m.epoch}</li>)}</ul> : <span className="muted">none</span>}</dd>
       <dt><Term k="quorum" /></dt>
-      <dd>{c.quorum || <span class="muted">unset</span>}</dd>
+      <dd>{c.quorum || <span className="muted">unset</span>}</dd>
     </dl>
   );
 }
@@ -101,22 +101,22 @@ export function Contents({ c }: { c: GovContent }) {
   const what = GOV_HELP[c.kind];
   return (
     <>
-      {what && <p class="muted">{what.help}</p>}
+      {what && <p className="muted">{what.help}</p>}
       {c.kind === "parameter_change" && <Params ps={c.params ?? []} />}
       {c.kind === "treasury_withdrawals" && <Treasury c={c} />}
       {c.kind === "update_committee" && <Committee c={c} />}
       {c.kind === "new_constitution" && c.constitution && (
-        <dl class="traits">
+        <dl className="traits">
           <dt><Term k="anchor" id="constitution-anchor" /></dt><dd><AnchorLine a={c.constitution.anchor} /></dd>
           <dt><Term k="guardrails" id="constitution-script" /></dt>
-          <dd>{c.constitution.script_hash ? <HashLink value={c.constitution.script_hash} n={28} label="guardrails script hash" /> : <span class="muted">none</span>}</dd>
+          <dd>{c.constitution.script_hash ? <HashLink value={c.constitution.script_hash} n={28} label="guardrails script hash" /> : <span className="muted">none</span>}</dd>
         </dl>
       )}
       {c.kind === "hard_fork_initiation" && c.version && (
-        <dl class="traits"><dt><Term k="hard_fork" /></dt><dd><strong>{c.version.major}.{c.version.minor}</strong></dd></dl>
+        <dl className="traits"><dt><Term k="hard_fork" /></dt><dd><strong>{c.version.major}.{c.version.minor}</strong></dd></dl>
       )}
       {(c.kind === "parameter_change" || c.kind === "treasury_withdrawals") && c.policy_hash && (
-        <dl class="traits">
+        <dl className="traits">
           <dt><Term k="guardrails" /></dt>
           <dd><HashLink value={c.policy_hash} n={28} label="guardrails script hash" /></dd>
         </dl>
@@ -127,10 +127,10 @@ export function Contents({ c }: { c: GovContent }) {
 
 /** PrevLink links the action this one builds on. */
 export function PrevLink({ c }: { c: GovContent }) {
-  if (!c.prev_action) return <span class="muted">none</span>;
+  if (!c.prev_action) return <span className="muted">none</span>;
   const to = govPath(`${c.prev_action.tx}#${c.prev_action.index}`);
   const text = `${c.prev_action.tx.slice(0, 10)}…#${c.prev_action.index}`;
-  return to ? <Link to={to}>{text}</Link> : <span class="mono">{text}</span>;
+  return to ? <Link to={to}>{text}</Link> : <span className="mono">{text}</span>;
 }
 
 export const votes = (n: number) => `${count(n)} ${n === 1 ? "vote" : "votes"}`;

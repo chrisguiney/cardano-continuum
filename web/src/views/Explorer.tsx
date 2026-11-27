@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useState } from "react";
 import { BLOCK_PAGE, blocksPath, bytesText, epochLink, exUnitsText, lovelaceText } from "../lib/explorer";
 import type { BlockPage, BlockRow } from "../lib/extypes";
 
@@ -11,14 +11,14 @@ import { BlockHash, Pager, PoolChip, UsageBar } from "./exparts";
 
 export function BlockTable({ page }: { page: BlockPage }) {
   return (
-    <div class="table-wrap">
+    <div className="table-wrap">
       <table>
         <thead>
           <tr><th>Height</th><th>Slot</th><th>Epoch</th><th>Time</th><th>Hash</th><th>Issuer</th><th>Txs</th><th>Size</th><th>Fees</th><th>ExUnits used</th></tr>
         </thead>
         <tbody>
           {page.rows.map((b) => <BlockRowView key={b.hash} b={b} page={page} />)}
-          {page.rows.length === 0 && <tr><td colSpan={10} class="empty">No blocks indexed yet.</td></tr>}
+          {page.rows.length === 0 && <tr><td colSpan={10} className="empty">No blocks indexed yet.</td></tr>}
         </tbody>
       </table>
     </div>
@@ -57,8 +57,8 @@ export function Explorer({ pool = "" }: { pool?: string }) {
     <>
       <h1>{pool ? "Blocks by pool" : "Explorer"}</h1>
       <Blurb text={VIEW_BLURB.explorer!} />
-      {pool && <p class="muted">Pool <span class="mono">{pool}</span>. <Link to="/pools">Pools view</Link></p>}
-      <p class="muted" role="status">{live ? "Live: the newest blocks refresh every 3 seconds." : "Paused: go to the newest page to follow the chain."}</p>
+      {pool && <p className="muted">Pool <span className="mono">{pool}</span>. <Link to="/pools">Pools view</Link></p>}
+      <p className="muted" role="status">{live ? "Live: the newest blocks refresh every 3 seconds." : "Paused: go to the newest page to follow the chain."}</p>
       <ErrorNote error={error} />
       {data && <BlockTable page={data} />}
       {data && <Pager offset={offset} limit={BLOCK_PAGE} total={data.total} onPage={setOffset} />}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useState } from "react";
 import { VIEW_BLURB } from "../lib/help";
 import { useEnums } from "../lib/meta";
 import { writeQuery } from "../lib/query";
@@ -32,7 +32,7 @@ export function Actors() {
     <>
       <h1>Actors</h1>
       <Blurb text={VIEW_BLURB.actors!} />
-      <form class="filters" aria-label="Filter actors" onSubmit={(e) => e.preventDefault()}>
+      <form className="filters" aria-label="Filter actors" onSubmit={(e) => e.preventDefault()}>
         <ActorFilters
           page={page}
           enums={enums}
@@ -42,17 +42,17 @@ export function Actors() {
           onLimit={(n) => setPage((p) => setLimit(p, n))}
           onSort={(k, d) => setPage((p) => setOrder(p, k, d))}
         />
-        <span class="muted" role="status">{count(total)} matching</span>
+        <span className="muted" role="status">{count(total)} matching</span>
       </form>
       <ErrorNote error={error} />
-      <div class="table-wrap">
+      <div className="table-wrap">
         <table>
           <thead>
             <tr>
               {ACTOR_COLUMNS.map((c) => (
                 <th key={c.label} aria-sort={c.sort ? dirOf(c.sort) : undefined}>
                   {c.sort ? (
-                    <button type="button" class="th" onClick={() => setPage((p) => setSort(p, c.sort!))}>
+                    <button type="button" className="th" onClick={() => setPage((p) => setSort(p, c.sort!))}>
                       {c.label}
                       <span aria-hidden="true">{page.sort === c.sort ? (page.desc ? " ▼" : " ▲") : ""}</span>
                     </button>
@@ -67,19 +67,19 @@ export function Actors() {
             {data?.rows.map((r) => (
               <tr key={r.id}>
                 {ACTOR_COLUMNS.map((c) => (
-                  <td key={c.label} class={c.num ? "num" : c.label === "Address" ? "mono" : undefined}>
-                    {c.label === "ID" ? <Link to={`/actors/${r.id}`}>{r.id}</Link> : c.cell(r) || <span class="muted">{c.label === "Name" ? "unnamed" : "-"}</span>}
+                  <td key={c.label} className={c.num ? "num" : c.label === "Address" ? "mono" : undefined}>
+                    {c.label === "ID" ? <Link to={`/actors/${r.id}`}>{r.id}</Link> : c.cell(r) || <span className="muted">{c.label === "Name" ? "unnamed" : "-"}</span>}
                   </td>
                 ))}
               </tr>
             ))}
             {data && data.rows.length === 0 && (
-              <tr><td colSpan={ACTOR_COLUMNS.length} class="empty">No actors match.</td></tr>
+              <tr><td colSpan={ACTOR_COLUMNS.length} className="empty">No actors match.</td></tr>
             )}
           </tbody>
         </table>
       </div>
-      <div class="pager">
+      <div className="pager">
         <button type="button" disabled={page.offset === 0} onClick={() => setPage(prevPage)}>Previous</button>
         <span>
           {count(info.from)}–{count(info.to)} of {count(total)} (page {count(info.page)} of {count(info.pages)})

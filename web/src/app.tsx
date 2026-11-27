@@ -1,4 +1,4 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useState } from "react";
 import { getJSON } from "./lib/api";
 import { navigate, parseRoute } from "./lib/router";
 import { Actor } from "./views/Actor";
@@ -84,9 +84,9 @@ export function App() {
 
   return (
     <>
-      <a class="skip" href="#main">Skip to content</a>
-      <header class="top">
-        <strong class="brand">continuum</strong>
+      <a className="skip" href="#main">Skip to content</a>
+      <header className="top">
+        <strong className="brand">continuum</strong>
         <nav aria-label="Views">
           {nav.map(([to, label]) => (
             <a
@@ -104,8 +104,8 @@ export function App() {
           ))}
         </nav>
         {caps.explorer && <SearchBox />}
-        <span class="theme">
-          <button type="button" class="ghost" onClick={toggle} aria-describedby="theme-help">
+        <span className="theme">
+          <button type="button" className="ghost" onClick={toggle} aria-describedby="theme-help">
             {theme === "dark" ? "Light theme" : "Dark theme"}
           </button>
           <HelpTip id="theme-help" label="Theme" text={FIELD_HELP.theme!.help} />
@@ -128,8 +128,8 @@ export function App() {
         {route.name === "xepoch" && <ExEpoch n={route.n} />}
         {route.name === "xpool" && <Explorer pool={route.key} />}
         {route.name === "help" && <Help />}
-        {route.name === "controls" && (controls ? <Controls /> : <p class="empty">Controls are not enabled on this server (start it with --controls).</p>)}
-        {route.name === "notfound" && <p class="empty">No such page.</p>}
+        {route.name === "controls" && (controls ? <Controls /> : <p className="empty">Controls are not enabled on this server (start it with --controls).</p>)}
+        {route.name === "notfound" && <p className="empty">No such page.</p>}
       </main>
     </>
   );
