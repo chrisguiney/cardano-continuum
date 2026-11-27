@@ -2,6 +2,7 @@ package plan
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
@@ -51,19 +52,37 @@ func (v *view) tip() chain.Point {
 
 // spentAbove is every output a block above the settled point spends.
 func (v *view) spentAbove() map[Ref]struct{} {
-	if v.spent != nil {
-		return v.spent
+	if v.spent == nil {
+		v.spent = spends(v.blocks)
 	}
+	return v.spent
+}
+
+// spends is every output bs spend.
+func spends(bs []vblock) map[Ref]struct{} {
 	out := map[Ref]struct{}{}
-	for _, b := range v.blocks {
+	for _, b := range bs {
 		for _, tx := range b.txs {
 			for _, r := range tx.spends {
 				out[r] = struct{}{}
 			}
 		}
 	}
-	v.spent = out
 	return out
+}
+
+// cacheConsistent reports whether the spent cache, when built, holds
+// exactly what the blocks spend.
+func (v *view) cacheConsistent() error {
+	if v.spent == nil {
+		return nil
+	}
+
+	built := spends(v.blocks)
+	if !maps.Equal(v.spent, built) {
+		return fmt.Errorf("spent cache has %d outputs, the blocks spend %d", len(v.spent), len(built))
+	}
+	return nil
 }
 
 // extend appends b, which must connect to the tip, keeping of its outputs

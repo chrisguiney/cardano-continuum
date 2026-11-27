@@ -7,7 +7,6 @@ import (
 	"slices"
 
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
-	"github.com/chrisguiney/cardano-continuum/internal/check"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 )
 
@@ -46,13 +45,13 @@ func (s *state) available(a population.ActorID, id IntentID, o Opts) []Utxo {
 	}
 	out = s.att.appendChange(out, s.att.recsBy[a], id, o, spent)
 	slices.SortFunc(out, func(x, y Utxo) int { return compareRefs(x.Ref, y.Ref) })
-	check.PostFn(func() bool { return equalUtxos(out, s.availableScan(a, id, o)) },
-		"plan: owner index agrees with a full scan")
 	return out
 }
 
 // availableScan is available without the indexes or the spent cache: the
-// reference that check.PostFn holds them to.
+// reference the property tests hold available to. It is not checked on
+// each read, which would scan every output per query: checkAdopt checks
+// the indexes and the cache it relies on once per step instead.
 func (s *state) availableScan(a population.ActorID, id IntentID, o Opts) []Utxo {
 	spent := map[Ref]struct{}{}
 	for _, b := range s.view.blocks {
@@ -81,13 +80,17 @@ func (s *state) availableScan(a population.ActorID, id IntentID, o Opts) []Utxo 
 
 func equalUtxos(a, b []Utxo) bool { return slices.Equal(a, b) }
 
-// indexConsistent reports whether the owner and actor indexes hold exactly
-// what the outputs and attempts imply.
+// indexConsistent reports whether the owner and actor indexes and the
+// spent cache hold exactly what the outputs, attempts and blocks imply.
 func (s *state) indexConsistent() error {
 	if err := s.out.indexConsistent(); err != nil {
 		return err
 	}
-	return s.att.indexConsistent()
+
+	if err := s.att.indexConsistent(); err != nil {
+		return err
+	}
+	return s.view.cacheConsistent()
 }
 
 // reserve checks attempt a of intent id against the contract's rule 3 and

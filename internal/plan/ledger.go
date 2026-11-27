@@ -71,11 +71,7 @@ func Open(cfg Config, b store.Blob) (*Ledger, error) {
 // commit makes next durable and adopts it. On failure the ledger keeps its
 // current state, so nothing a caller acts on is lost to a crash.
 func (l *Ledger) commit(ctx context.Context, next *state) error {
-	if check.Slow {
-		if err := next.consistent(); err != nil {
-			check.Post(false, "plan: "+err.Error())
-		}
-	}
+	checkAdopt(next)
 	if l.inPlace {
 		return nil
 	}
@@ -88,6 +84,24 @@ func (l *Ledger) commit(ctx context.Context, next *state) error {
 	}
 	l.st = next
 	return nil
+}
+
+// checkAdopt panics in debug builds when s, about to become the current
+// state, breaks the contract or its indexes disagree with a scan. Reads
+// trust the indexes, so they are checked once per step here, not on every
+// query.
+func checkAdopt(s *state) {
+	if !check.Slow {
+		return
+	}
+
+	if err := s.consistent(); err != nil {
+		check.Post(false, "plan: "+err.Error())
+	}
+
+	if err := s.indexConsistent(); err != nil {
+		check.Post(false, "plan: "+err.Error())
+	}
 }
 
 // Available is what Reserve accepts for intent id of actor a, sorted by Ref:
@@ -137,6 +151,7 @@ func (l *Ledger) Advance(ctx context.Context, ev chain.Event) (Result, error) {
 	}
 	if next.view.settled == was && len(res.Dead) == 0 {
 		// Only the volatile window moved, and it is not stored.
+		checkAdopt(next)
 		l.st = next
 		return res, nil
 	}
