@@ -13,7 +13,6 @@ members internal/chain View 67
 members internal/chain par 23
 members internal/engine Config 44
 members internal/engine Engine 30
-members internal/engine Runner 33
 members internal/engine pendingRec 30
 members internal/engine snapshot 31
 members internal/explorer TxView 27
@@ -26,7 +25,6 @@ members internal/plan rig 33
 members internal/policy model 25
 members internal/scenario txSpec 29
 members internal/store Identity 30
-nesting internal/engine Runner.Run 4
 nesting internal/engine/internal/wire DigestOf 4
 nesting internal/fakechain errAs 4
 nesting internal/fakechain validate 4
@@ -39,4 +37,3 @@ stray-methods cmd/continuum kubeCluster 1
 stray-methods cmd/continuum simFlags 3
 stray-methods internal/chain View 35
 stray-methods internal/engine Config 3
-stray-methods internal/engine Runner 2

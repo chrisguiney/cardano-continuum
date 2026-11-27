@@ -228,17 +228,9 @@ func (s *Steer) Adopt(at sched.Time, i uint64) {
 	s.env.Journal.Emit(at, wire.KindImageChange, pool, wire.ImageChange{Ref: a.Ref})
 }
 
-// PoolPlan is what the engine wants of one pool actor's ContinuumPool.
-type PoolPlan struct {
-	Actor uint64
-	// Genesis is the genesis pool index, or -1 for a pool the engine
-	// registered.
-	Genesis int
-	Dark    bool
-	// Image is the image an upgrade wave gave the pool; empty is the
-	// network's default.
-	Image string
-}
+// PoolPlan is what the engine wants of one pool actor's ContinuumPool;
+// see wire.PoolPlan.
+type PoolPlan = wire.PoolPlan
 
 // Pools is the pool plan, by actor. A live run patches each ContinuumPool
 // from it; the fake has nothing to patch.
