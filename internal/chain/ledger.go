@@ -103,19 +103,6 @@ func (v *View) restoreEpoch(u undo) {
 	}
 }
 
-// credStake is the lovelace in tracked outputs per stake credential of the
-// output's address.
-func (v *View) credStake() map[common.Blake2b224]uint64 {
-	out := map[common.Blake2b224]uint64{}
-	for _, u := range v.utxo {
-		addr := u.Output.Address()
-		if cred := addr.StakeKeyHash(); cred != (common.Blake2b224{}) {
-			out[cred] += u.Output.Amount().Uint64()
-		}
-	}
-	return out
-}
-
 // distribution is the stake of every registered, delegated credential.
 func (v *View) distribution() Snapshot {
 	stake := v.credStake()

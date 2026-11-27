@@ -14,11 +14,6 @@ import (
 // The methods below answer the agenda's per-actor questions (agenda.View)
 // from the view at its tip.
 
-// Balance is the lovelace in the actor's tracked outputs.
-func (v *View) Balance(id population.ActorID) profile.Lovelace {
-	return profile.Lovelace(v.balance[id])
-}
-
 // Epoch is the epoch of the tip's slot.
 func (v *View) Epoch() uint64 { return v.cfg.Slots.EpochOfSlot(v.tip.Slot) }
 
@@ -92,19 +87,6 @@ func (v *View) SetReturns(roi map[population.ActorID]float64) {
 func (v *View) poolLive(id common.Blake2b224) bool {
 	p, ok := v.pools[id]
 	return ok && !p.Retired && (!p.Retiring || v.Epoch() < p.RetireAt)
-}
-
-// Owned returns the tracked outputs by owning actor, each list sorted by
-// reference. It walks every output once, so a caller wanting several
-// actors asks once.
-func (v *View) Owned() map[population.ActorID][]common.Utxo {
-	out := map[population.ActorID][]common.Utxo{}
-	for _, u := range v.sorted() {
-		if id, ok := v.owner[RefOf(u.Id)]; ok {
-			out[id] = append(out[id], u)
-		}
-	}
-	return out
 }
 
 // StakeOf is the state of the actor's stake credential, or false when the

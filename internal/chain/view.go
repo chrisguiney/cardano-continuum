@@ -57,12 +57,10 @@ type View struct {
 	settled  Point
 	settledH uint64
 
-	utxo    map[Ref]common.Utxo
-	owner   map[Ref]population.ActorID
-	balance map[population.ActorID]uint64
-	stake   map[common.Blake2b224]StakeState
-	pools   map[common.Blake2b224]PoolState
-	dreps   map[common.Blake2b224]bool
+	utxos
+	stake map[common.Blake2b224]StakeState
+	pools map[common.Blake2b224]PoolState
+	dreps map[common.Blake2b224]bool
 	// epoch state: see ledger.go
 	ep epochState
 	// governance state: see gov.go
@@ -132,15 +130,13 @@ func New(cfg Config, s State) (*View, error) {
 	}
 	v := &View{
 		cfg: cfg, tip: s.At, height: s.Height, settled: s.At, settledH: s.Height,
-		utxo:    map[Ref]common.Utxo{},
-		owner:   map[Ref]population.ActorID{},
-		balance: map[population.ActorID]uint64{},
-		stake:   map[common.Blake2b224]StakeState{},
-		pools:   map[common.Blake2b224]PoolState{},
-		dreps:   map[common.Blake2b224]bool{},
-		ep:      epochState{label: s.Label, frozen: s.Frozen, mark: slices.Clone(s.Mark), set: slices.Clone(s.Set)},
-		props:   map[GovID]proposal{},
-		votes:   map[voteKey]uint8{},
+		utxos: newUtxos(cfg.Book),
+		stake: map[common.Blake2b224]StakeState{},
+		pools: map[common.Blake2b224]PoolState{},
+		dreps: map[common.Blake2b224]bool{},
+		ep:    epochState{label: s.Label, frozen: s.Frozen, mark: slices.Clone(s.Mark), set: slices.Clone(s.Set)},
+		props: map[GovID]proposal{},
+		votes: map[voteKey]uint8{},
 	}
 	for _, p := range s.Proposals {
 		v.props[p.ID] = proposal{expires: p.Expires, typ: p.Type, pools: p.Pools, deposit: p.Deposit}
@@ -169,27 +165,6 @@ func (v *View) Tip() Point { return v.tip }
 // Settled is the K-deep point: the newest block that has had K successors
 // in the view. It never moves back.
 func (v *View) Settled() Point { return v.settled }
-
-// Utxo returns the tracked output at r.
-func (v *View) Utxo(r Ref) (common.Utxo, bool) {
-	u, ok := v.utxo[r]
-	return u, ok
-}
-
-// UtxosAt returns the tracked outputs paying a, sorted by reference.
-func (v *View) UtxosAt(a common.Address) []common.Utxo {
-	want, err := addrKey(a)
-	if err != nil {
-		return nil
-	}
-	var out []common.Utxo
-	for _, u := range v.sorted() {
-		if k, err := addrKey(u.Output.Address()); err == nil && k == want {
-			out = append(out, u)
-		}
-	}
-	return out
-}
 
 // Apply folds b onto the tip. It returns the effects in transaction order,
 // then a Settled effect for each block b gave its Kth successor.
@@ -338,9 +313,7 @@ func (v *View) Confirmed() *View {
 
 func (v *View) clone() *View {
 	c := *v
-	c.utxo = maps.Clone(v.utxo)
-	c.owner = maps.Clone(v.owner)
-	c.balance = maps.Clone(v.balance)
+	c.utxos = v.utxos.clone()
 	c.stake = maps.Clone(v.stake)
 	c.pools = maps.Clone(v.pools)
 	c.dreps = maps.Clone(v.dreps)
@@ -348,52 +321,6 @@ func (v *View) clone() *View {
 	c.votes = maps.Clone(v.votes)
 	c.window = slices.Clone(v.window)
 	return &c
-}
-
-// add stores u if the book names its address, and reports whether it did.
-func (v *View) add(u common.Utxo) bool {
-	id, ok := v.cfg.Book.owner(u.Output.Address())
-	if !ok {
-		return false
-	}
-	r := RefOf(u.Id)
-	v.utxo[r] = u
-	v.owner[r] = id
-	v.balance[id] += u.Output.Amount().Uint64()
-	return true
-}
-
-func (v *View) remove(r Ref) {
-	u, ok := v.utxo[r]
-	if !ok {
-		return
-	}
-	id := v.owner[r]
-	v.balance[id] -= u.Output.Amount().Uint64()
-	if v.balance[id] == 0 {
-		delete(v.balance, id)
-	}
-	delete(v.utxo, r)
-	delete(v.owner, r)
-}
-
-func (v *View) sorted() []common.Utxo {
-	refs := slices.Collect(maps.Keys(v.utxo))
-	slices.SortFunc(refs, Ref.Compare)
-	var out []common.Utxo
-	for _, r := range refs {
-		out = append(out, v.utxo[r])
-	}
-	return out
-}
-
-// consistent reports whether the balance index matches the outputs.
-func (v *View) consistent() bool {
-	sum := map[population.ActorID]uint64{}
-	for r, u := range v.utxo {
-		sum[v.owner[r]] += u.Output.Amount().Uint64()
-	}
-	return maps.Equal(sum, v.balance)
 }
 
 // undo is what Rollback needs to remove one block.
