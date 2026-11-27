@@ -35,7 +35,7 @@ func (e *Engine) Snapshot() ([]byte, error) {
 	sv := e.win.Saved()
 	nextID, deposits := e.pay.Counters()
 	ct := e.in.Saved()
-	s := snapshot{Version: snapshotVersion, Now: e.clk.Now(), NextIntent: nextID, Conf: sv.Conf, Fees: sv.Fees, Foreign: sv.Foreign, RefillAt: e.refillAt, Deposits: deposits, Market: e.pc.Market(), Lost: e.jd.lost,
+	s := snapshot{Version: snapshotVersion, Now: e.clk.Now(), NextIntent: nextID, Conf: sv.Conf, Fees: sv.Fees, Foreign: sv.Foreign, RefillAt: e.refillAt, Deposits: deposits, Market: e.pc.Market(), Lost: e.jd.Lost(),
 		Contracts: ct.N, DeployAt: ct.At, DeployN: ct.Drawn}
 	for _, id := range e.co.IDs() {
 		a, _ := e.co.Get(id)
@@ -94,7 +94,7 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 	// Between inputs the last Tick's time is the clock.
 	e.clk.Restore(s.Now)
 	e.pc.SetMarket(s.Market)
-	e.paused, e.rateK, e.waves, e.adoptions, e.stalled, e.jd.lost = s.Paused, s.RateK, s.Waves, s.Adoptions, s.Stalled, s.Lost
+	e.paused, e.rateK, e.waves, e.adoptions, e.stalled = s.Paused, s.RateK, s.Waves, s.Adoptions, s.Stalled
 	if err := e.in.Load(intent.State{N: s.Contracts, At: s.DeployAt, Drawn: s.DeployN}); err != nil {
 		return nil, err
 	}
@@ -167,6 +167,7 @@ func (e *Engine) restoreLedger(s snapshot) error {
 	if err := e.pay.Open(e.ledgerConfig(), store.Blob{Version: s.Ledger.Version, Data: s.Ledger.Data}, s.NextIntent, s.Deposits); err != nil {
 		return fmt.Errorf("engine: snapshot ledger: %w", err)
 	}
+	e.jd.SetLost(s.Lost)
 	led := e.pay.Reads()
 	if conf, _ := chain.PointFromLog(s.Conf); led.ResumePoint() != conf {
 		return fmt.Errorf("engine: snapshot ledger settled at slot %d, engine confirmed slot %d", led.ResumePoint().Slot, s.Conf.Slot)

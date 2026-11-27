@@ -16,6 +16,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/intent"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/judge"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/pay"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
@@ -335,7 +336,7 @@ func (e *Engine) grab(ctx context.Context, at sched.Time, id population.ActorID,
 	ref := Ref{Tx: TxID(step.Spend.Ref.Tx), Index: step.Spend.Ref.Index}
 	s := shot{rec: wire.Pending{Args: wire.Args{Kind: unlockKind, Locked: &ref, Amount: step.Spend.Lovelace}}, ttl: e.in.TTL(at, false, true)}
 	// The honest spend it races may land first.
-	s.want = expect(e.cfg.Build, 0, true, intent.Again(unlockKind))
+	s.want = judge.Expect(e.cfg.Build, 0, true, intent.Again(unlockKind))
 	coins, why := e.fund(id, iid, scriptHeadroom)
 	if why != "" {
 		return shot{}, why, nil
@@ -509,7 +510,7 @@ func (e *Engine) judgeAttack(at sched.Time, p *wire.Pending, r SubmitResult, out
 	}
 	want := p.Want.Expected()
 	if p.TTL <= e.Tip().Slot+1+e.cfg.BlockEvery {
-		want = withClasses(want, submit.OutsideValidityInterval)
+		want = judge.WithClasses(want, submit.OutsideValidityInterval)
 	}
 	a := oracle.Attempt{Seq: e.jr.Seq(), Tx: p.Cbor, ID: chain.TxID(p.Tx), Expected: &want, Answers: []oracle.Answer{{Node: node, Outcome: out}}}
 	fs := oracle.Judge(a, e.cfg.Run)
@@ -521,7 +522,7 @@ func (e *Engine) judgeAttack(at sched.Time, p *wire.Pending, r SubmitResult, out
 		rw := mistake.Expect(0, true)
 		rw.Accept = !taken
 		ra := oracle.Attempt{Seq: e.jr.Seq(), Tx: p.Rivals[i].Tx, ID: chain.TxID(p.Rivals[i].ID), Expected: &rw,
-			Answers: []oracle.Answer{{Node: node, Outcome: answerOutcome(ans)}}}
+			Answers: []oracle.Answer{{Node: node, Outcome: judge.AnswerOutcome(ans)}}}
 		fs = append(fs, oracle.Judge(ra, e.cfg.Run)...)
 		taken = taken || ans.Verdict == VerdictAccepted
 	}

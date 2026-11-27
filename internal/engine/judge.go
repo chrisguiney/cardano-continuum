@@ -1,301 +1,48 @@
 package engine
 
 import (
-	"bytes"
-	"errors"
-	"fmt"
-	"slices"
-	"strconv"
-
-	"github.com/blinklabs-io/gouroboros/ledger/common"
-	"github.com/blinklabs-io/gouroboros/ledger/conway"
-	"github.com/blinklabs-io/gouroboros/ledger/shelley"
-
-	"github.com/chrisguiney/cardano-continuum/internal/build"
-	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/intent"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/judge"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
-	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
-	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
-	"github.com/chrisguiney/cardano-continuum/internal/keys"
-	"github.com/chrisguiney/cardano-continuum/internal/mistake"
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
-	"github.com/chrisguiney/cardano-continuum/internal/population"
-	"github.com/chrisguiney/cardano-continuum/internal/profile"
+	"github.com/chrisguiney/cardano-continuum/internal/policy"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
-	"github.com/chrisguiney/cardano-continuum/internal/submit"
 )
 
-// This file wires internal/mistake and internal/oracle into the engine.
-//
-// Mistakes: an intent samples one mistake from what its first honest
-// attempt makes possible (mistake.Applicable, mistake.Sample) and keeps it;
-// each attempt carries it less the fixes so far (mistake.Carry), injected
-// into the built bytes before the planner reserves the attempt, so the
-// reservation names the bytes that are sent.
-//
-// The oracle: every node answer is judged against mistake.Expect for the
-// mistakes the attempt carries (oracle.Judge), and the invariant monitors
-// run after every chain input and MonitorSnapshot (oracle.Check). A finding
-// is a decision: only the first occurrence of an ID is logged, and replay
-// regenerates it from the same inputs.
-
-// judge is the oracle bridge: the findings logged, the invariant monitors,
-// the genesis total value conservation counts from, what settled payments
-// lost to wrong addresses, and the block the current input applied.
-type judge struct {
-	e *Engine
-	// findings are the oracle findings logged so far, monitors the invariant
-	// checks, genesis the lovelace value conservation counts from and lost
-	// what settled payments sent to wrong addresses.
-	findings *oracle.Set
-	monitors []oracle.Monitor
-	genesis  uint64
-	lost     uint64
-	// budget is the block the current input applied, for the block-budget
-	// monitor.
-	budget *oracle.BlockBudget
+// judgeSpec is what the judge component is built from; genesis is the
+// lovelace value conservation counts from.
+func judgeSpec(e *Engine, genesis uint64) judge.Spec {
+	cfg := &e.cfg
+	return judge.Spec{
+		Mistakes: cfg.Mistakes, Build: cfg.Build, Run: cfg.Run, K: cfg.K, BlockEvery: cfg.BlockEvery,
+		Guard: e.guard, Genesis: genesis, Faucet: faucetActor, Again: intent.Again,
+	}
 }
 
-// Sample draws the intent's mistake from its first honest attempt. The
-// stream is the actor's, named by the intent, so it is the same draw
-// whatever else the actor did.
-func (j *judge) Sample(p *wire.Pending, w keys.Wallet, built build.Built) {
-	e := j.e
-	if !e.cfg.Mistakes {
-		return
-	}
-	a, _ := e.co.Get(population.ActorID(p.Actor))
-	t := profile.SampledTraits{Competence: a.Competence, Care: a.Traits.Care}
-	// The engine's scripts (build.AlwaysSucceeds, build.FreeMint) accept
-	// any redeemer, so a wrong one is no mistake: the node rightly
-	// accepts it. Withheld mistakes cannot run yet (mistake.Withheld).
-	ok := mistake.Applicable(built.Tx, j.Ctx(p, w)).Without(withheldKinds)
-	p.Injected = mistake.Sample(t, ok, a.Stream("mistake", strconv.FormatUint(p.ID, 10)))
+// judgeEnv is the rest of the engine as the judge component reaches it.
+func judgeEnv(e *Engine) judge.Env {
+	return judge.Env{Roster: e.co, Ring: e.co.Ring, Chain: e.win, Journal: &e.jr, Ledger: jhooks{e}, Floor: jhooks{e}, Race: jhooks{e}}
 }
 
-// withheldKinds are the mistakes the engine never samples.
-var withheldKinds = func() mistake.KindSet {
-	s := mistake.Of(mistake.WrongDatum)
-	for _, k := range mistake.Kinds() {
-		if mistake.Withheld(k) != "" {
-			s |= mistake.Of(k)
-		}
-	}
-	return s
-}()
+// jhooks is the supply, the stake floor and the contested outputs as the
+// judge reaches them.
+type jhooks struct{ e *Engine }
 
-// Mutate makes the mistakes the attempt carries in the honest built. A
-// mistake that this attempt's shape does not allow (its rebuild lost the
-// change output, say) is left out of it, and Carried says so.
-func (j *judge) Mutate(p *wire.Pending, w keys.Wallet, built build.Built) (build.Built, error) {
-	p.Carried, p.Lost = mistake.Carry(p.Injected, p.M.Fixed), 0
-	if p.Carried == 0 {
-		return built, nil
-	}
-	tx, want, err := mistake.Inject(built.Tx, p.Carried, j.Ctx(p, w))
-	if errors.Is(err, mistake.ErrNotApplicable) || errors.Is(err, mistake.ErrNoSigner) {
-		p.Carried = 0
-		return built, nil
-	}
-	if err != nil {
-		return build.Built{}, fmt.Errorf("engine: intent %d: inject %v: %w", p.ID, p.Carried, err)
-	}
-	t, err := conway.NewConwayTransactionFromCbor(tx)
-	if err != nil {
-		return build.Built{}, fmt.Errorf("engine: intent %d: decode mutant: %w", p.ID, err)
-	}
-	built.Tx, built.ID, p.Lost = tx, t.Hash(), want.Lost
-	return built, nil
-}
+// Supply implements judge.Ledger.
+func (h jhooks) Supply() uint64 { return h.e.Supply() }
 
-// Ctx is what Inject needs to re-sign an edited body: every key the
-// actor's transactions are signed with.
-func (j *judge) Ctx(p *wire.Pending, w keys.Wallet) mistake.Ctx {
-	e := j.e
-	id := population.ActorID(p.Actor)
-	signers := []keys.Signer{w.PaymentSigner(), w.StakeSigner()}
-	if id != faucetActor {
-		signers = append(signers, e.co.Ring.DRepSigner(id))
-	}
-	if _, ok := e.co.Ring.PoolOf(id); ok {
-		if s, err := e.co.Ring.PoolSigner(id); err == nil {
-			signers = append(signers, s)
-		}
-	}
-	return mistake.Ctx{Params: e.cfg.Build, Signers: signers, Change: w.Address(), Slot: e.Tip().Slot, Stale: &staleInput}
-}
+// Balances implements judge.Ledger.
+func (h jhooks) Balances() map[uint64]uint64 { return h.e.Balances() }
 
-// staleInput is the output a StaleInput mistake spends: one that never
-// existed, which the ledger answers like a spent one. Its ID is the largest
-// there is, so it sorts after every real input and the redeemers' input
-// indices still point at the script inputs; an input sorting before one
-// would also make the node report the redeemers' pointers wrong.
-var staleInput = shelley.ShelleyTransactionInput{TxId: common.Blake2b256(bytes.Repeat([]byte{0xff}, 32))}
+// Holders implements judge.Ledger.
+func (h jhooks) Holders() oracle.Holders { return h.e.pay.Reads() }
 
-// Judge compares the node's answers to the current attempt with the
-// verdict set its mistakes call for. "Inputs spent" is expected once the
-// attempt was sent, or an earlier unfinished attempt it conflicts with may
-// be at a node. A DoubleSubmit's second send always follows the first.
-func (j *judge) Judge(at sched.Time, p *wire.Pending, r SubmitResult, out submit.Outcome) error {
-	e := j.e
-	node := oracle.Node{Impl: "node"}
-	if r.Node != nil {
-		node = *r.Node
-	}
-	// An adversary racing for the same shared output may have spent it.
-	spent := p.M.Sent || len(p.Txs) > 1 || (p.Locked != nil && e.contested[*p.Locked])
-	want := expect(e.cfg.Build, p.Carried, spent, intent.Again(p.KindOf()))
-	if p.Probe {
-		// The probe's honest bytes break only the GOV rule's voter check.
-		want.Accept = false
-		want = withClasses(want, submit.Class(fakechain.DisallowedVoters))
-	}
-	want.Lost = p.Lost
-	// A rebuild waits out its backoff before its first send, which can
-	// outlast its TTL; the node's mempool validates one slot past its
-	// tip, and the engine's tip may trail the node's by a block.
-	if p.TTL <= e.Tip().Slot+1+e.cfg.BlockEvery {
-		want = withClasses(want, submit.OutsideValidityInterval)
-	}
-	a := oracle.Attempt{Seq: e.jr.Seq(), Tx: p.Cbor, ID: chain.TxID(p.Tx), Expected: &want, Answers: []oracle.Answer{{Node: node, Outcome: out}}}
-	fs := oracle.Judge(a, e.cfg.Run)
-	if f, ok := oracle.Differential(a, e.cfg.Run); ok {
-		fs = append(fs, f)
-	}
-	if r.Again != nil {
-		again := expect(e.cfg.Build, p.Carried, true, intent.Again(p.KindOf()))
-		a.Expected, a.Answers = &again, []oracle.Answer{{Node: node, Outcome: answerOutcome(*r.Again)}}
-		fs = append(fs, oracle.Judge(a, e.cfg.Run)...)
-	}
-	return j.Report(at, fs)
-}
+// State implements judge.Floor.
+func (h jhooks) State(at sched.Time) policy.State { return h.e.floorState(at) }
 
-// expect is mistake.ExpectOn the run's parameters, plus the classes a node names beside "inputs
-// spent" when the attempt's own earlier copy already landed: its
-// certificates are applied, so applying them again fails their rule too
-// (cardano-ledger runs the CERTS rule on the inputs it still holds and
-// accumulates both failures, as it does ValueNotConserved).
-func expect(pp build.Params, ks mistake.KindSet, spent bool, again []submit.Class) mistake.Expected {
-	e := mistake.ExpectOn(ks, spent, pp)
-	if !spent {
-		return e
-	}
-	return withClasses(e, again...)
-}
-
-// withClasses adds cs to e's classes, which Allows needs sorted.
-func withClasses(e mistake.Expected, cs ...submit.Class) mistake.Expected {
-	if len(cs) == 0 {
-		return e
-	}
-	e.Classes = append(slices.Clone(e.Classes), cs...)
-	slices.Sort(e.Classes)
-	e.Classes = slices.Compact(e.Classes)
-	return e
-}
-
-func answerOutcome(a Answer) submit.Outcome {
-	o := submit.Outcome{Verdict: submit.Unreached}
-	switch a.Verdict {
-	case VerdictAccepted:
-		o.Verdict = submit.Accepted
-	case VerdictRejected:
-		o.Verdict = submit.Rejected
-		for _, c := range a.Failures {
-			o.Failures = append(o.Failures, submit.Failure{Class: submit.Class(c)})
-		}
-	}
-	return o
-}
-
-// Watch runs the invariant monitors over the engine's state after an input:
-// value, the settled point's move since before it (from), the intents that
-// ended in it, the reservations and the stake floor, plus whatever the
-// nodes answered (views).
-func (j *judge) Watch(at sched.Time, from eventlog.ChainPoint, views []oracle.ViewCheck, tips []oracle.Branch) error {
-	e := j.e
-	before, _ := chain.PointFromLog(from)
-	conf, _ := chain.PointFromLog(e.win.Confirmed())
-	res := oracle.ReservationsOf(e.pay.Reads())
-	s := oracle.Snapshot{
-		Seq: e.jr.Seq(), Run: e.cfg.Run,
-		Value:        &oracle.Value{Genesis: j.genesis, Utxo: e.Supply(), At: conf},
-		Ends:         e.jr.Ends(),
-		Reservations: &res,
-		Settled:      &oracle.SettledMove{From: before, To: conf},
-		Views:        views,
-		Tips:         tips,
-		Budget:       j.budget,
-	}
-	// Without pools there is no forging stake to hold a floor: the fake
-	// chain forges anyway, so the floor and liveness are not evaluable.
-	if pol := e.floorState(at); len(pol.Pools) > 0 {
-		s.Policy = &pol
-	}
-	return j.Report(at, oracle.Check(s, j.monitors))
-}
-
-// blockBudget sums the execution units a block's transactions declare, for
-// the block-budget monitor; nil when the run has no block budget.
-func (j *judge) Block(at eventlog.ChainPoint, txs []TxDigest) {
-	j.budget = j.blockBudget(at, txs)
-}
-
-func (j *judge) blockBudget(at eventlog.ChainPoint, txs []TxDigest) *oracle.BlockBudget {
-	e := j.e
-	max := e.cfg.Build.MaxBlockExUnits
-	if max.Memory == 0 && max.Steps == 0 {
-		return nil
-	}
-	p, _ := chain.PointFromLog(at)
-	b := &oracle.BlockBudget{At: p, Max: max, Txs: len(txs)}
-	for _, tx := range txs {
-		if tx.Units != nil {
-			b.Used.Memory += tx.Units.Memory
-			b.Used.Steps += tx.Units.Steps
-		}
-	}
-	return b
-}
-
-// Snapshot fills in the engine's side of each view the runner
-// asked a node for: the settled balances, at the settled point.
-func (j *judge) Snapshot(at sched.Time, from eventlog.ChainPoint, m MonitorSnapshot) error {
-	e := j.e
-	conf, _ := chain.PointFromLog(e.win.Confirmed())
-	bal := map[population.ActorID]uint64{}
-	for id, v := range e.Balances() {
-		bal[population.ActorID(id)] = v
-	}
-	for i := range m.Views {
-		m.Views[i].At, m.Views[i].Engine = conf, bal
-	}
-	return j.Watch(at, from, m.Views, m.Tips)
-}
-
-// Report logs each finding the set has not seen.
-func (j *judge) Report(at sched.Time, fs []oracle.Finding) error {
-	e := j.e
-	for _, f := range j.findings.Add(fs...) {
-		rec, err := f.Record(at)
-		if err != nil {
-			return err
-		}
-		e.jr.Append(rec)
-	}
-	return nil
-}
+// Contested implements judge.Race.
+func (h jhooks) Contested(ref wire.Ref) bool { return h.e.contested[ref] }
 
 // Findings is the set of findings this engine has logged. It is safe for
 // concurrent use, so an API may serve it while the loop runs.
-func (e *Engine) Findings() *oracle.Set { return e.jd.findings }
-
-// Begin starts an input: no block has been applied yet.
-func (j *judge) Begin() { j.budget = nil }
-
-// AddLost counts lovelace a settled payment sent to a wrong address.
-func (j *judge) AddLost(n uint64) { j.lost += n }
-
-// Lost is the lovelace settled payments sent to addresses nobody holds.
-func (j *judge) Lost() uint64 { return j.lost }
+func (e *Engine) Findings() *oracle.Set { return e.jd.Set() }

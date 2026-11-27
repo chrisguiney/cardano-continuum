@@ -13,13 +13,13 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/cohort"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/intent"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/journal"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/judge"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/pace"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/pay"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/window"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
-	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 	"github.com/chrisguiney/cardano-continuum/internal/plan"
 	"github.com/chrisguiney/cardano-continuum/internal/policy"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
@@ -101,7 +101,8 @@ type Engine struct {
 	waves     uint64
 	adoptions []adoption
 	images    map[population.ActorID]string
-	jd        *judge
+	// jd is the oracle bridge: mistakes, verdicts, findings and monitors.
+	jd *judge.Judge
 
 	// advs are the adversaries' attack policies and costs their cost
 	// account; contested are the shared outputs an adversary tried to
@@ -205,13 +206,13 @@ func newEmpty(cfg Config) (*Engine, error) {
 	if e.guard, err = policy.New(cfg.floor()); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrConfig, err)
 	}
-	e.jd = &judge{e: e, findings: oracle.NewSet(), monitors: oracle.Monitors(cfg.K, e.guard)}
+	var genesis uint64
 	funds, err := cfg.Genesis()
 	if err != nil {
 		return nil, err
 	}
 	for _, f := range funds {
-		e.jd.genesis += f.Lovelace
+		genesis += f.Lovelace
 	}
 	if err := e.win.Book().AddAddress(build.AlwaysSucceeds.Address(cfg.NetworkID), scriptActor); err != nil {
 		return nil, fmt.Errorf("engine: book: %w", err)
@@ -229,6 +230,7 @@ func newEmpty(cfg Config) (*Engine, error) {
 	e.co = cohort.New(cohort.Spec{Seed: cfg.Seed, Census: cfg.Seed.Derive(censusStream), Slots: cfg.Slots, Proposer: proposerName,
 		ActorKeys: ks, RootKeys: rootKeys, Pools: gpools, PoolStake: cfg.GenesisPoolStake},
 		cohort.Env{Sched: evsched{&e.clk}, Emit: &e.jr, Chain: e.win, Att: hooks{e}, Pace: hooks{e}})
+	e.jd = judge.New(judgeSpec(e, genesis), judgeEnv(e))
 	e.in = intent.New(intentSpec(e), intentEnv(e))
 	if err := e.co.Ring.Gen.Book(); err != nil {
 		return nil, err
@@ -416,7 +418,7 @@ func (e *Engine) submitResult(ctx context.Context, at sched.Time, r SubmitResult
 		if err != nil {
 			return err
 		}
-		if err := e.jd.Judge(at, p, r, out); err != nil {
+		if err := e.jd.Answer(at, p, r, out); err != nil {
 			return err
 		}
 		return e.refillResult(ctx, at, p, r)
@@ -429,7 +431,7 @@ func (e *Engine) submitResult(ctx context.Context, at sched.Time, r SubmitResult
 		// The process that died before logging may have sent these bytes.
 		p.M.Sent = true
 	}
-	if err := e.jd.Judge(at, p, r, out); err != nil {
+	if err := e.jd.Answer(at, p, r, out); err != nil {
 		return err
 	}
 	return e.retry.Answer(ctx, at, p, out, pay.Reason(r))

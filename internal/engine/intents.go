@@ -111,7 +111,7 @@ func intentSpec(e *Engine) intent.Spec {
 func intentEnv(e *Engine) intent.Env {
 	return intent.Env{
 		Roster: roster{e.co}, Ring: e.co.Ring, Chain: e.win, Flight: e.pay, Clock: evsched{&e.clk}, Journal: &e.jr,
-		Judge: ihooks{e}, Spend: ihooks{e},
+		Judge: e.jd, Spend: ihooks{e},
 	}
 }
 
@@ -130,17 +130,9 @@ func (r roster) Profile(id population.ActorID) *profile.Profile {
 // Paid implements intent.Roster.
 func (r roster) Paid(id population.ActorID) []population.ActorID { return r.Rec(id).Paid }
 
-// ihooks is the oracle and the adversaries as the intent component reaches
-// them.
+// ihooks is the adversaries and the planner ledger as the intent component
+// reaches them.
 type ihooks struct{ e *Engine }
-
-// Sample implements intent.Judge.
-func (h ihooks) Sample(p *wire.Pending, w keys.Wallet, built build.Built) { h.e.jd.Sample(p, w, built) }
-
-// Mutate implements intent.Judge.
-func (h ihooks) Mutate(p *wire.Pending, w keys.Wallet, built build.Built) (build.Built, error) {
-	return h.e.jd.Mutate(p, w, built)
-}
 
 // Utxos implements intent.Spend.
 func (h ihooks) Utxos(w keys.Wallet, coins []Coin) []common.Utxo { return h.e.ledgerUtxos(w, coins) }
