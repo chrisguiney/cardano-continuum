@@ -156,37 +156,55 @@ type govUndo struct {
 	votes map[voteKey]uint8
 }
 
+// gov is the view's governance state: every proposal seen, and the votes
+// of the voters the book names on them.
+type gov struct {
+	book  *Book
+	props map[GovID]proposal
+	votes map[voteKey]uint8
+}
+
+func newGov(b *Book) gov {
+	return gov{book: b, props: map[GovID]proposal{}, votes: map[voteKey]uint8{}}
+}
+
+func (g gov) clone() gov {
+	g.props = maps.Clone(g.props)
+	g.votes = maps.Clone(g.votes)
+	return g
+}
+
 // applyGov folds a transaction's proposals, then its votes. Every proposal
 // is tracked; a vote only when the book names its voter (a DRep or a pool
 // operator) and the proposal is tracked. Proposals are never ratified,
 // enacted or removed by the view: they stop being open when their last
 // epoch passes. It reports whether anything was tracked.
-func (v *View) applyGov(tx Tx, u *undo) bool {
+func (g *gov) applyGov(tx Tx, expires uint64, u *undo) bool {
 	seen := false
 	for _, p := range tx.Proposals {
-		v.touchGov(u)
-		v.props[p.ID] = proposal{expires: v.cfg.Slots.EpochOfSlot(u.point.Slot) + v.cfg.GovLifetime, typ: p.Type, pools: p.Pools, deposit: p.Deposit}
+		g.touchGov(u)
+		g.props[p.ID] = proposal{expires: expires, typ: p.Type, pools: p.Pools, deposit: p.Deposit}
 		seen = true
 	}
 	for _, x := range tx.Votes {
-		if _, ok := v.props[x.Action]; !ok || !v.named(x.Voter) {
+		if _, ok := g.props[x.Action]; !ok || !g.named(x.Voter) {
 			continue
 		}
-		v.touchGov(u)
-		v.votes[voteKey{x.Action, x.Voter}] = x.Choice
+		g.touchGov(u)
+		g.votes[voteKey{x.Action, x.Voter}] = x.Choice
 		seen = true
 	}
 	return seen
 }
 
 // named reports whether the book has the voter's credential.
-func (v *View) named(x Voter) bool {
+func (g *gov) named(x Voter) bool {
 	switch x.Kind {
 	case common.VoterTypeDRepKeyHash, common.VoterTypeDRepScriptHash:
-		_, ok := v.cfg.Book.dreps[x.Hash]
+		_, ok := g.book.dreps[x.Hash]
 		return ok
 	case common.VoterTypeStakingPoolKeyHash:
-		_, ok := v.cfg.Book.pools[x.Hash]
+		_, ok := g.book.pools[x.Hash]
 		return ok
 	}
 	return false
@@ -195,26 +213,26 @@ func (v *View) named(x Voter) bool {
 // touchGov saves the governance maps the first time a block changes them.
 // The maps are small (a devnet's proposals and its own voters), so a copy
 // per touched block is cheaper than a per-key log.
-func (v *View) touchGov(u *undo) {
+func (g *gov) touchGov(u *undo) {
 	if u.gov == nil {
-		u.gov = &govUndo{props: maps.Clone(v.props), votes: maps.Clone(v.votes)}
+		u.gov = &govUndo{props: maps.Clone(g.props), votes: maps.Clone(g.votes)}
 	}
 }
 
-func (v *View) restoreGov(u undo) {
+func (g *gov) restoreGov(u undo) {
 	if u.gov != nil {
-		v.props, v.votes = u.gov.props, u.gov.votes
+		g.props, g.votes = u.gov.props, u.gov.votes
 	}
 }
 
-func (v *View) govState() ([]ProposalState, []VoteState) {
+func (g *gov) govState() ([]ProposalState, []VoteState) {
 	var ps []ProposalState
-	for id, p := range v.props {
+	for id, p := range g.props {
 		ps = append(ps, ProposalState{ID: id, Expires: p.expires, Type: p.typ, Pools: p.pools, Deposit: p.deposit})
 	}
 	slices.SortFunc(ps, func(a, b ProposalState) int { return a.ID.Compare(b.ID) })
 	var vs []VoteState
-	for k, c := range v.votes {
+	for k, c := range g.votes {
 		vs = append(vs, VoteState{k.action, k.voter, c})
 	}
 	slices.SortFunc(vs, func(a, b VoteState) int {
@@ -226,13 +244,10 @@ func (v *View) govState() ([]ProposalState, []VoteState) {
 	return ps, vs
 }
 
-// The methods below implement agenda.Governance.
-
-// OpenProposals lists the tracked governance actions whose last epoch has
-// not passed, by ID.
-func (v *View) OpenProposals() []agenda.ProposalInfo {
-	ep := v.Epoch()
-	ps, _ := v.govState()
+// open lists the tracked governance actions whose last epoch is not
+// before ep, by ID.
+func (g *gov) open(ep uint64) []agenda.ProposalInfo {
+	ps, _ := g.govState()
 	var out []agenda.ProposalInfo
 	for _, p := range ps {
 		if p.Expires >= ep {
@@ -243,9 +258,9 @@ func (v *View) OpenProposals() []agenda.ProposalInfo {
 }
 
 // Voted reports that the actor, as DRep or pool operator, has a vote on p.
-func (v *View) Voted(actor population.ActorID, p agenda.ProposalID) bool {
-	b := v.cfg.Book
-	for k := range v.votes {
+func (g *gov) Voted(actor population.ActorID, p agenda.ProposalID) bool {
+	b := g.book
+	for k := range g.votes {
 		if agenda.ProposalID(k.action.String()) != p {
 			continue
 		}
@@ -261,30 +276,6 @@ func (v *View) Voted(actor population.ActorID, p agenda.ProposalID) bool {
 		}
 	}
 	return false
-}
-
-// VotingPower is the lovelace behind a voter's vote now: for a DRep the
-// stake of every credential that delegates its vote to it, for a pool the
-// stake delegated to the pool. A committee member's vote is one vote, not
-// stake, so it has none, as has a voter the view does not track. Only the
-// outputs the book names count, so this is the power the run's own
-// actors give.
-func (v *View) VotingPower(x Voter) uint64 {
-	switch x.Kind {
-	case common.VoterTypeDRepKeyHash, common.VoterTypeDRepScriptHash:
-		stake := v.credStake()
-		var sum uint64
-		for cred, s := range v.stake {
-			if s.Registered && s.Votes && s.DRep.Kind == drepKindOf(x.Kind) && s.DRep.Cred == x.Hash {
-				sum += stake[cred]
-			}
-		}
-		return sum
-	case common.VoterTypeStakingPoolKeyHash:
-		per, _ := v.poolStake()
-		return per[x.Hash]
-	}
-	return 0
 }
 
 // drepKindOf is the drep encoding (common.DrepType*) of a DRep voter kind.

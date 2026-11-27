@@ -66,8 +66,7 @@ type View struct {
 	// epoch state: see ledger.go
 	ep epochState
 	// governance state: see gov.go
-	props map[GovID]proposal
-	votes map[voteKey]uint8
+	gov
 	// window holds the blocks above the settled point, oldest first. It is
 	// never longer than K.
 	window []undo
@@ -134,8 +133,7 @@ func New(cfg Config, s State) (*View, error) {
 		accounts: newAccounts(cfg.Book),
 		registry: newRegistry(cfg.Book),
 		ep:       epochState{label: s.Label, frozen: s.Frozen, mark: slices.Clone(s.Mark), set: slices.Clone(s.Set)},
-		props:    map[GovID]proposal{},
-		votes:    map[voteKey]uint8{},
+		gov:      newGov(cfg.Book),
 	}
 	for _, p := range s.Proposals {
 		v.props[p.ID] = proposal{expires: p.Expires, typ: p.Type, pools: p.Pools, deposit: p.Deposit}
@@ -201,6 +199,34 @@ func (v *View) Pools() []agenda.PoolInfo {
 	return out
 }
 
+// OpenProposals lists the tracked governance actions whose last epoch has
+// not passed, by ID.
+func (v *View) OpenProposals() []agenda.ProposalInfo { return v.open(v.Epoch()) }
+
+// VotingPower is the lovelace behind a voter's vote now: for a DRep the
+// stake of every credential that delegates its vote to it, for a pool the
+// stake delegated to the pool. A committee member's vote is one vote, not
+// stake, so it has none, as has a voter the view does not track. Only the
+// outputs the book names count, so this is the power the run's own
+// actors give.
+func (v *View) VotingPower(x Voter) uint64 {
+	switch x.Kind {
+	case common.VoterTypeDRepKeyHash, common.VoterTypeDRepScriptHash:
+		stake := v.credStake()
+		var sum uint64
+		for cred, s := range v.stake {
+			if s.Registered && s.Votes && s.DRep.Kind == drepKindOf(x.Kind) && s.DRep.Cred == x.Hash {
+				sum += stake[cred]
+			}
+		}
+		return sum
+	case common.VoterTypeStakingPoolKeyHash:
+		per, _ := v.poolStake()
+		return per[x.Hash]
+	}
+	return 0
+}
+
 // Apply folds b onto the tip. It returns the effects in transaction order,
 // then a Settled effect for each block b gave its Kth successor.
 func (v *View) Apply(b Block) ([]Effect, error) {
@@ -251,7 +277,7 @@ func (v *View) applyTx(tx Tx, u *undo) []Effect {
 			eff = append(eff, Effect{Kind: CertSeen, Tx: tx.Hash, Cert: c})
 		}
 	}
-	if v.applyGov(tx, u) {
+	if v.applyGov(tx, v.cfg.Slots.EpochOfSlot(u.point.Slot)+v.cfg.GovLifetime, u) {
 		eff = append(eff, Effect{Kind: GovSeen, Tx: tx.Hash})
 	}
 	if len(eff) == 0 {
@@ -351,8 +377,7 @@ func (v *View) clone() *View {
 	c.utxos = v.utxos.clone()
 	c.accounts = v.accounts.clone()
 	c.registry = v.registry.clone()
-	c.props = maps.Clone(v.props)
-	c.votes = maps.Clone(v.votes)
+	c.gov = v.gov.clone()
 	c.window = slices.Clone(v.window)
 	return &c
 }
