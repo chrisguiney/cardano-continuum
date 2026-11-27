@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/simflags"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/sim"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
@@ -98,7 +99,7 @@ func TestServeShowsFatalFinding(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(t.TempDir(), "events.log")
-	if err := writeLog(ctx, path, mem); err != nil {
+	if err := sim.WriteLog(ctx, path, mem); err != nil {
 		t.Fatal(err)
 	}
 	srv, stop := startServe(t, "--log", path, "--epoch-slots", "60")

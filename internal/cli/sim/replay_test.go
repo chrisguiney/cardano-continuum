@@ -1,4 +1,4 @@
-package main
+package sim
 
 import (
 	"bytes"
@@ -21,8 +21,8 @@ import (
 func fakeRun(t *testing.T) string {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "run")
-	args := []string{"run", "--fake", "--epochs", "1", "--out", dir, "--seed", "7", "--wallets", "6", "--epoch-slots", "60"}
-	if err := run(context.Background(), args, &bytes.Buffer{}); err != nil {
+	args := []string{"--fake", "--epochs", "1", "--out", dir, "--seed", "7", "--wallets", "6", "--epoch-slots", "60"}
+	if err := Run(context.Background(), args, &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}
 	return filepath.Join(dir, "events.log")
@@ -31,8 +31,8 @@ func fakeRun(t *testing.T) string {
 func TestReplayImageOnFakeLogIsANoOp(t *testing.T) {
 	log := fakeRun(t)
 	var out bytes.Buffer
-	args := []string{"replay", "--image", "dingo=reg/dingo:x", "--seed", "7", "--wallets", "6", "--epoch-slots", "60", log}
-	if err := run(context.Background(), args, &out); err != nil {
+	args := []string{"--image", "dingo=reg/dingo:x", "--seed", "7", "--wallets", "6", "--epoch-slots", "60", log}
+	if err := Replay(context.Background(), args, &out); err != nil {
 		t.Fatalf("%v\n%s", err, out.String())
 	}
 	if !strings.Contains(out.String(), "fake-chain log has no node build") {
@@ -41,8 +41,8 @@ func TestReplayImageOnFakeLogIsANoOp(t *testing.T) {
 }
 
 func TestReplayImageRejectsABadAssignment(t *testing.T) {
-	args := []string{"replay", "--image", "nonsense", "--seed", "7", fakeRun(t)}
-	if err := run(context.Background(), args, &bytes.Buffer{}); err == nil {
+	args := []string{"--image", "nonsense", "--seed", "7", fakeRun(t)}
+	if err := Replay(context.Background(), args, &bytes.Buffer{}); err == nil {
 		t.Fatal("want an error for --image without impl=ref")
 	}
 }
@@ -74,7 +74,7 @@ func TestReplayImageLiveRefusesOnMismatch(t *testing.T) {
 	log := fakeRun(t)
 	deps, fc := liveDeps(t, log, false)
 	args := []string{"--image", "dingo=reg/dingo:x", "--live", "--network", "net", "--seed", "7", log}
-	err := cmdReplayWith(context.Background(), args, &bytes.Buffer{}, deps)
+	err := ReplayWith(context.Background(), args, &bytes.Buffer{}, deps)
 	if !errors.Is(err, irerun.ErrFingerprint) {
 		t.Fatalf("err = %v, want ErrFingerprint", err)
 	}
@@ -88,7 +88,7 @@ func TestReplayImageLiveSetsTheNetworkImage(t *testing.T) {
 	deps, fc := liveDeps(t, log, true)
 	var out bytes.Buffer
 	args := []string{"--image", "dingo=reg/dingo:x", "--live", "--network", "net", "--seed", "7", log}
-	if err := cmdReplayWith(context.Background(), args, &out, deps); err != nil {
+	if err := ReplayWith(context.Background(), args, &out, deps); err != nil {
 		t.Fatalf("%v\n%s", err, out.String())
 	}
 	if len(fc.Applied) != 1 || fc.Applied[0].To != "reg/dingo:x" {
@@ -99,7 +99,7 @@ func TestReplayImageLiveSetsTheNetworkImage(t *testing.T) {
 func TestReplayImageLiveNeedsANetwork(t *testing.T) {
 	log := fakeRun(t)
 	deps, _ := liveDeps(t, log, true)
-	if err := cmdReplayWith(context.Background(), []string{"--image", "dingo=x", "--live", log}, &bytes.Buffer{}, deps); err == nil {
+	if err := ReplayWith(context.Background(), []string{"--image", "dingo=x", "--live", log}, &bytes.Buffer{}, deps); err == nil {
 		t.Fatal("want an error without --network")
 	}
 }

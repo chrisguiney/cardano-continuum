@@ -1,4 +1,4 @@
-package main
+package sim
 
 import (
 	"bytes"
@@ -69,9 +69,9 @@ func TestFakeRunGovernance(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			var out bytes.Buffer
-			args := []string{"run", "--fake", "--epochs", "3", "--epoch-slots", "86400", "--block-every", "50", "--seed", "7",
+			args := []string{"--fake", "--epochs", "3", "--epoch-slots", "86400", "--block-every", "50", "--seed", "7",
 				"--wallets", "100", "--profiles", govProfile(t, name, 100), "--out", filepath.Join(t.TempDir(), "run")}
-			if err := run(context.Background(), args, &out); err != nil {
+			if err := Run(context.Background(), args, &out); err != nil {
 				t.Fatalf("run: %v\n%s", err, out.String())
 			}
 			t.Log(out.String())
