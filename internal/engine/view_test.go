@@ -55,7 +55,7 @@ func TestViewFoldsCertificates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	w := e.actors[1].wallet
+	w := e.co.rec(1).wallet
 	got, err := e.builder.Stake().RegisterStake(context.Background(), w, build.Spend{Inputs: fc.UtxosAt(w.Address()), TTL: 1000})
 	if err != nil {
 		t.Fatal(err)

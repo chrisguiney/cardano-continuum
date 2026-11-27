@@ -8,7 +8,7 @@ import (
 
 	"github.com/blinklabs-io/bursa"
 
-	"github.com/chrisguiney/cardano-continuum/internal/keys"
+	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/store"
 )
 
@@ -38,7 +38,7 @@ func TestActorRowsCarryPublicIdentity(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		w := e.keys.Wallet(keys.ActorID(r.ID))
+		w := e.co.wallet(population.ActorID(r.ID))
 		if id.PaymentAddr != w.Address().String() || id.StakeAddr != w.StakeAddress().String() {
 			t.Errorf("actor %d addresses %q %q", r.ID, id.PaymentAddr, id.StakeAddr)
 		}

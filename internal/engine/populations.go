@@ -369,15 +369,15 @@ func (e *Engine) decideClock(a population.Actor, st *actor, r *rand.Rand) (agend
 // of no population registers the minimum terms.
 func (e *Engine) poolTerms(id population.ActorID, intent uint64) (pledge, cost uint64, margin *big.Rat) {
 	pledge, cost, margin = 1_000_000, e.cfg.Build.MinPoolCost, big.NewRat(1, 100)
-	st, ok := e.actors[id]
-	if !ok {
+	st := e.co.rec(id)
+	if st == nil {
 		return pledge, cost, margin
 	}
 	pop, ok := e.cfg.population(st.prof.Name)
 	if !ok || pop.Pool == nil {
 		return pledge, cost, margin
 	}
-	a, _ := e.census.Get(id)
+	a, _ := e.co.get(id)
 	r := a.Stream("pool-terms", strconv.FormatUint(intent, 10))
 	pledge = lovelaceOf(pop.Pool.Pledge.Sample(r))
 	cost = max(lovelaceOf(pop.Pool.Cost.Sample(r)), e.cfg.Build.MinPoolCost)
@@ -497,7 +497,7 @@ func (e *Engine) nextClock(a population.Actor, st *actor, now sched.Time) {
 		return
 	}
 	st.booting = !e.ready(a.ID, st)
-	if at := sched.NextArrival(e.draw(a, st, "arrival"), e.clockRate(a.ID, st), nil, now); at != population.Never {
+	if at := sched.NextArrival(st.draw(a, "arrival"), e.clockRate(a.ID, st), nil, now); at != population.Never {
 		st.actAt = at
 		st.actH = e.clk.Push(at, evclock.Event{Kind: evclock.Act, Actor: a.ID})
 	}

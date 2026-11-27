@@ -6,6 +6,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/internal/plan"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
+	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/submit"
 )
@@ -104,28 +105,49 @@ func (e *Engine) dead(ctx context.Context, at sched.Time, p *pendingRec, tx TxID
 // learn raises the actor's competence toward 1 at its learning rate: a
 // fix it made worked.
 func (e *Engine) learn(id population.ActorID) error {
-	a, ok := e.census.Get(id)
+	a, ok := e.co.get(id)
 	if !ok {
 		return nil
 	}
-	return e.census.SetCompetence(id, a.Competence+a.Traits.LearningRate*(1-a.Competence))
+	return e.co.pop().SetCompetence(id, a.Competence+a.Traits.LearningRate*(1-a.Competence))
 }
 
 // frustrate raises the actor's frustration, and with it the dormancy
 // hazard, which is drawn again from now.
 func (e *Engine) frustrate(at sched.Time, id population.ActorID) error {
-	a, ok := e.census.Get(id)
+	a, ok := e.co.get(id)
 	if !ok {
 		return nil
 	}
-	if err := e.census.SetFrustration(id, a.Frustration+frustration); err != nil {
+	if err := e.co.pop().SetFrustration(id, a.Frustration+frustration); err != nil {
 		return err
 	}
-	st := e.actors[id]
+	st := e.co.rec(id)
 	if st.hazardAt != population.Never {
 		e.clk.Cancel(st.hazardH)
 	}
-	a, _ = e.census.Get(id)
-	e.nextHazard(a, st, at)
+	a, _ = e.co.get(id)
+	e.co.life.nextHazard(a, st, at)
 	return nil
+}
+
+// settle accounts for a settled attempt of intent p: the deposit it paid
+// or refunded, a locked output it freed, and the lifecycle edge it causes.
+func (e *Engine) settle(at sched.Time, p *pendingRec, tx TxID) error {
+	switch d := specs[p.kindOf()].deposit(e, p); {
+	case d >= 0:
+		e.deposits += uint64(d)
+	case uint64(-d) <= e.deposits:
+		e.deposits -= uint64(-d)
+	default:
+		// A refund of a deposit paid before the engine's genesis (a
+		// genesis registration) comes from outside the population.
+		e.win.Reclaim(uint64(-d) - e.deposits)
+		e.deposits = 0
+	}
+	if p.Kind == unlockKind {
+		// The lock's script output counted as foreign when it settled.
+		e.win.Reclaim(p.Amount)
+	}
+	return e.co.life.settled(at, population.ActorID(p.Actor), profile.IntentKind(p.Kind), tx)
 }

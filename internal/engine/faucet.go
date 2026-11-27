@@ -95,15 +95,15 @@ func (e *Engine) refilling() bool {
 func (e *Engine) needy() ([]build.Output, []uint64, []uint64) {
 	var outs []build.Output
 	var to, amounts []uint64
-	for _, id := range e.order {
+	for _, id := range e.co.ids() {
 		if len(outs) == maxRefillOutputs {
 			break
 		}
 		// An adversary spends its own budget, never the faucet's.
-		if a, _ := e.census.Get(id); a.State == population.Abandoned || e.isAdversary(id) {
+		if a, _ := e.co.get(id); a.State == population.Abandoned || e.isAdversary(id) {
 			continue
 		}
-		st := e.actors[id]
+		st := e.co.rec(id)
 		budget := uint64(st.prof.Budget)
 		held := sumUtxos(e.led.Available(id, plan.IntentID(e.nextID+1), plan.Opts{Chain: true}))
 		if held >= budget/2 {

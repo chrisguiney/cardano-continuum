@@ -8,6 +8,7 @@ import (
 
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 
+	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	evclock "github.com/chrisguiney/cardano-continuum/internal/engine/internal/clock"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/window"
@@ -29,17 +30,18 @@ func (e *Engine) Snapshot() ([]byte, error) {
 	sv := e.win.Saved()
 	s := snapshot{Version: snapshotVersion, Now: e.clk.Now(), NextIntent: e.nextID, Conf: sv.Conf, Fees: sv.Fees, Foreign: sv.Foreign, RefillAt: e.refillAt, Deposits: e.deposits, Market: e.market, Lost: e.lost,
 		Contracts: e.contracts, DeployAt: e.deployAt, DeployN: e.deployN}
-	for _, id := range e.order {
-		a, _ := e.census.Get(id)
-		st := e.actors[id]
+	for _, id := range e.co.ids() {
+		a, _ := e.co.get(id)
+		st := e.co.rec(id)
 		s.Actors = append(s.Actors, actorRec{
 			ID: uint64(id), Profile: a.Profile, State: string(a.State), Born: a.Born, Changed: a.Changed,
 			Frustration: a.Frustration, Competence: a.Competence, HazardAt: st.hazardAt, HazardTo: string(st.hazardTo), ActAt: st.actAt, Draws: st.draws, Booting: st.booting,
 			Owed: st.owed, Paid: idList(st.paid), FollowUp: st.followUp, Waits: st.waits,
 		})
 	}
-	for _, b := range e.births {
-		s.Births = append(s.Births, birthRec{Profile: b.prof.Name, At: b.at, N: b.n})
+	for i := range e.co.births.len() {
+		name, at, n := e.co.births.stream(i)
+		s.Births = append(s.Births, birthRec{Profile: name, At: at, N: n})
 	}
 	s.Window = e.win.Volatile()
 	for _, id := range e.pendingIDs() {
@@ -133,16 +135,14 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 			return nil, err
 		}
 	}
-	if len(s.Births) != len(e.births) {
-		return nil, fmt.Errorf("engine: snapshot has %d birth streams, config %d", len(s.Births), len(e.births))
+	if len(s.Births) != e.co.births.len() {
+		return nil, fmt.Errorf("engine: snapshot has %d birth streams, config %d", len(s.Births), e.co.births.len())
 	}
 	for i, r := range s.Births {
-		b := e.births[i]
-		if r.Profile != b.prof.Name {
-			return nil, fmt.Errorf("engine: snapshot birth stream %q, config %q", r.Profile, b.prof.Name)
+		if name, _, _ := e.co.births.stream(i); r.Profile != name {
+			return nil, fmt.Errorf("engine: snapshot birth stream %q, config %q", r.Profile, name)
 		}
-		b.at, b.n = r.At, r.N
-		e.pushBirth(b)
+		e.co.births.resume(i, r.At, r.N)
 	}
 	if cfg.Faucet > 0 {
 		e.refillAt = s.RefillAt
@@ -188,7 +188,7 @@ func (e *Engine) restoreLedger(s snapshot) error {
 	}
 	ctx := context.Background()
 	for _, b := range s.Window {
-		lb, vb, err := e.win.Blocks(b, members{e})
+		lb, vb, err := e.win.Blocks(b, e.co)
 		if err != nil {
 			return err
 		}
@@ -214,20 +214,20 @@ func (e *Engine) restoreActor(r actorRec) error {
 	if !ok {
 		return fmt.Errorf("engine: snapshot actor %d has unknown profile %q", r.ID, r.Profile)
 	}
-	a := e.census.Spawn(p, e.root, r.Born)
+	a := e.co.revive(p, r.Born)
 	if uint64(a.ID) != r.ID {
 		return fmt.Errorf("engine: snapshot actor %d out of order (got %d)", r.ID, a.ID)
 	}
-	if err := e.walk(a, population.State(r.State), r.Changed); err != nil {
+	if err := e.co.life.walk(a, population.State(r.State), r.Changed); err != nil {
 		return err
 	}
-	if err := e.census.SetFrustration(a.ID, r.Frustration); err != nil {
+	if err := e.co.pop().SetFrustration(a.ID, r.Frustration); err != nil {
 		return err
 	}
-	if err := e.census.SetCompetence(a.ID, r.Competence); err != nil {
+	if err := e.co.pop().SetCompetence(a.ID, r.Competence); err != nil {
 		return err
 	}
-	st := e.register(a, p)
+	st := e.co.register(a, p)
 	st.hazardAt, st.hazardTo, st.actAt, st.draws = r.HazardAt, population.State(r.HazardTo), r.ActAt, r.Draws
 	st.booting = r.Booting
 	st.owed = r.Owed
@@ -268,16 +268,6 @@ func (e *Engine) ledgerConfig() plan.Config {
 }
 
 // owners maps addresses to actors for the ledger.
-// members is the population as the window reads outputs.
-type members struct{ e *Engine }
-
-func (m members) Owner(addr []byte) (population.ActorID, bool) {
-	id, ok := m.e.byAddr[string(addr)]
-	return id, ok
-}
-
-func (m members) Address(id population.ActorID) common.Address { return m.e.walletOf(id).Address() }
-
 type owners struct{ e *Engine }
 
 func (o owners) Owner(a common.Address) (population.ActorID, bool) {
@@ -285,9 +275,38 @@ func (o owners) Owner(a common.Address) (population.ActorID, bool) {
 	if err != nil {
 		return 0, false
 	}
-	id, ok := o.e.byAddr[string(b)]
-	return id, ok
+	return o.e.co.Owner(b)
 }
+
+// evsched is the event queue as the cohort schedules on it.
+type evsched struct{ *evclock.Clock }
+
+func (c evsched) Hazard(at sched.Time, id population.ActorID) sched.Handle {
+	return c.Push(at, evclock.Event{Kind: evclock.Hazard, Actor: id})
+}
+
+func (c evsched) Birth(at sched.Time, idx int) sched.Handle {
+	return c.Push(at, evclock.Event{Kind: evclock.Birth, Birth: idx})
+}
+
+// hooks is the rest of the engine as the cohort reaches it: the adversaries
+// and the pacing.
+type hooks struct{ e *Engine }
+
+func (h hooks) Arm(id population.ActorID, p profile.Profile, pol agenda.Policy) agenda.Policy {
+	return h.e.arm(id, p, pol)
+}
+
+func (h hooks) Adversary(id population.ActorID) bool { return h.e.isAdversary(id) }
+
+func (h hooks) Spent(id population.ActorID) uint64 { return h.e.costs.Total(id) }
+
+func (h hooks) Clocks(a population.Actor, p profile.Profile) ([]clock, profile.IntentKind) {
+	cs, boot, _ := h.e.clocks(a, p)
+	return cs, boot
+}
+
+func (h hooks) Wake(a population.Actor, st *actor, now sched.Time) { h.e.nextAct(a, st, now) }
 
 // logged is the ledger's Committer inside the pure engine. It writes
 // nothing: every ledger change is a deterministic result of a logged input,
@@ -356,7 +375,7 @@ func (e *Engine) Supply() uint64 {
 func (e *Engine) Reservations() (store.Blob, error) { return e.led.Blob() }
 
 // Actors is the number of actors ever spawned.
-func (e *Engine) Actors() int { return e.census.Len() }
+func (e *Engine) Actors() int { return e.co.pop().Len() }
 
 // IntentOf is the intent an unfinished attempt belongs to.
 func (e *Engine) IntentOf(tx TxID) (uint64, bool) {
@@ -401,15 +420,51 @@ func (e *Engine) InFlight() []Submission {
 // the actor's public identity, holdings and delegation.
 func (e *Engine) ActorRows() []store.ActorRow {
 	hs := e.holdings()
-	out := make([]store.ActorRow, 0, len(e.order))
-	for _, id := range e.order {
-		a, _ := e.census.Get(id)
-		ident, err := e.identityOf(a, e.actors[id], hs).Encode()
+	out := make([]store.ActorRow, 0, len(e.co.ids()))
+	for _, id := range e.co.ids() {
+		a, _ := e.co.get(id)
+		ident, err := e.co.idents.identityOf(a, e.co.rec(id), hs).Encode()
 		if err != nil {
 			// Identity is a struct of plain fields; encoding cannot fail.
 			panic(fmt.Sprintf("engine: actor %d identity: %v", id, err))
 		}
 		out = append(out, store.ActorRow{ID: uint64(id), Name: fmt.Sprintf("%s-%d", a.Profile, id), Role: string(a.State), Profile: a.Profile, Identity: ident})
+	}
+	return out
+}
+
+// holdings reads every actor's holdings in one pass over the ledger, the
+// unfinished payments and the view's outputs.
+func (e *Engine) holdings() map[population.ActorID]*holding {
+	out := map[population.ActorID]*holding{}
+	of := func(id population.ActorID) *holding {
+		h := out[id]
+		if h == nil {
+			h = &holding{}
+			out[id] = h
+		}
+		return h
+	}
+	for _, u := range e.led.Settled() {
+		h := of(u.Owner)
+		h.settled += u.Lovelace
+		h.utxos++
+		if _, held := e.led.Holder(u.Ref); held {
+			h.reserved += u.Lovelace
+		}
+	}
+	for _, p := range e.pending {
+		if p.Refill {
+			continue
+		}
+		h := of(population.ActorID(p.Actor))
+		h.inflight++
+		h.unconfirmed += p.Amount
+	}
+	for id, us := range e.win.View().Owned() {
+		for _, u := range us {
+			of(id).addTokens(u)
+		}
 	}
 	return out
 }

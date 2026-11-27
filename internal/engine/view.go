@@ -12,7 +12,6 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
-	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 )
@@ -22,25 +21,6 @@ import (
 // the same blocks and rollbacks as the planner's ledger, so its settled
 // point is the engine's confirmed point, and its state at that point rides
 // in the snapshot.
-
-// book adds an actor's keys to the view's book: its address and stake
-// credential, and its pool or DRep key by profile kind.
-func (e *Engine) bookActor(id population.ActorID, p profile.Profile, st *actor) {
-	_ = e.win.Book().AddAddress(st.wallet.Address(), id)
-	e.win.Book().AddStake(common.Blake2b224(st.wallet.StakeKeyHash()), id)
-	switch p.Kind {
-	case profile.Pool:
-		if g, ok := e.genesisOf(id); ok {
-			e.win.Book().AddPool(common.Blake2b224(g.ID), id)
-			e.pools[id] = g.ID
-		} else if pool, ok := e.poolID(id); ok {
-			e.win.Book().AddPool(pool, id)
-			e.pools[id] = pool
-		}
-	case profile.DRep:
-		e.win.Book().AddDRep(common.Blake2b224(e.keys.DRep(keysID(id))), id)
-	}
-}
 
 // viewRec is chain.State in the snapshot. Outputs travel as CBOR, since a
 // ledger output is an interface.
@@ -146,14 +126,3 @@ var (
 	_ agenda.Governance = view{}
 	_ agenda.Market     = view{}
 )
-
-func keysID(id population.ActorID) keys.ActorID { return keys.ActorID(id) }
-
-// poolID is the pool a pool actor operates: its cold key hash.
-func (e *Engine) poolID(id population.ActorID) (common.Blake2b224, bool) {
-	s, err := e.keys.PoolSigner(keysID(id))
-	if err != nil {
-		return common.Blake2b224{}, false
-	}
-	return common.Blake2b224(s.KeyHash()), true
-}

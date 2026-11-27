@@ -39,7 +39,7 @@ func outcomeOf(r SubmitResult) (submit.Outcome, error) {
 // begin starts a payment's machine on its first attempt, which pay has
 // already built and reserved.
 func (e *Engine) begin(p *pendingRec) error {
-	a, _ := e.census.Get(population.ActorID(p.Actor))
+	a, _ := e.co.get(population.ActorID(p.Actor))
 	for _, ev := range []submit.Event{submit.Start{}, submit.Built{Tx: plan.TxID(p.Tx)}} {
 		m, _, err := submit.Step(e.retry, p.M, ev, a, nil)
 		if err != nil {
@@ -53,9 +53,9 @@ func (e *Engine) begin(p *pendingRec) error {
 // apply feeds one event to the payment's machine and carries out its
 // actions. why is the node's text for a rejection, for the Refused decision.
 func (e *Engine) apply(ctx context.Context, at sched.Time, p *pendingRec, ev submit.Event, why string) error {
-	a, _ := e.census.Get(population.ActorID(p.Actor))
-	st := e.actors[a.ID]
-	m, acts, err := submit.Step(e.retry, p.M, ev, a, e.draw(a, st, "retry"))
+	a, _ := e.co.get(population.ActorID(p.Actor))
+	st := e.co.rec(a.ID)
+	m, acts, err := submit.Step(e.retry, p.M, ev, a, st.draw(a, "retry"))
 	if err != nil {
 		return fmt.Errorf("engine: intent %d: %w", p.ID, err)
 	}
@@ -104,8 +104,8 @@ func (e *Engine) act1(ctx context.Context, at sched.Time, p *pendingRec, act sub
 	case submit.Refused:
 		return e.refuse(ctx, at, p, plan.TxID(act.Tx), why)
 	case submit.Diagnose:
-		a, _ := e.census.Get(population.ActorID(p.Actor))
-		c := e.diagnoser(a).Diagnose(e.draw(a, e.actors[a.ID], "diagnose"), act.Failures)
+		a, _ := e.co.get(population.ActorID(p.Actor))
+		c := e.diagnoser(a).Diagnose(e.co.rec(a.ID).draw(a, "diagnose"), act.Failures)
 		return e.apply(ctx, at, p, submit.Diagnosed{Class: c}, why)
 	case submit.BuildAttempt:
 		ev, err := e.rebuild(ctx, at, p)
@@ -144,7 +144,7 @@ func (e *Engine) refuse(ctx context.Context, at sched.Time, p *pendingRec, tx pl
 // spend, the builder refuses, or Reserve does.
 func (e *Engine) rebuild(ctx context.Context, at sched.Time, p *pendingRec) (submit.Event, error) {
 	if p.Kind == "" {
-		if _, ok := e.actors[population.ActorID(p.To)]; !ok {
+		if e.co.rec(population.ActorID(p.To)) == nil {
 			return submit.BuildFailed{}, nil
 		}
 	}

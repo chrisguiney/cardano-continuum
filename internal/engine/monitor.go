@@ -66,12 +66,12 @@ func (r *Runner) view(ctx context.Context) error {
 // addresses are every actor's wallet address and the faucet's, in actor
 // order.
 func (e *Engine) addresses() []common.Address {
-	out := make([]common.Address, 0, len(e.order)+1)
-	for _, id := range e.order {
-		out = append(out, e.actors[id].wallet.Address())
+	out := make([]common.Address, 0, len(e.co.ids())+1)
+	for _, id := range e.co.ids() {
+		out = append(out, e.co.rec(id).wallet.Address())
 	}
 	if e.cfg.Faucet > 0 {
-		out = append(out, e.walletOf(population.ActorID(faucetActor)).Address())
+		out = append(out, e.co.wallet(population.ActorID(faucetActor)).Address())
 	}
 	return out
 }

@@ -7,7 +7,6 @@ import (
 	"maps"
 	"math/rand/v2"
 	"slices"
-	"strconv"
 
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
@@ -24,9 +23,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/policy"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
-	"github.com/chrisguiney/cardano-continuum/internal/rng"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
-	"github.com/chrisguiney/cardano-continuum/internal/store"
 	"github.com/chrisguiney/cardano-continuum/internal/submit"
 )
 
@@ -61,47 +58,6 @@ const (
 	censusStream = "census"
 )
 
-type actor struct {
-	prof     profile.Profile
-	policy   agenda.Policy
-	rate     float64 // sum of the profile's base rates, before RateMult
-	wallet   keys.Wallet
-	hazardAt sched.Time
-	hazardTo population.State
-	hazardH  sched.Handle
-	actAt    sched.Time
-	actH     sched.Handle
-	draws    uint64
-	// cs are a population actor's intent clocks and boot the intent it
-	// registers with (populations.go); boot is empty for every other actor.
-	cs   []clock
-	boot profile.IntentKind
-	// booting is set while the pending wake was drawn at the boot rate:
-	// it registers, and must not fire a fitted clock (a clock's first
-	// event would come at the boot rate, far too soon).
-	booting bool
-	// owed is how many follow-ups the actor's transactions have begotten
-	// and not yet made, when its profile has Hawkes parameters; followUp
-	// marks the pending wake as one of them.
-	owed     uint32
-	followUp bool
-	// waits is how many blocks a follow-up has waited for coins to act on.
-	waits uint8
-	// paid are the actor's payees, most recent last, at most maxPaid.
-	paid []population.ActorID
-	// ident is the actor's unchanging public identity (identity.go),
-	// computed on first use.
-	ident   store.Identity
-	identOK bool
-}
-
-type birth struct {
-	prof profile.Profile
-	at   sched.Time
-	n    uint64
-	h    sched.Handle
-}
-
 // Engine is the pure core. It is not safe for concurrent use: the loop is one
 // goroutine by design.
 //
@@ -112,23 +68,17 @@ type birth struct {
 // supply check needs.
 type Engine struct {
 	cfg     Config
-	keys    *keys.Store
 	builder *build.Builder
 	sel     Selector
-	root    rng.Seed
 	retry   submit.Policy
 	diag    submit.Diagnoser
 	// faucet is set only when cfg.Faucet is positive.
 	faucet   keys.Wallet
 	refillAt sched.Time
 
-	census population.Census
-	clk    evclock.Clock
-	jr     journal.Journal
-	actors map[population.ActorID]*actor
-	order  []population.ActorID // ascending
-	births []*birth             // by profile name
-	byAddr map[string]population.ActorID
+	clk evclock.Clock
+	jr  journal.Journal
+	co  *cohort
 
 	// win folds the same blocks as led.
 	win *window.Window
@@ -165,13 +115,6 @@ type Engine struct {
 	waves     uint64
 	adoptions []adoption
 	images    map[population.ActorID]string
-	// rootKeys is the run seed's own keystore (genesis pools, faucet, committee);
-	// gpools are the genesis pools.
-	rootKeys *keys.Store
-	gpools   []genesisPool
-	// pools maps each pool actor to the pool it operates.
-	pools map[population.ActorID][28]byte
-
 	// findings are the oracle findings logged so far, monitors the
 	// invariant checks, genesis the lovelace value conservation counts
 	// from and lost what settled payments sent to wrong addresses.
@@ -208,7 +151,7 @@ func New(cfg Config) (*Engine, error) {
 	for _, co := range cfg.Cohorts {
 		p, _ := cfg.Profiles.Get(co.Profile)
 		for range co.Count {
-			owners = append(owners, e.spawn(p, 0).ID)
+			owners = append(owners, e.co.life.spawn(p, 0).ID)
 		}
 	}
 	if cfg.Faucet > 0 {
@@ -233,21 +176,19 @@ func New(cfg Config) (*Engine, error) {
 	for i, f := range funds {
 		gs.Utxos = append(gs.Utxos, window.Utxo(f.Address, Ref{Tx: TxID(genesis[i].Ref.Tx)}, f.Lovelace))
 	}
-	if err := e.stakeGenesis(&gs); err != nil {
+	if err := e.co.ring.gen.seed(&gs, window.Utxo); err != nil {
 		return nil, err
 	}
-	for _, g := range e.gpools {
+	for _, g := range e.co.ring.gen.pools {
 		// A genesis pool is registered by the genesis itself.
-		if err := e.census.Apply(population.Transition{ID: g.Actor, To: population.Active, Cause: population.Confirmed{Tx: "genesis"}}); err != nil {
+		if err := e.co.pop().Apply(population.Transition{ID: g.Actor, To: population.Active, Cause: population.Confirmed{Tx: "genesis"}}); err != nil {
 			return nil, fmt.Errorf("engine: genesis pool actor %d: %w", g.Actor, err)
 		}
 	}
 	if err = e.win.Open(gs, window.Saved{}); err != nil {
 		return nil, fmt.Errorf("engine: view: %w", err)
 	}
-	for _, b := range e.births {
-		e.scheduleBirth(b, 0)
-	}
+	e.co.births.start(0)
 	if e.deployRate() > 0 {
 		e.scheduleDeploy(0)
 	}
@@ -275,13 +216,11 @@ func newEmpty(cfg Config) (*Engine, error) {
 		diag = cfg.Diagnoser
 	}
 	e := &Engine{
-		cfg: cfg, keys: ks, builder: build.New(cfg.Build), sel: sel, root: cfg.Seed.Derive(censusStream),
+		cfg: cfg, builder: build.New(cfg.Build), sel: sel,
 		retry: cfg.retry(), diag: diag,
-		actors: map[population.ActorID]*actor{}, byAddr: map[string]population.ActorID{},
 		pending: map[uint64]*pendingRec{}, byTx: map[TxID]uint64{},
-		win:   window.New(chain.Config{K: cfg.K, Slots: cfg.Slots, NOpt: cfg.NOpt, GovLifetime: cfg.GovLifetime}),
-		pools: map[population.ActorID][28]byte{},
-		dark:  map[population.ActorID]bool{}, down: map[population.ActorID]bool{}, repairs: map[population.ActorID]bool{},
+		win:  window.New(chain.Config{K: cfg.K, Slots: cfg.Slots, NOpt: cfg.NOpt, GovLifetime: cfg.GovLifetime}),
+		dark: map[population.ActorID]bool{}, down: map[population.ActorID]bool{}, repairs: map[population.ActorID]bool{},
 		images: map[population.ActorID]string{}, contracts: 1, deployAt: population.Never,
 		advs: map[population.ActorID]adversary.Policy{}, costs: adversary.NewLedger(), contested: map[Ref]bool{},
 	}
@@ -299,31 +238,33 @@ func newEmpty(cfg Config) (*Engine, error) {
 	if err := e.win.Book().AddAddress(build.AlwaysSucceeds.Address(cfg.NetworkID), scriptActor); err != nil {
 		return nil, fmt.Errorf("engine: book: %w", err)
 	}
-	if e.rootKeys, err = keys.New(cfg.Seed, cfg.NetworkID); err != nil {
+	rootKeys, err := keys.New(cfg.Seed, cfg.NetworkID)
+	if err != nil {
 		return nil, fmt.Errorf("engine: root keystore: %w", err)
 	}
-	if e.gpools, err = cfg.genesisPools(e.rootKeys); err != nil {
+	gpools, err := cfg.genesisPools(rootKeys)
+	if err != nil {
 		return nil, err
 	}
-	if err := e.bookGenesis(); err != nil {
+	e.co = newCohort(cohortSpec{seed: cfg.Seed, census: cfg.Seed.Derive(censusStream), slots: cfg.Slots, proposer: proposerName,
+		actorKeys: ks, rootKeys: rootKeys, pools: gpools, poolStake: cfg.GenesisPoolStake},
+		env{sched: evsched{&e.clk}, emit: &e.jr, view: e.win, att: hooks{e}, pace: hooks{e}})
+	if err := e.co.ring.gen.book(); err != nil {
 		return nil, err
 	}
 	for _, n := range cfg.Profiles.Names() {
 		p, _ := cfg.Profiles.Get(n)
 		if p.Hazards.Birth > 0 {
-			e.births = append(e.births, &birth{prof: p})
+			e.co.births.add(p)
 		}
 	}
 	if cfg.Faucet > 0 {
 		if e.faucet, err = faucetWallet(&cfg); err != nil {
 			return nil, err
 		}
-		addr, err := e.faucet.Address().Bytes()
-		if err != nil {
-			return nil, fmt.Errorf("engine: faucet address: %w", err)
+		if err := e.co.bindFaucet(e.faucet); err != nil {
+			return nil, err
 		}
-		e.byAddr[string(addr)] = faucetActor
-		_ = e.win.Book().AddAddress(e.faucet.Address(), faucetActor)
 	}
 	return e, nil
 }
@@ -416,12 +357,9 @@ func (e *Engine) tick(ctx context.Context, t sched.Time) error {
 func (e *Engine) run(ctx context.Context, at sched.Time, ev evclock.Event) error {
 	switch ev.Kind {
 	case evclock.Birth:
-		b := e.births[ev.Birth]
-		a := e.spawn(b.prof, at)
-		e.jr.Emit(at, KindSpawned, a.ID, Spawned{Profile: b.prof.Name})
-		e.scheduleBirth(b, at)
+		e.co.births.run(at, ev.Birth)
 	case evclock.Hazard:
-		return e.hazard(at, ev.Actor)
+		return e.co.life.hazard(at, ev.Actor)
 	case evclock.Act:
 		return e.act(ctx, at, ev.Actor)
 	case evclock.Retry:
@@ -432,104 +370,6 @@ func (e *Engine) run(ctx context.Context, at sched.Time, ev evclock.Event) error
 	case evclock.Deploy:
 		return e.deploy(at)
 	}
-	return nil
-}
-
-func (e *Engine) scheduleBirth(b *birth, now sched.Time) {
-	b.n++
-	r := e.cfg.Seed.Derive("birth", b.prof.Name, strconv.FormatUint(b.n, 10)).Rand()
-	b.at = population.NextBirth(r, b.prof, now)
-	e.pushBirth(b)
-}
-
-func (e *Engine) pushBirth(b *birth) {
-	if b.at == population.Never {
-		return
-	}
-	idx := slices.Index(e.births, b)
-	b.h = e.clk.Push(b.at, evclock.Event{Kind: evclock.Birth, Birth: idx})
-}
-
-// spawn adds an actor and schedules its first hazard.
-func (e *Engine) spawn(p profile.Profile, at sched.Time) population.Actor {
-	a := e.census.Spawn(p, e.root, at)
-	st := e.register(a, p)
-	e.nextHazard(a, st, at)
-	// Pools and DReps have no hazard clock to wake them: they act from
-	// birth, registering first.
-	if p.Kind != profile.Wallet {
-		e.nextAct(a, st, at)
-	}
-	return a
-}
-
-// register builds the in-memory side of an actor: policy, wallet, address
-// index. It schedules nothing.
-func (e *Engine) register(a population.Actor, p profile.Profile) *actor {
-	pol, err := agenda.For(p.Agenda)
-	if err != nil {
-		pol = nil // the actor scores nothing and stays idle
-	}
-	pol = e.arm(a.ID, p, pol)
-	st := &actor{prof: p, policy: pol, rate: baseRate(p), wallet: e.keys.Wallet(keys.ActorID(a.ID)),
-		hazardAt: population.Never, actAt: population.Never}
-	st.cs, st.boot, _ = e.clocks(a, p)
-	e.actors[a.ID] = st
-	e.order = append(e.order, a.ID)
-	if addr, err := st.wallet.Address().Bytes(); err == nil {
-		e.byAddr[string(addr)] = a.ID
-	}
-	e.bookActor(a.ID, p, st)
-	return st
-}
-
-// baseRate sums the base rates in sorted key order: float addition is not
-// associative, so summing in map order would make the rate vary by run.
-func baseRate(p profile.Profile) float64 {
-	ks := make([]string, 0, len(p.Rates.Base))
-	for k := range p.Rates.Base {
-		ks = append(ks, string(k))
-	}
-	slices.Sort(ks)
-	var sum float64
-	for _, k := range ks {
-		sum += p.Rates.Base[profile.IntentKind(k)]
-	}
-	return sum
-}
-
-// draw returns a fresh stream for the actor's next random decision. Each
-// draw has its own derived stream, so the snapshot only needs the counter.
-func (e *Engine) draw(a population.Actor, st *actor, purpose string) *rand.Rand {
-	st.draws++
-	return a.Stream(purpose, strconv.FormatUint(st.draws, 10))
-}
-
-func (e *Engine) nextHazard(a population.Actor, st *actor, now sched.Time) {
-	st.hazardAt, st.hazardTo = population.NextHazard(a, st.prof, e.draw(a, st, "hazard"), now)
-	if st.hazardAt != population.Never {
-		st.hazardH = e.clk.Push(st.hazardAt, evclock.Event{Kind: evclock.Hazard, Actor: a.ID})
-	}
-}
-
-func (e *Engine) hazard(at sched.Time, id population.ActorID) error {
-	a, _ := e.census.Get(id)
-	st := e.actors[id]
-	from, to := a.State, st.hazardTo
-	st.hazardAt = population.Never
-	if err := e.census.Apply(population.Transition{ID: id, To: to, At: at, Cause: population.Timer{}}); err != nil {
-		return fmt.Errorf("engine: actor %d: %w", id, err)
-	}
-	e.jr.Emit(at, KindTransition, id, Transition{From: string(from), To: string(to)})
-	a, _ = e.census.Get(id)
-	switch {
-	case to == population.Active:
-		e.nextAct(a, st, at)
-	case from == population.Active && st.actAt != population.Never:
-		e.clk.Cancel(st.actH)
-		st.actAt = population.Never
-	}
-	e.nextHazard(a, st, at)
 	return nil
 }
 
@@ -554,7 +394,7 @@ func (e *Engine) nextAct(a population.Actor, st *actor, now sched.Time) {
 		// lets the race redraw. The base rate is cut so the clusters
 		// average rate: mean = mu / (1 - alpha/beta).
 		b := sched.Branching{Ratio: h.Alpha / h.Beta, Beta: h.Beta}
-		r := e.draw(a, st, "arrival")
+		r := st.draw(a, "arrival")
 		st.actAt, st.followUp = sched.NextArrival(r, rate*(1-b.Ratio), mod, now), false
 		if st.owed > 0 {
 			if at := now + b.Delay(r); at < st.actAt {
@@ -564,18 +404,18 @@ func (e *Engine) nextAct(a population.Actor, st *actor, now sched.Time) {
 		st.actH = e.clk.Push(st.actAt, evclock.Event{Kind: evclock.Act, Actor: a.ID})
 		return
 	}
-	st.actAt = sched.NextArrival(e.draw(a, st, "arrival"), rate, mod, now)
+	st.actAt = sched.NextArrival(st.draw(a, "arrival"), rate, mod, now)
 	st.actH = e.clk.Push(st.actAt, evclock.Event{Kind: evclock.Act, Actor: a.ID})
 }
 
 func (e *Engine) act(ctx context.Context, at sched.Time, id population.ActorID) error {
-	a, _ := e.census.Get(id)
-	st := e.actors[id]
+	a, _ := e.co.get(id)
+	st := e.co.rec(id)
 	if e.paused {
 		e.nextAct(a, st, at)
 		return nil
 	}
-	r := e.draw(a, st, "act")
+	r := st.draw(a, "act")
 	var d agenda.Decision
 	var gov build.ActionType
 	switch {
@@ -791,7 +631,7 @@ func sumCoins(cs []Coin) uint64 {
 // A block with K successors is settled: its fees and foreign outputs count,
 // and the ledger reports the payments it settled or killed.
 func (e *Engine) applyBlock(ctx context.Context, at sched.Time, b blockRec) error {
-	lb, vb, err := e.win.Blocks(b, members{e})
+	lb, vb, err := e.win.Blocks(b, e.co)
 	if err != nil {
 		return err
 	}
@@ -807,9 +647,9 @@ func (e *Engine) applyBlock(ctx context.Context, at sched.Time, b blockRec) erro
 		return err
 	}
 	was := e.cfg.Slots.EpochOfSlot(e.win.Confirmed().Slot)
-	e.win.Confirm(members{e})
+	e.win.Confirm(e.co)
 	if ep := e.cfg.Slots.EpochOfSlot(e.win.Confirmed().Slot); ep > was {
-		if err := e.epochApplied(at, ep); err != nil {
+		if err := e.co.life.epochApplied(at, ep); err != nil {
 			return err
 		}
 	}
@@ -853,14 +693,6 @@ func (e *Engine) rollback(ctx context.Context, p eventlog.ChainPoint) error {
 		return fmt.Errorf("engine: view: %w", err)
 	}
 	return e.leftView(ctx, e.clk.Now(), gone)
-}
-
-// walletOf is the wallet of a ledger owner: an actor or the faucet.
-func (e *Engine) walletOf(id population.ActorID) keys.Wallet {
-	if id == faucetActor {
-		return e.faucet
-	}
-	return e.actors[id].wallet
 }
 
 // weightsOf is a profile's intent weights with the controls' overrides.

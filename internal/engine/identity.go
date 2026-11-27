@@ -34,43 +34,8 @@ type tokenKey struct {
 	name   string
 }
 
-// holdings reads every actor's holdings in one pass over the ledger, the
-// unfinished payments and the view's outputs.
-func (e *Engine) holdings() map[population.ActorID]*holding {
-	out := map[population.ActorID]*holding{}
-	of := func(id population.ActorID) *holding {
-		h := out[id]
-		if h == nil {
-			h = &holding{}
-			out[id] = h
-		}
-		return h
-	}
-	for _, u := range e.led.Settled() {
-		h := of(u.Owner)
-		h.settled += u.Lovelace
-		h.utxos++
-		if _, held := e.led.Holder(u.Ref); held {
-			h.reserved += u.Lovelace
-		}
-	}
-	for _, p := range e.pending {
-		if p.Refill {
-			continue
-		}
-		h := of(population.ActorID(p.Actor))
-		h.inflight++
-		h.unconfirmed += p.Amount
-	}
-	for id, us := range e.win.View().Owned() {
-		for _, u := range us {
-			addTokens(of(id), u)
-		}
-	}
-	return out
-}
-
-func addTokens(h *holding, u common.Utxo) {
+// addTokens adds the native assets of output u to h.
+func (h *holding) addTokens(u common.Utxo) {
 	ma := u.Output.Assets()
 	if ma == nil {
 		return
@@ -156,13 +121,22 @@ func ActorKinds() []string {
 	return out
 }
 
+// idents builds the identity rows.
+type idents struct {
+	r *roster
+	// proposer is the profile name of the network proposer.
+	proposer string
+	att      attackHooks
+	view     chainView
+}
+
 // kindOf names an actor's role for the UI: a profile kind, refined for the
 // network proposer and for adversaries.
-func (e *Engine) kindOf(id population.ActorID, p profile.Profile) string {
+func (n *idents) kindOf(id population.ActorID, p profile.Profile) string {
 	switch {
-	case e.isAdversary(id):
+	case n.att.Adversary(id):
 		return kindAdversary
-	case p.Name == proposerName:
+	case p.Name == n.proposer:
 		return kindProposer
 	}
 	return string(p.Kind)
@@ -170,19 +144,19 @@ func (e *Engine) kindOf(id population.ActorID, p profile.Profile) string {
 
 // staticIdentity is the part of an actor's identity that never changes,
 // computed once per actor.
-func (e *Engine) staticIdentity(id population.ActorID, st *actor) store.Identity {
+func (n *idents) staticIdentity(id population.ActorID, st *actor) store.Identity {
 	w := st.wallet
 	pk, sk := w.PaymentKeyHash(), w.StakeKeyHash()
 	out := store.Identity{
-		Kind: e.kindOf(id, st.prof), Agenda: string(st.prof.Agenda),
+		Kind: n.kindOf(id, st.prof), Agenda: string(st.prof.Agenda),
 		PaymentAddr: w.Address().String(), StakeAddr: w.StakeAddress().String(),
 		PaymentKeyHash: hex.EncodeToString(pk[:]), StakeKeyHash: hex.EncodeToString(sk[:]),
 	}
 	if st.prof.Kind == profile.DRep {
-		d := e.keys.DRep(keysID(id))
+		d := n.r.ring.drep(id)
 		out.DRepID = bech32Of("drep", d[:])
 	}
-	if pool, ok := e.pools[id]; ok {
+	if pool, ok := n.r.ring.poolOf(id); ok {
 		out.PoolID = bech32Of("pool", pool[:])
 	}
 	if ad := st.prof.Adversary; ad != nil {
@@ -193,9 +167,9 @@ func (e *Engine) staticIdentity(id population.ActorID, st *actor) store.Identity
 }
 
 // identityOf is the actor's identity now.
-func (e *Engine) identityOf(a population.Actor, st *actor, hs map[population.ActorID]*holding) store.Identity {
+func (n *idents) identityOf(a population.Actor, st *actor, hs map[population.ActorID]*holding) store.Identity {
 	if !st.identOK {
-		st.ident, st.identOK = e.staticIdentity(a.ID, st), true
+		st.ident, st.identOK = n.staticIdentity(a.ID, st), true
 	}
 	out := st.ident
 	out.Competence, out.Care = a.Competence, a.Traits.Care
@@ -209,22 +183,22 @@ func (e *Engine) identityOf(a population.Actor, st *actor, hs map[population.Act
 		out.InFlight, out.Unconfirmed = h.inflight, h.unconfirmed
 		out.Tokens = tokenList(h)
 	}
-	if e.isAdversary(a.ID) {
-		out.CostSpent = e.costs.Total(a.ID)
+	if n.att.Adversary(a.ID) {
+		out.CostSpent = n.att.Spent(a.ID)
 	}
-	e.delegationOf(&out, a.ID)
+	n.delegationOf(&out, a.ID)
 	return out
 }
 
-func (e *Engine) delegationOf(out *store.Identity, id population.ActorID) {
-	s, ok := e.win.View().StakeOf(id)
+func (n *idents) delegationOf(out *store.Identity, id population.ActorID) {
+	s, ok := n.view.View().StakeOf(id)
 	if !ok {
 		return
 	}
 	out.StakeRegistered = s.Registered
 	if s.Delegated {
 		out.DelegatedPool = bech32Of("pool", s.Pool[:])
-		if pa, ok := e.win.View().PoolActor(s.Pool); ok {
+		if pa, ok := n.view.View().PoolActor(s.Pool); ok {
 			out.DelegatedActor = uint64(pa)
 		}
 	}
