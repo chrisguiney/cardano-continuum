@@ -40,25 +40,6 @@ func Decode(r io.Reader) (Scenario, error) {
 	return s, s.check()
 }
 
-func (s Scenario) check() error {
-	if s.Version != FormatVersion {
-		return fmt.Errorf("scenario %q: format version %d, this build reads %d", s.ID, s.Version, FormatVersion)
-	}
-	if !idForm.MatchString(s.ID) || strings.Contains(s.ID, "..") {
-		return fmt.Errorf("bad scenario id %q", s.ID)
-	}
-	set := 0
-	for _, has := range []bool{s.Utxo != nil, s.Witness != nil, s.Codec != nil} {
-		if has {
-			set++
-		}
-	}
-	if set != 1 {
-		return fmt.Errorf("scenario %q: want exactly one case, have %d", s.ID, set)
-	}
-	return nil
-}
-
 // Save writes s below dir at <id>.json.
 func Save(dir string, s Scenario) error {
 	if err := s.check(); err != nil {

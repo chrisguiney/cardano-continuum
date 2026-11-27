@@ -3,6 +3,7 @@ package scenario
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 	"github.com/blinklabs-io/gouroboros/ledger/conway"
@@ -219,4 +220,31 @@ func AdapterFor(s Scenario) (Adapter, error) {
 		}
 	}
 	return nil, fmt.Errorf("%w %q", ErrNoAdapter, s.Family)
+}
+
+func (s Scenario) check() error {
+	if s.Version != FormatVersion {
+		return fmt.Errorf("scenario %q: format version %d, this build reads %d", s.ID, s.Version, FormatVersion)
+	}
+	if !idForm.MatchString(s.ID) || strings.Contains(s.ID, "..") {
+		return fmt.Errorf("bad scenario id %q", s.ID)
+	}
+	set := 0
+	for _, has := range []bool{s.Utxo != nil, s.Witness != nil, s.Codec != nil} {
+		if has {
+			set++
+		}
+	}
+	if set != 1 {
+		return fmt.Errorf("scenario %q: want exactly one case, have %d", s.ID, set)
+	}
+	return nil
+}
+
+// steps is the scenario's abstract step count.
+func (s Scenario) steps() int {
+	if s.Utxo != nil {
+		return len(s.Utxo.Steps)
+	}
+	return 1
 }

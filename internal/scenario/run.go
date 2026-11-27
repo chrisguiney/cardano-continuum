@@ -82,14 +82,6 @@ func Run(ctx context.Context, s Scenario, b Backend, seed rng.Seed) (Result, err
 	return runWith(ctx, s, a, b, seed)
 }
 
-// steps is the scenario's abstract step count.
-func (s Scenario) steps() int {
-	if s.Utxo != nil {
-		return len(s.Utxo.Steps)
-	}
-	return 1
-}
-
 func runWith(ctx context.Context, s Scenario, a Adapter, b Backend, seed rng.Seed) (Result, error) {
 	res := Result{ID: s.ID, Family: s.Family, Source: s.Source, Steps: s.steps()}
 	env := b.Env()
