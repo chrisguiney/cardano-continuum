@@ -5,5 +5,7 @@
 controller-gen only rewrites that file, and every file here is generated;
 change the markers, not the YAML. `make check-manifests` fails on drift.
 
-[`deploy/operator/operator.yaml`](../../deploy/operator/README.md) binds the
-operator's ServiceAccount to this role.
+`make manifests` copies it into the Helm chart
+([`charts/continuum/files/operator-role.yaml`](../../charts/continuum/README.md)),
+which installs the rules under a ClusterRole named for the release's
+namespace and binds the operator's ServiceAccount to it.

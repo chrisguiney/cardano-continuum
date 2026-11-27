@@ -11,7 +11,7 @@ dispatch.
 
 No job runs the end-to-end suite: GitHub's runners have no cluster. It runs
 against a cluster you provide, with `make e2e E2E_CONTEXT=<context>
-CONTINUUM_REGISTRY=<registry>` (see the [README](../../README.md#tests)).
+CONTINUUM_REGISTRY=<registry>` (see the [README](../../README.md#end-to-end-tests)).
 
 `static` and `test` together are `make check`, the local entry point. Actions
 are pinned by commit SHA; the `static` job reads the golangci-lint version from

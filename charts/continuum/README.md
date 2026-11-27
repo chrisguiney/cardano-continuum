@@ -31,9 +31,10 @@ Nothing waits on Helm hooks; each component waits for what it needs:
 3. The engine mounts `devnet-genesis` and its init container waits until pool
    0's node-to-client bridge accepts a connection.
 
-Install without `--wait`: the pools and the engine become ready only after
-the Job has published, which can take longer than Helm's default timeout on
-a first pull. `make up` waits itself, with bounds.
+The pools and the engine become ready only after the Job has published,
+which on a first pull can take longer than Helm's default timeout: with
+`--wait`, pass a `--timeout` of 15 minutes or more. `make up` does not pass
+`--wait`; it waits itself, with bounds.
 
 ## Upgrades and resets
 

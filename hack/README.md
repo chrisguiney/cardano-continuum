@@ -5,13 +5,12 @@ their waits.
 
 | File | Used by | Does |
 |---|---|---|
-| `up.sh` | `make up` | deploys operator, genesis, pools and engine UI to `CONTEXT` (default `docker-desktop`); idempotent |
-| `down.sh` | `make down` | removes what `up.sh` deployed, pools first |
-| `kind-up.sh`, `kind-down.sh`, `kind.yaml` | `make kind-up`, `make kind-down`, `make e2e` | the throwaway kind cluster (one control plane, two workers) and its plain-HTTP registry |
+| `up.sh` | `make up` | installs or upgrades the Helm chart in `CONTEXT` (default: the current context) and `NAMESPACE`, resets the network when the run changes, waits for one chain and forwards the UI |
+| `down.sh` | `make down` | deletes the pools, uninstalls the chart and deletes the namespace |
 | `podstats.sh` | `sample.sh` | one line per pod: memory (MiB) and CPU (millicores) from the kubelet summary API |
 | `sample.sh` | by hand | appends `podstats.sh` output to a TSV every `INTERVAL` seconds, `COUNT` times |
 | `summarize.py` | by hand | steady and peak memory and CPU per pod kind from a `sample.sh` TSV |
-| `devup/` | `up.sh` | Go helper: memory check, network manifests, `ATTACKS` resolution |
+| `devup/` | `up.sh`, `make chart-check` | Go helper: memory check, `ATTACKS` resolution, the engine's run identity, pool 0's bridge address |
 
 Each script's header comment lists its environment variables. See
 [`docs/single-machine.md`](../docs/single-machine.md) for sizing.

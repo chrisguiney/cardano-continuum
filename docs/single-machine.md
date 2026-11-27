@@ -1,7 +1,10 @@
 # Running continuum on one machine
 
-`make up` deploys the whole system onto Docker Desktop's Kubernetes (context
-`docker-desktop`, namespace `continuum`); `make down` removes it.
+`make up` installs the whole system with the Helm chart into namespace
+`continuum` of the cluster kubectl's current context names (or `CONTEXT`);
+`make down` removes it. Any distribution works, a single-node one included;
+the cluster needs a registry its nodes pull from (`CONTINUUM_REGISTRY`, see
+the [README](../README.md#running-on-kubernetes)).
 
 ```sh
 make up                                    # 3 cardano-node + 1 dingo pool, 100 wallets, preprod profile
@@ -9,10 +12,10 @@ make up POOLS=8 DINGO_POOLS=2 WALLETS=300  # a bigger devnet
 make down
 ```
 
-Variables: `CONTEXT`, `NAMESPACE`, `PROFILES`, `POOLS` (cardano-node),
+Variables: `CONTEXT`, `NAMESPACE`, `RELEASE`, `PROFILES`, `POOLS` (cardano-node),
 `DINGO_POOLS`, `WALLETS`, `SCALE`, `SEED` (64 hex), `ENGINE_POOLS` (pool operators the
 engine simulates; keep 0 with `preprod` and `preview`, which have no pool
-profile), `ATTACKS`, `UI_PORT`, `UI_ADDRESS`.
+profile), `ATTACKS`, `VALUES`, `IMAGE_REF`, `PLATFORM`, `UI_PORT`, `UI_ADDRESS`.
 
 ## Adversaries
 
@@ -32,14 +35,16 @@ make up ATTACKS=dust-flood,exunits-block-gap
 
 `exunits-block-gap` is opt-in. It needs a genesis whose per-transaction
 execution budget exceeds the per-block one, which `continuum-genesis` refuses
-unless told it is deliberate. Naming the attack makes `make up` pass
-`-override=maxTxExUnits.memory=140000000 -override=maxTxExUnits.steps=20000000000
--allow-inconsistent-exunits` to the genesis Job (`go run ./hack/devup attacks
-<ATTACKS>` prints them). The adversary then submits transactions that fit the
+unless told it is deliberate. Naming the attack makes `make up` set the
+chart's `genesis.overrides` to `maxTxExUnits.memory=140000000` and
+`maxTxExUnits.steps=20000000000` and `genesis.allowInconsistentExUnits`
+(`go run ./hack/devup attacks <ATTACKS>` prints the genesis flags); a plain
+`helm install` must set them itself, and the chart refuses the attack
+without them. The adversary then submits transactions that fit the
 transaction budget but no block; the oracle requires that none is ever
 forged and files a fatal `block_exunits_over_limit` for any block over
-`maxBlockExUnits`. The genesis fixes the attacks' genesis needs, so change
-`ATTACKS` only after `make down`.
+`maxBlockExUnits`. The genesis fixes the attacks' genesis needs, so a
+change to them resets the network (see below).
 
 The tier-2 economic models in `internal/adversary` (proposal spam, mempool
 flood, pledge splitting) are standalone calculations with no engine step,
@@ -55,51 +60,73 @@ network, and grading against the profile's target uses the unscaled target,
 so rates and counts compared with it are off by the factor. Use `SCALE=1`
 for a run that is graded.
 
-`make up` checks that the context exists, that allocatable memory is at least
-48 GiB (a warning only; Docker Desktop with 48 GB reports about 47 GiB, so
-expect the warning there) and that the registry answers, then builds the
-operator, genesis and engine images with ko into `localhost:5005/continuum`,
-loads them into the node, installs the CRDs and operator, runs the genesis
-Job, creates the network and pools, waits for one chain (10 blocks forged,
-every cardano-node tip within k), starts the engine with `--serve` and
-port-forwards its UI. It is idempotent. The genesis fixes the pool count and
-the seed, so change either only after `make down`.
+`make up` checks that the context exists and answers and warns when the
+first node's allocatable memory is below 48 GiB (`MIN_MEM_GIB`; Docker
+Desktop given 48 GB reports about 47 GiB, so expect the warning there). It
+builds the operator, genesis and engine images with ko and pushes them to
+`CONTINUUM_REGISTRY` (`make images`), applies the chart's CRDs and runs
+`helm upgrade --install`. The genesis Job pulls the node images, renders the
+genesis and publishes it; the operator starts the pools as their keys
+appear; the engine waits for pool 0. `make up` then waits for one chain (10
+blocks forged, every cardano-node tip within k), for the engine, and
+port-forwards its UI. A second run upgrades the release in place.
 
 An engine resumes its event log only under the binary, seed, profile set
 and attacks that wrote it; a pod given another refuses its log ("eventlog:
-header mismatch") and crash-loops. `make up` records those on the engine
-StatefulSet (annotation `continuum.blinklabs.io/run`, computed by `go run
-./hack/devup run`), and when a deploy would change them it logs why, for
-example "engine binary changed: a run can't be resumed by a different
-binary; resetting the network", and runs `make down` first, so the chain
-and the engine store start fresh. `make up KEEP_RUN=1` refuses instead.
-A deploy from before the annotation existed counts as changed.
+header mismatch") and crash-loops. `make up` passes those as the chart's
+`engine.runIdentity` (computed by `go run ./hack/devup run`), which the
+chart records on the engine StatefulSet (annotation
+`continuum.blinklabs.io/run`). The genesis fixes the pool counts, the seed
+and the genesis overrides, which `make up` reads back from the deployed
+release. When an install would change any of them it logs why, for example
+"engine binary changed: a run can't be resumed by a different binary;
+resetting the network", and runs `make down` first, so the chain and the
+engine store start fresh. `make up KEEP_RUN=1` refuses instead. A deploy
+with no recorded identity counts as changed. A plain `helm upgrade` does no
+such check: a changed genesis makes the new genesis Job fail with "holds a
+devnet for spec".
 
 `make down` deletes the pools while the operator still runs, since the
 operator's fence finalizer on each keyed pod blocks namespace deletion
-otherwise, then the engine, then the namespace.
+otherwise, then uninstalls the release and deletes the namespace. The CRDs
+stay.
 
 ## Reaching the UI
 
-`http://127.0.0.1:8088` on the machine running Docker Desktop: a supervised
+`http://127.0.0.1:8088` on the machine that ran `make up`: a supervised
 `kubectl port-forward` to the engine pod's loopback (pid and log under
 `~/.cache/continuum/<namespace>/`). The API has no authentication, so it
 listens on `127.0.0.1` only. From another host use
 `ssh -L 8088:127.0.0.1:8088 <host>`; `UI_ADDRESS=0.0.0.0` exposes it to the
 LAN and with it the control endpoints.
 
-## The node cannot pull from the host registry
+## Example: nodes that cannot pull from the registry
 
-Docker Desktop's node routes every pull through a mirror that fails for a
-registry on the host. `make up` therefore pushes with ko, pulls into the host's
-Docker, and imports into the node's containerd (as `kind load` does); pods
-name the image by a tag derived from the digest, with the default
-IfNotPresent policy. Set `NODE_CONTAINER` if the node container is not
-`desktop-control-plane`.
+Some single-machine distributions route every pull through a mirror that
+cannot reach a registry on the host. Docker Desktop's Kubernetes is one:
+its node, the container `desktop-control-plane`, fails to pull
+`localhost:5005/...`. Nothing in continuum works around this; load the
+images into the node yourself and have the chart name them by tag, since a
+container runtime does not match an imported image to a digest reference:
+
+```sh
+export CONTINUUM_REGISTRY=localhost:5005/continuum CONTINUUM_REGISTRY_INSECURE=true
+make images
+while read -r ref; do
+  hex=${ref##*@sha256:}
+  tag=${ref%@sha256:*}:${hex:0:12}
+  docker pull -q "$ref" && docker tag "$ref" "$tag" &&
+    docker save "$tag" | docker exec -i desktop-control-plane ctr -n k8s.io images import -
+done < .tools/images
+make up CONTEXT=docker-desktop IMAGE_REF=tag
+```
+
+ko builds are reproducible, so the images `make up` rebuilds have the
+digests just imported. Repeat the loop after changing the code.
 
 ## Measurements
 
-Docker Desktop, 1 node, 14 CPUs, 46.96 GiB allocatable, arm64, Conway devnet
+Measured on Docker Desktop's Kubernetes, 1 node, 14 CPUs, 46.96 GiB allocatable, arm64, Conway devnet
 (epoch 500 slots of 1 s, k=5, f=0.05), preprod engine profile. Memory is the
 kubelet summary API's working set (there is no metrics-server), CPU its
 usage in millicores, sampled every 20 s over three epochs (the chain reached
@@ -141,10 +168,10 @@ not the machine.
 `DefaultMemoryMiB`; `TestBudgetDefaults` pins the CRD defaults to them). That
 is a third of 48 GiB in requests, and sixteen dingo pools would use about
 9 GiB measured, so the budget leaves four times headroom for chain growth,
-longer runs and the engine. `make up` accepts at most 16 pools
-(`devup.MaxPools`).
+longer runs and the engine. The chart refuses more pools than
+`network.budget.maxPools` (16 by default).
 
 Measured up to 10 pools; 16 is an extrapolation from the per-pool numbers
 (16 x dingo 566 MiB peak is about 9 GiB, plus about 1.8 GiB node baseline),
-not a run. Raise the budget in the ContinuumNetwork to go beyond it, and
-watch `hack/podstats.sh`.
+not a run. Raise `network.budget` (`make up VALUES=<file>`) to go beyond it,
+and watch `hack/podstats.sh`.
