@@ -544,7 +544,7 @@ func TestRolledBackAttemptIsSentAgain(t *testing.T) {
 	}
 	sub := firstPayment(t, e)
 	mustHandle(t, e, answer(t, SubmitResult{Intent: sub.Intent, Verdict: VerdictAccepted}))
-	if len(e.InFlight()) != 0 {
+	if len(e.pay.InFlight(e.clk.Now())) != 0 {
 		t.Fatal("an accepted payment is still in flight")
 	}
 	before := e.Summary().Tip
@@ -566,7 +566,7 @@ func TestRolledBackAttemptIsSentAgain(t *testing.T) {
 	}
 	// The resend waits out its backoff first.
 	mustHandle(t, e, tickInput(max(e.pay.Get(sub.Intent).NotBefore, e.Now())))
-	inf := e.InFlight()
+	inf := e.pay.InFlight(e.clk.Now())
 	if len(inf) != 1 || inf[0].ID != sub.ID || !bytes.Equal(inf[0].Tx, sub.Tx) {
 		t.Fatalf("in flight %+v, want the same bytes again", inf)
 	}

@@ -71,7 +71,7 @@ func TestRestartAfterOfflineRollback(t *testing.T) {
 	if samePoint(e.Summary().Tip, oldTip) {
 		t.Fatal("the chain did not move past the old tip")
 	}
-	if want, got := derive(t, w.cfg, w.chain), e.Balances(); !sameBalances(want, got) {
+	if want, got := derive(t, w.cfg, w.chain), e.pay.Balances(); !sameBalances(want, got) {
 		t.Fatalf("actors differ from Derive(chain):\nengine %v\nchain  %v", got, want)
 	}
 	var rolled bool
@@ -144,7 +144,7 @@ func (c *checkingStore) SaveCheckpoint(ctx context.Context, cp store.Checkpoint)
 	if err != nil {
 		c.t.Fatal(err)
 	}
-	want, err := e.Reservations()
+	want, err := e.pay.Blob()
 	if err != nil {
 		c.t.Fatal(err)
 	}

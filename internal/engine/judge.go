@@ -32,7 +32,7 @@ type jhooks struct{ e *Engine }
 func (h jhooks) Supply() uint64 { return h.e.Summary().Supply }
 
 // Balances implements judge.Ledger.
-func (h jhooks) Balances() map[uint64]uint64 { return h.e.Balances() }
+func (h jhooks) Balances() map[uint64]uint64 { return h.e.pay.Balances() }
 
 // Holders implements judge.Ledger.
 func (h jhooks) Holders() oracle.Holders { return h.e.pay.Reads() }
@@ -42,7 +42,3 @@ func (h jhooks) State(at sched.Time) policy.State { return h.e.fl.State(at) }
 
 // Contested implements judge.Race.
 func (h jhooks) Contested(ref wire.Ref) bool { return h.e.adv.Contested(ref) }
-
-// Findings is the set of findings this engine has logged. It is safe for
-// concurrent use, so an API may serve it while the loop runs.
-func (e *Engine) Findings() *oracle.Set { return e.jd.Set() }

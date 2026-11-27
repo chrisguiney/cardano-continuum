@@ -159,11 +159,11 @@ func TestPopulationsAct(t *testing.T) {
 	if s, g := e.Summary().Supply, genesisTotal(t, cfg); s != g {
 		t.Errorf("supply %d, genesis %d", s, g)
 	}
-	if n := e.Contracts(); n < 2 {
+	if n := e.in.Count(); n < 2 {
 		t.Errorf("%d contracts deployed, want more than the first", n)
 	}
 	used := map[string]bool{}
-	for i := range uint64(e.Contracts()) {
+	for i := range uint64(e.in.Count()) {
 		if len(e.win.View().UtxosAt(build.Contract(i).Address(cfg.NetworkID))) > 0 {
 			used[build.Contract(i).Name] = true
 		}

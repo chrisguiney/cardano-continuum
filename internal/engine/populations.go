@@ -204,6 +204,3 @@ func (c *Config) contractParams() (*profile.ContractParams, bool) {
 func subject(st *cohort.Actor) pace.Subject {
 	return pace.Subject{State: &st.Pace, Prof: &st.Prof, Policy: st.Policy, Rate: st.Rate, Drawer: st}
 }
-
-// Contracts is the number of contracts deployed, contract 0 included.
-func (e *Engine) Contracts() int { return e.in.Count() }

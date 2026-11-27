@@ -65,7 +65,7 @@ func (r faucetRoster) Account(id population.ActorID) (faucet.Account, bool) {
 
 // Utxos implements faucet.Wallets.
 func (r faucetRoster) Utxos(w keys.Wallet, coins []wire.Coin) []common.Utxo {
-	return r.e.ledgerUtxos(w, coins)
+	return ihooks(r).Utxos(w, coins)
 }
 
 // newFaucetFor builds the engine's faucet and, when the run has one, seats

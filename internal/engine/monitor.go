@@ -35,7 +35,7 @@ func (r *Runner) view(ctx context.Context) error {
 	if r.d.Viewer == nil {
 		return nil
 	}
-	conf, now := r.eng.Confirmed(), r.d.Clock.Now()
+	conf, now := r.eng.win.Confirmed(), r.d.Clock.Now()
 	if r.queried && (samePoint(conf, r.viewed) || now < r.viewAt+r.d.ViewEvery) {
 		return nil
 	}
@@ -44,7 +44,7 @@ func (r *Runner) view(ctx context.Context) error {
 		return fmt.Errorf("%w: confirmed slot %d", ErrBadPoint, conf.Slot)
 	}
 	r.viewed, r.viewAt, r.queried = conf, now, true
-	ans, err := r.d.Viewer.View(ctx, at, r.eng.addresses())
+	ans, err := r.d.Viewer.View(ctx, at, addresses(r.eng))
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
@@ -65,7 +65,7 @@ func (r *Runner) view(ctx context.Context) error {
 
 // addresses are every actor's wallet address and the faucet's, in actor
 // order.
-func (e *Engine) addresses() []common.Address {
+func addresses(e *Engine) []common.Address {
 	out := make([]common.Address, 0, len(e.co.IDs())+1)
 	for _, id := range e.co.IDs() {
 		out = append(out, e.co.Rec(id).Wallet.Address())

@@ -25,7 +25,7 @@ func refuseReserves(t *testing.T, e *Engine) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := e.ledgerConfig()
+	cfg := ledgerConfig(e)
 	cfg.Store = refusing{}
 	if err = e.pay.Load(cfg, sv); err != nil {
 		t.Fatal(err)
@@ -57,8 +57,8 @@ func TestFirstBuildNeedsReserve(t *testing.T) {
 			t.Fatalf("at %d: %d payments submitted although Reserve refuses", at, n)
 		}
 	}
-	if e.pay.Len() != 0 || len(e.InFlight()) != 0 {
-		t.Fatalf("%d pending, %d in flight, want none", e.pay.Len(), len(e.InFlight()))
+	if e.pay.Len() != 0 || len(e.pay.InFlight(e.clk.Now())) != 0 {
+		t.Fatalf("%d pending, %d in flight, want none", e.pay.Len(), len(e.pay.InFlight(e.clk.Now())))
 	}
 }
 

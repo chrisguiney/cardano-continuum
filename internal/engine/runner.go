@@ -204,7 +204,7 @@ func Start(ctx context.Context, cfg Config, d Deps) (*Runner, error) {
 	// A payment in flight at a restart may have been sent by the process
 	// that died, so a rejection of it proves nothing.
 	r.resumed = map[uint64]bool{}
-	for _, s := range r.eng.InFlight() {
+	for _, s := range r.eng.pay.InFlight(r.eng.clk.Now()) {
 		r.resumed[s.Intent] = true
 	}
 	r.log.Info("engine started", "covers", covers, "log_seq", d.Log.LastSeq(), "actors", r.eng.Summary().Actors)
@@ -316,7 +316,7 @@ func loadFindings(ctx context.Context, l eventlog.Reader, covers uint64, set *or
 }
 
 func (r *Runner) intersect(ctx context.Context) error {
-	pts := r.eng.Points()
+	pts := r.eng.win.Points()
 	slices.Reverse(pts)
 	f, at, err := r.d.Node.Intersect(pts)
 	if err != nil {
@@ -352,7 +352,7 @@ func (r *Runner) step(ctx context.Context, feed func() error) error {
 	if err := r.crash(StageFed); err != nil {
 		return err
 	}
-	if r.eng.Stalled() {
+	if r.eng.fl.Stalled() {
 		return ErrStalled
 	}
 	if r.d.CheckpointEvery > 0 && r.since >= r.d.CheckpointEvery {
@@ -366,7 +366,7 @@ func (r *Runner) step(ctx context.Context, feed func() error) error {
 // carries the reservation, is synced before its transaction leaves.
 func (r *Runner) effects(ctx context.Context) error {
 	for {
-		inf := r.eng.InFlight()
+		inf := r.eng.pay.InFlight(r.eng.clk.Now())
 		if len(inf) == 0 {
 			return nil
 		}
@@ -547,7 +547,7 @@ func (r *Runner) drops(ctx context.Context) error {
 		return nil
 	}
 	for _, tx := range d.Dropped() {
-		id, ok := r.eng.IntentOf(tx)
+		id, ok := r.eng.pay.Of(tx)
 		if !ok {
 			continue
 		}
@@ -595,7 +595,7 @@ func (r *Runner) syncPools(ctx context.Context) error {
 	if r.d.Pools == nil {
 		return nil
 	}
-	plan := r.eng.Pools()
+	plan := r.eng.st.Pools()
 	if r.synced && slices.Equal(plan, r.plan) {
 		return nil
 	}
@@ -699,13 +699,13 @@ func (r *Runner) Checkpoint(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	res, err := r.eng.Reservations()
+	res, err := r.eng.pay.Blob()
 	if err != nil {
 		return err
 	}
 	c := store.Checkpoint{
-		Seq: r.d.Log.LastSeq(), Points: r.eng.Points(), Confirmed: r.eng.Confirmed(),
-		Actors: snap, ActorRows: r.eng.ActorRows(), Reservations: res,
+		Seq: r.d.Log.LastSeq(), Points: r.eng.win.Points(), Confirmed: r.eng.win.Confirmed(),
+		Actors: snap, ActorRows: actorRows(r.eng), Reservations: res,
 	}
 	if err := r.d.Store.SaveCheckpoint(ctx, c); err != nil {
 		return fmt.Errorf("engine: checkpoint: %w", err)

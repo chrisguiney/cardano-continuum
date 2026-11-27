@@ -5,6 +5,8 @@ import (
 
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 
+	"strconv"
+
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/intent"
@@ -14,7 +16,6 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
-	"strconv"
 )
 
 // This file routes the steer component (internal/engine/internal/steer) into
@@ -41,7 +42,7 @@ func (r scenarioRoute) Propose(ctx context.Context, at sched.Time) (string, erro
 	if !ok {
 		return "no actor with a registered stake key", nil
 	}
-	return e.start(ctx, at, &wire.Pending{Actor: uint64(id), Args: wire.Args{Kind: string(profile.IntentPropose)}})
+	return starter{e}.start(ctx, at, &wire.Pending{Actor: uint64(id), Args: wire.Args{Kind: string(profile.IntentPropose)}})
 }
 
 // SPOProbe implements steer.Scenarios.
@@ -69,7 +70,7 @@ func (r scenarioRoute) SPOProbe(ctx context.Context, at sched.Time) (string, err
 		return "no registered pool", nil
 	}
 	voter, _ := intent.Voter(e.co.Ring, id)
-	return e.start(ctx, at, &wire.Pending{Actor: uint64(id), Args: wire.Args{Kind: string(profile.IntentVote)}, Gov: wire.Gov{Action: &ref, Choice: common.GovVoteYes, Power: e.win.View().VotingPower(voter), Probe: true}})
+	return starter{e}.start(ctx, at, &wire.Pending{Actor: uint64(id), Args: wire.Args{Kind: string(profile.IntentVote)}, Gov: wire.Gov{Action: &ref, Choice: common.GovVoteYes, Power: e.win.View().VotingPower(voter), Probe: true}})
 }
 
 // GoDark implements steer.Scenarios.
@@ -107,7 +108,7 @@ func (r scenarioRoute) HotKeys(ctx context.Context, at sched.Time) (string, erro
 		return "no actor to pay", nil
 	}
 	for i := range e.cfg.Committee {
-		why, err := e.start(ctx, at, &wire.Pending{Actor: uint64(id), Args: wire.Args{Kind: hotKind, To: uint64(i)}})
+		why, err := (starter{e}).start(ctx, at, &wire.Pending{Actor: uint64(id), Args: wire.Args{Kind: hotKind, To: uint64(i)}})
 		if err != nil || why != "" {
 			return why, err
 		}
@@ -125,7 +126,7 @@ func (r scenarioRoute) richest(ok func(population.ActorID) bool) (population.Act
 		if a, _ := e.co.Get(id); a.State == population.Abandoned || !ok(id) {
 			continue
 		}
-		if s := e.Spendable(uint64(id)); s > most {
+		if s := e.pay.Spendable(uint64(id)); s > most {
 			best, most = id, s
 		}
 	}
@@ -166,7 +167,3 @@ func (r steerRing) Eager(id population.ActorID) float64 { return r.e.co.Rec(id).
 
 // Dark implements steer.Roster.
 func (r steerRing) Dark(id population.ActorID) bool { return r.e.fl.Dark(id) }
-
-// Pools is the pool plan, by actor. A live run patches each ContinuumPool
-// from it; the fake has nothing to patch.
-func (e *Engine) Pools() []PoolPlan { return e.st.Pools() }

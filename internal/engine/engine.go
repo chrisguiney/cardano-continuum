@@ -25,6 +25,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/plan"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
+	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/submit"
 )
@@ -129,7 +130,7 @@ func New(cfg Config) (*Engine, error) {
 		// Shelley genesis and the fake chain.
 		genesis = append(genesis, plan.Utxo{Ref: plan.Ref{Tx: blake2b256(addr)}, Owner: owners[i], Lovelace: f.Lovelace})
 	}
-	if err = e.pay.Genesis(e.ledgerConfig(), genesis); err != nil {
+	if err = e.pay.Genesis(ledgerConfig(e), genesis); err != nil {
 		return nil, fmt.Errorf("engine: ledger: %w", err)
 	}
 	var gs chain.State
@@ -228,6 +229,61 @@ func newEmpty(cfg Config) (*Engine, error) {
 		return nil, err
 	}
 	return e, nil
+}
+
+// Snapshot implements eventlog.Engine: the whole state in canonical CBOR,
+// the ledger's blob included.
+func (e *Engine) Snapshot() ([]byte, error) {
+	wi, err := e.win.Save()
+	if err != nil {
+		return nil, err
+	}
+	ps, err := e.pay.Save()
+	if err != nil {
+		return nil, fmt.Errorf("engine: ledger: %w", err)
+	}
+	ct := e.in.Save()
+	s := snapshot{Version: snapshotVersion, Now: e.clk.Now(), NextIntent: ps.NextID, Conf: wi.Conf, Fees: wi.Fees, Foreign: wi.Foreign, RefillAt: e.fc.Save(), Deposits: ps.Deposits, Market: e.pc.Save(), Lost: e.jd.Lost(),
+		Contracts: ct.N, DeployAt: ct.At, DeployN: ct.Drawn}
+	s.Actors, s.Births = e.co.Save()
+	s.Window, s.View = wi.Blocks, wi.View
+	for _, p := range ps.Pending {
+		s.Pending = append(s.Pending, recOf(p))
+	}
+	s.Ledger = ledgerBlob{Version: ps.Ledger.Version, Data: ps.Ledger.Data}
+	fs := e.fl.Save()
+	s.Dark, s.Down, s.Repairs, s.Stalled = fs.Dark, fs.Down, fs.Repairs, fs.Stalled
+	ss := e.st.Save()
+	s.Paused, s.RateK, s.Waves, s.Adoptions, s.Weights, s.Images = ss.Paused, ss.RateK, ss.Waves, ss.Adoptions, ss.Weights, ss.Images
+	s.Charges, s.Contested = e.adv.Save()
+	return eventlog.Encode(s)
+}
+
+// Now is the engine's clock: the time of the last Tick.
+func (e *Engine) Now() sched.Time { return e.clk.Now() }
+
+// NextEvent is when the engine next wants a Tick.
+func (e *Engine) NextEvent() (sched.Time, bool) { return e.clk.Peek() }
+
+// Summary is the engine's state at a glance, for progress reports.
+type Summary struct {
+	// Supply is everything the settled state accounts for: owned outputs,
+	// fees, outputs to addresses outside the population (locked script
+	// outputs among them) and the deposits the engine's certificates and
+	// proposals hold. It equals the genesis total while value is conserved.
+	Supply uint64
+	// Tip is the last block the engine applied.
+	Tip eventlog.ChainPoint
+	// Pending is the number of payments not yet confirmed or released.
+	Pending int
+	// Actors is the number of actors ever spawned.
+	Actors int
+}
+
+// Summary is the engine's state at a glance.
+func (e *Engine) Summary() Summary {
+	sv := e.win.Saved()
+	return Summary{Supply: e.pay.Supply() + sv.Fees + sv.Foreign, Tip: e.win.Tip(), Pending: e.pay.Len(), Actors: e.co.Pop().Len()}
 }
 
 // Handle implements eventlog.Engine: it applies one input and returns the
@@ -367,7 +423,7 @@ func (e *Engine) act(ctx context.Context, at sched.Time, id population.ActorID) 
 			return err
 		}
 	default:
-		if err := e.intend(ctx, at, a, st, d.Intent, gov, r); err != nil {
+		if err := (starter{e}).intend(ctx, at, a, st, d.Intent, gov, r); err != nil {
 			return err
 		}
 	}
@@ -479,4 +535,39 @@ func (e *Engine) rollback(ctx context.Context, p eventlog.ChainPoint) error {
 		return fmt.Errorf("engine: view: %w", err)
 	}
 	return e.retry.LeftView(ctx, e.clk.Now(), gone)
+}
+
+// poolStatus applies an observed pod state, then recovers.
+func (e *Engine) poolStatus(ctx context.Context, at sched.Time, s PoolStatus) error {
+	id := population.ActorID(s.Pool)
+	if _, ok := e.co.Ring.PoolOf(id); !ok {
+		return nil
+	}
+	e.fl.PodStatus(id, s.Running)
+	return e.recover(ctx, at)
+}
+
+// recover runs the guard's recovery for the state at at and starts it:
+// the floor takes GoLive and repairs at once, then each stranded wallet's
+// move starts here, in the plan's order.
+func (e *Engine) recover(ctx context.Context, at sched.Time) error {
+	for _, mv := range e.fl.Recover(at) {
+		if err := (starter{e}).move(ctx, at, mv); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// settle accounts for a settled attempt of intent p: the deposit it paid
+// or refunded, a locked output it freed, and the lifecycle edge it causes.
+func (e *Engine) settle(at sched.Time, p *wire.Pending, tx TxID) error {
+	if out := e.pay.Deposit(e.in.Deposit(p)); out > 0 {
+		e.win.Reclaim(out)
+	}
+	if p.Kind == unlockKind {
+		// The lock's script output counted as foreign when it settled.
+		e.win.Reclaim(p.Amount)
+	}
+	return e.co.Life.Settled(at, population.ActorID(p.Actor), profile.IntentKind(p.Kind), tx)
 }

@@ -80,25 +80,25 @@ func TestActorsChangeOnlyAtDepthK(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	before := e.Balances()
+	before := e.pay.Balances()
 	mustHandle(t, e, blockInput(t, 1, moveTx(t, cfg)))
 	mustHandle(t, e, blockInput(t, 2))
-	if got := e.Balances(); got[1] != before[1] || got[2] != before[2] {
+	if got := e.pay.Balances(); got[1] != before[1] || got[2] != before[2] {
 		t.Fatalf("block 1 changed durable balances with only 1 successor: %v -> %v", before, got)
 	}
 	// A rollback of the tip leaves durable actors unchanged.
 	mustHandle(t, e, rollbackInput(t, point(1)))
-	if got := e.Balances(); got[1] != before[1] || !samePoint(e.Confirmed(), eventlog.ChainPoint{}) {
-		t.Fatalf("tip rollback changed durable state: %v, confirmed %v", got, e.Confirmed())
+	if got := e.pay.Balances(); got[1] != before[1] || !samePoint(e.win.Confirmed(), eventlog.ChainPoint{}) {
+		t.Fatalf("tip rollback changed durable state: %v, confirmed %v", got, e.win.Confirmed())
 	}
 	mustHandle(t, e, blockInput(t, 3))
 	mustHandle(t, e, blockInput(t, 4))
-	got := e.Balances()
+	got := e.pay.Balances()
 	if got[1] != 0 || got[2] != before[2]+before[1]-200_000 {
 		t.Fatalf("block 1 not durable after K successors: %v -> %v", before, got)
 	}
-	if !samePoint(e.Confirmed(), point(1)) {
-		t.Fatalf("confirmed = %v, want block 1", e.Confirmed())
+	if !samePoint(e.win.Confirmed(), point(1)) {
+		t.Fatalf("confirmed = %v, want block 1", e.win.Confirmed())
 	}
 	if e.Summary().Supply != genesisTotal(t, cfg) {
 		t.Fatalf("supply %d, genesis %d", e.Summary().Supply, genesisTotal(t, cfg))
@@ -116,8 +116,8 @@ func TestRollbackBelowConfirmedIsError(t *testing.T) {
 	for n := uint64(1); n <= 4; n++ {
 		mustHandle(t, e, blockInput(t, n))
 	}
-	if !samePoint(e.Confirmed(), point(2)) {
-		t.Fatalf("confirmed = %v, want block 2", e.Confirmed())
+	if !samePoint(e.win.Confirmed(), point(2)) {
+		t.Fatalf("confirmed = %v, want block 2", e.win.Confirmed())
 	}
 	before := snap(t, e)
 	for _, to := range []eventlog.ChainPoint{point(1), {}} {

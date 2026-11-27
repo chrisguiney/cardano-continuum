@@ -19,7 +19,6 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/window"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
-	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/plan"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
@@ -28,34 +27,6 @@ import (
 )
 
 func blake2b256(b []byte) common.Blake2b256 { return common.Blake2b256Hash(b) }
-
-// Snapshot implements eventlog.Engine: the whole state in canonical CBOR,
-// the ledger's blob included.
-func (e *Engine) Snapshot() ([]byte, error) {
-	wi, err := e.win.Save()
-	if err != nil {
-		return nil, err
-	}
-	ps, err := e.pay.Save()
-	if err != nil {
-		return nil, fmt.Errorf("engine: ledger: %w", err)
-	}
-	ct := e.in.Save()
-	s := snapshot{Version: snapshotVersion, Now: e.clk.Now(), NextIntent: ps.NextID, Conf: wi.Conf, Fees: wi.Fees, Foreign: wi.Foreign, RefillAt: e.fc.Save(), Deposits: ps.Deposits, Market: e.pc.Save(), Lost: e.jd.Lost(),
-		Contracts: ct.N, DeployAt: ct.At, DeployN: ct.Drawn}
-	s.Actors, s.Births = e.co.Save()
-	s.Window, s.View = wi.Blocks, wi.View
-	for _, p := range ps.Pending {
-		s.Pending = append(s.Pending, recOf(p))
-	}
-	s.Ledger = ledgerBlob{Version: ps.Ledger.Version, Data: ps.Ledger.Data}
-	fs := e.fl.Save()
-	s.Dark, s.Down, s.Repairs, s.Stalled = fs.Dark, fs.Down, fs.Repairs, fs.Stalled
-	ss := e.st.Save()
-	s.Paused, s.RateK, s.Waves, s.Adoptions, s.Weights, s.Images = ss.Paused, ss.RateK, ss.Waves, ss.Adoptions, ss.Weights, ss.Images
-	s.Charges, s.Contested = e.adv.Save()
-	return eventlog.Encode(s)
-}
 
 // Restore rebuilds an engine from a Snapshot: each component loads its
 // section. The census, queue and indexes are derived again: actors are
@@ -98,7 +69,7 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 	// After the cohort: arming an adversary sets its ceiling, and the spends
 	// load on top of it.
 	e.adv.Load(s.Charges, s.Contested)
-	if err := e.restoreLedger(s); err != nil {
+	if err := loadLedger(e, s); err != nil {
 		return nil, err
 	}
 	ps := make([]*wire.Pending, len(s.Pending))
@@ -111,9 +82,9 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 	return e, nil
 }
 
-func (e *Engine) restoreLedger(s snapshot) error {
+func loadLedger(e *Engine, s snapshot) error {
 	sv := pay.Saved{NextID: s.NextIntent, Deposits: s.Deposits, Ledger: store.Blob{Version: s.Ledger.Version, Data: s.Ledger.Data}}
-	if err := e.pay.Load(e.ledgerConfig(), sv); err != nil {
+	if err := e.pay.Load(ledgerConfig(e), sv); err != nil {
 		return fmt.Errorf("engine: snapshot ledger: %w", err)
 	}
 	e.jd.Load(s.Lost)
@@ -147,26 +118,7 @@ func (e *Engine) restoreLedger(s snapshot) error {
 	return nil
 }
 
-// ledgerUtxos turns coins into the outputs the builder spends. The ledger
-// knows only lovelace; the view holds each output as the block carried it,
-// so an input holding tokens hands them to the builder, which returns them
-// in the change. Spending a token as plain lovelace leaves the
-// transaction's value unbalanced (ValueNotConservedUTxO). A coin the view
-// lacks is the change of an attempt not yet in a block, built from
-// lovelace-only inputs.
-func (e *Engine) ledgerUtxos(w keys.Wallet, coins []Coin) []common.Utxo {
-	out := make([]common.Utxo, len(coins))
-	for i, c := range coins {
-		if u, ok := e.win.View().Utxo(chain.Ref{Tx: chain.TxID(c.Ref.Tx), Index: c.Ref.Index}); ok {
-			out[i] = u
-			continue
-		}
-		out[i] = window.Utxo(w.Address(), c.Ref, c.Lovelace)
-	}
-	return out
-}
-
-func (e *Engine) ledgerConfig() plan.Config {
+func ledgerConfig(e *Engine) plan.Config {
 	return plan.Config{K: e.cfg.K, Owners: owners{e}, Store: logged{}}
 }
 
@@ -309,86 +261,18 @@ func (logged) Commit(context.Context, store.Blob) error { return nil }
 // that stores nothing.
 func (logged) Discards() bool { return true }
 
-// Now is the engine's clock: the time of the last Tick.
-func (e *Engine) Now() sched.Time { return e.clk.Now() }
-
-// NextEvent is when the engine next wants a Tick.
-func (e *Engine) NextEvent() (sched.Time, bool) { return e.clk.Peek() }
-
-// Summary is the engine's state at a glance, for progress reports.
-type Summary struct {
-	// Supply is everything the settled state accounts for: owned outputs,
-	// fees, outputs to addresses outside the population (locked script
-	// outputs among them) and the deposits the engine's certificates and
-	// proposals hold. It equals the genesis total while value is conserved.
-	Supply uint64
-	// Tip is the last block the engine applied.
-	Tip eventlog.ChainPoint
-	// Pending is the number of payments not yet confirmed or released.
-	Pending int
-	// Actors is the number of actors ever spawned.
-	Actors int
-}
-
-// Summary is the engine's state at a glance.
-func (e *Engine) Summary() Summary {
-	sv := e.win.Saved()
-	return Summary{Supply: e.pay.Supply() + sv.Fees + sv.Foreign, Tip: e.win.Tip(), Pending: e.pay.Len(), Actors: e.co.Pop().Len()}
-}
-
-// Confirmed is the K-deep point durable state comes from.
-func (e *Engine) Confirmed() eventlog.ChainPoint { return e.win.Confirmed() }
-
-// Points are the engine's intersection points, oldest first: the confirmed
-// point and every volatile block above it, so FindIntersect never has to fall
-// back below the confirmed point.
-func (e *Engine) Points() []eventlog.ChainPoint { return e.win.Points() }
-
-// Spendable is the lovelace the ledger would offer the actor's next
-// payment: its settled outputs that are neither reserved nor spent in a
-// block above the settled point.
-func (e *Engine) Spendable(id uint64) uint64 {
-	return e.pay.Spendable(id)
-}
-
-// Balances returns each actor's settled lovelace, reserved or not, by
-// actor ID.
-func (e *Engine) Balances() map[uint64]uint64 {
-	return e.pay.Balances()
-}
-
-// Lost is the lovelace settled payments sent to addresses nobody holds.
-func (e *Engine) Lost() uint64 { return e.jd.Lost() }
-
-// Reservations is the ledger's blob, for store.Checkpoint.Reservations. The
-// snapshot carries the same bytes.
-func (e *Engine) Reservations() (store.Blob, error) { return e.pay.Blob() }
-
-// IntentOf is the intent an unfinished attempt belongs to.
-func (e *Engine) IntentOf(tx TxID) (uint64, bool) {
-	return e.pay.Of(tx)
-}
-
 // Submission is a payment waiting for the node's answer; see
 // pay.Submission.
 type Submission = pay.Submission
-
-// InFlight returns the payments decided but not yet answered by the node,
-// oldest first, leaving out those still backing off; a front-run goes
-// ahead of all of them. It is the loop's effect queue: derived from state,
-// so a restart resumes exactly the submissions a crash interrupted.
-func (e *Engine) InFlight() []Submission {
-	return e.pay.InFlight(e.clk.Now())
-}
 
 // ActorKinds returns every role an actor row can report: the profile kinds
 // plus the proposer and adversary refinements.
 func ActorKinds() []string { return cohort.ActorKinds() }
 
-// ActorRows is the read model the store pages for the UI. Each row carries
+// actorRows is the read model the store pages for the UI. Each row carries
 // the actor's public identity, holdings and delegation.
-func (e *Engine) ActorRows() []store.ActorRow {
-	hs := e.holdings()
+func actorRows(e *Engine) []store.ActorRow {
+	hs := holdings(e)
 	out := make([]store.ActorRow, 0, len(e.co.IDs()))
 	for _, id := range e.co.IDs() {
 		a, _ := e.co.Get(id)
@@ -404,7 +288,7 @@ func (e *Engine) ActorRows() []store.ActorRow {
 
 // holdings reads every actor's holdings in one pass over the ledger, the
 // unfinished payments and the view's outputs.
-func (e *Engine) holdings() map[population.ActorID]*cohort.Holding {
+func holdings(e *Engine) map[population.ActorID]*cohort.Holding {
 	out := map[population.ActorID]*cohort.Holding{}
 	of := func(id population.ActorID) *cohort.Holding {
 		h := out[id]

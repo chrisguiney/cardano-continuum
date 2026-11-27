@@ -112,7 +112,7 @@ func TestInjectedGoDarkIsGuarded(t *testing.T) {
 	if k := kinds(out); k[KindGuarded] != 0 || k[KindPoolTier] != 1 {
 		t.Fatalf("safe go-dark: %v, %+v", k, controlled(t, out))
 	}
-	if p := e.Pools(); !p[1].Dark || p[1].Genesis != 1 {
+	if p := e.st.Pools(); !p[1].Dark || p[1].Genesis != 1 {
 		t.Fatalf("plan %+v, want pool actor 2 (genesis pool 1) dark", p)
 	}
 }
@@ -150,7 +150,7 @@ func TestUpgradeWave(t *testing.T) {
 	if kinds(rest)[KindImageChange] != kinds(again)[KindImageChange] {
 		t.Fatal("the restored engine's wave differs")
 	}
-	for _, p := range e.Pools() {
+	for _, p := range e.st.Pools() {
 		if p.Image != "img@sha256:ab" {
 			t.Fatalf("plan %+v", p)
 		}

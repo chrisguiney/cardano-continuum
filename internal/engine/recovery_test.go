@@ -203,7 +203,7 @@ func TestEmptyEpochIsFatal(t *testing.T) {
 	for n := uint64(1); n <= 11; n++ {
 		mustHandle(t, e, blockInput(t, n))
 	}
-	if e.Stalled() {
+	if e.fl.Stalled() {
 		t.Fatal("stalled within epoch 0")
 	}
 	var inc []Incident
@@ -219,14 +219,14 @@ func TestEmptyEpochIsFatal(t *testing.T) {
 	if len(inc) != 1 || inc[0].Kind != "stall" || inc[0].Epoch != 2 || inc[0].Label != 0 {
 		t.Fatalf("incidents %+v, want one stall in epoch 2 after label 0", inc)
 	}
-	if !e.Stalled() {
+	if !e.fl.Stalled() {
 		t.Fatal("engine not stalled")
 	}
 	r, err := Restore(cfg, snap(t, e))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !r.Stalled() {
+	if !r.fl.Stalled() {
 		t.Fatal("stall lost across a snapshot")
 	}
 }

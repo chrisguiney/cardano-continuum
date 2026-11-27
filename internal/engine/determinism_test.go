@@ -136,7 +136,7 @@ func TestDeterminismValueConserved(t *testing.T) {
 	if got := w.chain.UnspentLovelace() + w.chain.Fees(); got != total {
 		t.Fatalf("chain holds %d of %d lovelace", got, total)
 	}
-	if want := derive(t, cfg, w.chain); !sameBalances(want, e.Balances()) {
+	if want := derive(t, cfg, w.chain); !sameBalances(want, e.pay.Balances()) {
 		t.Fatal("engine balances differ from Derive(chain)")
 	}
 	k := countKinds(t, w.log)

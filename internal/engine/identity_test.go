@@ -28,8 +28,8 @@ func identityWorld(t *testing.T) (*Engine, Config, map[uint64]uint64) {
 
 func TestActorRowsCarryPublicIdentity(t *testing.T) {
 	e, _, chainBal := identityWorld(t)
-	bal := e.Balances()
-	rows := e.ActorRows()
+	bal := e.pay.Balances()
+	rows := actorRows(e)
 	if len(rows) < 6 {
 		t.Fatalf("%d rows", len(rows))
 	}
@@ -65,7 +65,7 @@ func TestActorRowsHoldNoSecretBytes(t *testing.T) {
 	ent := cfg.Seed.Derive("keys").Derive("keys/v1", "root")
 	root := bursa.GetRootKey(ent[:], nil)
 	secrets := [][]byte{ent[:], root}
-	for _, r := range e.ActorRows() {
+	for _, r := range actorRows(e) {
 		acct, err := bursa.GetAccountKey(root, uint32(r.ID))
 		if err != nil {
 			t.Fatal(err)
