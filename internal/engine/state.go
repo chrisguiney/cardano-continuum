@@ -280,7 +280,7 @@ func (c evsched) Adopt(at sched.Time, i uint64) {
 	c.Push(at, clock.Event{Kind: clock.Adopt, Intent: i})
 }
 
-// Refill implements faucetClock.
+// Refill implements faucet.Clock.
 func (c evsched) Refill(at sched.Time) { c.Push(at, clock.Event{Kind: clock.Refill}) }
 
 // Deploy implements intent.Clock.

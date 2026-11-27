@@ -11,6 +11,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/attack"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/clock"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/cohort"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/faucet"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/floor"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/intent"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/journal"
@@ -71,7 +72,7 @@ type Engine struct {
 
 	// fc is the faucet's refill round; it does nothing unless cfg.Faucet is
 	// positive.
-	fc  *faucet
+	fc  *faucet.Faucet
 	clk clock.Clock
 	jr  journal.Journal
 	co  *cohort.Cohort
