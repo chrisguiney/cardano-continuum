@@ -7,27 +7,14 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/policy"
 )
 
-// PolicyState builds the stake-floor guard's input (internal/policy,
-// models/specs/stake-floor) from the view.
-//
-// epoch is the current epoch by slot time, which the view cannot know: its
-// own epoch is that of the tip. Pods and inflight come from the engine: the
-// plan and observed pod health, and the transactions submitted but neither
-// confirmed nor expired.
-//
-// Label, Set and Mark come from the tip, so they agree with each other: Set
-// and Mark are what the last transition on the tip's chain took. Deleg and
-// Pools come from the settled point, since the contract counts a delegation
-// or certificate as confirmed only K deep (rule 3, engine-recovery design
-// A); a certificate still above it is neither in Deleg nor in Pools. A pool
-// the view has never seen registered is left out.
-func (v *View) PolicyState(epoch uint64, pods agenda.Pods, inflight []policy.Intent) policy.State {
+// policyState is View.PolicyState.
+func policyState(v *View, epoch uint64, pods agenda.Pods, inflight []policy.Intent) policy.State {
 	c := v.Confirmed()
 	st := policy.State{
 		Epoch:    epoch,
 		Label:    v.ep.label,
-		Set:      v.schedule(v.ep.set),
-		Mark:     v.schedule(v.ep.mark),
+		Set:      schedule(v.cfg.Book, v.ep.set),
+		Mark:     schedule(v.cfg.Book, v.ep.mark),
 		Deleg:    c.delegation(c.credStake()),
 		InFlight: slices.Clone(inflight),
 	}
@@ -53,11 +40,11 @@ func (v *View) PolicyState(epoch uint64, pods agenda.Pods, inflight []policy.Int
 }
 
 // schedule converts a snapshot, whose credentials the book names.
-func (v *View) schedule(s Snapshot) policy.Schedule {
+func schedule(b *Book, s Snapshot) policy.Schedule {
 	var out policy.Schedule
 	for _, e := range s {
 		out = append(out, policy.Delegation{
-			Wallet: v.cfg.Book.stake[e.Cred], Pool: v.cfg.Book.pools[e.Pool], Stake: e.Stake,
+			Wallet: b.stake[e.Cred], Pool: b.pools[e.Pool], Stake: e.Stake,
 		})
 	}
 	return out

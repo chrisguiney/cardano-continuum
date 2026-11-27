@@ -38,54 +38,60 @@ func (s Snapshot) ByPool() map[common.Blake2b224]uint64 {
 	return out
 }
 
-// epochState is what the epoch transition owns. label is the epoch of the
+// epochs is what the epoch transition owns. label is the epoch of the
 // newest block applied; frozen means an epoch passed without a block, after
 // which the ledger never runs another transition (models/specs/stake-floor
 // README, "Freezing"). Snapshots are immutable once taken, so an undo record
 // holds the old slices without copying them.
-type epochState struct {
+//
+// The transition keeps the order models/specs/stake-floor fixes: "The
+// transition runs at the first block of an epoch: it rotates the snapshots
+// (`set := mark`, `mark := deleg`), then retires the pools whose epoch has
+// come and undelegates their wallets (SNAP before POOLREAP, so the retired
+// pool's stake is in the new `mark`)."
+type epochs struct {
 	label     uint64
 	frozen    bool
 	mark, set Snapshot
 }
 
-// newEpoch runs the transition b triggers, if any, before b's
-// transactions: the first block of an epoch rotates the snapshots (set takes
-// mark, mark takes the delegation as it stands) and then retires the pools
-// whose epoch has come, undelegating their wallets. SNAP runs before
-// POOLREAP, so a retiring pool's stake is still in the new mark. The shape
-// follows cardano-ledger's NEWEPOCH rule (Shelley/Rules/NewEpoch.hs); the
-// leader schedule of epoch e is set, not go, as in dingo
+// next runs the transition a block of epoch ep triggers, if any, before
+// the block's transactions; first means the block is the chain's first.
+// The first block of an epoch rotates the snapshots (set takes mark, mark
+// takes the delegation as it stands) and then retires the pools whose
+// epoch has come, undelegating their wallets. SNAP runs before POOLREAP,
+// so a retiring pool's stake is still in the new mark. The shape follows
+// cardano-ledger's NEWEPOCH rule (Shelley/Rules/NewEpoch.hs); the leader
+// schedule of epoch e is set, not go, as in dingo
 // consensus/praos/snapshot.go.
-func (v *View) newEpoch(b Block, u *undo) {
-	ep := v.cfg.Slots.EpochOfSlot(b.Point.Slot)
-	if v.ep.frozen || ep == v.ep.label {
+func (e *epochs) next(ep uint64, first bool, src *utxos, a *accounts, r *registry, u *undo) {
+	if e.frozen || ep == e.label {
 		return
 	}
-	old := v.ep
+	old := *e
 	switch {
-	case v.tip.IsOrigin():
+	case first:
 		// The first block of a chain has no earlier epoch to close.
-		v.ep.label = ep
-	case ep > v.ep.label+1:
-		v.ep.frozen = true
+		e.label = ep
+	case ep > e.label+1:
+		e.frozen = true
 	default:
-		v.ep.set, v.ep.mark = v.ep.mark, v.distribution(v.credStake())
-		v.ep.label = ep
-		v.reap(ep, &v.accounts, u)
+		e.set, e.mark = e.mark, a.distribution(src.credStake())
+		e.label = ep
+		r.reap(ep, a, u)
 	}
 	u.epoch = &old
 }
 
-func (v *View) restoreEpoch(u undo) {
+func (e *epochs) restore(u undo) {
 	if u.epoch != nil {
-		v.ep = *u.epoch
+		*e = *u.epoch
 	}
 }
 
-// poolStake is the lovelace delegated to each pool now, and the total.
-func (v *View) poolStake() (map[common.Blake2b224]uint64, uint64) {
-	per := v.distribution(v.credStake()).ByPool()
+// poolStake is the lovelace delegated to each pool in d, and the total.
+func poolStake(d Snapshot) (map[common.Blake2b224]uint64, uint64) {
+	per := d.ByPool()
 	var total uint64
 	for _, n := range per {
 		total += n

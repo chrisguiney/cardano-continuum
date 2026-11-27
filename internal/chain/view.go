@@ -11,6 +11,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/check"
+	"github.com/chrisguiney/cardano-continuum/internal/policy"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
@@ -63,8 +64,8 @@ type View struct {
 	utxos
 	accounts
 	registry
-	// epoch state: see ledger.go
-	ep epochState
+	// epoch state and the stake snapshots: see ledger.go
+	ep epochs
 	// governance state: see gov.go
 	gov
 	// window holds the blocks above the settled point, oldest first. It is
@@ -132,7 +133,7 @@ func New(cfg Config, s State) (*View, error) {
 		utxos:    newUtxos(cfg.Book),
 		accounts: newAccounts(cfg.Book),
 		registry: newRegistry(cfg.Book),
-		ep:       epochState{label: s.Label, frozen: s.Frozen, mark: slices.Clone(s.Mark), set: slices.Clone(s.Set)},
+		ep:       epochs{label: s.Label, frozen: s.Frozen, mark: slices.Clone(s.Mark), set: slices.Clone(s.Set)},
 		gov:      newGov(cfg.Book),
 	}
 	for _, p := range s.Proposals {
@@ -180,7 +181,7 @@ func (v *View) PoolRegistered(id population.ActorID) bool {
 // on a devnet where the engine's population holds all stake it is the
 // network's.
 func (v *View) Pools() []agenda.PoolInfo {
-	per, total := v.poolStake()
+	per, total := poolStake(v.distribution(v.credStake()))
 	var limit profile.Lovelace
 	if v.cfg.NOpt > 0 {
 		limit = profile.Lovelace(total / v.cfg.NOpt)
@@ -221,10 +222,28 @@ func (v *View) VotingPower(x Voter) uint64 {
 		}
 		return sum
 	case common.VoterTypeStakingPoolKeyHash:
-		per, _ := v.poolStake()
+		per, _ := poolStake(v.distribution(v.credStake()))
 		return per[x.Hash]
 	}
 	return 0
+}
+
+// PolicyState builds the stake-floor guard's input (internal/policy,
+// models/specs/stake-floor) from the view.
+//
+// epoch is the current epoch by slot time, which the view cannot know: its
+// own epoch is that of the tip. Pods and inflight come from the engine: the
+// plan and observed pod health, and the transactions submitted but neither
+// confirmed nor expired.
+//
+// Label, Set and Mark come from the tip, so they agree with each other: Set
+// and Mark are what the last transition on the tip's chain took. Deleg and
+// Pools come from the settled point, since the contract counts a delegation
+// or certificate as confirmed only K deep (rule 3, engine-recovery design
+// A); a certificate still above it is neither in Deleg nor in Pools. A pool
+// the view has never seen registered is left out.
+func (v *View) PolicyState(epoch uint64, pods agenda.Pods, inflight []policy.Intent) policy.State {
+	return policyState(v, epoch, pods, inflight)
 }
 
 // Apply folds b onto the tip. It returns the effects in transaction order,
@@ -234,7 +253,7 @@ func (v *View) Apply(b Block) ([]Effect, error) {
 		return nil, fmt.Errorf("%w: block %d at slot %d", ErrNotConnected, b.Number, b.Point.Slot)
 	}
 	u := undo{point: b.Point, number: b.Number, prev: v.tip, prevH: v.height}
-	v.newEpoch(b, &u)
+	v.ep.next(v.cfg.Slots.EpochOfSlot(b.Point.Slot), v.tip.IsOrigin(), &v.utxos, &v.accounts, &v.registry, &u)
 	var eff []Effect
 	for _, tx := range b.Txs {
 		eff = append(eff, v.applyTx(tx, &u)...)
@@ -332,7 +351,7 @@ func (v *View) unwind(u undo) []Effect {
 	restore(u.stake, v.stake)
 	restore(u.pools, v.pools)
 	restore(u.dreps, v.dreps)
-	v.restoreEpoch(u)
+	v.ep.restore(u)
 	v.restoreGov(u)
 	v.tip, v.height = u.prev, u.prevH
 	return eff
@@ -395,7 +414,7 @@ type undo struct {
 	dreps map[common.Blake2b224]prior[bool]
 	// epoch is set when the block moved the epoch state, gov when it
 	// touched proposals or votes; each holds what to put back.
-	epoch *epochState
+	epoch *epochs
 	gov   *govUndo
 }
 
