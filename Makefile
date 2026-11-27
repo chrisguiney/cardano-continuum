@@ -248,7 +248,7 @@ e2e: require-registry ## Run the e2e suite against E2E_CONTEXT (about 90 minutes
 # platform: set it when they differ from this machine.
 PLATFORM ?= linux/$(shell go env GOARCH)
 IMAGES_OUT ?= $(CURDIR)/.tools/images
-CHART_IMAGES := ./cmd/continuum ./cmd/continuum-operator ./cmd/continuum-genesis
+CHART_IMAGES := ./cmd/continuum ./cmd/continuum-operator ./cmd/continuum-genesis ./cmd/continuum-ui
 
 images: require-registry ## Build the chart's images with ko, push them to CONTINUUM_REGISTRY and record their digests
 	@mkdir -p $(dir $(IMAGES_OUT))

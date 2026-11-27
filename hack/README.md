@@ -5,7 +5,7 @@ their waits.
 
 | File | Used by | Does |
 |---|---|---|
-| `up.sh` | `make up` | installs or upgrades the Helm chart in `CONTEXT` (default: the current context) and `NAMESPACE`, resets the network when the run changes, waits for one chain and forwards the UI |
+| `up.sh` | `make up` | installs or upgrades the Helm chart in `CONTEXT` (default: the current context) and `NAMESPACE`, resets the network when the run changes, waits for one chain and forwards `svc/continuum-ui` |
 | `down.sh` | `make down` | deletes the pools, uninstalls the chart and deletes the namespace |
 | `podstats.sh` | `sample.sh` | one line per pod: memory (MiB) and CPU (millicores) from the kubelet summary API |
 | `sample.sh` | by hand | appends `podstats.sh` output to a TSV every `INTERVAL` seconds, `COUNT` times |

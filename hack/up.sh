@@ -2,9 +2,9 @@
 # Install or upgrade the continuum Helm chart (charts/continuum) into
 # NAMESPACE of the cluster CONTEXT names: operator, genesis, a
 # ContinuumNetwork with POOLS cardano-node pools and DINGO_POOLS dingo pools,
-# and the engine serving the live UI. Then wait, bounded, for the pools to
-# share one chain and the engine to be Ready, and keep a port-forward to the
-# UI running. Any Kubernetes distribution works; nothing here starts or
+# the engine serving its live API, and the web UI (continuum-ui) in front of
+# it. Then wait, bounded, for the pools to share one chain and the engine and
+# the UI to be Ready, and keep a port-forward to the UI's Service running. Any Kubernetes distribution works; nothing here starts or
 # configures a cluster.
 #
 # CONTEXT empty means kubectl's current context. It is read once and passed
@@ -12,8 +12,8 @@
 # and a switch while this runs does not redirect it.
 #
 # IMAGES is the file `make images` wrote: one digest reference per line,
-# CONTINUUM_REGISTRY/<name>@sha256:..., for continuum, continuum-operator
-# and continuum-genesis. The chart gets the registry and the digests, or,
+# CONTINUUM_REGISTRY/<name>@sha256:..., for continuum, continuum-operator,
+# continuum-genesis and continuum-ui. The chart gets the registry and the digests, or,
 # with IMAGE_REF=tag, a tag of each digest's first 12 hex characters: for a
 # cluster whose nodes were given the images under those tags by other means
 # (docs/single-machine.md has an example), since a runtime does not match an
@@ -27,7 +27,8 @@
 #
 # An engine resumes its event log only under the binary, seed, profiles and
 # attacks that wrote it, and the genesis fixes the pool counts and the
-# genesis overrides. This script computes the run identity (devup run) and
+# genesis overrides. The UI image is not part of it: the UI is a Deployment
+# of its own, so a UI-only change rolls that pod and keeps the run. This script computes the run identity (devup run) and
 # passes it as engine.runIdentity, which the chart records as the engine
 # StatefulSet's continuum.blinklabs.io/run annotation. When the deployed
 # annotation or the deployed release's pool values differ, it logs why
@@ -35,7 +36,8 @@
 # resetting the network") and runs hack/down.sh first, so the chain and the
 # engine store start fresh. With KEEP_RUN=1 it refuses instead.
 #
-# Every wait is bounded and nothing reads stdin. Written for bash 3.2, so an
+# Every wait is bounded and nothing reads stdin. Sourcing the script (a
+# test does) defines the functions without running main. Written for bash 3.2, so an
 # empty array is expanded as ${a[@]+"${a[@]}"} under set -u.
 #
 # Environment (the Makefile passes these): CONTEXT, NAMESPACE, RELEASE,
@@ -70,7 +72,7 @@ UI_ADDRESS=${UI_ADDRESS:-127.0.0.1}
 # preprod and preview profiles have no pool profile, so it must stay 0 there.
 ENGINE_POOLS=${ENGINE_POOLS:-0}
 K=${K_BIN:-kubectl}
-root=$(cd "$(dirname "$0")/.." && pwd)
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 chart=$root/charts/continuum
 state=${CONTINUUM_STATE_DIR:-${HOME}/.cache/continuum/$NAMESPACE}
 total=$((POOLS + DINGO_POOLS))
@@ -110,7 +112,7 @@ preflight() {
   [ -s "$IMAGES" ] || die "$IMAGES is empty: run make images"
   [ "$IMAGE_REF" = digest ] || [ "$IMAGE_REF" = tag ] || die "IMAGE_REF must be digest or tag"
   local name
-  for name in continuum continuum-operator continuum-genesis; do digest "$name" >/dev/null; done
+  for name in continuum continuum-operator continuum-genesis continuum-ui; do digest "$name" >/dev/null; done
   resolve_attacks
 }
 
@@ -195,7 +197,7 @@ install() {
   local attacks=()
   [ -n "$ENGINE_ATTACKS" ] && IFS=, read -r -a attacks <<<"$ENGINE_ATTACKS"
   local args=(--set-string "images.registry=$REGISTRY") line
-  while IFS= read -r line; do args+=("$line"); done < <(image_sets operator continuum-operator; image_sets genesis continuum-genesis; image_sets engine continuum)
+  while IFS= read -r line; do args+=("$line"); done < <(image_sets operator continuum-operator; image_sets genesis continuum-genesis; image_sets engine continuum; image_sets ui continuum-ui)
   args+=(
     --set-string "seed.value=$SEED"
     --set-json "pools={\"cardanoNode\":$POOLS,\"dingo\":$DINGO_POOLS}"
@@ -205,7 +207,7 @@ install() {
     --set-json "engine.wallets=$WALLETS"
     --set-json "engine.scale=$SCALE"
     --set-json "engine.pools=$ENGINE_POOLS"
-    --set-json "engine.ui.port=$UI_PORT"
+    --set-json "ui.port=$UI_PORT"
     --set-json "engine.attacks=$(json_list ${attacks[@]+"${attacks[@]}"})"
     # --set and --set-string split on commas, which the identity holds.
     --set-json "engine.runIdentity=$(jq -cn --arg v "$RUN_ID" '$v')"
@@ -275,17 +277,27 @@ require_one_chain() {
   log "one chain: tips $lo..$hi, $forged blocks forged"
 }
 
-# forward keeps a port-forward to the engine pod's loopback UI running after
-# this script exits, restarting it when kubectl drops. The API has no
+# forward keeps a port-forward to the continuum-ui Service running after this
+# script exits, restarting it when kubectl drops; each restart picks a ready
+# UI pod, so it follows a UI rollout. The UI and the API it forwards have no
 # authentication, so it listens on UI_ADDRESS, 127.0.0.1 unless asked.
+#
+# A supervisor left by an earlier run to another target (before the UI had
+# its own Service, the engine pod) is stopped first, since it holds UI_PORT.
 forward() {
+  local target="svc/continuum-ui $UI_ADDRESS:$UI_PORT" pid
   mkdir -p "$state"
   if [ -f "$state/forward.pid" ] && kill -0 "$(cat "$state/forward.pid")" 2>/dev/null; then
-    return
+    [ "$(cat "$state/forward.target" 2>/dev/null)" = "$target" ] && return
+    pid=$(cat "$state/forward.pid")
+    log "restarting the port-forward for $target"
+    pkill -P "$pid" 2>/dev/null || true
+    kill "$pid" 2>/dev/null || true
   fi
-  nohup bash -c "for _ in \$(seq 1 100000); do '$K' --context '$CONTEXT' -n '$NAMESPACE' port-forward --address '$UI_ADDRESS' pod/continuum-engine-0 '$UI_PORT:$UI_PORT'; sleep 3; done" \
+  nohup bash -c "for _ in \$(seq 1 100000); do '$K' --context '$CONTEXT' -n '$NAMESPACE' port-forward --address '$UI_ADDRESS' svc/continuum-ui '$UI_PORT:$UI_PORT'; sleep 3; done" \
     >"$state/forward.log" 2>&1 </dev/null &
   echo $! >"$state/forward.pid"
+  echo "$target" >"$state/forward.target"
   retry 20 1 "the UI port-forward" curl -fsS -m 2 "http://127.0.0.1:$UI_PORT/healthz"
 }
 
@@ -296,9 +308,10 @@ main() {
   wait_pools
   require_one_chain
   retry 60 5 "the engine pod to be Ready" k -n "$NAMESPACE" wait --for=condition=Ready --timeout=4s pod/continuum-engine-0
+  k -n "$NAMESPACE" rollout status deployment/continuum-ui --timeout=3m >/dev/null || die "the UI Deployment did not become ready (kubectl -n $NAMESPACE logs deploy/continuum-ui)"
   forward
-  log "UI: http://127.0.0.1:$UI_PORT (port-forward to $NAMESPACE/continuum-engine-0, listening on $UI_ADDRESS)"
+  log "UI: http://127.0.0.1:$UI_PORT (port-forward to $NAMESPACE/svc/continuum-ui, listening on $UI_ADDRESS)"
   log "from another host: ssh -L $UI_PORT:127.0.0.1:$UI_PORT <this host>, or rerun with UI_ADDRESS=0.0.0.0 (the API is unauthenticated)"
 }
 
-main "$@"
+[ "${BASH_SOURCE[0]}" != "$0" ] || main "$@"

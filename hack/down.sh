@@ -28,7 +28,7 @@ if [ -f "$state/forward.pid" ]; then
   # The supervisor's children are its kubectl port-forwards.
   pkill -P "$pid" 2>/dev/null
   kill "$pid" 2>/dev/null
-  rm -f "$state/forward.pid"
+  rm -f "$state/forward.pid" "$state/forward.target"
 fi
 
 if ! k get namespace "$NAMESPACE" >/dev/null 2>&1; then
