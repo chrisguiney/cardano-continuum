@@ -20,6 +20,70 @@ node implementations.
 | `continuum-lab` | Notebooks and scripts for analysing run output |
 | `continuum` | Command-line interface over the components above |
 
+## Running on Kubernetes
+
+`make up` deploys the whole system onto Docker Desktop's Kubernetes: the
+operator and its CRDs, the genesis Job, a devnet of cardano-node and dingo
+pools, and the engine serving the live UI. It is idempotent; a second run
+repairs only what is missing.
+
+Prerequisites:
+
+- Docker Desktop with Kubernetes enabled (kubectl context `docker-desktop`).
+  Give its VM about 48 GiB of memory; `make up` warns below that
+  (`MIN_MEM_GIB`). Sizing is in [docs/single-machine.md](docs/single-machine.md#budgets-and-sizing).
+- `kubectl`, `docker`, `curl`, Go 1.27 and `make` on the host. Images are
+  built with ko through `go run`, so ko needs no install.
+- A local image registry on port 5005 (5000 is taken by macOS AirPlay):
+
+  ```sh
+  docker run -d --name continuum-registry --restart unless-stopped \
+    -p 127.0.0.1:5005:5000 registry:2.8.3
+  ```
+
+Deploy, then open the UI:
+
+```sh
+make up                                    # 3 cardano-node + 1 dingo pool, 100 wallets, preprod profile
+open http://127.0.0.1:8088
+```
+
+`make up` builds and pushes the continuum images to
+`localhost:5005/continuum` (override with `CONTINUUM_REGISTRY`) and imports
+them into the node's containerd, because the node cannot pull from a
+registry on the host. It pre-pulls the cardano-node and dingo images, runs
+the genesis, waits until every pool forges on one chain, deploys the engine
+and keeps a `kubectl port-forward` to its UI running. The UI listens on
+`127.0.0.1` only because its API is unauthenticated; from another host use
+`ssh -L 8088:127.0.0.1:8088 <host>`.
+
+Variables, passed as `make up NAME=value`:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `POOLS` | `3` | cardano-node pools |
+| `DINGO_POOLS` | `1` | dingo pools |
+| `WALLETS` | `100` | simulated wallets |
+| `PROFILES` | `preprod` | behaviour profile set from `profiles/` (`preprod`, `preview`, `mainnet`, `m1`, `m3`) |
+| `SCALE` | `200` | multiplier on every profile's activity rates |
+| `SEED` | fixed 64-hex value | run seed for the genesis and the population |
+| `ATTACKS` | every tier-1 attack | comma-separated list, or `none` |
+| `ENGINE_POOLS` | `0` | pool operators the engine simulates (keep 0 with `preprod` and `preview`) |
+| `CONTEXT`, `NAMESPACE` | `docker-desktop`, `continuum` | where to deploy |
+| `UI_PORT`, `UI_ADDRESS` | `8088`, `127.0.0.1` | the forwarded UI |
+
+The genesis fixes the pool count, so run `make down` before changing `POOLS`
+or `DINGO_POOLS`. When the engine binary, seed, profiles or attacks differ
+from the deployed run, `make up` resets the network itself; `KEEP_RUN=1`
+makes it refuse instead. Remove everything with:
+
+```sh
+make down
+```
+
+`make kind-up`, `make e2e` and `make kind-down` use a separate, throwaway
+kind cluster for the end-to-end tests, not for development.
+
 ## Development
 
 Requires Go 1.27 (see `go.mod`) and `make`. Run the full local check, which is
