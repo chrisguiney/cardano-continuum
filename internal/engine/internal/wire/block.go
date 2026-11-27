@@ -55,6 +55,11 @@ type ProposalDigest struct {
 	Type    string `json:"type,omitempty"`
 	Pools   bool   `json:"pools,omitzero"`
 	Deposit uint64 `json:"deposit,omitzero"`
+	// Prev is a parameter change's predecessor, absent for none.
+	Prev *Ref `json:"prev,omitempty"`
+	// GovGroup reports that a parameter change touches the governance
+	// group (chain.Proposal).
+	GovGroup bool `json:"gov_group,omitzero"`
 }
 
 // Block is an applied block as the engine keeps it: its point, its

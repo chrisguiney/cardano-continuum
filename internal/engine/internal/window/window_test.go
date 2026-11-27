@@ -100,3 +100,36 @@ func TestRollbackBelowConfirmedIsRefused(t *testing.T) {
 		t.Fatalf("rollback to the confirmed point: gone %v, tip %v", gone, w.Tip())
 	}
 }
+
+// A parameter change's predecessor and group survive the digest the
+// event log keeps, so the view ratifies from a replayed log as it did live.
+func TestDigestKeepsParameterChange(t *testing.T) {
+	t.Parallel()
+	prev := chain.GovID{Tx: chain.TxID{7}, Index: 1}
+	want := chain.Proposal{
+		ID:       chain.GovID{Tx: chain.TxID{9}},
+		Type:     "parameter_change",
+		Deposit:  100,
+		Prev:     &prev,
+		GovGroup: true,
+	}
+	raw, err := wire.DigestOf(chain.Block{Txs: []chain.Tx{{Hash: want.ID.Tx, Proposals: []chain.Proposal{want}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var c wire.BlockContent
+	if err := eventlog.Decode(raw, &c); err != nil {
+		t.Fatal(err)
+	}
+
+	tx, err := viewTx(c.Txs[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := tx.Proposals[0]
+	if got.ID != want.ID || got.Type != want.Type || got.Prev == nil || *got.Prev != prev || !got.GovGroup {
+		t.Fatalf("proposal %+v after the digest, want %+v", got, want)
+	}
+}

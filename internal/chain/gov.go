@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/blinklabs-io/gouroboros/ledger/common"
+	"github.com/blinklabs-io/gouroboros/ledger/conway"
 
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
@@ -63,30 +64,73 @@ type Proposal struct {
 	Type    string
 	Pools   bool
 	Deposit uint64
+	// Prev is a parameter change's predecessor (prevGovActionId), nil for
+	// none.
+	Prev *GovID
+	// GovGroup reports that a parameter change touches the governance
+	// group, whose DRep threshold is the highest (govGroup).
+	GovGroup bool
 }
 
-// ProposalState is a tracked governance action: what it proposes and the
-// last epoch it can be voted on.
+// ProposalState is a tracked governance action: what it proposes, the
+// last epoch it can be voted on, and whether the view's ratification
+// (ratify.go) enacted it.
 type ProposalState struct {
 	ID      GovID
 	Expires uint64
 	Type    string
 	Pools   bool
 	Deposit uint64
+	// Prev and GovGroup are the Proposal's.
+	Prev     *GovID
+	GovGroup bool
+	// Enacted is set at the epoch boundary that enacted the change.
+	Enacted bool
 }
 
 // proposal is a tracked governance action, without its ID.
 type proposal struct {
+	// expires is the last epoch the action can be voted on.
 	expires uint64
-	typ     string
-	pools   bool
+	// typ and pools are the Proposal's Type and Pools.
+	typ   string
+	pools bool
+	// deposit is the lovelace the proposer deposited.
 	deposit uint64
+	// prev and govGroup are the Proposal's Prev and GovGroup.
+	prev     *GovID
+	govGroup bool
+	// enacted is set by ratify.
+	enacted bool
 }
 
 // proposalOf reads a proposal procedure.
 func proposalOf(id GovID, p common.ProposalProcedure) Proposal {
 	typ, pools := actionOf(p.GovAction())
-	return Proposal{ID: id, Type: typ, Pools: pools, Deposit: p.Deposit()}
+	prev, gov := changeOf(p.GovAction())
+	return Proposal{
+		ID:       id,
+		Type:     typ,
+		Pools:    pools,
+		Deposit:  p.Deposit(),
+		Prev:     prev,
+		GovGroup: gov,
+	}
+}
+
+// changeOf reads a parameter change's predecessor and whether it touches
+// the governance group; any other action has neither.
+func changeOf(a common.GovAction) (*GovID, bool) {
+	pc, ok := a.(*conway.ConwayParameterChangeGovAction)
+	if !ok {
+		return nil, false
+	}
+
+	var prev *GovID
+	if id := pc.PreviousGovActionId(); id != nil {
+		prev = &GovID{Tx: id.TransactionId, Index: id.GovActionIdx}
+	}
+	return prev, govGroup(pc.ParamUpdate)
 }
 
 // ActionTypes lists the action type names actionOf gives, sorted: the
@@ -154,14 +198,21 @@ type voteKey struct {
 type govUndo struct {
 	props map[GovID]proposal
 	votes map[voteKey]uint8
+	root  *GovID
 }
 
-// gov is the view's governance state: every proposal seen, and the votes
-// of the voters the book names on them.
+// gov is the view's governance state: every proposal seen, the votes of
+// the voters the book names on them, and the parameter-change root.
 type gov struct {
-	book  *Book
+	// book names the run's voters.
+	book *Book
+	// props is every proposal seen, enacted or not.
 	props map[GovID]proposal
+	// votes is the book's voters' votes on props.
 	votes map[voteKey]uint8
+	// root is the last parameter change ratify enacted, nil while none
+	// has been: the predecessor the ledger accepts for the next one.
+	root *GovID
 }
 
 func newGov(b *Book) gov {
@@ -176,14 +227,22 @@ func (g gov) clone() gov {
 
 // applyGov folds a transaction's proposals, then its votes. Every proposal
 // is tracked; a vote only when the book names its voter (a DRep, a pool
-// operator or a committee seat) and the proposal is tracked. Proposals are never ratified,
-// enacted or removed by the view: they stop being open when their last
-// epoch passes. It reports whether anything was tracked.
+// operator or a committee seat) and the proposal is tracked. A proposal
+// stops being open when its last epoch passes or when the epoch
+// transition enacts it (ratify); it is never removed, so the proposer can
+// replay its whole chain. It reports whether anything was tracked.
 func (g *gov) applyGov(tx Tx, expires uint64, u *undo) bool {
 	seen := false
 	for _, p := range tx.Proposals {
 		g.touchGov(u)
-		g.props[p.ID] = proposal{expires: expires, typ: p.Type, pools: p.Pools, deposit: p.Deposit}
+		g.props[p.ID] = proposal{
+			expires:  expires,
+			typ:      p.Type,
+			pools:    p.Pools,
+			deposit:  p.Deposit,
+			prev:     p.Prev,
+			govGroup: p.GovGroup,
+		}
 		seen = true
 	}
 	for _, x := range tx.Votes {
@@ -233,20 +292,56 @@ func (g *gov) CommitteeVoted(i int, p agenda.ProposalID) bool {
 // per touched block is cheaper than a per-key log.
 func (g *gov) touchGov(u *undo) {
 	if u.gov == nil {
-		u.gov = &govUndo{props: maps.Clone(g.props), votes: maps.Clone(g.votes)}
+		u.gov = &govUndo{props: maps.Clone(g.props), votes: maps.Clone(g.votes), root: g.root}
 	}
 }
 
 func (g *gov) restoreGov(u undo) {
 	if u.gov != nil {
-		g.props, g.votes = u.gov.props, u.gov.votes
+		g.props, g.votes, g.root = u.gov.props, u.gov.votes, u.gov.root
+	}
+}
+
+// enact marks the parameter change id enacted and makes it the root.
+func (g *gov) enact(id GovID, u *undo) {
+	g.touchGov(u)
+	p := g.props[id]
+	p.enacted = true
+	g.props[id] = p
+	g.root = &id
+}
+
+// restoreRoot sets the root from the enacted changes after a restart:
+// each enacted change names the root as it stood, so they form one chain,
+// and the root is the one no other enacted change names.
+func (g *gov) restoreRoot() {
+	named := map[GovID]bool{}
+	for _, p := range g.props {
+		if p.enacted && p.prev != nil {
+			named[*p.prev] = true
+		}
+	}
+
+	for id, p := range g.props {
+		if p.enacted && !named[id] {
+			g.root = &id
+		}
 	}
 }
 
 func (g *gov) govState() ([]ProposalState, []VoteState) {
 	var ps []ProposalState
 	for id, p := range g.props {
-		ps = append(ps, ProposalState{ID: id, Expires: p.expires, Type: p.typ, Pools: p.pools, Deposit: p.deposit})
+		ps = append(ps, ProposalState{
+			ID:       id,
+			Expires:  p.expires,
+			Type:     p.typ,
+			Pools:    p.pools,
+			Deposit:  p.deposit,
+			Prev:     p.prev,
+			GovGroup: p.govGroup,
+			Enacted:  p.enacted,
+		})
 	}
 	slices.SortFunc(ps, func(a, b ProposalState) int { return a.ID.Compare(b.ID) })
 	var vs []VoteState
@@ -277,12 +372,13 @@ func (g *gov) Proposals(typ string) []ProposalState {
 }
 
 // open lists the tracked governance actions whose last epoch is not
-// before ep, by ID.
+// before ep and that are not enacted, by ID. The ledger removes an enacted
+// action, so a vote on one is refused (GovActionsDoNotExist).
 func (g *gov) open(ep uint64) []agenda.ProposalInfo {
 	ps, _ := g.govState()
 	var out []agenda.ProposalInfo
 	for _, p := range ps {
-		if p.Expires >= ep {
+		if p.Expires >= ep && !p.Enacted {
 			out = append(out, agenda.ProposalInfo{ID: agenda.ProposalID(p.ID.String()), Expires: p.Expires, Type: p.Type, Pools: p.Pools})
 		}
 	}

@@ -63,12 +63,14 @@ type epochs struct {
 // so a retiring pool's stake is still in the new mark. The shape follows
 // cardano-ledger's NEWEPOCH rule (Shelley/Rules/NewEpoch.hs); the leader
 // schedule of epoch e is set, not go, as in dingo
-// consensus/praos/snapshot.go.
-func (e *epochs) next(ep uint64, first bool, src *utxos, a *accounts, r *registry, u *undo) {
+// consensus/praos/snapshot.go. It reports whether it closed an epoch,
+// which is when the ledger ratifies.
+func (e *epochs) next(ep uint64, first bool, src *utxos, a *accounts, r *registry, u *undo) bool {
 	if e.frozen || ep == e.label {
-		return
+		return false
 	}
 	old := *e
+	u.epoch = &old
 	switch {
 	case first:
 		// The first block of a chain has no earlier epoch to close.
@@ -79,8 +81,9 @@ func (e *epochs) next(ep uint64, first bool, src *utxos, a *accounts, r *registr
 		e.set, e.mark = e.mark, a.distribution(src.credStake())
 		e.label = ep
 		r.reap(ep, a, u)
+		return true
 	}
-	u.epoch = &old
+	return false
 }
 
 func (e *epochs) restore(u undo) {

@@ -27,7 +27,17 @@ func DigestOf(b chain.Block) ([]byte, error) {
 	for _, tx := range b.Txs {
 		d := TxDigest{ID: TxID(tx.Hash), Fee: tx.Fee, Proposals: uint32(len(tx.Proposals))}
 		for _, p := range tx.Proposals {
-			d.Gov = append(d.Gov, ProposalDigest{Type: p.Type, Pools: p.Pools, Deposit: p.Deposit})
+			var prev *Ref
+			if p.Prev != nil {
+				prev = &Ref{Tx: TxID(p.Prev.Tx), Index: p.Prev.Index}
+			}
+			d.Gov = append(d.Gov, ProposalDigest{
+				Type:     p.Type,
+				Pools:    p.Pools,
+				Deposit:  p.Deposit,
+				Prev:     prev,
+				GovGroup: p.GovGroup,
+			})
 		}
 		if u := tx.Units; u.Memory != 0 || u.Steps != 0 {
 			d.Units = &Units{

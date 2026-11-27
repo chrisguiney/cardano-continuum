@@ -1,9 +1,11 @@
 package chain
 
 import (
+	"math/big"
 	"slices"
 	"testing"
 
+	"github.com/blinklabs-io/gouroboros/cbor"
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 	"github.com/blinklabs-io/gouroboros/ledger/conway"
 
@@ -138,5 +140,149 @@ func TestCommitteeVotesTracked(t *testing.T) {
 	}
 	if tl := CountVotes(v, info); tl.CommitteeYes != 1 || tl.CommitteeNo != 0 {
 		t.Errorf("tally %+v: want one committee yes", tl)
+	}
+}
+
+// paramWorld is delegated's view with actor 2's 3000 vote-delegated to
+// DRep 8, committee seat 0 (hot key 50), and a parameter change proposed
+// in epoch 1 (open through epoch 2) with DRep 8's and the seat's votes
+// when yes is set.
+func paramWorld(t *testing.T, yes bool) (*View, Block, GovID) {
+	t.Helper()
+	v, blocks := delegated(t, 10)
+	v.cfg.GovLifetime = 1
+	v.cfg.Book.AddCommittee(hash224(50), 0)
+	d := hash224(8)
+	b2 := nextAt(&blocks[0], 2, 2,
+		certTx(70, &common.RegistrationDrepCertificate{DrepCredential: credOf(8)}),
+		certTx(71, &common.VoteDelegationCertificate{
+			StakeCredential: credOf(2), Drep: common.Drep{Type: common.DrepTypeAddrKeyHash, Credential: d[:]},
+		}))
+	mustApply(t, v, b2)
+
+	change := GovID{Tx: txid(72)}
+	tx := Tx{Hash: txid(72), Proposals: []Proposal{{ID: change, Type: "parameter_change"}}}
+	if yes {
+		tx.Votes = []Vote{
+			{Voter: Voter{Kind: common.VoterTypeDRepKeyHash, Hash: d}, Action: change, Choice: common.GovVoteYes},
+			{Voter: Voter{Kind: common.VoterTypeConstitutionalCommitteeHotKeyHash, Hash: hash224(50)}, Action: change, Choice: common.GovVoteYes},
+		}
+	}
+
+	b3 := nextAt(&b2, 101, 3, tx)
+	mustApply(t, v, b3)
+	return v, b3, change
+}
+
+// A parameter change the votes enact at the boundary leaves the open list
+// there, though its last voting epoch has not passed: the ledger drops an
+// enacted action, and a vote on it is refused with GovActionsDoNotExist
+// (ParamRealVoteOnEnactedBug in models/specs/governance-change). One the
+// votes do not enact stays open to its last epoch.
+func TestEnactedParamChangeLeavesOpenList(t *testing.T) {
+	t.Parallel()
+	for _, yes := range []bool{true, false} {
+		v, b3, change := paramWorld(t, yes)
+		b4 := nextAt(&b3, 201, 4)
+		mustApply(t, v, b4)
+
+		open := v.OpenProposals()
+		if yes && len(open) != 0 {
+			t.Errorf("enacted change still open in epoch 2: %+v", open)
+		}
+
+		if !yes && (len(open) != 1 || open[0].ID != agenda.ProposalID(change.String())) {
+			t.Errorf("unvoted change not open in epoch 2: %+v", open)
+		}
+	}
+}
+
+// Only a parameter change touching the governance group needs its 75%
+// DRep threshold; the other groups' is 67%.
+func TestGovGroup(t *testing.T) {
+	t.Parallel()
+	period, size := uint64(25), uint(4096)
+	tests := []struct {
+		name string
+		u    conway.ConwayProtocolParameterUpdate
+		want bool
+	}{
+		{"technical", conway.ConwayProtocolParameterUpdate{A0: &cbor.Rat{Rat: big.NewRat(1, 4)}}, false},
+		{"network", conway.ConwayProtocolParameterUpdate{MaxTxSize: &size}, false},
+		{"governance", conway.ConwayProtocolParameterUpdate{DRepInactivityPeriod: &period}, true},
+		{"both", conway.ConwayProtocolParameterUpdate{MaxTxSize: &size, DRepInactivityPeriod: &period}, true},
+	}
+	for _, tc := range tests {
+		if got := govGroup(tc.u); got != tc.want {
+			t.Errorf("%s: governance group %t, want %t", tc.name, got, tc.want)
+		}
+	}
+}
+
+// The committee's quorum binds as well as the DReps': a change with every
+// DRep in favour and the seat unvoted is not enacted.
+func TestRatifyNeedsCommittee(t *testing.T) {
+	t.Parallel()
+	v, b3, change := paramWorld(t, true)
+	delete(v.votes, voteKey{change, Voter{Kind: common.VoterTypeConstitutionalCommitteeHotKeyHash, Hash: hash224(50)}})
+	mustApply(t, v, nextAt(&b3, 201, 4))
+	if got := v.Proposals("parameter_change"); len(got) != 1 || got[0].Enacted {
+		t.Fatalf("enacted without the committee: %+v", got)
+	}
+}
+
+// Enactment is part of the folded state: a rollback across the boundary
+// takes it back, and a view started from a snapshot keeps it and its root,
+// so a revert naming the change is enacted after a restart.
+func TestEnactmentRollsBackAndRestarts(t *testing.T) {
+	t.Parallel()
+	v, b3, change := paramWorld(t, true)
+	b4 := nextAt(&b3, 201, 4)
+	mustApply(t, v, b4)
+	if _, err := v.Rollback(b3.Point); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := v.Proposals("parameter_change"); got[0].Enacted || v.root != nil {
+		t.Fatalf("rollback kept the enactment: %+v, root %v", got, v.root)
+	}
+
+	mustApply(t, v, b4)
+	r, err := New(v.cfg, v.Snapshot())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if r.root == nil || *r.root != change {
+		t.Fatalf("restarted root %v, want %s", r.root, change)
+	}
+
+	revert := GovID{Tx: txid(73)}
+	d := hash224(8)
+	b5 := nextAt(&b4, 202, 5, Tx{Hash: txid(73), Proposals: []Proposal{{ID: revert, Type: "parameter_change", Prev: &change}},
+		Votes: []Vote{
+			{Voter: Voter{Kind: common.VoterTypeDRepKeyHash, Hash: d}, Action: revert, Choice: common.GovVoteYes},
+			{Voter: Voter{Kind: common.VoterTypeConstitutionalCommitteeHotKeyHash, Hash: hash224(50)}, Action: revert, Choice: common.GovVoteYes},
+		}})
+	mustApply(t, r, b5)
+	mustApply(t, r, nextAt(&b5, 301, 6))
+	if r.root == nil || *r.root != revert {
+		t.Fatalf("root %v after the revert's boundary, want %s", r.root, revert)
+	}
+}
+
+// A parameter change carries its predecessor and group into the view;
+// other actions carry neither.
+func TestChangeOf(t *testing.T) {
+	t.Parallel()
+	period := uint64(25)
+	parent := common.GovActionId{TransactionId: txid(5), GovActionIdx: 2}
+	prev, gov := changeOf(&conway.ConwayParameterChangeGovAction{ActionId: &parent, ParamUpdate: conway.ConwayProtocolParameterUpdate{DRepInactivityPeriod: &period}})
+	if prev == nil || *prev != (GovID{Tx: txid(5), Index: 2}) || !gov {
+		t.Fatalf("change: prev %v, governance group %t", prev, gov)
+	}
+
+	if prev, gov := changeOf(&common.InfoGovAction{}); prev != nil || gov {
+		t.Fatalf("info: prev %v, governance group %t", prev, gov)
 	}
 }

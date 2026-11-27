@@ -344,12 +344,11 @@ func viewTx(d wire.TxDigest) (chain.Tx, error) {
 		t.Certs = append(t.Certs, w.Certificate)
 	}
 	for i := range d.Proposals {
-		p := chain.Proposal{ID: chain.GovID{Tx: t.Hash, Index: i}}
+		var g wire.ProposalDigest
 		if int(i) < len(d.Gov) {
-			g := d.Gov[i]
-			p.Type, p.Pools, p.Deposit = g.Type, g.Pools, g.Deposit
+			g = d.Gov[i]
 		}
-		t.Proposals = append(t.Proposals, p)
+		t.Proposals = append(t.Proposals, viewProposal(chain.GovID{Tx: t.Hash, Index: i}, g))
 	}
 	for _, v := range d.Votes {
 		t.Votes = append(t.Votes, chain.Vote{
@@ -359,6 +358,23 @@ func viewTx(d wire.TxDigest) (chain.Tx, error) {
 		})
 	}
 	return t, nil
+}
+
+// viewProposal is proposal id as its digest g describes it; a digest
+// without the proposal's details (an older log) gives only the ID.
+func viewProposal(id chain.GovID, g wire.ProposalDigest) chain.Proposal {
+	var prev *chain.GovID
+	if g.Prev != nil {
+		prev = &chain.GovID{Tx: chain.TxID(g.Prev.Tx), Index: g.Prev.Index}
+	}
+	return chain.Proposal{
+		ID:       id,
+		Type:     g.Type,
+		Pools:    g.Pools,
+		Deposit:  g.Deposit,
+		Prev:     prev,
+		GovGroup: g.GovGroup,
+	}
 }
 
 // outputUtxo rebuilds a digest output. One with its CBOR keeps its assets

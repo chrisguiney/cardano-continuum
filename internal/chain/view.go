@@ -168,11 +168,20 @@ func New(cfg Config, s State) (*View, error) {
 		gov:      newGov(cfg.Book),
 	}
 	for _, p := range s.Proposals {
-		v.props[p.ID] = proposal{expires: p.Expires, typ: p.Type, pools: p.Pools, deposit: p.Deposit}
+		v.props[p.ID] = proposal{
+			expires:  p.Expires,
+			typ:      p.Type,
+			pools:    p.Pools,
+			deposit:  p.Deposit,
+			prev:     p.Prev,
+			govGroup: p.GovGroup,
+			enacted:  p.Enacted,
+		}
 	}
 	for _, x := range s.Votes {
 		v.votes[voteKey{x.Action, x.Voter}] = x.Choice
 	}
+	v.restoreRoot()
 	for _, u := range s.Utxos {
 		v.add(u)
 	}
@@ -319,7 +328,11 @@ func (v *View) Apply(b Block) ([]Effect, error) {
 		return nil, fmt.Errorf("%w: block %d at slot %d", ErrNotConnected, b.Number, b.Point.Slot)
 	}
 	u := undo{point: b.Point, number: b.Number, prev: v.tip, prevH: v.height}
-	v.ep.next(v.cfg.Slots.EpochOfSlot(b.Point.Slot), v.tip.IsOrigin(), &v.utxos, &v.accounts, &v.registry, &u)
+	ep := v.cfg.Slots.EpochOfSlot(b.Point.Slot)
+	if v.ep.next(ep, v.tip.IsOrigin(), &v.utxos, &v.accounts, &v.registry, &u) {
+		ratify(v, ep, &u)
+	}
+
 	var eff []Effect
 	for _, tx := range b.Txs {
 		eff = append(eff, v.applyTx(tx, &u)...)
