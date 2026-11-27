@@ -49,16 +49,29 @@ type Options struct {
 }
 
 // CacheOptions limits the manager's caches of pods, StatefulSets, Services
-// and ConfigMaps to the operator's own objects.
-func CacheOptions() (cache.Options, error) {
+// and ConfigMaps to the operator's own objects. A non-empty namespace also
+// limits every namespaced watch to it, so operators installed in two
+// namespaces of one cluster each reconcile only their own pools.
+func CacheOptions(namespace string) (cache.Options, error) {
 	req, err := labels.NewRequirement(render.LabelWorkload, selection.Exists, nil)
 	if err != nil {
 		return cache.Options{}, fmt.Errorf("operator cache selector: %w", err)
 	}
-	own := cache.ByObject{Label: labels.NewSelector().Add(*req)}
-	return cache.Options{ByObject: map[client.Object]cache.ByObject{
-		&corev1.Pod{}: own, &appsv1.StatefulSet{}: own, &corev1.Service{}: own, &corev1.ConfigMap{}: own,
-	}}, nil
+
+	var (
+		own = cache.ByObject{Label: labels.NewSelector().Add(*req)}
+		ns  map[string]cache.Config
+	)
+
+	if namespace != "" {
+		ns = map[string]cache.Config{namespace: {}}
+	}
+	return cache.Options{
+		DefaultNamespaces: ns,
+		ByObject: map[client.Object]cache.ByObject{
+			&corev1.Pod{}: own, &appsv1.StatefulSet{}: own, &corev1.Service{}: own, &corev1.ConfigMap{}: own,
+		},
+	}, nil
 }
 
 // Setup registers the indexes and the three controllers with mgr.

@@ -33,8 +33,10 @@ func main() {
 
 type options struct {
 	metrics, probes, registry, mirrors string
-	insecure                           *bool
-	leader                             bool
+	// namespace limits the watches to one namespace; empty watches all.
+	namespace string
+	insecure  *bool
+	leader    bool
 }
 
 func parse(args []string) (options, error) {
@@ -45,6 +47,7 @@ func parse(args []string) (options, error) {
 	fs.BoolVar(&o.leader, "leader-elect", true, "elect a leader so that one replica reconciles")
 	fs.StringVar(&o.registry, "registry", "", "developer registry host[:port][/path] (default $"+image.EnvRegistry+")")
 	fs.StringVar(&o.mirrors, "registry-mirror", "", "from=to registry hosts, comma separated: fetch manifests named by host from from to instead, as a pod reaches a registry pushed to as localhost:<port>")
+	fs.StringVar(&o.namespace, "watch-namespace", "", "reconcile only this namespace's networks and pools (default every namespace)")
 	insecure := fs.Bool("registry-insecure", false, "the developer registry speaks plain HTTP (default $"+image.EnvInsecure+")")
 	if err := fs.Parse(args); err != nil {
 		return o, err
@@ -79,7 +82,7 @@ func run(args []string, log *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("kubernetes config: %w", err)
 	}
-	cache, err := operator.CacheOptions()
+	cache, err := operator.CacheOptions(o.namespace)
 	if err != nil {
 		return err
 	}
@@ -111,7 +114,7 @@ func run(args []string, log *slog.Logger) error {
 	if err := errors.Join(mgr.AddHealthzCheck("ping", healthz.Ping), mgr.AddReadyzCheck("ping", healthz.Ping)); err != nil {
 		return fmt.Errorf("add health checks: %w", err)
 	}
-	log.Info("operator starting", "registry", settings.Registry, "insecure", settings.Insecure, "leader_elect", o.leader)
+	log.Info("operator starting", "registry", settings.Registry, "insecure", settings.Insecure, "leader_elect", o.leader, "watch_namespace", o.namespace)
 	if err := mgr.Start(ctx); err != nil {
 		return fmt.Errorf("run manager: %w", err)
 	}

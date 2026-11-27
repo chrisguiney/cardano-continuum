@@ -29,7 +29,6 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/config"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
@@ -215,9 +214,8 @@ func (h *harness) must(err error) {
 // in one process need SkipNameValidation.
 func (h *harness) manager() ctrl.Manager {
 	h.t.Helper()
-	opts, err := CacheOptions()
+	opts, err := CacheOptions(h.ns)
 	h.must(err)
-	opts.DefaultNamespaces = map[string]cache.Config{h.ns: {}}
 	mgr, err := ctrl.NewManager(suite.cfg, ctrl.Options{
 		Scheme:                 suite.scheme,
 		Metrics:                metricsserver.Options{BindAddress: "0"},
