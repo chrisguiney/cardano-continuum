@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -175,44 +174,26 @@ func TestServeUsageErrors(t *testing.T) {
 	}
 }
 
-func TestServeServesTheWebUI(t *testing.T) {
+// TestServeIsAPIOnly: continuum serve links no web UI, so every path
+// outside the API is a 404; continuum-ui serve adds the UI.
+func TestServeIsAPIOnly(t *testing.T) {
 	t.Parallel()
 	log := fakeRunLog(t)
 	srv, stop := startServe(t, "--log", log, "--epoch-slots", "60")
 	defer stop()
 
-	fetch := func(path string) (*http.Response, string) {
-		resp, err := srv.c.Get(srv.base + path) //nolint:noctx // loopback test server
+	for _, p := range []string{"/", "/actors/3", "/index.html"} {
+		resp, err := srv.c.Get(srv.base + p) //nolint:noctx // loopback test server
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer func() { _ = resp.Body.Close() }()
-		b, err := io.ReadAll(resp.Body)
-		if err != nil {
-			t.Fatal(err)
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("GET %s = %d, want 404", p, resp.StatusCode)
 		}
-		return resp, string(b)
 	}
 
-	resp, index := fetch("/")
-	if resp.StatusCode != 200 || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") {
-		t.Fatalf("index: %d %q", resp.StatusCode, resp.Header.Get("Content-Type"))
-	}
-	for ext, ctype := range map[string]string{"js": "text/javascript", "css": "text/css"} {
-		m := regexp.MustCompile(`/assets/[A-Za-z0-9._-]+\.` + ext).FindString(index)
-		if m == "" {
-			t.Fatalf("index.html references no .%s asset", ext)
-		}
-		if r, _ := fetch(m); r.StatusCode != 200 || !strings.HasPrefix(r.Header.Get("Content-Type"), ctype) {
-			t.Errorf("%s: %d %q, want %s", m, r.StatusCode, r.Header.Get("Content-Type"), ctype)
-		}
-	}
-	if r, body := fetch("/actors/3"); r.StatusCode != 200 || body != index {
-		t.Errorf("client route did not fall back to index.html: %d", r.StatusCode)
-	}
-	if r, _ := fetch("/assets/missing.js"); r.StatusCode != http.StatusNotFound {
-		t.Errorf("missing asset: %d", r.StatusCode)
-	}
 	var caps struct{ Controls bool }
 	if code := srv.getJSON(t, "/api/capabilities", &caps); code != 200 || caps.Controls {
 		t.Errorf("capabilities: %d %+v", code, caps)

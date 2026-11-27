@@ -116,10 +116,10 @@ func moduleImports(fset *token.FileSet, path string) ([]string, error) {
 	return out, nil
 }
 
-// load parses the import clauses of every .go file under root. Hidden
-// directories, testdata and vendor trees are skipped, so other checkouts
-// under .worktrees are not read.
-func load(root string) (graph, error) {
+// load parses the import clauses of every .go file under root, and of the
+// _test.go files only when tests is set. Hidden directories, testdata and
+// vendor trees are skipped, so other checkouts under .worktrees are not read.
+func load(root string, tests bool) (graph, error) {
 	g := graph{}
 	fset := token.NewFileSet()
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
@@ -132,7 +132,7 @@ func load(root string) (graph, error) {
 			}
 			return nil
 		}
-		if !strings.HasSuffix(path, ".go") {
+		if !strings.HasSuffix(path, ".go") || (!tests && strings.HasSuffix(path, "_test.go")) {
 			return nil
 		}
 		imps, err := moduleImports(fset, path)

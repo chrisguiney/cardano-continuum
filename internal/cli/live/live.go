@@ -72,7 +72,7 @@ func (l *Flags) Register(fs *flag.FlagSet) {
 	fs.DurationVar(&l.Report, "report-every", 30*time.Second, "interval between progress records")
 	fs.IntVar(&l.GPools, "genesis-pools", genesis.Default().Pools, "pools the devnet genesis registers, operated by the first --pools operators")
 	fs.Uint64Var(&l.PoolStake, "pool-stake", genesis.Default().PoolStake, "lovelace each genesis pool's owner holds delegated to it")
-	fs.StringVar(&l.Serve, "serve", "", "serve the web UI and its API from the live engine on this loopback address")
+	fs.StringVar(&l.Serve, "serve", "", "serve the live API on this loopback address (continuum-ui proxy serves the web UI in front of it)")
 	fs.BoolVar(&l.AllowRemote, "allow-remote", false, "accept a non-loopback --serve address; the API has no authentication")
 	fs.StringVar(&l.KubeNetwork, "network", "", "ContinuumNetwork whose pools the engine's pool plan patches and whose pod health it reads")
 	fs.StringVar(&l.Namespace, "namespace", "default", "namespace of --network")

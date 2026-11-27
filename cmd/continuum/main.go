@@ -8,7 +8,7 @@
 //	continuum replay --image impl=ref [--live --network N --node HOST:PORT --genesis FILE] DIR/events.log
 //	continuum bisect --dep D <good>..<bad> --repo DIR --check KIND|COMMAND [--dingo DIR] [--seed N]
 //	continuum export EVENTS.LOG --out DIR
-//	continuum serve --log EVENTS.LOG [--store DB] [--control LOG] [--addr 127.0.0.1:8088] [--controls]
+//	continuum serve --log EVENTS.LOG [--store DB] [--control LOG] [--addr 127.0.0.1:8088] [--controls]   (API only)
 //	continuum image set <impl>=<ref> --network N [--pools N% | --pool ID] [--tier T] [--dry-run]
 //	continuum profiles index [--out FILE]
 //	continuum build --dingo DIR [--with MODULE=PATH|SHA ...] [flags]
@@ -20,6 +20,10 @@
 //
 // replay takes the same population and chain flags as run; the log header's
 // fingerprints refuse a log recorded under different ones.
+//
+// run --serve and serve answer the JSON API only: the binary does not link
+// the web UI, so a UI change leaves the engine image, and with it a resumable
+// run, alone. continuum-ui serves the UI in front of either.
 package main
 
 import (
@@ -41,7 +45,6 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/cli/scenario"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/serve"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/sim"
-	"github.com/chrisguiney/cardano-continuum/web"
 )
 
 func main() {
@@ -80,7 +83,7 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 	case "bisect":
 		return bisect.Run(ctx, args[1:], out)
 	case "serve":
-		return serve.Run(ctx, args[1:], out, web.Handler())
+		return serve.Run(ctx, args[1:], out, nil)
 	case "harvest":
 		return harvest.Run(ctx, args[1:], out)
 	case "vectors":

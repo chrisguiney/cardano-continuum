@@ -19,13 +19,13 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/store"
-	"github.com/chrisguiney/cardano-continuum/web"
 )
 
-// This file serves the web UI from a live run (continuum run --serve): the
-// engine's own log feeds the projection and the decision hub as it is
-// appended, and POST /api/control queues controls the loop logs as inputs,
-// so the run stays replayable.
+// This file serves the API of a live run (continuum run --serve), which
+// continuum-ui proxy puts the web UI in front of: the engine's own log
+// feeds the projection and the decision hub as it is appended, and POST
+// /api/control queues controls the loop logs as inputs, so the run stays
+// replayable.
 
 // maxQueuedControls bounds the controls a server tracks for idempotency.
 const maxQueuedControls = 10_000
@@ -144,7 +144,7 @@ func (s *liveServer) serve(ctx context.Context, addr string, log *slog.Logger) e
 	if err != nil {
 		return err
 	}
-	h := httpapi.NewHandler(httpapi.Config{Source: s.src, Controls: s.controls, Explorer: s.explorer, UI: web.Handler(), Logger: log})
+	h := httpapi.NewHandler(httpapi.Config{Source: s.src, Controls: s.controls, Explorer: s.explorer, Logger: log})
 	if err := httpapi.Serve(ctx, ln, h, log); err != nil && !errors.Is(err, context.Canceled) {
 		return err
 	}
