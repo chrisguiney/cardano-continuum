@@ -70,3 +70,25 @@ func TestOverrideNeedsAllowFlag(t *testing.T) {
 		t.Fatal("an unknown override path parsed")
 	}
 }
+
+func TestParsePublish(t *testing.T) {
+	o, err := parse([]string{"-out", "/g"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o.publish != "" || o.names.ConfigMap != "devnet-genesis" || o.names.Keys != "keys-%d" {
+		t.Fatalf("defaults = %q %+v, want no publish to devnet-genesis and keys-%%d", o.publish, o.names)
+	}
+
+	o, err = parse([]string{"-out", "/g", "-publish-namespace", "lab", "-genesis-configmap", "g", "-keys-secret", "k%d"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o.publish != "lab" || o.names.ConfigMap != "g" || o.names.Keys != "k%d" {
+		t.Fatalf("parsed %q %+v", o.publish, o.names)
+	}
+
+	if _, err := parse([]string{"-out", "/g", "-publish-namespace", "lab", "-keys-secret", "keys"}); err == nil {
+		t.Fatal("a keys pattern without a pool index parsed: every pool would share one Secret")
+	}
+}

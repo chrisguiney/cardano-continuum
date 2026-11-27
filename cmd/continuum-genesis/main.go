@@ -1,8 +1,14 @@
 // Command continuum-genesis renders a blank Conway devnet's genesis files,
 // node configuration and genesis-pool keys from the run seed into a
-// directory. It runs as a Kubernetes Job (deploy/genesis/job.yaml) and is
-// idempotent: rerun against a directory that already holds the same spec,
-// it exits 0 without touching it, so systemStart is kept.
+// directory. It runs as a Kubernetes Job (the Helm chart's genesis Job) and
+// is idempotent: rerun against a directory that already holds the same
+// spec, it exits 0 without touching it, so systemStart is kept.
+//
+// -publish-namespace NS then copies the directory's configuration into the
+// ConfigMap -genesis-configmap and each pool's keys into the Secret
+// -keys-secret names, in NS, through the in-cluster API (package publish).
+// Publishing reads the directory, not the new render, so a rerun publishes
+// the systemStart the pools already run.
 //
 // -override path=value (repeatable) changes one execution limit or cost
 // model length of the default spec; genesis.OverridePaths lists the paths.
@@ -14,6 +20,7 @@
 package main
 
 import (
+	"context"
 	"encoding/hex"
 	"errors"
 	"flag"
@@ -23,7 +30,11 @@ import (
 	"strings"
 	"time"
 
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+
 	"github.com/chrisguiney/cardano-continuum/internal/genesis"
+	"github.com/chrisguiney/cardano-continuum/internal/genesis/publish"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/rng"
 )
@@ -45,6 +56,10 @@ type options struct {
 	out   string
 	start string
 	delay time.Duration
+	// publish is the namespace to publish to; empty publishes nothing.
+	publish string
+	// names are the objects publish writes.
+	names publish.Names
 }
 
 func parse(args []string) (options, error) {
@@ -54,6 +69,9 @@ func parse(args []string) (options, error) {
 	fs.StringVar(&o.out, "out", "", "output directory (required)")
 	fs.StringVar(&o.start, "system-start", "", "RFC 3339 system start (default: now + -start-delay)")
 	fs.DurationVar(&o.delay, "start-delay", 30*time.Second, "delay from now to system start")
+	fs.StringVar(&o.publish, "publish-namespace", "", "publish the genesis to this namespace's ConfigMap and Secrets (default: publish nothing)")
+	fs.StringVar(&o.names.ConfigMap, "genesis-configmap", "devnet-genesis", "the ConfigMap -publish-namespace writes the configuration to")
+	fs.StringVar(&o.names.Keys, "keys-secret", "keys-%d", "fmt pattern of the Secret -publish-namespace writes pool i's keys to")
 	magic := fs.Uint("magic", uint(s.Magic), "network magic")
 	fs.Int64Var(&s.EpochLength, "epoch-length", s.EpochLength, "epoch length in slots")
 	fs.DurationVar(&s.SlotLength, "slot-length", s.SlotLength, "slot length")
@@ -77,6 +95,9 @@ func parse(args []string) (options, error) {
 	}
 	if o.out == "" {
 		return o, errors.New("-out is required")
+	}
+	if strings.Count(o.names.Keys, "%d") != 1 {
+		return o, fmt.Errorf("-keys-secret %q needs exactly one %%d", o.names.Keys)
 	}
 	if *magic == 0 || *magic > 1<<32-1 {
 		return o, fmt.Errorf("-magic %d out of range", *magic)
@@ -116,14 +137,44 @@ func run(args []string, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	if !wrote {
+	if wrote {
+		log.Info("genesis written", "out", o.out, "spec_hash", b.SpecHash,
+			"byron_hash", b.Hashes.Byron, "shelley_hash", b.Hashes.Shelley,
+			"alonzo_hash", b.Hashes.Alonzo, "conway_hash", b.Hashes.Conway,
+			"faucet", b.Faucet.String(), "pools", len(b.Pools))
+	} else {
 		log.Info("genesis already present", "out", o.out, "spec_hash", b.SpecHash)
+	}
+
+	if o.publish == "" {
 		return nil
 	}
-	log.Info("genesis written", "out", o.out, "spec_hash", b.SpecHash,
-		"byron_hash", b.Hashes.Byron, "shelley_hash", b.Hashes.Shelley,
-		"alonzo_hash", b.Hashes.Alonzo, "conway_hash", b.Hashes.Conway,
-		"faucet", b.Faucet.String(), "pools", len(b.Pools))
+	return publishDir(o, log)
+}
+
+// publishDir publishes o.out through the in-cluster API.
+func publishDir(o options, log *slog.Logger) error {
+	objs, err := publish.Load(o.out, o.spec.Pools, o.publish, o.names)
+	if err != nil {
+		return err
+	}
+
+	cfg, err := rest.InClusterConfig()
+	if err != nil {
+		return fmt.Errorf("in-cluster config: %w", err)
+	}
+
+	cs, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		return fmt.Errorf("kubernetes client: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	if err := publish.Apply(ctx, cs, objs); err != nil {
+		return err
+	}
+	log.Info("genesis published", "namespace", o.publish, "configmap", o.names.ConfigMap, "pools", len(objs.Keys))
 	return nil
 }
 
