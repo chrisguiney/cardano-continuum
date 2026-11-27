@@ -279,7 +279,7 @@ There is no `Release(intent, Dropped)`, no `Confirm` at first sight, and
 
 ## Code map
 
-Models cardano-continuum at `72c4fb0`. `internal/plan` implements the
+Models cardano-continuum at `243b05a`. `internal/plan` implements the
 contract; its package comment (`internal/plan/plan.go`) maps each planner
 action, and the engine's side is `internal/engine/internal/pay/pay.go`,
 whose package comment maps both this model and `submit-retry`.

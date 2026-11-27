@@ -362,7 +362,7 @@ Rules:
 
 ## Code map
 
-Models cardano-continuum at `72c4fb0`. The package comment of
+Models cardano-continuum at `243b05a`. The package comment of
 `internal/engine/internal/pay/pay.go` maps each action of this model and of
 `planner-reservations` to the code.
 

@@ -187,7 +187,7 @@ then the fix. A review finding on the fix adds a Bug config.
 
 ## Code map
 
-Models cardano-continuum at `72c4fb0`.
+Models cardano-continuum at `243b05a`.
 
 | Model | Code | What |
 |---|---|---|

@@ -33,7 +33,7 @@
 (* Each *Bug.cfg replaces one rule with a simpler one, or denies a state  *)
 (* that must be reachable (a probe), and names the invariant that breaks. *)
 (*                                                                         *)
-(* Models cardano-continuum at 72c4fb0; README.md has the code map and    *)
+(* Models cardano-continuum at 243b05a; README.md has the code map and    *)
 (* the drift table.                                                        *)
 (*   Propose  internal/engine/internal/intent/spec.go:207   buildPropose   *)
 (*            internal/engine/internal/intent/params.go:106 planParams     *)

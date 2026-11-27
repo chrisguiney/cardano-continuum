@@ -2,7 +2,7 @@
 (***************************************************************************)
 (* The submitter's retry machine.                                          *)
 (*                                                                         *)
-(* Models cardano-continuum at 72c4fb0; README.md has the code map and     *)
+(* Models cardano-continuum at 243b05a; README.md has the code map and     *)
 (* the drift table.                                                        *)
 (*   Build      internal/engine/internal/pay/retry.go:343  Retry.rebuild   *)
 (*              internal/engine/internal/pay/pay.go:139    Pay.Reserve     *)

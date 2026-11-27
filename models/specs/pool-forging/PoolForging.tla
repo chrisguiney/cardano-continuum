@@ -34,7 +34,7 @@
 (* Mutation replaces one rule with a simpler one; each *Bug.cfg names the  *)
 (* invariant it then breaks.                                               *)
 (*                                                                         *)
-(* Models cardano-continuum at 72c4fb0. The operator is implemented; the *)
+(* Models cardano-continuum at 243b05a. The operator is implemented; the *)
 (* engine's opcert issuer is not, so its actions are a design contract.   *)
 (* README.md has the full code map and the drift table.                   *)
 (*   CreateMain   internal/operator/pool/apply.go:91   applier.create     *)

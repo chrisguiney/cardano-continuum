@@ -36,7 +36,7 @@
 (* a Go guard would plausibly use; a *Bug.cfg shows what it breaks. The    *)
 (* README lists them.                                                      *)
 (*                                                                         *)
-(* Models cardano-continuum at 72c4fb0; README.md has the code map and    *)
+(* Models cardano-continuum at 243b05a; README.md has the code map and    *)
 (* the drift table.                                                        *)
 (*   Allowed   internal/policy/guard.go:55                Guard.Check      *)
 (*   GoDark, Retire, Delegate                                              *)

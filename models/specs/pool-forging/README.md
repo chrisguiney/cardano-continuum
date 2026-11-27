@@ -327,7 +327,7 @@ opcert issuer. Each names the config that fails without it.
 
 ## Code map
 
-Models cardano-continuum at `72c4fb0`. The operator side is implemented;
+Models cardano-continuum at `243b05a`. The operator side is implemented;
 the engine's opcert issuer is not. The engine writes a pool's plan (dark or
 live) through `steer.PoolPlan` and the pools feed
 (`internal/engine/internal/feeds/pools.go:34`, `Pools.Poll`, applied by

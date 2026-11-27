@@ -312,7 +312,7 @@ engine's policy. Each names the config that fails without it.
 
 ## Code map
 
-Models cardano-continuum at `72c4fb0`. The guard is pure, in
+Models cardano-continuum at `243b05a`. The guard is pure, in
 `internal/policy`; the engine's side of it is
 `internal/engine/internal/floor`, whose package comment maps each contract
 rule.

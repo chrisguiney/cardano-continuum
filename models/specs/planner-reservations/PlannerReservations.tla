@@ -2,7 +2,7 @@
 (***************************************************************************)
 (* The planner's reservation store.                                        *)
 (*                                                                         *)
-(* Models cardano-continuum at 72c4fb0; README.md has the code map and     *)
+(* Models cardano-continuum at 243b05a; README.md has the code map and     *)
 (* the drift table.                                                        *)
 (*   Offer        internal/plan/ledger.go:112   Ledger.Available           *)
 (*                internal/plan/state.go:38     state.available            *)

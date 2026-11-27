@@ -24,7 +24,7 @@
 (* Actors are abstracted to one counter each: a block names one actor and *)
 (* bumps its counter. Derive is the reference fold over blocks.           *)
 (*                                                                         *)
-(* Models cardano-continuum at 72c4fb0 (design A); the drift table in    *)
+(* Models cardano-continuum at 243b05a (design A); the drift table in    *)
 (* README.md lists where the model differs from the code.                 *)
 (*   Fetch        internal/engine/runner.go:289      Runner.drain         *)
 (*                internal/eventlog/session.go:25    Session.Feed         *)

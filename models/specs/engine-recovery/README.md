@@ -226,7 +226,7 @@ The pure `Step` side (K-deep confirm, rollback refused below `conf`) is
 
 ## Code map
 
-Models cardano-continuum at `72c4fb0`. The engine is design A. Each model
+Models cardano-continuum at `243b05a`. The engine is design A. Each model
 action and where the code does it:
 
 | Model | Code | What |
