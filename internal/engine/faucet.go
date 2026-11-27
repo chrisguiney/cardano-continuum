@@ -6,6 +6,8 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/clock"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/pay"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/plan"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
@@ -71,8 +73,7 @@ func (e *Engine) refill(ctx context.Context, at sched.Time) error {
 		return nil
 	}
 	e.pay.Claim(id)
-	e.pay.Add(&pendingRec{ID: id, Actor: uint64(faucetActor), Tx: TxID(built.ID), TTL: ttl, Cbor: built.Tx,
-		Awaiting: true, Txs: []TxID{TxID(built.ID)}, Refill: true})
+	e.pay.Add(&wire.Pending{ID: id, Actor: uint64(faucetActor), Refill: true, Attempt: wire.Attempt{Tx: TxID(built.ID), TTL: ttl, Cbor: built.Tx, Awaiting: true, Txs: []TxID{TxID(built.ID)}}})
 	e.jr.Emit(at, KindRefill, faucetActor, Refill{
 		Intent: id, ID: TxID(built.ID), To: to, Amounts: amounts, Fee: built.Fee, TTL: ttl, Inputs: inputs, Tx: built.Tx,
 	})
@@ -127,18 +128,18 @@ func sumUtxos(us []plan.Utxo) uint64 {
 // rejection writes it off; an unreached or resent one stays reserved until
 // the ledger settles it or its TTL kills it, as a payment did before it had
 // a retry machine.
-func (e *Engine) refillResult(ctx context.Context, at sched.Time, p *pendingRec, r SubmitResult) error {
+func (e *Engine) refillResult(ctx context.Context, at sched.Time, p *wire.Pending, r SubmitResult) error {
 	switch r.Verdict {
 	case VerdictAccepted, VerdictUnreached:
 	case VerdictRejected:
-		if r.Resend {
+		if !pay.Refusable(r.Verdict, r.Resend) {
 			break
 		}
 		dead, err := e.pay.Refused(ctx, plan.TxID(p.Tx))
 		if err != nil {
 			return fmt.Errorf("engine: refuse refill %d: %w", p.ID, err)
 		}
-		return e.retry.Release(ctx, at, dead, reasonOf(r))
+		return e.retry.Release(ctx, at, dead, pay.Reason(r))
 	default:
 		return fmt.Errorf("%w: intent %d", ErrUnknownVerdict, r.Intent)
 	}

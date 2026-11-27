@@ -175,8 +175,8 @@ type birthRec struct {
 
 type blockRec = wire.Block
 
-// pendingRec is a payment the ledger holds unfinished. Its inputs and
-// reservation are the ledger's.
+// pendingRec is wire.Pending as the snapshot records it; the field
+// comments are on wire.Pending's parts.
 type pendingRec struct {
 	ID    uint64 `cbor:"1,keyasint"`
 	Actor uint64 `cbor:"2,keyasint"`
@@ -236,6 +236,34 @@ type pendingRec struct {
 	// vote on): its expected verdict is DisallowedVoters.
 	Power uint64 `cbor:"29,keyasint,omitempty"`
 	Probe bool   `cbor:"30,keyasint,omitempty"`
+}
+
+// recOf is p as the snapshot records it.
+func recOf(p *wire.Pending) pendingRec {
+	r := pendingRec{ID: p.ID, Actor: p.Actor, Refill: p.Refill,
+		Tx: p.Tx, TTL: p.TTL, Cbor: p.Cbor, Awaiting: p.Awaiting, M: p.M, Txs: p.Txs, NotBefore: p.NotBefore,
+		Kind: p.Kind, To: p.To, Amount: p.Amount, Locked: p.Locked, Contract: p.Contract, Epoch: p.Epoch, Register: p.Register, Update: p.Update,
+		Action: p.Action, Choice: p.Choice, GovType: p.GovType, Power: p.Power, Probe: p.Probe,
+		Injected: p.Injected, Carried: p.Carried, Lost: p.Lost,
+		Attack: p.Attack, Rivals: p.Rivals, Jump: p.Jump}
+	if p.Want != nil {
+		r.Want = &wantRec{Classes: p.Want.Classes, Accept: p.Want.Accept}
+	}
+	return r
+}
+
+// pendingOf is the intent r records.
+func pendingOf(r pendingRec) *wire.Pending {
+	p := &wire.Pending{ID: r.ID, Actor: r.Actor, Refill: r.Refill,
+		Attempt: wire.Attempt{Tx: r.Tx, TTL: r.TTL, Cbor: r.Cbor, Awaiting: r.Awaiting, M: r.M, Txs: r.Txs, NotBefore: r.NotBefore},
+		Args:    wire.Args{Kind: r.Kind, To: r.To, Amount: r.Amount, Locked: r.Locked, Contract: r.Contract, Epoch: r.Epoch, Register: r.Register, Update: r.Update},
+		Gov:     wire.Gov{Action: r.Action, Choice: r.Choice, GovType: r.GovType, Power: r.Power, Probe: r.Probe},
+		Faults:  wire.Faults{Injected: r.Injected, Carried: r.Carried, Lost: r.Lost},
+		Strike:  wire.Strike{Attack: r.Attack, Rivals: r.Rivals, Jump: r.Jump}}
+	if r.Want != nil {
+		p.Want = &wire.Want{Classes: r.Want.Classes, Accept: r.Want.Accept}
+	}
+	return p
 }
 
 func samePoint(a, b eventlog.ChainPoint) bool {

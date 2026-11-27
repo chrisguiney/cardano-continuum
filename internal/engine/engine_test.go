@@ -209,7 +209,7 @@ func sameRecord(a, b eventlog.Record) bool {
 
 func TestLargestFirst(t *testing.T) {
 	t.Parallel()
-	avail := []Coin{{Ref{Index: 0}, 5}, {Ref{Index: 1}, 9}, {Ref{Index: 2}, 9}, {Ref{Index: 3}, 1}}
+	avail := []Coin{{Ref: Ref{Index: 0}, Lovelace: 5}, {Ref: Ref{Index: 1}, Lovelace: 9}, {Ref: Ref{Index: 2}, Lovelace: 9}, {Ref: Ref{Index: 3}, Lovelace: 1}}
 	got := LargestFirst{}.Select(avail, 15)
 	if len(got) != 2 || got[0].Ref.Index != 1 || got[1].Ref.Index != 2 {
 		t.Fatalf("Select = %v, want the two 9s, lower ref first", got)

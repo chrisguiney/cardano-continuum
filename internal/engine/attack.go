@@ -15,6 +15,8 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/pay"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/mistake"
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
@@ -58,48 +60,6 @@ const maxVictims = 256
 type wantRec struct {
 	Classes []string `cbor:"1,keyasint,omitempty"`
 	Accept  bool     `cbor:"2,keyasint,omitempty"`
-}
-
-func wantOf(x mistake.Expected) *wantRec {
-	w := &wantRec{Accept: x.Accept}
-	for _, c := range x.Classes {
-		w.Classes = append(w.Classes, string(c))
-	}
-	return w
-}
-
-func (w *wantRec) expected() mistake.Expected {
-	x := mistake.Expected{Accept: w.Accept}
-	for _, c := range w.Classes {
-		x.Classes = append(x.Classes, submit.Class(c))
-	}
-	slices.Sort(x.Classes)
-	return x
-}
-
-// oneShot reports a pending record no retry machine drives.
-func (p *pendingRec) oneShot() bool { return p.Refill || p.Attack != "" }
-
-// checkAdversaries refuses an adversary profile that is malformed, and one
-// the run would spawn without a devnet clearance.
-func (c *Config) checkAdversaries() error {
-	for _, n := range c.Profiles.Names() {
-		p, _ := c.Profiles.Get(n)
-		if p.Adversary == nil {
-			continue
-		}
-		pol, err := adversary.NewPolicy(*p.Adversary)
-		if err == nil {
-			_, err = agenda.WithAttacks(p.Agenda, pol)
-		}
-		if err != nil {
-			return fmt.Errorf("%w: profile %q: %w", ErrConfig, n, err)
-		}
-		if c.spawns(n, p) && !c.Adversaries.Cleared() {
-			return fmt.Errorf("engine: profile %q: %w", n, adversary.ErrNotDevnet)
-		}
-	}
-	return nil
 }
 
 func (c *Config) spawns(name string, p profile.Profile) bool {
@@ -151,7 +111,29 @@ func (e *Engine) attack(ctx context.Context, at sched.Time, a population.Actor, 
 
 // react gives every front-runner the honest unlock p, built with fee, to
 // outbid; the first that can afford it does.
-func (e *Engine) react(ctx context.Context, at sched.Time, p *pendingRec, fee uint64) error {
+// checkAdversaries refuses an adversary profile that is malformed, and one
+// the run would spawn without a devnet clearance.
+func (c *Config) checkAdversaries() error {
+	for _, n := range c.Profiles.Names() {
+		p, _ := c.Profiles.Get(n)
+		if p.Adversary == nil {
+			continue
+		}
+		pol, err := adversary.NewPolicy(*p.Adversary)
+		if err == nil {
+			_, err = agenda.WithAttacks(p.Agenda, pol)
+		}
+		if err != nil {
+			return fmt.Errorf("%w: profile %q: %w", ErrConfig, n, err)
+		}
+		if c.spawns(n, p) && !c.Adversaries.Cleared() {
+			return fmt.Errorf("engine: profile %q: %w", n, adversary.ErrNotDevnet)
+		}
+	}
+	return nil
+}
+
+func (e *Engine) react(ctx context.Context, at sched.Time, p *wire.Pending, fee uint64) error {
 	if p.Kind != unlockKind || p.Attack != "" || p.Locked == nil || len(e.advs) == 0 {
 		return nil
 	}
@@ -186,7 +168,7 @@ type shot struct {
 	ttl      uint64
 	cost     uint64
 	want     mistake.Expected
-	rec      pendingRec
+	rec      wire.Pending
 	payees   []uint64
 	mutation string
 }
@@ -214,7 +196,7 @@ func (e *Engine) strike(ctx context.Context, at sched.Time, id population.ActorI
 	}
 	e.pay.Claim(intent)
 	p := s.rec
-	p.ID, p.Actor, p.Attack, p.Want = intent, uint64(id), string(step.Attack), wantOf(s.want)
+	p.ID, p.Actor, p.Attack, p.Want = intent, uint64(id), string(step.Attack), wire.WantOf(s.want)
 	p.Tx, p.TTL, p.Cbor, p.Awaiting, p.Jump = TxID(s.txs[0].ID), s.ttl, s.txs[0].Tx, true, against != 0
 	body := Attack{Intent: intent, Name: string(step.Attack), Mutation: s.mutation, Cost: s.cost, Against: against, Payees: s.payees, Spend: p.Locked}
 	for _, b := range s.txs {
@@ -270,7 +252,7 @@ func (e *Engine) fund(id population.ActorID, intent uint64, need uint64) ([]Coin
 	avail := e.pay.Coins(id, plan.IntentID(intent))
 	coins := e.sel.Select(avail, need)
 	if coins == nil {
-		return nil, fmt.Sprintf("spendable %d below %d", sumCoins(avail), need)
+		return nil, fmt.Sprintf("spendable %d below %d", pay.SumCoins(avail), need)
 	}
 	return coins, ""
 }
@@ -286,7 +268,7 @@ func refs(coins []Coin) []Ref {
 // dust pays every payee one output of exactly its min-UTxO.
 func (e *Engine) dust(ctx context.Context, at sched.Time, id population.ActorID, intent uint64, step adversary.Step) (shot, string, error) {
 	outs := make([]build.Output, len(step.Payees))
-	s := shot{rec: pendingRec{Kind: dustKind}, want: mistake.Expect(0, false), ttl: e.ttl(at, false, false)}
+	s := shot{rec: wire.Pending{Args: wire.Args{Kind: dustKind}}, want: mistake.Expect(0, false), ttl: e.ttl(at, false, false)}
 	for i, p := range step.Payees {
 		outs[i] = build.Output{To: build.AlwaysSucceeds.Address(e.cfg.NetworkID), Amount: dustGuess}
 		if !p.Script {
@@ -350,7 +332,7 @@ func (e *Engine) atMinimum(tx []byte, outs []build.Output) (bool, error) {
 // step bids a tip.
 func (e *Engine) grab(ctx context.Context, at sched.Time, id population.ActorID, intent uint64, step adversary.Step) (shot, string, error) {
 	ref := Ref{Tx: TxID(step.Spend.Ref.Tx), Index: step.Spend.Ref.Index}
-	s := shot{rec: pendingRec{Kind: unlockKind, Locked: &ref, Amount: step.Spend.Lovelace}, ttl: e.ttl(at, false, true)}
+	s := shot{rec: wire.Pending{Args: wire.Args{Kind: unlockKind, Locked: &ref, Amount: step.Spend.Lovelace}}, ttl: e.ttl(at, false, true)}
 	// The honest spend it races may land first.
 	s.want = expect(e.cfg.Build, 0, true, specs[unlockKind].again)
 	coins, why := e.fund(id, intent, scriptHeadroom)
@@ -369,7 +351,7 @@ func (e *Engine) grab(ctx context.Context, at sched.Time, id population.ActorID,
 // malformed builds a valid self-payment and mutates it, or raw-builds a
 // steal of the victim's output.
 func (e *Engine) malformed(ctx context.Context, at sched.Time, id population.ActorID, intent uint64, step adversary.Step) (shot, string, error) {
-	s := shot{rec: pendingRec{To: uint64(id), Amount: minPayment}, ttl: e.ttl(at, false, false), mutation: step.Mutation.String()}
+	s := shot{rec: wire.Pending{Args: wire.Args{To: uint64(id), Amount: minPayment}}, ttl: e.ttl(at, false, false), mutation: step.Mutation.String()}
 	s.want = adversary.Expect(step.Mutation)
 	coins, why := e.fund(id, intent, minPayment+feeHeadroom)
 	if why != "" {
@@ -394,7 +376,7 @@ func (e *Engine) malformed(ctx context.Context, at sched.Time, id population.Act
 
 // mutant is step's malformed transaction and its cost, nil when the
 // mutation does not apply to base.
-func (e *Engine) mutant(id population.ActorID, w keys.Wallet, coins []Coin, base build.Built, step adversary.Step, p *pendingRec) ([]byte, uint64, error) {
+func (e *Engine) mutant(id population.ActorID, w keys.Wallet, coins []Coin, base build.Built, step adversary.Step, p *wire.Pending) ([]byte, uint64, error) {
 	m := step.Mutation
 	if ks, ok := m.Mistake(); ok {
 		p.Actor = uint64(id)
@@ -430,7 +412,7 @@ func mutantID(tx []byte) common.Blake2b256 {
 
 // race pays each payee from the same inputs.
 func (e *Engine) race(ctx context.Context, at sched.Time, id population.ActorID, intent uint64, step adversary.Step) (shot, string, error) {
-	s := shot{rec: pendingRec{To: uint64(step.Payees[0].Actor), Amount: minPayment}, want: mistake.Expect(0, false), ttl: e.ttl(at, false, false)}
+	s := shot{rec: wire.Pending{Args: wire.Args{To: uint64(step.Payees[0].Actor), Amount: minPayment}}, want: mistake.Expect(0, false), ttl: e.ttl(at, false, false)}
 	coins, why := e.fund(id, intent, minPayment+feeHeadroom)
 	if why != "" {
 		return shot{}, why, nil
@@ -457,7 +439,7 @@ var gapToken = []byte("gap")
 // what the builder measured it spend, which must land between the block
 // and transaction limits.
 func (e *Engine) gap(ctx context.Context, at sched.Time, id population.ActorID, intent uint64, step adversary.Step) (shot, string, error) {
-	s := shot{rec: pendingRec{To: uint64(id)}, want: adversary.GapExpect(), ttl: e.ttl(at, false, false)}
+	s := shot{rec: wire.Pending{Args: wire.Args{To: uint64(id)}}, want: adversary.GapExpect(), ttl: e.ttl(at, false, false)}
 	coins, why := e.fund(id, intent, 2*adversary.GapCollateral+scriptHeadroom)
 	if why != "" {
 		return shot{}, why, nil
@@ -484,8 +466,8 @@ func (e *Engine) gap(ctx context.Context, at sched.Time, id population.ActorID, 
 // attackResult judges and records the node's answers to an attack. A
 // first-send rejection writes the attempt off; the intent is released when
 // none is left.
-func (e *Engine) attackResult(ctx context.Context, at sched.Time, p *pendingRec, r SubmitResult) error {
-	out, err := outcomeOf(r)
+func (e *Engine) attackResult(ctx context.Context, at sched.Time, p *wire.Pending, r SubmitResult) error {
+	out, err := pay.Outcome(r)
 	if err != nil {
 		return err
 	}
@@ -498,13 +480,13 @@ func (e *Engine) attackResult(ctx context.Context, at sched.Time, p *pendingRec,
 		dead = append(dead, d...)
 		return err
 	}
-	if r.Verdict == VerdictRejected && !r.Resend {
+	if pay.Refusable(r.Verdict, r.Resend) {
 		if err := refuse(p.Tx); err != nil {
 			return fmt.Errorf("engine: refuse attack %d: %w", p.ID, err)
 		}
 	}
 	for i, a := range r.Rivals {
-		if a.Verdict != VerdictRejected || r.Resend || i >= len(p.Rivals) {
+		if !pay.Refusable(a.Verdict, r.Resend) || i >= len(p.Rivals) {
 			continue
 		}
 		if err := refuse(p.Rivals[i].ID); err != nil {
@@ -513,18 +495,18 @@ func (e *Engine) attackResult(ctx context.Context, at sched.Time, p *pendingRec,
 	}
 	p.Awaiting, p.Cbor, p.Rivals = false, nil, nil
 	e.pay.Unawait(p.ID)
-	return e.retry.Release(ctx, at, dead, reasonOf(r))
+	return e.retry.Release(ctx, at, dead, pay.Reason(r))
 }
 
 // judgeAttack holds every answer to the verdict the step called for. A
 // rival may be accepted only while no copy of the race was: one accepted
 // beside another is a double spend in a mempool.
-func (e *Engine) judgeAttack(at sched.Time, p *pendingRec, r SubmitResult, out submit.Outcome) error {
+func (e *Engine) judgeAttack(at sched.Time, p *wire.Pending, r SubmitResult, out submit.Outcome) error {
 	node := oracle.Node{Impl: "node"}
 	if r.Node != nil {
 		node = *r.Node
 	}
-	want := p.Want.expected()
+	want := p.Want.Expected()
 	if p.TTL <= e.Tip().Slot+1+e.cfg.BlockEvery {
 		want = withClasses(want, submit.OutsideValidityInterval)
 	}
@@ -629,7 +611,7 @@ func (v view) Remaining(id population.ActorID) uint64 {
 
 var _ adversary.View = view{}
 
-func oneShotBuild(context.Context, *Engine, keys.Wallet, build.Spend, *pendingRec) (build.Built, error) {
+func oneShotBuild(context.Context, *Engine, keys.Wallet, build.Spend, *wire.Pending) (build.Built, error) {
 	return build.Built{}, fmt.Errorf("engine: a one-shot attack is never rebuilt")
 }
 

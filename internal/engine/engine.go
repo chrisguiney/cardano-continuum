@@ -14,6 +14,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/cohort"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/journal"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/pace"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/pay"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/window"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
@@ -40,7 +41,7 @@ var (
 	// ErrUnknownInput: an input kind the engine does not handle.
 	ErrUnknownInput = errors.New("engine: unknown input kind")
 	// ErrUnknownVerdict: a SubmitResult whose verdict is missing or unknown.
-	ErrUnknownVerdict = errors.New("engine: submit result has no known verdict")
+	ErrUnknownVerdict = pay.ErrUnknownVerdict
 	// ErrBadPoint: a block point that is neither the origin nor a 32-byte
 	// hash.
 	ErrBadPoint = wire.ErrBadPoint
@@ -62,10 +63,10 @@ const (
 // goroutine by design.
 //
 // Which outputs exist, which are reserved and when a payment is settled or
-// dead is the planner's ledger (led), fed the same chain events as the
-// engine's own window. The engine keeps only what the ledger does not know:
-// each payment's actor, bytes and TTL, and the fees and foreign outputs the
-// supply check needs.
+// dead is the planner's ledger, reached only through pay and fed the same
+// chain events as the engine's own window. The engine keeps only what the
+// ledger does not know: each payment's actor, bytes and TTL, and the fees
+// and foreign outputs the supply check needs.
 type Engine struct {
 	cfg     Config
 	builder *build.Builder
@@ -78,11 +79,11 @@ type Engine struct {
 	jr  journal.Journal
 	co  *cohort.Cohort
 
-	// win folds the same blocks as led.
+	// win folds the same blocks as pay's ledger.
 	win *window.Window
 
-	pay   *pay
-	retry *retry
+	pay   *pay.Pay
+	retry *pay.Retry
 	pc    *pace.Pace
 	// contracts is how many contracts are deployed (contract 0 from
 	// genesis); deployAt is the next deployment, deployN its draw.
@@ -206,16 +207,19 @@ func newEmpty(cfg Config) (*Engine, error) {
 	var diag submit.Diagnoser = submit.Perfect{}
 	if cfg.Diagnoser != nil {
 		diag = cfg.Diagnoser
+	} else if cfg.Mistakes {
+		diag = nil // each actor reads its rejections at its competence
 	}
 	e := &Engine{
 		cfg: cfg, builder: build.New(cfg.Build), sel: sel,
-		pay:  &pay{book: newBook()},
+		pay:  pay.New(),
 		win:  window.New(chain.Config{K: cfg.K, Slots: cfg.Slots, NOpt: cfg.NOpt, GovLifetime: cfg.GovLifetime}),
 		dark: map[population.ActorID]bool{}, down: map[population.ActorID]bool{}, repairs: map[population.ActorID]bool{},
 		images: map[population.ActorID]string{}, contracts: 1, deployAt: population.Never,
 		advs: map[population.ActorID]adversary.Policy{}, costs: adversary.NewLedger(), contested: map[Ref]bool{},
 	}
-	e.retry = &retry{e: e, pol: cfg.retry(), diag: diag, pay: e.pay}
+	e.retry = pay.NewRetry(pay.Spec{Policy: cfg.retry(), Diagnoser: diag}, e.pay,
+		pay.Env{Actors: hooks{e}, Builder: hooks{e}, Journal: &e.jr, Sched: evsched{&e.clk}, Chain: e.win})
 	if e.guard, err = policy.New(cfg.floor()); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrConfig, err)
 	}
@@ -443,7 +447,7 @@ func (e *Engine) submitResult(ctx context.Context, at sched.Time, r SubmitResult
 		return e.attackResult(ctx, at, p, r)
 	}
 	if p.Refill {
-		out, err := outcomeOf(r)
+		out, err := pay.Outcome(r)
 		if err != nil {
 			return err
 		}
@@ -452,7 +456,7 @@ func (e *Engine) submitResult(ctx context.Context, at sched.Time, r SubmitResult
 		}
 		return e.refillResult(ctx, at, p, r)
 	}
-	out, err := outcomeOf(r)
+	out, err := pay.Outcome(r)
 	if err != nil {
 		return err
 	}
@@ -463,7 +467,7 @@ func (e *Engine) submitResult(ctx context.Context, at sched.Time, r SubmitResult
 	if err := e.judge(at, p, r, out); err != nil {
 		return err
 	}
-	return e.retry.Answer(ctx, at, p, out, reasonOf(r))
+	return e.retry.Answer(ctx, at, p, out, pay.Reason(r))
 }
 
 // applyBlock pushes a block onto the volatile window and the ledger's view.

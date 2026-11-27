@@ -4,14 +4,17 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"math/rand/v2"
 	"slices"
 
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
+	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/clock"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/cohort"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/pay"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/window"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
@@ -47,7 +50,7 @@ func (e *Engine) Snapshot() ([]byte, error) {
 	}
 	s.Window = e.win.Volatile()
 	for _, id := range e.pay.IDs() {
-		s.Pending = append(s.Pending, *e.pay.Get(id))
+		s.Pending = append(s.Pending, recOf(e.pay.Get(id)))
 	}
 	blob, err := e.pay.Blob()
 	if err != nil {
@@ -146,7 +149,7 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 		return nil, err
 	}
 	for i := range s.Pending {
-		p := &s.Pending[i]
+		p := pendingOf(s.Pending[i])
 		e.pay.Add(p)
 		if p.Awaiting && p.NotBefore > e.clk.Now() {
 			e.retry.Wake(p)
@@ -280,6 +283,11 @@ func (c evsched) Act(at sched.Time, id population.ActorID) sched.Handle {
 	return c.Push(at, clock.Event{Kind: clock.Act, Actor: id})
 }
 
+// Retry implements pay.Scheduler.
+func (c evsched) Retry(at sched.Time, id uint64) {
+	c.Push(at, clock.Event{Kind: clock.Retry, Intent: id})
+}
+
 func (c evsched) Birth(at sched.Time, idx int) sched.Handle {
 	return c.Push(at, clock.Event{Kind: clock.Birth, Birth: idx})
 }
@@ -312,6 +320,62 @@ func (h hooks) Agenda() agenda.View { return view(h) }
 func (h hooks) RateK() uint32 { return h.e.rateK }
 
 func (h hooks) Weights() map[profile.IntentKind]float64 { return h.e.weights }
+
+// Get implements pay.Actors.
+func (h hooks) Get(id population.ActorID) (population.Actor, bool) { return h.e.co.Get(id) }
+
+// Draw implements pay.Actors.
+func (h hooks) Draw(a population.Actor, purpose string) *rand.Rand {
+	return h.e.co.Rec(a.ID).Draw(a, purpose)
+}
+
+// Known implements pay.Actors.
+func (h hooks) Known(id population.ActorID) bool { return h.e.co.Rec(id) != nil }
+
+// frustration is what one give-up adds to an actor's frustration, which
+// raises its dormancy hazard (population.DormancyOnsetRate).
+const frustration = 1.0
+
+// Learn raises the actor's competence toward 1 at its learning rate: a
+// fix it made worked.
+func (h hooks) Learn(id population.ActorID) error {
+	e := h.e
+	a, ok := e.co.Get(id)
+	if !ok {
+		return nil
+	}
+	return e.co.Pop().SetCompetence(id, a.Competence+a.Traits.LearningRate*(1-a.Competence))
+}
+
+// Frustrate raises the actor's frustration, and with it the dormancy
+// hazard, which is drawn again from now.
+func (h hooks) Frustrate(at sched.Time, id population.ActorID) error {
+	e := h.e
+	a, ok := e.co.Get(id)
+	if !ok {
+		return nil
+	}
+	if err := e.co.Pop().SetFrustration(id, a.Frustration+frustration); err != nil {
+		return err
+	}
+	st := e.co.Rec(id)
+	if st.HazardAt != population.Never {
+		e.clk.Cancel(st.HazardH)
+	}
+	a, _ = e.co.Get(id)
+	e.co.Life.NextHazard(a, st, at)
+	return nil
+}
+
+// Attempt implements pay.Builder.
+func (h hooks) Attempt(ctx context.Context, at sched.Time, p *wire.Pending) (build.Built, []Ref, uint64, string, error) {
+	return h.e.attemptOf(ctx, at, p)
+}
+
+// Submitted implements pay.Builder.
+func (h hooks) Submitted(at sched.Time, p *wire.Pending, built build.Built, inputs []Ref) {
+	h.e.emitSubmitted(at, p, built, inputs)
+}
 
 // logged is the ledger's Committer inside the pure engine. It writes
 // nothing: every ledger change is a deterministic result of a logged input,
@@ -382,17 +446,9 @@ func (e *Engine) IntentOf(tx TxID) (uint64, bool) {
 // Pending is the number of payments not yet confirmed or released.
 func (e *Engine) Pending() int { return e.pay.Len() }
 
-// Submission is a payment waiting for the node's answer. Twice asks for the
-// bytes to be sent a second time (a DoubleSubmit mistake).
-type Submission struct {
-	Intent uint64
-	Actor  uint64
-	ID     TxID
-	Tx     []byte
-	Twice  bool
-	// Rivals are sent right after Tx: a double-spend race.
-	Rivals []Rival
-}
+// Submission is a payment waiting for the node's answer; see
+// pay.Submission.
+type Submission = pay.Submission
 
 // InFlight returns the payments decided but not yet answered by the node,
 // oldest first, leaving out those still backing off; a front-run goes
@@ -475,33 +531,4 @@ func idSet(m map[population.ActorID]bool) []uint64 {
 	}
 	slices.Sort(out)
 	return out
-}
-
-// learn raises the actor's competence toward 1 at its learning rate: a
-// fix it made worked.
-func (e *Engine) learn(id population.ActorID) error {
-	a, ok := e.co.Get(id)
-	if !ok {
-		return nil
-	}
-	return e.co.Pop().SetCompetence(id, a.Competence+a.Traits.LearningRate*(1-a.Competence))
-}
-
-// frustrate raises the actor's frustration, and with it the dormancy
-// hazard, which is drawn again from now.
-func (e *Engine) frustrate(at sched.Time, id population.ActorID) error {
-	a, ok := e.co.Get(id)
-	if !ok {
-		return nil
-	}
-	if err := e.co.Pop().SetFrustration(id, a.Frustration+frustration); err != nil {
-		return err
-	}
-	st := e.co.Rec(id)
-	if st.HazardAt != population.Never {
-		e.clk.Cancel(st.HazardH)
-	}
-	a, _ = e.co.Get(id)
-	e.co.Life.NextHazard(a, st, at)
-	return nil
 }

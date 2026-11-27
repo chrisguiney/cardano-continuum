@@ -1,14 +1,12 @@
 package engine
 
 import (
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/plan"
 )
 
 // Coin is a spendable output offered to a Selector.
-type Coin struct {
-	Ref      Ref
-	Lovelace uint64
-}
+type Coin = wire.Coin
 
 // Selector picks the inputs of a payment from an actor's spendable, unreserved
 // confirmed outputs. It must be a pure function of its arguments.

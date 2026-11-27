@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/policy"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
@@ -211,7 +212,7 @@ func (e *Engine) move1(ctx context.Context, at sched.Time, mv policy.Intent) err
 	if !ok {
 		return nil
 	}
-	p := &pendingRec{Actor: uint64(a.ID), Kind: string(profile.IntentDelegate), To: uint64(mv.Pool), Register: !e.win.View().StakeRegistered(a.ID)}
+	p := &wire.Pending{Actor: uint64(a.ID), Args: wire.Args{Kind: string(profile.IntentDelegate), To: uint64(mv.Pool), Register: !e.win.View().StakeRegistered(a.ID)}}
 	why, err := e.start(ctx, at, p)
 	if err != nil {
 		return err

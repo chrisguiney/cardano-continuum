@@ -2,14 +2,15 @@ package engine
 
 import (
 	"context"
-
-	"github.com/blinklabs-io/gouroboros/ledger/common"
 	"strconv"
 	"strings"
+
+	"github.com/blinklabs-io/gouroboros/ledger/common"
 
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/clock"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
@@ -110,7 +111,7 @@ func (e *Engine) injectPropose(ctx context.Context, at sched.Time) (string, erro
 	if !ok {
 		return "no actor with a registered stake key", nil
 	}
-	return e.start(ctx, at, &pendingRec{Actor: uint64(id), Kind: string(profile.IntentPropose)})
+	return e.start(ctx, at, &wire.Pending{Actor: uint64(id), Args: wire.Args{Kind: string(profile.IntentPropose)}})
 }
 
 func (e *Engine) injectSPOProbe(ctx context.Context, at sched.Time) (string, error) {
@@ -136,8 +137,7 @@ func (e *Engine) injectSPOProbe(ctx context.Context, at sched.Time) (string, err
 		return "no registered pool", nil
 	}
 	voter, _ := e.voterOf(id)
-	return e.start(ctx, at, &pendingRec{Actor: uint64(id), Kind: string(profile.IntentVote), Action: &ref,
-		Choice: common.GovVoteYes, Power: e.win.View().VotingPower(voter), Probe: true})
+	return e.start(ctx, at, &wire.Pending{Actor: uint64(id), Args: wire.Args{Kind: string(profile.IntentVote)}, Gov: wire.Gov{Action: &ref, Choice: common.GovVoteYes, Power: e.win.View().VotingPower(voter), Probe: true}})
 }
 
 func (e *Engine) injectGoDark(at sched.Time, arg string) string {
@@ -171,7 +171,7 @@ func (e *Engine) injectHotKeys(ctx context.Context, at sched.Time) (string, erro
 		return "no actor to pay", nil
 	}
 	for i := range e.cfg.Committee {
-		why, err := e.start(ctx, at, &pendingRec{Actor: uint64(id), Kind: hotKind, To: uint64(i)})
+		why, err := e.start(ctx, at, &wire.Pending{Actor: uint64(id), Args: wire.Args{Kind: hotKind, To: uint64(i)}})
 		if err != nil || why != "" {
 			return why, err
 		}
@@ -263,7 +263,7 @@ func mapKeys[V any](m map[population.ActorID]V) func(func(population.ActorID) bo
 // internal/genesis seats them.
 const hotKind = "authorize_hot"
 
-func buildHot(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
+func buildHot(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *wire.Pending) (build.Built, error) {
 	cold, hot := e.co.Ring.Committee(uint32(p.To))
 	return e.builder.Gov().AuthorizeHot(ctx, w, build.HotAuth{Spend: sp, Cold: cold, Hot: hot.KeyHash()})
 }

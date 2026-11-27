@@ -13,6 +13,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
@@ -41,7 +42,7 @@ import (
 // sample draws the intent's mistake from its first honest attempt. The
 // stream is the actor's, named by the intent, so it is the same draw
 // whatever else the actor did.
-func (e *Engine) sample(p *pendingRec, w keys.Wallet, built build.Built) {
+func (e *Engine) sample(p *wire.Pending, w keys.Wallet, built build.Built) {
 	if !e.cfg.Mistakes {
 		return
 	}
@@ -68,7 +69,7 @@ var withheldKinds = func() mistake.KindSet {
 // mutate makes the mistakes the attempt carries in the honest built. A
 // mistake that this attempt's shape does not allow (its rebuild lost the
 // change output, say) is left out of it, and Carried says so.
-func (e *Engine) mutate(p *pendingRec, w keys.Wallet, built build.Built) (build.Built, error) {
+func (e *Engine) mutate(p *wire.Pending, w keys.Wallet, built build.Built) (build.Built, error) {
 	p.Carried, p.Lost = mistake.Carry(p.Injected, p.M.Fixed), 0
 	if p.Carried == 0 {
 		return built, nil
@@ -91,7 +92,7 @@ func (e *Engine) mutate(p *pendingRec, w keys.Wallet, built build.Built) (build.
 
 // mistakeCtx is what Inject needs to re-sign an edited body: every key the
 // actor's transactions are signed with.
-func (e *Engine) mistakeCtx(p *pendingRec, w keys.Wallet) mistake.Ctx {
+func (e *Engine) mistakeCtx(p *wire.Pending, w keys.Wallet) mistake.Ctx {
 	id := population.ActorID(p.Actor)
 	signers := []keys.Signer{w.PaymentSigner(), w.StakeSigner()}
 	if id != faucetActor {
@@ -116,14 +117,14 @@ var staleInput = shelley.ShelleyTransactionInput{TxId: common.Blake2b256(bytes.R
 // verdict set its mistakes call for. "Inputs spent" is expected once the
 // attempt was sent, or an earlier unfinished attempt it conflicts with may
 // be at a node. A DoubleSubmit's second send always follows the first.
-func (e *Engine) judge(at sched.Time, p *pendingRec, r SubmitResult, out submit.Outcome) error {
+func (e *Engine) judge(at sched.Time, p *wire.Pending, r SubmitResult, out submit.Outcome) error {
 	node := oracle.Node{Impl: "node"}
 	if r.Node != nil {
 		node = *r.Node
 	}
 	// An adversary racing for the same shared output may have spent it.
 	spent := p.M.Sent || len(p.Txs) > 1 || (p.Locked != nil && e.contested[*p.Locked])
-	want := expect(e.cfg.Build, p.Carried, spent, specs[p.kindOf()].again)
+	want := expect(e.cfg.Build, p.Carried, spent, specs[p.KindOf()].again)
 	if p.Probe {
 		// The probe's honest bytes break only the GOV rule's voter check.
 		want.Accept = false
@@ -142,7 +143,7 @@ func (e *Engine) judge(at sched.Time, p *pendingRec, r SubmitResult, out submit.
 		fs = append(fs, f)
 	}
 	if r.Again != nil {
-		again := expect(e.cfg.Build, p.Carried, true, specs[p.kindOf()].again)
+		again := expect(e.cfg.Build, p.Carried, true, specs[p.KindOf()].again)
 		a.Expected, a.Answers = &again, []oracle.Answer{{Node: node, Outcome: answerOutcome(*r.Again)}}
 		fs = append(fs, oracle.Judge(a, e.cfg.Run)...)
 	}

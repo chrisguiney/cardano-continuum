@@ -5,7 +5,7 @@
 # stray-methods (methods outside the type's file), files (> 25 per package, tests counted).
 files cmd/continuum 35
 files internal/chain 27
-files internal/engine 46
+files internal/engine 45
 func-length cmd/continuum runLive 85
 func-length internal/engine Restore 87
 members cmd/continuum simFlags 22
@@ -13,9 +13,9 @@ members internal/agenda world 22
 members internal/chain View 67
 members internal/chain par 23
 members internal/engine Config 44
-members internal/engine Engine 142
+members internal/engine Engine 140
 members internal/engine Runner 37
-members internal/engine pendingRec 32
+members internal/engine pendingRec 30
 members internal/engine snapshot 31
 members internal/engine view 22
 members internal/explorer TxView 27
@@ -41,7 +41,6 @@ stray-methods cmd/continuum kubeCluster 1
 stray-methods cmd/continuum simFlags 3
 stray-methods internal/chain View 35
 stray-methods internal/engine Config 6
-stray-methods internal/engine Engine 100
+stray-methods internal/engine Engine 98
 stray-methods internal/engine Runner 2
-stray-methods internal/engine pendingRec 2
 stray-methods internal/engine view 8
