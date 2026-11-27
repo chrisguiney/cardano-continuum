@@ -36,7 +36,7 @@ func (e *Engine) Snapshot() ([]byte, error) {
 	sv := e.win.Saved()
 	nextID, deposits := e.pay.Counters()
 	ct := e.in.Saved()
-	s := snapshot{Version: snapshotVersion, Now: e.clk.Now(), NextIntent: nextID, Conf: sv.Conf, Fees: sv.Fees, Foreign: sv.Foreign, RefillAt: e.refillAt, Deposits: deposits, Market: e.pc.Market(), Lost: e.jd.Lost(),
+	s := snapshot{Version: snapshotVersion, Now: e.clk.Now(), NextIntent: nextID, Conf: sv.Conf, Fees: sv.Fees, Foreign: sv.Foreign, RefillAt: e.fc.At(), Deposits: deposits, Market: e.pc.Market(), Lost: e.jd.Lost(),
 		Contracts: ct.N, DeployAt: ct.At, DeployN: ct.Drawn}
 	for _, id := range e.co.IDs() {
 		a, _ := e.co.Get(id)
@@ -62,12 +62,13 @@ func (e *Engine) Snapshot() ([]byte, error) {
 	s.Ledger = ledgerBlob{Version: blob.Version, Data: blob.Data}
 	fs := e.fl.Save()
 	s.Dark, s.Down, s.Repairs, s.Stalled = fs.Dark, fs.Down, fs.Repairs, fs.Stalled
-	s.Paused, s.RateK, s.Waves, s.Adoptions = e.paused, e.rateK, e.waves, slices.Clone(e.adoptions)
-	for _, k := range slices.Sorted(maps.Keys(e.weights)) {
-		s.Weights = append(s.Weights, weightRec{Kind: string(k), Weight: e.weights[k]})
+	ss := e.st.Save()
+	s.Paused, s.RateK, s.Waves, s.Adoptions = ss.Paused, ss.RateK, ss.Waves, ss.Adoptions
+	for _, k := range slices.Sorted(maps.Keys(ss.Weights)) {
+		s.Weights = append(s.Weights, weightRec{Kind: string(k), Weight: ss.Weights[k]})
 	}
-	for _, id := range slices.Sorted(mapKeys(e.images)) {
-		s.Images = append(s.Images, imageRec{Pool: uint64(id), Ref: e.images[id]})
+	for _, id := range slices.Sorted(mapKeys(ss.Images)) {
+		s.Images = append(s.Images, imageRec{Pool: uint64(id), Ref: ss.Images[id]})
 	}
 	s.Charges, s.Contested = e.adv.Save()
 	if s.View, err = encodeView(e.win.View().Base()); err != nil {
@@ -95,24 +96,20 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 	// Between inputs the last Tick's time is the clock.
 	e.clk.Restore(s.Now)
 	e.pc.SetMarket(s.Market)
-	e.paused, e.rateK, e.waves, e.adoptions = s.Paused, s.RateK, s.Waves, s.Adoptions
 	if err := e.in.Load(intent.State{N: s.Contracts, At: s.DeployAt, Drawn: s.DeployN}); err != nil {
 		return nil, err
 	}
+	ss := steerSaved{Paused: s.Paused, RateK: s.RateK, Waves: s.Waves, Adoptions: s.Adoptions, Images: map[population.ActorID]string{}}
 	if len(s.Weights) > 0 {
-		e.weights = map[profile.IntentKind]float64{}
+		ss.Weights = map[profile.IntentKind]float64{}
 		for _, w := range s.Weights {
-			e.weights[profile.IntentKind(w.Kind)] = w.Weight
+			ss.Weights[profile.IntentKind(w.Kind)] = w.Weight
 		}
 	}
 	for _, r := range s.Images {
-		e.images[population.ActorID(r.Pool)] = r.Ref
+		ss.Images[population.ActorID(r.Pool)] = r.Ref
 	}
-	for i, a := range e.adoptions {
-		if !a.Done {
-			e.clk.Push(a.At, clock.Event{Kind: clock.Adopt, Intent: uint64(i)})
-		}
-	}
+	e.st.Load(ss)
 	e.fl.Load(floor.Saved{Dark: s.Dark, Down: s.Down, Repairs: s.Repairs, Stalled: s.Stalled})
 	for _, r := range s.Actors {
 		if err := e.restoreActor(r); err != nil {
@@ -129,8 +126,7 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 		e.co.Births.Resume(i, r.At, r.N)
 	}
 	if cfg.Faucet > 0 {
-		e.refillAt = s.RefillAt
-		e.clk.Push(e.refillAt, clock.Event{Kind: clock.Refill})
+		e.fc.Resume(s.RefillAt)
 	}
 	// After restoreActor: the actors' ceilings are set, the spends restored.
 	e.adv.Load(s.Charges, s.Contested)
@@ -278,6 +274,14 @@ func (c evsched) Retry(at sched.Time, id uint64) {
 	c.Push(at, clock.Event{Kind: clock.Retry, Intent: id})
 }
 
+// Adopt implements steerClock.
+func (c evsched) Adopt(at sched.Time, i uint64) {
+	c.Push(at, clock.Event{Kind: clock.Adopt, Intent: i})
+}
+
+// Refill implements faucetClock.
+func (c evsched) Refill(at sched.Time) { c.Push(at, clock.Event{Kind: clock.Refill}) }
+
 // Deploy implements intent.Clock.
 func (c evsched) Deploy(at sched.Time) { c.Push(at, clock.Event{Kind: clock.Deploy}) }
 
@@ -310,9 +314,9 @@ func (h hooks) InFlight(id population.ActorID, kind string) bool { return h.e.pa
 
 func (h hooks) Agenda() agenda.View { return view(h) }
 
-func (h hooks) RateK() uint32 { return h.e.rateK }
+func (h hooks) RateK() uint32 { return h.e.st.RateK() }
 
-func (h hooks) Weights() map[profile.IntentKind]float64 { return h.e.weights }
+func (h hooks) Weights() map[profile.IntentKind]float64 { return h.e.st.Weights() }
 
 // Get implements pay.Actors.
 func (h hooks) Get(id population.ActorID) (population.Actor, bool) { return h.e.co.Get(id) }

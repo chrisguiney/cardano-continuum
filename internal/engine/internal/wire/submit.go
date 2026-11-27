@@ -1,6 +1,13 @@
 package wire
 
-import "github.com/chrisguiney/cardano-continuum/internal/oracle"
+import (
+	"errors"
+
+	"github.com/chrisguiney/cardano-continuum/internal/oracle"
+)
+
+// ErrUnknownVerdict: a SubmitResult whose verdict is missing or unknown.
+var ErrUnknownVerdict = errors.New("engine: submit result has no known verdict")
 
 // Verdict is what a submission established, as internal/submit classifies
 // a node's answer.

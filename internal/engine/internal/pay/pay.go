@@ -54,7 +54,6 @@ package pay
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -67,7 +66,7 @@ import (
 )
 
 // ErrUnknownVerdict: a SubmitResult whose verdict is missing or unknown.
-var ErrUnknownVerdict = errors.New("engine: submit result has no known verdict")
+var ErrUnknownVerdict = wire.ErrUnknownVerdict
 
 // Pay is the engine's bridge to the planner's ledger: which outputs exist,
 // which are reserved, and when an attempt is settled or dead. It holds the

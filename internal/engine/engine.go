@@ -23,7 +23,6 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/plan"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
-	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/submit"
 )
@@ -68,10 +67,10 @@ type Engine struct {
 	cfg     Config
 	builder *build.Builder
 	sel     Selector
-	// faucet is set only when cfg.Faucet is positive.
-	faucet   keys.Wallet
-	refillAt sched.Time
 
+	// fc is the faucet's refill round; it does nothing unless cfg.Faucet is
+	// positive.
+	fc  *faucet
 	clk clock.Clock
 	jr  journal.Journal
 	co  *cohort.Cohort
@@ -86,16 +85,9 @@ type Engine struct {
 
 	fl *floor.Floor
 
-	// Controls: paused stops the agendas; rateK multiplies every actor's
-	// rate (zero is 1); weights override the profiles' intent weights.
-	paused  bool
-	rateK   uint32
-	weights map[profile.IntentKind]float64
-	// waves counts upgrade waves; adoptions are their queued image
-	// changes and images the plan they built, by pool actor.
-	waves     uint64
-	adoptions []adoption
-	images    map[population.ActorID]string
+	// st is the operator's controls and the upgrade waves.
+	st *steering
+
 	// jd is the oracle bridge: mistakes, verdicts, findings and monitors.
 	jd *judge.Judge
 
@@ -123,8 +115,7 @@ func New(cfg Config) (*Engine, error) {
 	}
 	if cfg.Faucet > 0 {
 		owners = []population.ActorID{faucetActor}
-		e.refillAt = 0
-		e.clk.Push(0, clock.Event{Kind: clock.Refill})
+		e.fc.Start()
 	}
 	var genesis []plan.Utxo
 	for i, f := range funds {
@@ -184,9 +175,8 @@ func newEmpty(cfg Config) (*Engine, error) {
 	}
 	e := &Engine{
 		cfg: cfg, builder: build.New(cfg.Build), sel: sel,
-		pay:    pay.New(),
-		win:    window.New(chain.Config{K: cfg.K, Slots: cfg.Slots, NOpt: cfg.NOpt, GovLifetime: cfg.GovLifetime}),
-		images: map[population.ActorID]string{},
+		pay: pay.New(),
+		win: window.New(chain.Config{K: cfg.K, Slots: cfg.Slots, NOpt: cfg.NOpt, GovLifetime: cfg.GovLifetime}),
 	}
 	e.retry = pay.NewRetry(pay.Spec{Policy: cfg.retry(), Diagnoser: diag}, e.pay,
 		pay.Env{Actors: hooks{e}, Builder: hooks{e}, Journal: &e.jr, Sched: evsched{&e.clk}, Chain: e.win})
@@ -221,6 +211,8 @@ func newEmpty(cfg Config) (*Engine, error) {
 	e.jd = judge.New(judgeSpec(e, genesis), judgeEnv(e))
 	e.in = intent.New(intentSpec(e), intentEnv(e))
 	e.adv = attack.New(attackSpec(e), attackEnv(e))
+	e.st = newSteering(steerSpec{Seed: cfg.Seed, Slots: cfg.Slots},
+		steerEnv{Scenarios: scenarioRoute{e}, Pools: steerRing{e}, Clock: evsched{&e.clk}, Journal: &e.jr})
 	if err := e.co.Ring.Gen.Book(); err != nil {
 		return nil, err
 	}
@@ -230,13 +222,8 @@ func newEmpty(cfg Config) (*Engine, error) {
 			e.co.Births.Add(p)
 		}
 	}
-	if cfg.Faucet > 0 {
-		if e.faucet, err = faucetWallet(&cfg); err != nil {
-			return nil, err
-		}
-		if err := e.co.BindFaucet(e.faucet); err != nil {
-			return nil, err
-		}
+	if e.fc, err = newFaucetFor(e); err != nil {
+		return nil, err
 	}
 	return e, nil
 }
@@ -279,7 +266,7 @@ func (e *Engine) Handle(ctx context.Context, in eventlog.Record) ([]eventlog.Rec
 		if err = eventlog.Decode(in.Body, &c); err != nil {
 			return nil, fmt.Errorf("engine: decode control: %w", err)
 		}
-		err = e.controlInput(ctx, in.At, c)
+		err = e.st.Control(ctx, in.At, c)
 	case eventlog.KindPoolStatus:
 		var s PoolStatus
 		if err = eventlog.Decode(in.Body, &s); err != nil {
@@ -336,9 +323,9 @@ func (e *Engine) run(ctx context.Context, at sched.Time, ev clock.Event) error {
 		return e.act(ctx, at, ev.Actor)
 	case clock.Retry:
 	case clock.Refill:
-		return e.refill(ctx, at)
+		return e.fc.Refill(ctx, at)
 	case clock.Adopt:
-		e.adopt(at, ev.Intent)
+		e.st.Adopt(at, ev.Intent)
 	case clock.Deploy:
 		return e.in.Deploy(at)
 	}
@@ -348,7 +335,7 @@ func (e *Engine) run(ctx context.Context, at sched.Time, ev clock.Event) error {
 func (e *Engine) act(ctx context.Context, at sched.Time, id population.ActorID) error {
 	a, _ := e.co.Get(id)
 	st := e.co.Rec(id)
-	if e.paused {
+	if e.st.Paused() {
 		e.pc.Next(a, subject(st), at)
 		return nil
 	}
@@ -410,7 +397,7 @@ func (e *Engine) submitResult(ctx context.Context, at sched.Time, r SubmitResult
 		if err := e.jd.Answer(at, p, r, out); err != nil {
 			return err
 		}
-		return e.refillResult(ctx, at, p, r)
+		return e.fc.Result(ctx, at, p, r)
 	}
 	out, err := pay.Outcome(r)
 	if err != nil {
