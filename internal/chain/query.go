@@ -192,3 +192,82 @@ func systemStart(s localstatequery.SystemStartResult) time.Time {
 	ns := new(big.Int).Quo(&s.Picoseconds, big.NewInt(1000))
 	return day.Add(time.Duration(ns.Int64()))
 }
+
+// StakeSnapshots returns the node's per-pool stake snapshots.
+func (q *Querier) StakeSnapshots(ctx context.Context) (StakeSnapshots, error) {
+	r, err := query(ctx, q, "stake snapshots", func(c *localstatequery.Client) (*localstatequery.StakeSnapshotsResult, error) {
+		return c.GetStakeSnapshots(nil)
+	})
+	if err != nil {
+		return StakeSnapshots{}, err
+	}
+	return stakeSnapshotsFrom(r), nil
+}
+
+// PoolRegistrations returns the node's registered and retiring pools.
+func (q *Querier) PoolRegistrations(ctx context.Context) (PoolRegs, error) {
+	r, err := query(ctx, q, "pool state", func(c *localstatequery.Client) (*localstatequery.PoolStateResult, error) {
+		return c.GetPoolState(nil)
+	})
+	if err != nil {
+		return PoolRegs{}, err
+	}
+	return poolRegsFrom(r), nil
+}
+
+// Governance returns the node's proposals, DReps and vote delegations, from
+// three queries on one connection.
+func (q *Querier) Governance(ctx context.Context) (Gov, error) {
+	type raw struct {
+		props localstatequery.ProposalsResult
+		dreps localstatequery.DRepStateResult
+		votes localstatequery.FilteredVoteDelegateesResult
+	}
+	r, err := query(ctx, q, "governance", func(c *localstatequery.Client) (raw, error) {
+		var out raw
+		p, err := c.GetProposals()
+		if err != nil {
+			return out, err
+		}
+		d, err := c.GetDRepState(nil)
+		if err != nil {
+			return out, err
+		}
+		v, err := c.GetFilteredVoteDelegatees(nil)
+		if err != nil {
+			return out, err
+		}
+		return raw{*p, *d, *v}, nil
+	})
+	if err != nil {
+		return Gov{}, err
+	}
+	return govFrom(r.props, r.dreps, r.votes), nil
+}
+
+// Committee returns the node's constitutional committee by cold credential.
+func (q *Querier) Committee(ctx context.Context) (map[common.Blake2b224]Member, error) {
+	r, err := query(ctx, q, "committee", func(c *localstatequery.Client) (*localstatequery.CommitteeMembersStateResult, error) {
+		return c.GetCommitteeMembersState(nil, nil, nil)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return committeeFrom(r), nil
+}
+
+// Delegations returns the node's delegation and reward balance for each
+// stake credential that has a delegation or a reward account.
+func (q *Querier) Delegations(ctx context.Context, creds []common.Blake2b224) (map[common.Blake2b224]Delegation, error) {
+	ask := make([]localstatequery.StakeCredential, len(creds))
+	for i, c := range creds {
+		ask[i] = localstatequery.StakeCredential{Tag: uint64(common.CredentialTypeAddrKeyHash), Bytes: c}
+	}
+	r, err := query(ctx, q, "delegations", func(c *localstatequery.Client) (*localstatequery.FilteredDelegationsAndRewardAccountsResult, error) {
+		return c.GetFilteredDelegationsAndRewardAccounts(ask)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return delegationsFrom(r), nil
+}
