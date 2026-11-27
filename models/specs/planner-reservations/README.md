@@ -3,9 +3,9 @@
 The planner decides which outputs a transaction may spend. It reserves every
 output an unfinished transaction spends, and it chains: a transaction may
 spend the change of one that is not confirmed yet. It hears about the chain
-late and about the mempool only by absence. `PlannerReservations.tla` decides
-the reservation store's rules before any planner code exists, by letting TLC
-try every ordering of builds, submissions, blocks, rollbacks, drop notices
+late and about the mempool only by absence. `PlannerReservations.tla` decided
+the reservation store's rules before the planner code existed, and the
+[code map](#code-map) pins the commit it now models. TLC tries every ordering of builds, submissions, blocks, rollbacks, drop notices
 and restarts at a small scale.
 
 Run it with `make models` (all models) or
@@ -53,8 +53,10 @@ invariant; the table under [Configs](#configs) lists them.
   slot is past the TTL" appears as "the settled length has reached the TTL".
 - Several transactions per block, addresses and owners (any intent may be
   offered any output), chain depth limits, the collateral pool.
-- Liveness. Nothing here proves an intent eventually settles. `NoLeak` is
-  the state form of "nothing is held for a transaction that cannot land".
+- That an intent eventually settles: the node need never include anything.
+  `Finishes` (in `PlannerLive`) proves the planner's half: a transaction
+  that can never land is eventually written off, and one in the immovable
+  chain is eventually settled. `NoLeak` is the state form of the first.
 - Rollbacks deeper than K. The chain follower must treat one as an error.
 - Torn writes. A restart loses whole records, never part of one.
 - A rule against building on two attempts of which only one can land. The
@@ -75,6 +77,7 @@ invariant; the table under [Configs](#configs) lists them.
 | `SettledIsFinal` | a transaction the planner calls settled is in the immovable part of the chain | truth |
 | `NoSelfConflict` | when two intents' transactions share an input, the earlier one could no longer land when the later was built: the planner never races itself | truth |
 | `IntentAtMostOnce` | the chain never holds two attempts of one intent: no payment made twice | truth |
+| `Finishes` | with the planner's event processing fair, an unfinished transaction the truth has decided (it can never land, or it is in the immovable chain) is eventually written off or settled | liveness |
 
 "Store" invariants read only what the planner knows. "Truth" invariants
 compare the planner's records with the node's chain, which Go cannot see;
@@ -82,8 +85,16 @@ they are what the oracle would otherwise blame on the node.
 
 ## Configs
 
-Passing configs check all nine invariants. A `*Bug.cfg` checks the one
-invariant it names and must fail.
+Passing configs check all nine invariants, except `PlannerLive`, which
+checks `Finishes` alone (safety and liveness are split). A `*Bug.cfg` checks
+the one property it names and must fail.
+
+TLC's deadlock check is on. A run ends in `Done`: the planner has processed
+every event and every transaction it still counts on could still land, so
+it waits for the node. Any other state with no step is a stuck planner.
+The two liveness Bug configs turn the check off, with the reason in the
+config: the stuck state they reach is also a deadlock, and the liveness
+property is what they give teeth to.
 
 | Config | Changes | Expected |
 |---|---|---|
@@ -92,6 +103,8 @@ invariant it names and must fail.
 | `PlannerEagerRebuild` | a second attempt needs no drop notice | pass |
 | `PlannerK2` | K = 2, chain of four, rollbacks of one or two blocks | pass |
 | `PlannerFourTx` | four transactions of one input each | pass |
+| `PlannerExpireAtTipFixed` | `PlannerExpireAtTipBug`'s time-to-live of one block, the rule unchanged | pass |
+| `PlannerLive` | the base bounds, `LiveSpec` | `Finishes` holds |
 | `PlannerFreshInputsBug` | a second attempt may use any free inputs | `IntentAtMostOnce` |
 | `PlannerConflictWithLatestOnlyBug` | a new attempt conflicts with the newest attempt only | `IntentAtMostOnce` |
 | `PlannerReleaseOnDropBug` | a drop notice writes the attempt off and releases its inputs | `NoSelfConflict` |
@@ -105,6 +118,11 @@ invariant it names and must fail.
 | `PlannerPersistLateBug` | handed to a node before the record is on disk, then a restart | `IntentAtMostOnce` |
 | `PlannerRestartFromOriginBug` | the view is rebuilt from the first block after a restart | `NoSelfConflict` |
 | `PlannerSettledPointFollowsTipBug` | the settled point moves back on a rollback, then a restart | `NoSelfConflict` |
+| `PlannerSettleAtTipFinalBug` | finished at first sight in the view, not K deep | `SettledIsFinal` |
+| `PlannerReleaseOnDropDeadBug` | a drop notice writes the attempt off | `DeadIsDead` |
+| `PlannerPartialReserveBug` | a transaction reserves only the first of its inputs | `ReservedWhileUnfinished` |
+| `PlannerSettleOneShallowBug` | the settled point is K - 1 behind the view's tip | `SettledViewIsChain` |
+| `PlannerNoCascadeLiveBug` | as `PlannerNoCascadeBug`, `LiveSpec` | `Finishes` |
 | `PlannerProbe*Bug` (nine) | nothing; each denies a state that must be reachable | its `ProbeNo*` |
 
 The probes show the passing configs are not passing for want of states: a
@@ -154,6 +172,22 @@ TLC 2.19 (tla2tools 1.7.4), 14 workers:
 | `PlannerEagerRebuild` | 454,876 | 180,849 | 17 | 4 s |
 | `PlannerK2` | 2,039,623 | 796,678 | 22 | 11 s |
 | `PlannerFourTx` | 1,959,625 | 706,894 | 24 | 13 s |
+| `PlannerExpireAtTipFixed` | | 343,350 | | 3 s |
+| `PlannerLive` (liveness, one worker) | | 536,626 | | 21 s |
+
+`verdicts.tsv` holds the current distinct counts and times; the runner
+compares every run with it. Turning TLC's deadlock check on changed no
+distinct count (`Done` only adds stuttering).
+
+What the deadlock check found: with a restart, the planner's settled point
+can stay below the node's immovable point. A rollback shortens the chain
+after a longer one made a block immovable; a restart then replays only the
+current chain, so the planner settles that block, and writes off what it
+dooms, only once the chain grows by K blocks again (`PlannerRestart` reached
+this with the chain at its bound). That is waiting for the node, not a
+stuck planner, and `Done` says so (`vfloor < floor`). It also means
+`Finishes` holds only for a node that keeps growing its chain;
+`PlannerLive` has no restart.
 
 Times are from a quiet machine, where the whole directory checks in about a
 minute. With other model checkers and test runs competing for the machine
@@ -245,23 +279,28 @@ There is no `Release(intent, Dropped)`, no `Confirm` at first sight, and
 
 ## Code map
 
-`internal/plan` implements the contract; its package comment
-(`internal/plan/plan.go`) maps each planner action. In short:
+Models cardano-continuum at `72c4fb0`. `internal/plan` implements the
+contract; its package comment (`internal/plan/plan.go`) maps each planner
+action, and the engine's side is `internal/engine/internal/pay/pay.go`,
+whose package comment maps both this model and `submit-retry`.
 
-| Model | Code |
-|---|---|
-| `Offer` | `Ledger.Available`, `state.available` (`internal/plan/ledger.go`, `state.go`) |
-| `Build` | `Ledger.Reserve`: `state.reserve` checks rule 3 (`coherent`, `attempts.excludes`), `attempts.add` holds the inputs |
-| `Persist` | `Ledger.commit`, inside `Reserve` before it returns |
-| `Process` | `Ledger.Advance`: `state.forward` (`view.extend`, `state.settle`, `state.reap`) or `state.rollback` (`view.rollback`) |
-| `SubmitFails` | `Ledger.Refused`, `state.refused` |
-| `ObserveDrop` | `Ledger.DropNotice`, which changes no state |
-| `Restart` | `Open` (`decode`); chain-sync resumes at `Ledger.ResumePoint` (`internal/chain/node/follower.go`) |
-| the engine's side | `pay.Pay` in `internal/engine/internal/pay/pay.go` is the only caller of `plan.Ledger` |
+| Model | Code | What |
+|---|---|---|
+| `Offer` | `internal/plan/ledger.go:112` (`Ledger.Available`), `internal/plan/state.go:38` (`state.available`) | free outputs and own unfinished change |
+| `Build` | `internal/plan/ledger.go:122` (`Ledger.Reserve`), `internal/plan/state.go:98` (`state.reserve`), `internal/plan/attempts.go:191` (`coherent`), `:209` (`attempts.excludes`), `:56` (`attempts.add`) | rule 3, then the inputs are held |
+| `Persist` | `internal/plan/ledger.go:73` (`Ledger.commit`), inside `Reserve` before it returns | on disk before it is handed to a node |
+| `Deliver` | `internal/engine/internal/pay/retry.go:121` (`Retry.Answer`) | the answer to a send |
+| `Process` | `internal/plan/ledger.go:134` (`Ledger.Advance`): `internal/plan/state.go:182` (`state.forward`: `view.extend` at `internal/plan/view.go:90`, `state.settle` at `state.go:161`, `state.reap` at `state.go:147`) or `state.go:197` (`state.rollback`, `view.rollback` at `view.go:124`) | settle and write off what the new view decides |
+| `SubmitFails` | `internal/plan/ledger.go:171` (`Ledger.Refused`), `internal/plan/state.go:203` (`state.refused`) | written off with its descendants |
+| `ObserveDrop` | `internal/plan/ledger.go:193` (`Ledger.DropNotice`) | changes no state |
+| `Restart` | `internal/plan/ledger.go:60` (`Open`), `internal/plan/encode.go:61` (`decode`); chain-sync resumes at `internal/plan/ledger.go:207` (`Ledger.ResumePoint`) through `internal/chain/node/follower.go:87` (`Follower.Run`) | the view resumes at the settled point |
+| `Extend`, `IncludeTx`, `AdvSpend`, `Rollback`, `MempoolDrop` | the node; they reach the planner as chain events through `internal/engine/internal/pay/pay.go:150` (`Pay.Advance`) | not continuum code |
+| the engine's side | `internal/engine/internal/pay/pay.go:139` (`Pay.Reserve`) | the only caller of `plan.Ledger.Reserve` |
 
 Where each invariant is checked. The store invariants are asserted on every
 state the ledger adopts, in debug builds (`-tags debug`), by `checkAdopt`
-in `ledger.go`, which runs `state.consistent` and `state.indexConsistent`:
+(`internal/plan/ledger.go:93`), which runs `state.consistent` and
+`state.indexConsistent`:
 
 - in `Ledger.commit`, so after every `Reserve`, `Refused` and every
   `Advance` that moves the settled point or writes an attempt off;
@@ -276,13 +315,28 @@ the same points. `decode` runs `state.consistent` in every build, so
 
 | Invariant | Asserted by |
 |---|---|
-| `ReservedWhileUnfinished`, release half of `NoLeak` | `attempts.consistent` (`internal/plan/attempts.go`) |
-| `InputsTracked`, doomed half of `NoLeak` | `state.consistent` (`internal/plan/state.go`) |
-| settled point at most K below the tip (`SettledViewIsChain` as the ledger can see it) | `view.consistent` (`internal/plan/view.go`) |
-| `NoSelfConflict` | enforced by `state.reserve`; checked by the property tests (`prop_test.go`, `rig_test.go`) |
-| `IntentAtMostOnce`, `DeadIsDead` | the oracle's `checkPaid` (`internal/oracle/checks.go`), against the chain |
-| `ReservedWhileUnfinished`, `NoLeak` on a run | the oracle's `checkReservations` |
-| `SettledIsFinal` | truth only; on a run the oracle's `checkSettled` reports a settled point that moved back |
+| `ReservedWhileUnfinished`, release half of `NoLeak` | `internal/plan/attempts.go:246` (`attempts.consistent`) |
+| `InputsTracked`, doomed half of `NoLeak` | `internal/plan/state.go:214` (`state.consistent`) |
+| settled point at most K below the tip (`SettledViewIsChain` as the ledger can see it) | `internal/plan/view.go:146` (`view.consistent`) |
+| `NoSelfConflict` | enforced by `state.reserve`; checked by the property tests (`internal/plan/prop_test.go`, `internal/plan/rig_test.go`) |
+| `IntentAtMostOnce`, `DeadIsDead` | the oracle's `checkPaid` (`internal/oracle/checks.go:56`), against the chain |
+| `ReservedWhileUnfinished`, `NoLeak` on a run | the oracle's `checkReservations` (`internal/oracle/checks.go:99`) |
+| `SettledIsFinal` | truth only; on a run the oracle's `checkSettled` (`internal/oracle/checks.go:166`) reports a settled point that moved back |
+| `Finishes` | no runtime check; `NoLeak` is its state form |
+
+### Drift
+
+Where the model deliberately differs from the code:
+
+| Id | Code | Model | Why | Config |
+|---|---|---|---|---|
+| P1 | outputs carry values; the planner balances fees, minimum outputs and change | outputs carry no value; one change output per transaction | reservation rules do not depend on value | all |
+| P2 | a block holds many transactions, positioned by slot | one transaction per block; a block's position is its slot (TTL "the K-deep block's slot is past the TTL" becomes "the settled length has reached the TTL") | interleavings of single-transaction blocks cover multi-transaction ones | all |
+| P3 | outputs are owned by actors at addresses; `Available` filters by owner | any intent may be offered any output | gives the planner the most chances to race itself | all |
+| P4 | `Coherent` is enforced by `coherent` in `state.reserve` | kept in `Build`, though no invariant needs it at these bounds | it only stops stillborn transactions | `Planner`, `PlannerRestart`, `PlannerEagerRebuild`, `PlannerK2` |
+| P5 | a rollback deeper than K is an error in the chain follower | never generated | the follower's job, not the store's | - |
+| P6 | the store writes a whole blob per commit | a restart loses whole records, never part of one | torn writes are SQLite's job | `PlannerRestart`, `PlannerPersistLateBug` |
+| P7 | `TestPropPlannerMatchesModel` (`internal/plan/prop_test.go:21`) drives random interleavings of the model's actions and checks the store invariants | no trace replay of TLC counterexamples | the property test mirrors the invariants, not TLC's traces | - |
 
 ## Go tests this model asks for
 
