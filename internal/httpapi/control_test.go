@@ -35,6 +35,11 @@ func TestParseControl(t *testing.T) {
 		{"bad weight name", `{"request_id":"r1","op":"set_weights","weights":{"Send!":1}}`, false},
 		{"no scenario", `{"request_id":"r1","op":"inject"}`, false},
 		{"bad scenario", `{"request_id":"r1","op":"inject","scenario":"../x"}`, false},
+		{"scenario with an actor", `{"request_id":"r1","op":"inject","scenario":"go_dark:3"}`, true},
+		{"upgrade with epochs and image", `{"request_id":"r1","op":"inject","scenario":"upgrade:2:ghcr.io/blinklabs-io/dingo:main"}`, true},
+		{"image by digest", `{"request_id":"r1","op":"inject","scenario":"upgrade:ghcr.io/x/y@sha256:0123abcd"}`, true},
+		{"empty argument", `{"request_id":"r1","op":"inject","scenario":"go_dark:"}`, false},
+		{"space in argument", `{"request_id":"r1","op":"inject","scenario":"upgrade:a b"}`, false},
 		{"trailing data", `{"request_id":"r1","op":"pause"} {}`, false},
 		{"not json", `pause`, false},
 	}

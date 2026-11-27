@@ -41,7 +41,10 @@ const (
 var (
 	reRequestID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 	reWeightKey = regexp.MustCompile(`^[a-z][a-z0-9_]{0,31}$`)
-	reScenario  = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`)
+	// reScenario is a scenario name, then optionally a colon and its
+	// argument: a pool actor id, or an upgrade's epochs and image
+	// reference, which has colons, slashes and an @ of its own.
+	reScenario = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}(:[A-Za-z0-9._/:@-]{1,255})?$`)
 )
 
 // Control is a request to steer a run, as the API takes it. The log
