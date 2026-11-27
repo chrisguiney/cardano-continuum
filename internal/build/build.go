@@ -22,7 +22,8 @@
 //
 // Each intent family lives in its own file; the shared plumbing (protocol
 // parameters, the Apollo chain-context adapter, signing and exact fees) is
-// in this file, and local script evaluation in eval.go.
+// in this file, and the chain-context adapter for local script evaluation in
+// eval.go.
 package build
 
 import (
@@ -39,10 +40,15 @@ import (
 
 	"github.com/Salvionied/apollo/v2"
 	"github.com/Salvionied/apollo/v2/backend"
+	"github.com/Salvionied/apollo/v2/backend/fixed"
 	"github.com/blinklabs-io/gouroboros/cbor"
+	"github.com/blinklabs-io/gouroboros/ledger/babbage"
 	"github.com/blinklabs-io/gouroboros/ledger/common"
+	"github.com/blinklabs-io/gouroboros/ledger/common/script"
 	"github.com/blinklabs-io/gouroboros/ledger/conway"
+	"github.com/blinklabs-io/gouroboros/ledger/mary"
 	"github.com/blinklabs-io/gouroboros/ledger/shelley"
+	mockledger "github.com/blinklabs-io/ouroboros-mock/ledger"
 
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 )
@@ -412,4 +418,115 @@ func keptTokens(inputs []common.Utxo, minted *apollo.Unit) []apollo.Unit {
 		return cmp.Or(strings.Compare(a.PolicyId, b.PolicyId), strings.Compare(a.Name, b.Name))
 	})
 	return out
+}
+
+// Pay builds and signs a payment, returning change to w's own address.
+// Change below min-UTxO is folded into the fee. All Inputs are spent.
+func (b *Builder) Pay(ctx context.Context, w keys.Wallet, p Payment) (Built, error) {
+	return b.finish(ctx, w, spec{
+		sp:   Spend{Inputs: p.Inputs, TTL: p.TTL, Tip: p.Tip},
+		need: p.Amount,
+		add: func(a *apollo.Apollo) (*apollo.Apollo, error) {
+			return a.PayToAddress(p.To, int64(p.Amount)), nil
+		},
+	})
+}
+
+// minUtxoOverhead is the bytes CIP-55 adds to an output's size for its
+// input and UTxO map entry (Conway's MinCoinTxOut).
+const minUtxoOverhead = 160
+
+// MinPayment is the smallest plain-ADA payment to the address the ledger
+// accepts: coinsPerUTxOByte * (160 + size of the output). The size counts
+// the coin itself, so it is found by iterating to a fixed point, which a
+// CBOR integer's few size steps reach at once. The output is sized in
+// Babbage's map form, the larger of the two, so the result is never
+// below the ledger's minimum.
+func (b *Builder) MinPayment(to common.Address) uint64 {
+	coin := uint64(0)
+	for range 4 {
+		o := babbage.BabbageTransactionOutput{OutputAddress: to, OutputAmount: mary.MaryTransactionOutputValue{Amount: coin}}
+		size, err := common.TransactionOutputCborSize(&o)
+		if err != nil {
+			// An address the builder holds always encodes.
+			panic("build: size a payment output: " + err.Error())
+		}
+		next := b.params.CoinsPerUtxoByte * (minUtxoOverhead + size)
+		if next == coin {
+			break
+		}
+		coin = next
+	}
+	return coin
+}
+
+// FanOut builds and signs one transaction paying every output from w's
+// inputs, returning change to w. A faucet refilling many wallets uses it, so
+// one confirmation funds them all instead of one wallet per chained spend.
+func (b *Builder) FanOut(ctx context.Context, w keys.Wallet, sp Spend, outs []Output) (Built, error) {
+	if len(outs) == 0 {
+		return Built{}, errors.New("build: fan-out with no outputs")
+	}
+	var need uint64
+	for _, o := range outs {
+		need += o.Amount
+	}
+	return b.finish(ctx, w, spec{
+		sp:   sp,
+		need: need,
+		add: func(a *apollo.Apollo) (*apollo.Apollo, error) {
+			for _, o := range outs {
+				a = a.PayToAddress(o.To, int64(o.Amount))
+			}
+			return a, nil
+		},
+	})
+}
+
+func (b *Builder) chainContext(s spec) *evalContext {
+	known := append(append([]common.Utxo(nil), s.sp.Inputs...), s.known...)
+	return &evalContext{
+		FixedChainContext: fixed.NewFixedChainContext(b.protocolParams(), backend.GenesisParameters{}, b.params.NetworkID),
+		b:                 b,
+		known:             known,
+	}
+}
+
+// evaluate runs every redeemer of txCbor against the per-transaction budget
+// and returns the units each one used. utxos resolve the inputs, collateral
+// and reference inputs.
+func (b *Builder) evaluate(txCbor []byte, utxos []common.Utxo) (map[common.RedeemerKey]common.ExUnits, error) {
+	if len(b.params.PlutusV3) == 0 {
+		return nil, errors.New("build: no PlutusV3 cost model")
+	}
+	if b.params.SlotLength <= 0 {
+		return nil, errors.New("build: slot length unset; script contexts need slot times")
+	}
+	tx, err := conway.NewConwayTransactionFromCbor(txCbor)
+	if err != nil {
+		return nil, fmt.Errorf("build: evaluate: decode: %w", err)
+	}
+	byRef := make(map[string]common.Utxo, len(utxos))
+	for _, u := range utxos {
+		byRef[u.Id.String()] = u
+	}
+	start, slot := b.params.SystemStart, b.params.SlotLength
+	ls := mockledger.NewLedgerStateBuilder().
+		WithNetworkId(uint(b.params.NetworkID)).
+		WithUtxoById(func(in common.TransactionInput) (common.Utxo, error) {
+			if u, ok := byRef[in.String()]; ok {
+				return u, nil
+			}
+			return common.Utxo{}, fmt.Errorf("build: evaluate: input %s not offered", in)
+		}).
+		WithSlotToTime(func(s uint64) (time.Time, error) { return start.Add(time.Duration(s) * slot), nil }).
+		WithTimeToSlot(func(t time.Time) (uint64, error) { return uint64(t.Sub(start) / slot), nil }).
+		Build()
+	budget := b.params.MaxTxExUnits
+	used, err := script.EvaluatePlutusScripts(tx, ls, b.params.ProtocolMajor,
+		map[uint][]int64{2: b.params.PlutusV3}, 3, conway.EraNameConway, &budget)
+	if err != nil {
+		return nil, fmt.Errorf("build: evaluate: %w", err)
+	}
+	return used, nil
 }
