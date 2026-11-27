@@ -12,9 +12,9 @@ while the engine was down. And `continuum replay` only works if every
 nondeterministic input is in the log.
 
 `EngineRecovery.tla` models that at a small scale and lets TLC crash the
-engine at every step. This is a design model: it constrains
+engine at every step. It began as a design model for
 `internal/eventlog` (2.12), `internal/store` (2.13) and `internal/engine`
-(2.22) before they are written.
+(2.22); the [code map](#code-map) pins the commit it now models.
 
 ## What the model contains
 
@@ -226,19 +226,35 @@ The pure `Step` side (K-deep confirm, rollback refused below `conf`) is
 
 ## Code map
 
-The engine is design A. Each model element and where the code holds it:
+Models cardano-continuum at `72c4fb0`. The engine is design A. Each model
+action and where the code does it:
 
-| Model | Code |
-|---|---|
-| `Step` (one pure handler, live and replay) | `Engine.Handle` in `internal/engine/engine.go` |
-| K-deep confirm (`Stable`) | `window.Window.Confirm` in `internal/engine/internal/window/window.go`, which posts at most K volatile blocks |
-| rollback below `conf` (`NeverHalted`) | `window.Window.Check`, which returns `ErrRollbackBelowConfirmed` |
-| `Fetch`, `Tick` (input logged before its effect) | `eventlog.Session.Feed` and `Session.Tick` in `internal/eventlog/session.go`: append, sync, then `Handle` |
-| `CommitLog` | the log's `Sync`, first step of `recovery.Saver.Save` in `internal/engine/internal/recovery/saver.go` |
-| `CommitCkpt` (`LogBeforeEffect`, `CheckpointConsistent`) | `store.DB.SaveCheckpoint` in `internal/store/store.go`: one transaction, refused by `validate` when the seq is past the log's durable seq (`ErrAheadOfLog`) or the points miss the confirmed point (`ErrPointsShort`) |
-| `Restart` | `recovery.Open` and `recovery.Replay` (`internal/engine/internal/recovery/recovery.go`), then `Runner.intersect` in `internal/engine/runner.go` |
-| intersection as a rollback (`CursorAgrees`) | `eventlog.Session.Intersect`: an answer below the stored tip is logged as `RolledBack` and fed like any rollback |
-| `Crash` | the `Saver.Crash` failpoints (`StageFed`, `StageSynced`, `StageCheckpointed`) |
+| Model | Code | What |
+|---|---|---|
+| `Fetch` | `internal/engine/runner.go:289` (`Runner.drain`), `internal/eventlog/session.go:25` (`Session.Feed`) | the next chain-sync event becomes a `BlockApplied` or `RolledBack` record, appended before `Engine.Handle` |
+| `Step` (one pure handler, live and replay) | `internal/engine/engine.go:296` (`Engine.Handle`) | every input, live or replayed |
+| K-deep confirm (`Stable`) | `internal/engine/internal/window/window.go:183` (`Window.Confirm`) | posts at most K volatile blocks |
+| rollback below `conf` (`NeverHalted`) | `internal/engine/internal/window/window.go:197` (`Window.Check`), `:53` (`ErrRollbackBelowConfirmed`) | refused with an error, never reset |
+| `Tick` (input logged before its effect) | `internal/eventlog/session.go:48` (`Session.Tick`) | append, sync, then `Handle` |
+| `CommitLog` | `internal/engine/internal/recovery/saver.go:52` (`Saver.Save`, its `Sync`) | the log is flushed first |
+| `CommitCkpt` (`LogBeforeEffect`, `CheckpointConsistent`) | `internal/store/store.go:305` (`DB.SaveCheckpoint`), `:284` (`validate`), `:38` (`ErrAheadOfLog`), `:40` (`ErrPointsShort`) | one transaction, refused when the seq is past the durable log or the points miss the confirmed point |
+| `Restart` | `internal/engine/internal/recovery/recovery.go:50` (`Open`), `:104` (`Replay`), then `internal/engine/runner.go:220` (`Runner.intersect`) | checkpoint, log tail, then `FindIntersect` |
+| intersection as a rollback (`CursorAgrees`) | `internal/eventlog/session.go:60` (`Session.Intersect`) | an answer below the stored tip is logged as `RolledBack` and fed like any rollback |
+| `Crash` | `internal/engine/internal/recovery/saver.go:33` (`Saver.Crash`) at `recovery.go:22-25` (`StageFed`, `StageSynced`, `StageCheckpointed`) | the failpoints a test kills at |
+| `NodeExtend`, `NodeRollback` | the node (ouroboros-mock in tests) | not continuum code |
+
+### Drift
+
+Where the model deliberately differs from the code:
+
+| Id | Code | Model | Why | Config |
+|---|---|---|---|---|
+| E1 | design A only (`Window` confirms K-deep blocks) | both designs, `Variant = "Stable"` or `"Undo"` | B was the rejected alternative; its configs show why it needs the undo window stored | `EngineUndo`, `EngineNoUndoBug` |
+| E2 | `Runner.drain` reads an event, then `Session.Feed` appends and applies it | one `Fetch` step | a crash between the read and the append loses an event never acted on, the same as a crash before `Fetch` | all |
+| E3 | the log is a file of encoded records, the checkpoint an SQLite row | `slog` a sequence of inputs, `ck` a record | only the order and the covered seq matter to recovery | all |
+| E4 | `Session.Feed` appends and syncs each input before `Handle` | `Fetch` and `Tick` apply the input and leave it in `pend`; `CommitLog` flushes it later (`MaxBatch = 1`) | the model allows more than the code (an effect ahead of its flush), so a pass covers the code; `LogBeforeEffect` is what the order must keep | all |
+| E5 | actor state is a set of actors with their own state | one counter per actor (`Derive`) | the recovery rules do not depend on what the state holds | all |
+| E6 | `FindIntersect` gets the stored points, which must reach the confirmed point | every point is sent | the short-points case is refused by `validate` (`ErrPointsShort`), not modelled | - |
 
 ## Reading a formula literally
 
