@@ -193,6 +193,12 @@ comes from.
 
 ### Node 13: `internal/engine`
 
+The pure `Step` side (K-deep confirm, rollback refused below `conf`) is
+`internal/engine/internal/window`. The I/O side is
+`internal/engine/internal/recovery`: `Open` and `Replay` are `Restart`, and
+`Saver.Save` orders `CommitLog` before `CommitCkpt`. `Runner` in
+`internal/engine/runner.go` runs `FindIntersect` after the replay.
+
 - `TestRestartAfterOfflineRollback`: an ouroboros-mock chain-sync server rolls
   back past the stored cursor while the engine is down. After restart the
   engine's cursor equals the server's, and its actors equal Derive of the new

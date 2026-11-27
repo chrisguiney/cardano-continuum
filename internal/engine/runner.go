@@ -1,13 +1,13 @@
 package engine
 
 import (
-	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
 
+	// Aliased: the package tests declare a recovery type of their own.
+	restart "github.com/chrisguiney/cardano-continuum/internal/engine/internal/recovery"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
@@ -68,17 +68,14 @@ type Log interface {
 }
 
 // Checkpointer is the store as the loop uses it.
-type Checkpointer interface {
-	SaveCheckpoint(ctx context.Context, c store.Checkpoint) error
-	Recover(ctx context.Context) (store.Recovery, error)
-}
+type Checkpointer = restart.Store
 
 // Crash stages: the points at which Deps.Crash may stop the loop.
 const (
-	StageFed          = "fed"          // an input and its decisions are appended
-	StageSubmitted    = "submitted"    // a transaction reached the node, its result is not logged
-	StageSynced       = "synced"       // the log is flushed before a checkpoint
-	StageCheckpointed = "checkpointed" // a checkpoint is committed
+	StageFed          = restart.StageFed
+	StageSubmitted    = restart.StageSubmitted
+	StageSynced       = restart.StageSynced
+	StageCheckpointed = restart.StageCheckpointed
 )
 
 // Deps are the loop's collaborators.
@@ -121,7 +118,7 @@ type Deps struct {
 // ErrDiverged: replaying the log on restart produced different decisions,
 // so the log was written by a different engine or the engine is not
 // deterministic.
-var ErrDiverged = errors.New("engine: replay diverged from the log")
+var ErrDiverged = restart.ErrDiverged
 
 // Stats count what the loop did in this process.
 type Stats struct {
@@ -139,7 +136,7 @@ type Runner struct {
 	follow Follower
 	// resumed are the intents in flight when this process started.
 	resumed map[uint64]bool
-	since   int
+	ckpt    *restart.Saver
 	stats   Stats
 	// plan is the pool plan last synced.
 	plan   []PoolPlan
@@ -179,27 +176,14 @@ func Start(ctx context.Context, cfg Config, d Deps) (*Runner, error) {
 		r.log = slog.New(slog.DiscardHandler)
 	}
 	r.log = r.log.With("component", "engine")
-	var snap []byte
-	var covers uint64
-	if d.Store != nil {
-		rec, err := d.Store.Recover(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("engine: recover: %w", err)
-		}
-		if rec.Checkpoint.Seq > 0 {
-			snap, covers = rec.Checkpoint.Actors, rec.Checkpoint.Seq
-		}
-	}
-	if d.Log.LastSeq() == 0 {
-		if err := writeHeader(ctx, d.Log, hdr); err != nil {
-			return nil, err
-		}
-	} else if err := checkHeader(ctx, d.Log, hdr); err != nil {
+	snap, covers, err := restart.Open(ctx, d.Log, d.Store, hdr)
+	if err != nil {
 		return nil, err
 	}
-	if err := r.replay(ctx, snap, covers); err != nil {
+	if err := restart.Replay(ctx, d.Log, snap, covers, r.factory(ctx, covers)); err != nil {
 		return nil, err
 	}
+	r.ckpt = restart.NewSaver(d.Log, d.Store, d.CheckpointEvery, d.Crash)
 	r.sess = eventlog.Session{Eng: r.eng, Log: d.Log}
 	// A payment in flight at a restart may have been sent by the process
 	// that died, so a rejection of it proves nothing.
@@ -217,45 +201,10 @@ func Start(ctx context.Context, cfg Config, d Deps) (*Runner, error) {
 	return r, nil
 }
 
-func writeHeader(ctx context.Context, l Log, h eventlog.HeaderBody) error {
-	body, err := eventlog.Encode(h)
-	if err != nil {
-		return err
-	}
-	if err := l.Append(ctx, eventlog.Record{Class: eventlog.Header, Kind: eventlog.KindHeader, Body: body}); err != nil {
-		return fmt.Errorf("engine: write header: %w", err)
-	}
-	return l.Sync(ctx)
-}
-
-func checkHeader(ctx context.Context, l eventlog.Reader, want eventlog.HeaderBody) error {
-	var got []byte
-	err := l.Scan(ctx, 1, func(rec eventlog.Record) error {
-		if rec.Class == eventlog.Header {
-			got = rec.Body
-		}
-		return eventlog.ErrStop
-	})
-	if err != nil {
-		return err
-	}
-	w, err := eventlog.Encode(want)
-	if err != nil {
-		return err
-	}
-	if !bytes.Equal(got, w) {
-		return fmt.Errorf("%w: log was recorded under another seed, profile set, genesis or binary", eventlog.ErrHeaderMismatch)
-	}
-	return nil
-}
-
-// replay rebuilds the engine from the checkpoint and the log tail. Decisions
-// of the last input may be missing (they are appended unsynced and a crash
-// can drop them); those are regenerated and appended. Any other difference
-// is divergence.
-func (r *Runner) replay(ctx context.Context, snap []byte, covers uint64) error {
+// factory builds the engine replay starts from and keeps it as r.eng.
+func (r *Runner) factory(ctx context.Context, covers uint64) eventlog.Factory {
 	factory := r.cfg.Factory()
-	rp := eventlog.Replayer{Log: r.d.Log, New: func(s []byte) (eventlog.Engine, error) {
+	return func(s []byte) (eventlog.Engine, error) {
 		e, err := factory(s)
 		if err != nil {
 			return e, err
@@ -266,53 +215,8 @@ func (r *Runner) replay(ctx context.Context, snap []byte, covers uint64) error {
 		}
 		// The checkpoint's findings are in the log, not the snapshot; the
 		// tail's are regenerated by the replay that follows.
-		return e, loadFindings(ctx, r.d.Log, covers, r.eng.jd.Set())
-	}}
-	res, err := rp.Replay(ctx, snap, covers)
-	if err != nil {
-		return fmt.Errorf("engine: replay tail: %w", err)
+		return e, restart.LoadFindings(ctx, r.d.Log, covers, r.eng.jd.Set())
 	}
-	if len(res.Diff) == 0 {
-		return nil
-	}
-	var lastInput uint64
-	err = r.d.Log.Scan(ctx, covers+1, func(rec eventlog.Record) error {
-		if rec.Class == eventlog.Input {
-			lastInput = rec.Seq
-		}
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	var missing []eventlog.Record
-	for _, m := range res.Diff {
-		if m.Want != nil || m.Seq != lastInput {
-			return fmt.Errorf("%w: %s", ErrDiverged, m)
-		}
-		missing = append(missing, *m.Got)
-	}
-	if err := r.d.Log.Append(ctx, missing...); err != nil {
-		return err
-	}
-	return r.d.Log.Sync(ctx)
-}
-
-// loadFindings adds the findings logged up to seq covers to set.
-func loadFindings(ctx context.Context, l eventlog.Reader, covers uint64, set *oracle.Set) error {
-	if covers == 0 {
-		return nil
-	}
-	err := l.Scan(ctx, 1, func(rec eventlog.Record) error {
-		if rec.Seq > covers {
-			return eventlog.ErrStop
-		}
-		return set.Load(rec)
-	})
-	if err != nil {
-		return fmt.Errorf("engine: load findings: %w", err)
-	}
-	return nil
 }
 
 func (r *Runner) intersect(ctx context.Context) error {
@@ -335,27 +239,20 @@ func (r *Runner) intersect(ctx context.Context) error {
 	return nil
 }
 
-func (r *Runner) crash(stage string) error {
-	if r.d.Crash == nil {
-		return nil
-	}
-	return r.d.Crash(stage)
-}
-
 // step runs one logged input, then the post-input hooks.
 func (r *Runner) step(ctx context.Context, feed func() error) error {
 	if err := feed(); err != nil {
 		return err
 	}
 	r.stats.Inputs++
-	r.since++
-	if err := r.crash(StageFed); err != nil {
+	due, err := r.ckpt.Fed()
+	if err != nil {
 		return err
 	}
 	if r.eng.fl.Stalled() {
 		return ErrStalled
 	}
-	if r.d.CheckpointEvery > 0 && r.since >= r.d.CheckpointEvery {
+	if due {
 		return r.Checkpoint(ctx)
 	}
 	return nil
@@ -377,7 +274,7 @@ func (r *Runner) effects(ctx context.Context) error {
 		}
 		delete(r.resumed, s.Intent)
 		r.stats.Submissions++
-		if err := r.crash(StageSubmitted); err != nil {
+		if err := r.ckpt.Crash(StageSubmitted); err != nil {
 			return err
 		}
 		body, err := eventlog.Encode(res)
@@ -676,42 +573,30 @@ func (r *Runner) Run(ctx context.Context, until sched.Time) error {
 }
 
 func (r *Runner) flush(ctx context.Context) error {
-	if r.d.Store == nil {
-		return r.d.Log.Sync(ctx)
-	}
-	return r.Checkpoint(ctx)
+	return r.ckpt.Flush(ctx, r.state)
 }
 
 // Checkpoint flushes the log and then saves the engine state as covering
 // every entry, in that order: a checkpoint never reflects an input the
 // durable log lacks.
 func (r *Runner) Checkpoint(ctx context.Context) error {
-	if err := r.d.Log.Sync(ctx); err != nil {
-		return fmt.Errorf("engine: sync log: %w", err)
-	}
-	if r.d.Store == nil {
-		return nil
-	}
-	if err := r.crash(StageSynced); err != nil {
-		return err
-	}
+	return r.ckpt.Save(ctx, r.state)
+}
+
+// state is the checkpoint of the engine covering the log up to seq.
+func (r *Runner) state(seq uint64) (store.Checkpoint, error) {
 	snap, err := r.eng.Snapshot()
 	if err != nil {
-		return err
+		return store.Checkpoint{}, err
 	}
 	res, err := r.eng.pay.Blob()
 	if err != nil {
-		return err
+		return store.Checkpoint{}, err
 	}
-	c := store.Checkpoint{
-		Seq: r.d.Log.LastSeq(), Points: r.eng.win.Points(), Confirmed: r.eng.win.Confirmed(),
+	return store.Checkpoint{
+		Seq: seq, Points: r.eng.win.Points(), Confirmed: r.eng.win.Confirmed(),
 		Actors: snap, ActorRows: actorRows(r.eng), Reservations: res,
-	}
-	if err := r.d.Store.SaveCheckpoint(ctx, c); err != nil {
-		return fmt.Errorf("engine: checkpoint: %w", err)
-	}
-	r.since = 0
-	return r.crash(StageCheckpointed)
+	}, nil
 }
 
 // Engine returns the engine the loop drives.
