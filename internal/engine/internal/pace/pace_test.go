@@ -20,6 +20,7 @@ func newTest(over knobs) *Pace {
 }
 
 func TestBurstIsOneAtBaseline(t *testing.T) {
+	t.Parallel()
 	pc := newTest(nil)
 	if got := pc.Burst(0); math.Abs(got-marketMu/marketBaseline) > 1e-12 {
 		t.Fatalf("idle burst %v", got)
@@ -32,6 +33,7 @@ func TestBurstIsOneAtBaseline(t *testing.T) {
 }
 
 func TestMarketRoundTrips(t *testing.T) {
+	t.Parallel()
 	pc := newTest(nil)
 	pc.Excite(500)
 	m := pc.Save()
@@ -43,6 +45,7 @@ func TestMarketRoundTrips(t *testing.T) {
 }
 
 func TestWeightsOverride(t *testing.T) {
+	t.Parallel()
 	p := profile.Profile{Weights: map[profile.IntentKind]float64{"pay": 1, "idle": 2}}
 	pc := newTest(knobs{"pay": 5})
 	if w := pc.Weights(p); w["pay"] != 5 || w["idle"] != 2 {

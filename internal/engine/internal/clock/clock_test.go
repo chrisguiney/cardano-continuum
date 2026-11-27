@@ -9,6 +9,7 @@ import (
 // Same-time events come out sorted by (Kind, Actor, Birth), whatever the
 // push order, and the clock follows the batch.
 func TestNextSortsSameTimeEvents(t *testing.T) {
+	t.Parallel()
 	var c Clock
 	c.Push(5, Event{Kind: Act, Actor: 2})
 	c.Push(5, Event{Kind: Birth, Birth: 1})
@@ -32,6 +33,7 @@ func TestNextSortsSameTimeEvents(t *testing.T) {
 }
 
 func TestOpenRefusesBackwards(t *testing.T) {
+	t.Parallel()
 	var c Clock
 	c.Load(10)
 	if err := c.Open(9); !errors.Is(err, ErrBackwards) {
@@ -43,6 +45,7 @@ func TestOpenRefusesBackwards(t *testing.T) {
 }
 
 func TestCancelRemovesAnEvent(t *testing.T) {
+	t.Parallel()
 	var c Clock
 	h := c.Push(3, Event{Kind: Act})
 	c.Cancel(h)

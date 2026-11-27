@@ -53,6 +53,7 @@ func push(t *testing.T, w *Window, n uint64) {
 // TestConfirmsOnlyAtDepthK: a block counts only once its Kth successor is
 // pushed (StableOnly in models/specs/engine-recovery).
 func TestConfirmsOnlyAtDepthK(t *testing.T) {
+	t.Parallel()
 	w := open(t, 2)
 	for n := uint64(1); n <= 2; n++ {
 		push(t, w, n)
@@ -72,6 +73,7 @@ func TestConfirmsOnlyAtDepthK(t *testing.T) {
 // TestRollbackBelowConfirmedIsRefused: Check refuses a point below the
 // confirmed one and changes nothing (NeverHalted).
 func TestRollbackBelowConfirmedIsRefused(t *testing.T) {
+	t.Parallel()
 	w := open(t, 1)
 	for n := uint64(1); n <= 3; n++ {
 		push(t, w, n)

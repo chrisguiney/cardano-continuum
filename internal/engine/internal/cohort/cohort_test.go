@@ -11,6 +11,7 @@ import (
 )
 
 func TestGenesisPoolsShort(t *testing.T) {
+	t.Parallel()
 	root, err := keys.New(rng.Seed{}, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -28,6 +29,7 @@ func TestGenesisPoolsShort(t *testing.T) {
 }
 
 func TestRememberKeepsMostRecent(t *testing.T) {
+	t.Parallel()
 	var st Actor
 	for i := range MaxPaid + 5 {
 		st.Remember(population.ActorID(i + 1))

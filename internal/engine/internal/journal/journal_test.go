@@ -8,6 +8,7 @@ import (
 )
 
 func TestJournalBuffersOneInput(t *testing.T) {
+	t.Parallel()
 	var j Journal
 	j.Begin(4)
 	j.Emit(10, wire.KindSpawned, 3, wire.Spawned{Profile: "p"})
@@ -26,6 +27,7 @@ func TestJournalBuffersOneInput(t *testing.T) {
 }
 
 func TestBeginAndDropClear(t *testing.T) {
+	t.Parallel()
 	var j Journal
 	j.Emit(1, wire.KindSpawned, 1, wire.Spawned{})
 	j.Drop()
