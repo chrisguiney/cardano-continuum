@@ -66,9 +66,10 @@ Run it with `make models` (all models) or
   (`planner-reservations`) and retry machine (`submit-retry`) guarantee that
   at most one attempt of it lands.
 - The DRep setup steps (register DRep, register the stake key, delegate the
-  vote to itself, then the fitted clocks). Each step is a function of the
-  view (`pace.Pop.setup`), and a step is not built beside one of the same
-  kind in flight (`Book.Has` in `pace.Pop.Decide`), the same guard as rule 1.
+  vote to itself, then the fitted clocks). Each step is chosen from the
+  view (`internal/engine/internal/pace`), and a step is not built beside
+  one of the same kind in flight (`Book.Has` in `pace.Pop.Decide`), the
+  same guard as rule 1.
   A step replayed after a rollback is refused with an expected class
   (`DRepAlreadyRegistered` in the intent spec's `again`). There is no
   interleaving left for a model to explore that the planner model does not
