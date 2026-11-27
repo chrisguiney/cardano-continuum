@@ -47,6 +47,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/cli/harvest"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/image"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/profiles"
+	cliscenario "github.com/chrisguiney/cardano-continuum/internal/cli/scenario"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/kube"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/lines"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
@@ -106,7 +107,7 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 	case "vectors":
 		return harvest.Vectors(ctx, args[1:], out)
 	case "scenario":
-		return cmdScenario(ctx, args[1:], out)
+		return cliscenario.Run(ctx, args[1:], out)
 	}
 	return fmt.Errorf("%w: unknown command %q", errUsage, args[0])
 }

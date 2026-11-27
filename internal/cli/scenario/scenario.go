@@ -1,4 +1,4 @@
-package main
+package scenario
 
 import (
 	"context"
@@ -13,13 +13,14 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/tlaflags"
 	"github.com/chrisguiney/cardano-continuum/internal/rng"
-	"github.com/chrisguiney/cardano-continuum/internal/scenario"
+	iscenario "github.com/chrisguiney/cardano-continuum/internal/scenario"
 	"github.com/chrisguiney/cardano-continuum/internal/tla"
 )
 
 var errScenarioUsage = errors.New("usage: continuum scenario run|harvest|vectors [flags]")
 
-func cmdScenario(ctx context.Context, args []string, out io.Writer) error {
+// Run dispatches `continuum scenario run|harvest|vectors`.
+func Run(ctx context.Context, args []string, out io.Writer) error {
 	if len(args) == 0 {
 		return errScenarioUsage
 	}
@@ -50,14 +51,14 @@ func (f *runFlags) register(fs *flag.FlagSet) {
 // errNoLive reports that the devnet backend is not wired into this command.
 var errNoLive = errors.New("scenario: --target live needs a devnet backend, which this build does not have; use --target fake")
 
-func (f *runFlags) backend() (scenario.Backend, rng.Seed, error) {
+func (f *runFlags) backend() (iscenario.Backend, rng.Seed, error) {
 	var seed rng.Seed
 	for i := range 8 {
 		seed[i] = byte(f.seed >> (8 * i))
 	}
 	switch f.target {
 	case "fake":
-		return scenario.FakeBackend{}, seed, nil
+		return iscenario.FakeBackend{}, seed, nil
 	case "live":
 		return nil, seed, errNoLive
 	}
@@ -66,14 +67,14 @@ func (f *runFlags) backend() (scenario.Backend, rng.Seed, error) {
 
 // execute runs every scenario and prints the summary. A disagreement is a
 // result, not a failure of the command.
-func (f *runFlags) execute(ctx context.Context, ss []scenario.Scenario, out io.Writer) error {
+func (f *runFlags) execute(ctx context.Context, ss []iscenario.Scenario, out io.Writer) error {
 	b, seed, err := f.backend()
 	if err != nil {
 		return err
 	}
-	results := make([]scenario.Result, 0, len(ss))
+	results := make([]iscenario.Result, 0, len(ss))
 	for _, s := range ss {
-		res, err := scenario.Run(ctx, s, b, seed)
+		res, err := iscenario.Run(ctx, s, b, seed)
 		if err != nil {
 			return err
 		}
@@ -82,7 +83,7 @@ func (f *runFlags) execute(ctx context.Context, ss []scenario.Scenario, out io.W
 			_, _ = fmt.Fprintf(out, "%s\t%s\t%d/%d steps\t%s\n", res.Status, res.ID, res.Ran, res.Steps, res.Reason)
 		}
 	}
-	return scenario.Summarize(results).Write(out)
+	return iscenario.Summarize(results).Write(out)
 }
 
 func cmdScenarioRun(ctx context.Context, args []string, out io.Writer) error {
@@ -96,9 +97,9 @@ func cmdScenarioRun(ctx context.Context, args []string, out io.Writer) error {
 	if fs.NArg() == 0 {
 		return errors.New("scenario run: name a scenario id, file or directory")
 	}
-	var ss []scenario.Scenario
+	var ss []iscenario.Scenario
 	for _, arg := range fs.Args() {
-		found, err := scenario.Find(*lib, arg)
+		found, err := iscenario.Find(*lib, arg)
 		if err != nil {
 			return fmt.Errorf("scenario run: %w", err)
 		}
@@ -125,7 +126,7 @@ func cmdScenarioVectors(ctx context.Context, args []string, out io.Writer) error
 	if err != nil {
 		return err
 	}
-	var ss []scenario.Scenario
+	var ss []iscenario.Scenario
 	for _, path := range fs.Args() {
 		sampled, err := sampleFile(path, *n, seed, *repo, *ref)
 		if err != nil {
@@ -139,22 +140,22 @@ func cmdScenarioVectors(ctx context.Context, args []string, out io.Writer) error
 	return rf.execute(ctx, ss, out)
 }
 
-func sampleFile(path string, n int, seed rng.Seed, repo, ref string) ([]scenario.Scenario, error) {
+func sampleFile(path string, n int, seed rng.Seed, repo, ref string) ([]iscenario.Scenario, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = f.Close() }()
 	rnd := seed.Derive("scenario", "vectors", filepath.Base(path)).Rand()
-	return scenario.SampleVectors(f, n, rnd, repo, ref)
+	return iscenario.SampleVectors(f, n, rnd, repo, ref)
 }
 
-func saveAll(dir string, ss []scenario.Scenario) error {
+func saveAll(dir string, ss []iscenario.Scenario) error {
 	if dir == "" {
 		return nil
 	}
 	for _, s := range ss {
-		if err := scenario.Save(dir, s); err != nil {
+		if err := iscenario.Save(dir, s); err != nil {
 			return err
 		}
 	}
@@ -210,9 +211,9 @@ type harvester struct {
 	commit string
 }
 
-func (h harvester) all(ctx context.Context) ([]scenario.Scenario, error) {
-	var out []scenario.Scenario
-	for _, part := range []func(context.Context) ([]scenario.Scenario, error){h.utxo, h.witnesses, h.codec, h.walk} {
+func (h harvester) all(ctx context.Context) ([]iscenario.Scenario, error) {
+	var out []iscenario.Scenario
+	for _, part := range []func(context.Context) ([]iscenario.Scenario, error){h.utxo, h.witnesses, h.codec, h.walk} {
 		ss, err := part(ctx)
 		if err != nil {
 			return nil, err
@@ -228,15 +229,15 @@ func (h harvester) has(family string) bool {
 	return err == nil
 }
 
-func (h harvester) utxo(ctx context.Context) ([]scenario.Scenario, error) {
-	if !h.has(scenario.FamilyUtxo) {
+func (h harvester) utxo(ctx context.Context) ([]iscenario.Scenario, error) {
+	if !h.has(iscenario.FamilyUtxo) {
 		return nil, nil
 	}
-	dir, cfgs, err := tla.BugCfgs(h.dir, scenario.FamilyUtxo)
+	dir, cfgs, err := tla.BugCfgs(h.dir, iscenario.FamilyUtxo)
 	if err != nil {
 		return nil, err
 	}
-	var out []scenario.Scenario
+	var out []iscenario.Scenario
 	for _, cfg := range cfgs {
 		ex, err := tla.ExportUtxo(ctx, h.tools, dir, cfg, h.f.Timeout)
 		if err != nil {
@@ -245,20 +246,20 @@ func (h harvester) utxo(ctx context.Context) ([]scenario.Scenario, error) {
 		if ex.Status != tla.Violation {
 			return nil, fmt.Errorf("%s: tlc %s: %s", ex.Name, ex.Status, ex.Detail)
 		}
-		out = append(out, scenario.FromUtxo(ex, scenario.SourceTrace, h.f.Repo, h.commit, h.f.rows)...)
+		out = append(out, iscenario.FromUtxo(ex, iscenario.SourceTrace, h.f.Repo, h.commit, h.f.rows)...)
 	}
 	return out, nil
 }
 
-func (h harvester) witnesses(ctx context.Context) ([]scenario.Scenario, error) {
-	if !h.has(scenario.FamilyWitnesses) {
+func (h harvester) witnesses(ctx context.Context) ([]iscenario.Scenario, error) {
+	if !h.has(iscenario.FamilyWitnesses) {
 		return nil, nil
 	}
-	dir, cfgs, err := tla.BugCfgs(h.dir, scenario.FamilyWitnesses)
+	dir, cfgs, err := tla.BugCfgs(h.dir, iscenario.FamilyWitnesses)
 	if err != nil {
 		return nil, err
 	}
-	var out []scenario.Scenario
+	var out []iscenario.Scenario
 	for _, cfg := range cfgs {
 		ex, err := tla.ExportWitnesses(ctx, h.tools, dir, cfg, h.f.Timeout)
 		if err != nil {
@@ -267,7 +268,7 @@ func (h harvester) witnesses(ctx context.Context) ([]scenario.Scenario, error) {
 		if ex.Status != tla.Violation {
 			return nil, fmt.Errorf("%s: tlc %s: %s", ex.Name, ex.Status, ex.Detail)
 		}
-		out = append(out, scenario.FromWitnesses(ex, h.f.Repo, h.commit, h.f.rows)...)
+		out = append(out, iscenario.FromWitnesses(ex, h.f.Repo, h.commit, h.f.rows)...)
 	}
 	return out, nil
 }
@@ -275,7 +276,7 @@ func (h harvester) witnesses(ctx context.Context) ([]scenario.Scenario, error) {
 // codecFamilies are the model directories whose Bug cfgs are codec tables.
 var codecFamilies = []string{"cbor-codec", "ledger-codec", "txsize-framing"}
 
-func (h harvester) codec(ctx context.Context) ([]scenario.Scenario, error) {
+func (h harvester) codec(ctx context.Context) ([]iscenario.Scenario, error) {
 	var fams []string
 	for _, fam := range codecFamilies {
 		if h.has(fam) {
@@ -295,36 +296,36 @@ func (h harvester) codec(ctx context.Context) ([]scenario.Scenario, error) {
 	if err != nil {
 		return nil, err
 	}
-	var out []scenario.Scenario
+	var out []iscenario.Scenario
 	for _, seed := range sum.Seeds {
 		if seed.Status != tla.Violation {
 			return nil, fmt.Errorf("%s: tlc %s: %s", seed.Name, seed.Status, seed.Detail)
 		}
-		s, err := scenario.FromCodecSeed(seed, h.f.Repo, h.commit)
+		s, err := iscenario.FromCodecSeed(seed, h.f.Repo, h.commit)
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, s)
 	}
 	if h.has("cbor-codec") {
-		out = append(out, scenario.CodecTable(h.f.Repo, h.commit)...)
+		out = append(out, iscenario.CodecTable(h.f.Repo, h.commit)...)
 	}
 	return out, nil
 }
 
-func (h harvester) walk(ctx context.Context) ([]scenario.Scenario, error) {
-	if h.f.walks == 0 || !h.has(scenario.FamilyUtxo) {
+func (h harvester) walk(ctx context.Context) ([]iscenario.Scenario, error) {
+	if h.f.walks == 0 || !h.has(iscenario.FamilyUtxo) {
 		return nil, nil
 	}
-	dir := filepath.Join(h.dir, "specs", scenario.FamilyUtxo)
-	var out []scenario.Scenario
+	dir := filepath.Join(h.dir, "specs", iscenario.FamilyUtxo)
+	var out []iscenario.Scenario
 	for i := range h.f.walks {
 		spec := tla.WalkSpec{Era: h.f.era, Depth: h.f.depth, Seed: h.f.walkSeed + int64(i)}
 		ex, err := tla.Walk(ctx, h.tools, dir, spec, h.f.Timeout)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, scenario.FromUtxo(ex, scenario.SourceWalk, h.f.Repo, h.commit, 0)...)
+		out = append(out, iscenario.FromUtxo(ex, iscenario.SourceWalk, h.f.Repo, h.commit, 0)...)
 	}
 	return out, nil
 }
@@ -350,7 +351,7 @@ func routing(dir string, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		_, _ = fmt.Fprintf(tw, "%s\t%d\t%s\n", name, len(cfgs), scenario.OwnerOf(name))
+		_, _ = fmt.Fprintf(tw, "%s\t%d\t%s\n", name, len(cfgs), iscenario.OwnerOf(name))
 	}
 	return tw.Flush()
 }

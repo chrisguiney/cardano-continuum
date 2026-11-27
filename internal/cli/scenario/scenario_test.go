@@ -1,4 +1,4 @@
-package main
+package scenario
 
 import (
 	"bytes"
@@ -11,14 +11,14 @@ import (
 func scenarioCmd(t *testing.T, args ...string) (string, error) {
 	t.Helper()
 	var out bytes.Buffer
-	err := run(context.Background(), append([]string{"scenario"}, args...), &out)
+	err := Run(context.Background(), args, &out)
 	return out.String(), err
 }
 
 // TestScenarioRunLibrary runs the committed library on the fake chain and
 // checks the summary's totals: two known disagreements, the rest passing.
 func TestScenarioRunLibrary(t *testing.T) {
-	out, err := scenarioCmd(t, "run", "-v", "--lib", "../../scenarios", "../../scenarios")
+	out, err := scenarioCmd(t, "run", "-v", "--lib", "../../../scenarios", "../../../scenarios")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,28 +39,28 @@ func TestScenarioRunLibrary(t *testing.T) {
 
 // TestScenarioRunDeterministic: the same seed gives the same report.
 func TestScenarioRunDeterministic(t *testing.T) {
-	a, err := scenarioCmd(t, "run", "--lib", "../../scenarios", "--seed", "9", "ledger-utxo", "codec")
+	a, err := scenarioCmd(t, "run", "--lib", "../../../scenarios", "--seed", "9", "ledger-utxo", "codec")
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, _ := scenarioCmd(t, "run", "--lib", "../../scenarios", "--seed", "9", "ledger-utxo", "codec")
+	b, _ := scenarioCmd(t, "run", "--lib", "../../../scenarios", "--seed", "9", "ledger-utxo", "codec")
 	if a != b || !strings.Contains(a, "spec_disagreement ") {
 		t.Fatalf("reports differ or name no finding:\n%s\n%s", a, b)
 	}
 }
 
 func TestScenarioRunByID(t *testing.T) {
-	out, err := scenarioCmd(t, "run", "--lib", "../../scenarios", "ledger-utxo/UtxoGoIntervalInclusiveBug/0")
+	out, err := scenarioCmd(t, "run", "--lib", "../../../scenarios", "ledger-utxo/UtxoGoIntervalInclusiveBug/0")
 	if err != nil || !strings.Contains(out, "total") {
 		t.Fatalf("out %q err %v", out, err)
 	}
 }
 
 func TestScenarioErrors(t *testing.T) {
-	if _, err := scenarioCmd(t, "run", "--target", "live", "../../scenarios"); !errors.Is(err, errNoLive) {
+	if _, err := scenarioCmd(t, "run", "--target", "live", "../../../scenarios"); !errors.Is(err, errNoLive) {
 		t.Errorf("live target: %v", err)
 	}
-	if _, err := scenarioCmd(t, "run", "--lib", "../../scenarios", "ledger-utxo/none"); err == nil {
+	if _, err := scenarioCmd(t, "run", "--lib", "../../../scenarios", "ledger-utxo/none"); err == nil {
 		t.Error("missing scenario ran")
 	}
 	if _, err := scenarioCmd(t, "run"); err == nil {

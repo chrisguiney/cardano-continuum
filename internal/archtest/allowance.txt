@@ -3,7 +3,6 @@
 # entry's violation is gone. Never add a line; delete it when the code is fixed.
 # Rules: func-length (> 80 lines), nesting (> 3), members (fields + methods > 20),
 # stray-methods (methods outside the type's file), files (> 25 per package, tests counted).
-files cmd/continuum 29
 files internal/chain 27
 files internal/engine 45
 members cmd/continuum simFlags 22
