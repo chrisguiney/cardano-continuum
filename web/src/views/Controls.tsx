@@ -23,7 +23,7 @@ const describe = (b: ControlBody): string => {
 export function ScenarioTable({ list }: { list: ScenarioInfo[] }) {
   return (
     <table class="scenarios">
-      <caption>Scenarios</caption>
+      <caption class="sr">Scenarios</caption>
       <thead><tr><th>Name</th><th>Argument</th><th>What it does</th></tr></thead>
       <tbody>
         {list.map((s) => (

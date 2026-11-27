@@ -168,9 +168,9 @@ a.button:hover { border-color: var(--accent); }
 .usage { display: flex; }
 .usage-name { font-size: .75rem; color: var(--muted); min-width: 4.2em; }
 .controls h2 { font-size: 1rem; margin: 0 0 .6rem; }
-.weights { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: .4rem .8rem; margin-bottom: .6rem; }
-.weights .weight { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
-.weights .weight input { width: 6rem; }
+.weights { display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap: .4rem .8rem; margin-bottom: .6rem; }
+.weights .weight { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: .5rem; }
+.weights .weight input { width: 5.5rem; flex: none; }
 /* The scenario descriptions are sentences: they wrap inside the card instead of
    inheriting the tables' nowrap, and the name and argument columns keep a fixed
    width so an image reference breaks rather than widening the table. */
