@@ -69,19 +69,41 @@ check-static: build vet fmt-check lint check-manifests ## Everything CI's static
 
 check: check-static test-race ## Everything CI runs
 
-manifests: ## Regenerate the CRD YAML and the operator ClusterRole from markers
+# controller-gen writes config/; the chart carries copies, since Helm reads
+# only files inside the chart.
+CHART := charts/continuum
+CHART_GENERATED := $(CHART)/crds $(CHART)/files
+
+manifests: ## Regenerate the CRD YAML and the operator ClusterRole from markers, and copy them into the chart
 	$(CONTROLLER_GEN) crd paths="./api/..." output:crd:artifacts:config=config/crd/bases
 	$(CONTROLLER_GEN) rbac:roleName=continuum-operator paths="./internal/operator/..." output:rbac:artifacts:config=config/rbac
+	cp config/crd/bases/*.yaml $(CHART)/crds/
+	cp config/rbac/role.yaml $(CHART)/files/operator-role.yaml
 
 generate: ## Regenerate DeepCopy methods under api/
 	$(CONTROLLER_GEN) object paths="./api/..."
 
-# Drift check: regenerating must leave api/ and config/ exactly as committed.
-# Untracked generated files also fail, since git diff does not list them.
-check-manifests: ## Fail if regenerating api/ or config/ changes anything
+# Drift check: regenerating must leave api/, config/ and the chart's copies
+# exactly as committed. Untracked generated files also fail, since git diff
+# does not list them.
+check-manifests: ## Fail if regenerating api/, config/ or the chart's CRDs and role changes anything
 	$(MAKE) manifests generate
-	@git diff --exit-code -- api config || { echo "generated files drift: run make manifests generate and commit"; exit 1; }
-	@untracked=$$(git ls-files --others --exclude-standard -- api config); if [ -n "$$untracked" ]; then echo "$$untracked"; echo "untracked generated files: commit them"; exit 1; fi
+	@git diff --exit-code -- api config $(CHART_GENERATED) || { echo "generated files drift: run make manifests generate and commit"; exit 1; }
+	@untracked=$$(git ls-files --others --exclude-standard -- api config $(CHART_GENERATED)); if [ -n "$$untracked" ]; then echo "$$untracked"; echo "untracked generated files: commit them"; exit 1; fi
+
+# helm runs at a pinned version and is never added to go.mod.
+HELM_VERSION := v4.3.2
+HELM := go run helm.sh/helm/v4/cmd/helm@$(HELM_VERSION)
+
+# chart-check lints and renders the chart with its defaults and with
+# ci/nondefault-values.yaml, and requires the engine to dial the Service the
+# operator names pool 0 (render.Name, which the chart recomputes).
+.PHONY: chart-check
+chart-check: ## Lint and render the Helm chart (default and non-default values)
+	$(HELM) lint $(CHART)
+	$(HELM) lint $(CHART) -f $(CHART)/ci/nondefault-values.yaml
+	$(HELM) template continuum $(CHART) -n chart-check -f $(CHART)/ci/nondefault-values.yaml >/dev/null
+	@node=$$(go run ./hack/devup node chart-check) && $(HELM) template continuum $(CHART) -n chart-check | grep -qF -- "--node=$$node" || { echo "the chart's engine does not dial pool 0's bridge ($$node)"; exit 1; }
 
 # ko and kind run at pinned versions and are never added to go.mod, so a
 # developer needs only Go and Docker.

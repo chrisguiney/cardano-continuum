@@ -1,0 +1,153 @@
+{{- if .Values.genesis.enabled }}
+{{- $g := .Values.genesis }}
+{{- $image := include "continuum.image" (dict "root" . "image" .Values.images.genesis) }}
+{{- $args := list
+  "-out=/genesis"
+  (printf "-pool-host=pool-%%d.$(POD_NAMESPACE).svc.%s" .Values.clusterDomain)
+  (printf "-start-delay=%s" $g.startDelay)
+  (printf "-pools=%s" (include "continuum.totalPools" .))
+  (printf "-magic=%d" (int .Values.network.magic))
+  (printf "-epoch-length=%d" (int .Values.network.epochLength))
+  (printf "-k=%d" (int .Values.network.securityParam))
+  "-publish-namespace=$(POD_NAMESPACE)"
+  "-genesis-configmap=devnet-genesis"
+  "-keys-secret=keys-%d" }}
+{{- range $g.overrides }}{{ $args = append $args (printf "-override=%s" .) }}{{ end }}
+{{- if $g.allowInconsistentExUnits }}{{ $args = append $args "-allow-inconsistent-exunits" }}{{ end }}
+{{- range $g.extraArgs }}{{ $args = append $args . }}{{ end }}
+{{- if not .Values.seed.existingSecret }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: continuum-seed
+  labels:
+    {{- include "continuum.labels" . | nindent 4 }}
+stringData:
+  seed: {{ required "seed.value or seed.existingSecret is required" .Values.seed.value | quote }}
+---
+{{- end }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: continuum-genesis
+  labels:
+    {{- include "continuum.labels" . | nindent 4 }}
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with $g.storage.storageClassName }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $g.storage.size }}
+---
+# The Job publishes the genesis it renders into the devnet-genesis ConfigMap
+# and the keys-<i> Secrets.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: continuum-genesis
+  labels:
+    {{- include "continuum.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: continuum-genesis
+  labels:
+    {{- include "continuum.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [configmaps, secrets]
+    verbs: [get, create, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: continuum-genesis
+  labels:
+    {{- include "continuum.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: continuum-genesis
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: continuum-genesis
+---
+# Renders the devnet genesis into the continuum-genesis volume and publishes
+# it. A Job's pod template is immutable, so the name carries a digest of the
+# image and arguments: an upgrade that changes either replaces the Job. The
+# new one finds the same spec on the volume, keeps it (and its systemStart)
+# and republishes it; a different spec (pools, seed, magic, overrides) fails
+# with "holds a devnet for spec", which needs `make down` first.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: continuum-genesis-{{ list $image $args | toJson | sha256sum | trunc 8 }}
+  labels:
+    {{- include "continuum.labels" . | nindent 4 }}
+    app: continuum-genesis
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        app: continuum-genesis
+    spec:
+      restartPolicy: Never
+      serviceAccountName: continuum-genesis
+      {{- include "continuum.pullSecrets" . | nindent 6 }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        fsGroup: 65532
+      {{- if $g.prepull }}
+      # A node that starts more than the stability window after systemStart
+      # has no ledger view and never forges, so the node images are pulled
+      # before -start-delay starts counting. Both images have sleep.
+      initContainers:
+        - name: prepull-cardano-node
+          image: {{ .Values.nodeImages.cardanoNode }}
+          command: [sleep, "0"]
+        {{- if gt (int .Values.pools.dingo) 0 }}
+        - name: prepull-dingo
+          image: {{ .Values.nodeImages.dingo }}
+          command: [sleep, "0"]
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: genesis
+          image: {{ $image }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          args:
+            {{- range $args }}
+            - {{ . | quote }}
+            {{- end }}
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: CONTINUUM_SEED
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "continuum.seedSecret" . }}
+                  key: seed
+          {{- with $g.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: genesis
+              mountPath: /genesis
+      volumes:
+        - name: genesis
+          persistentVolumeClaim:
+            claimName: continuum-genesis
+{{- end }}

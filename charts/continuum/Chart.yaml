@@ -1,0 +1,6 @@
+apiVersion: v2
+name: continuum
+description: A Cardano devnet under continuum's adversarial engine - operator, genesis, pools and the engine with its UI.
+type: application
+version: 0.1.0
+appVersion: latest

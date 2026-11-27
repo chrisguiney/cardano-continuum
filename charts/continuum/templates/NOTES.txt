@@ -1,0 +1,15 @@
+continuum is starting in namespace {{ .Release.Namespace }}: the genesis Job
+renders and publishes the devnet, the operator starts {{ include "continuum.totalPools" . }} pools, and
+the engine waits for pool 0.
+
+  kubectl -n {{ .Release.Namespace }} get continuumpools,pods
+{{- if .Values.engine.enabled }}
+
+The UI has no authentication.
+{{- if .Values.engine.ui.expose }} It is exposed by the {{ .Values.engine.ui.service.type }} Service continuum-ui.
+{{- else }} It listens on the engine pod's loopback only:
+
+  kubectl -n {{ .Release.Namespace }} port-forward pod/continuum-engine-0 {{ .Values.engine.ui.port }}
+  open http://127.0.0.1:{{ .Values.engine.ui.port }}
+{{- end }}
+{{- end }}

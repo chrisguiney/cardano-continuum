@@ -1,0 +1,93 @@
+{{- include "continuum.check" . }}
+{{- if .Values.operator.enabled }}
+{{- $role := .Files.Get "files/operator-role.yaml" | fromYaml }}
+{{- $name := printf "continuum-operator-%s" .Release.Namespace }}
+# The operator: one replica without leader election. Its ClusterRole's
+# rules are controller-gen's (config/rbac/role.yaml, copied by
+# `make manifests`); the cluster-scoped names carry the namespace so that
+# releases in two namespaces do not collide.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: continuum-operator
+  labels:
+    {{- include "continuum.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "continuum.labels" . | nindent 4 }}
+rules:
+  {{- toYaml $role.rules | nindent 2 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "continuum.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $name }}
+subjects:
+  - kind: ServiceAccount
+    name: continuum-operator
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: continuum-operator
+  labels:
+    {{- include "continuum.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: continuum-operator}
+  template:
+    metadata:
+      labels: {app: continuum-operator}
+    spec:
+      serviceAccountName: continuum-operator
+      {{- include "continuum.pullSecrets" . | nindent 6 }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+      containers:
+        - name: operator
+          image: {{ include "continuum.image" (dict "root" . "image" .Values.images.operator) }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          args:
+            - --leader-elect=false
+            {{- if not .Values.operator.watchAllNamespaces }}
+            - --watch-namespace={{ .Release.Namespace }}
+            {{- end }}
+            {{- with .Values.operator.registry }}
+            - --registry={{ . }}
+            {{- end }}
+            {{- if .Values.operator.registryInsecure }}
+            - --registry-insecure
+            {{- end }}
+            {{- with .Values.operator.registryMirror }}
+            - --registry-mirror={{ . }}
+            {{- end }}
+            {{- range .Values.operator.extraArgs }}
+            - {{ . | quote }}
+            {{- end }}
+          readinessProbe:
+            httpGet: {path: /readyz, port: 8081}
+          livenessProbe:
+            httpGet: {path: /healthz, port: 8081}
+          {{- with .Values.operator.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+{{- end }}

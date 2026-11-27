@@ -1,0 +1,138 @@
+# Values for the continuum chart. `make up` sets the images, the pool
+# counts, the engine's flags and engine.runIdentity; see the repository
+# README ("Running on Kubernetes").
+
+# The continuum images. An image is registry/repository@digest when digest is
+# set, otherwise registry/repository:tag. `make images` builds them with ko,
+# pushes them to CONTINUUM_REGISTRY and `make up` passes the digests.
+images:
+  registry: ghcr.io/chrisguiney
+  pullPolicy: IfNotPresent
+  # Secret names for pulling every image the chart runs, the node images
+  # included (they are also passed to the ContinuumNetwork).
+  pullSecrets: []
+  operator:
+    repository: continuum-operator
+    tag: latest
+    digest: ""
+  genesis:
+    repository: continuum-genesis
+    tag: latest
+    digest: ""
+  engine:
+    repository: continuum
+    tag: latest
+    digest: ""
+  # Has sh and nc: the engine's init container waits with it for pool 0.
+  wait: busybox:1.37.0
+
+# The node images the operator runs for each implementation
+# (internal/operator/render). The genesis Job pulls them before it fixes
+# systemStart; it does not choose what the pools run.
+nodeImages:
+  cardanoNode: ghcr.io/blinklabs-io/cardano-node:11.1.3-2
+  dingo: ghcr.io/blinklabs-io/dingo:main
+
+# The cluster's DNS domain. cardano-node resolves topology hosts with its own
+# resolver, which ignores the pod's search domains, so host names are fully
+# qualified.
+clusterDomain: cluster.local
+
+# The 32-byte run seed, hex encoded. The genesis keys, the faucet and the
+# engine's wallets derive from it. existingSecret names a Secret with key
+# "seed" instead.
+seed:
+  value: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+  existingSecret: ""
+
+# Genesis pools by implementation. cardano-node pools take the first genesis
+# indices: the engine follows pool 0's node-to-client bridge, which dingo
+# pools lack.
+pools:
+  cardanoNode: 3
+  dingo: 1
+
+# The ContinuumNetwork. The genesis Job renders the same magic, epoch length
+# and k.
+network:
+  enabled: true
+  magic: 42
+  epochLength: 500
+  securityParam: 5
+  budget:
+    maxPools: 16
+    cpuMillis: 4000
+    memoryMiB: 16384
+
+operator:
+  enabled: true
+  # false limits the operator to the release namespace, so releases in two
+  # namespaces of one cluster do not reconcile each other's pools.
+  watchAllNamespaces: false
+  # A registry the operator resolves image digests from (--registry), and
+  # whether it is plain HTTP.
+  registry: ""
+  registryInsecure: false
+  # from=to registry hosts: resolve images named by host "from" at "to",
+  # for a registry the nodes reach under another name than the pods do.
+  registryMirror: ""
+  extraArgs: []
+  resources: {}
+
+genesis:
+  enabled: true
+  # From the genesis render to systemStart. The pools must start within the
+  # stability window after systemStart or they never forge.
+  startDelay: 120s
+  # Pull the node images onto the genesis pod's node before rendering.
+  # On a multi-node cluster pools may land elsewhere; pre-pull there too or
+  # raise startDelay.
+  prepull: true
+  # continuum-genesis -override path=value entries; the exunits-block-gap
+  # attack needs maxTxExUnits.memory=140000000 and
+  # maxTxExUnits.steps=20000000000 with allowInconsistentExUnits.
+  overrides: []
+  allowInconsistentExUnits: false
+  extraArgs: []
+  storage:
+    size: 100Mi
+    storageClassName: ""
+  resources: {}
+
+engine:
+  enabled: true
+  profiles: preprod
+  wallets: 100
+  # Multiplies every profile's activity rates.
+  scale: 200
+  # Pool operators the engine simulates; preprod and preview have no pool
+  # profile, so 0 there.
+  pools: 0
+  # Tier-1 attacks, one adversary each. The default is every attack a stock
+  # genesis supports; exunits-block-gap also needs genesis.overrides.
+  attacks:
+    - dust-flood
+    - utxo-contention
+    - malformed-cbor
+    - front-run
+    - double-spend
+  # Recorded as the StatefulSet's continuum.blinklabs.io/run annotation.
+  # `make up` sets it and resets the network when it changes (devup run).
+  runIdentity: ""
+  extraArgs: []
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+  storage:
+    size: 1Gi
+    storageClassName: ""
+  ui:
+    port: 8088
+    # The API has no authentication. false serves on the pod's loopback,
+    # reachable only by kubectl port-forward. true serves on every address
+    # behind a Service, so anything that reaches the Service can drive the
+    # engine.
+    expose: false
+    service:
+      type: ClusterIP

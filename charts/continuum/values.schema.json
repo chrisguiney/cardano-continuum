@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "images": {
+      "type": "object",
+      "properties": {
+        "registry": {"type": "string"},
+        "pullPolicy": {"enum": ["Always", "IfNotPresent", "Never"]},
+        "pullSecrets": {"type": "array", "items": {"type": "string"}},
+        "operator": {"$ref": "#/definitions/image"},
+        "genesis": {"$ref": "#/definitions/image"},
+        "engine": {"$ref": "#/definitions/image"},
+        "wait": {"type": "string", "minLength": 1}
+      }
+    },
+    "nodeImages": {
+      "type": "object",
+      "properties": {
+        "cardanoNode": {"type": "string", "minLength": 1},
+        "dingo": {"type": "string", "minLength": 1}
+      }
+    },
+    "clusterDomain": {"type": "string", "minLength": 1},
+    "seed": {
+      "type": "object",
+      "properties": {
+        "value": {"type": "string", "pattern": "^([0-9a-f]{64})?$"},
+        "existingSecret": {"type": "string"}
+      }
+    },
+    "pools": {
+      "type": "object",
+      "properties": {
+        "cardanoNode": {"type": "integer", "minimum": 1},
+        "dingo": {"type": "integer", "minimum": 0}
+      }
+    },
+    "network": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "magic": {"type": "integer", "minimum": 1, "maximum": 4294967295},
+        "epochLength": {"type": "integer", "minimum": 1},
+        "securityParam": {"type": "integer", "minimum": 1},
+        "budget": {
+          "type": "object",
+          "properties": {
+            "maxPools": {"type": "integer", "minimum": 1},
+            "cpuMillis": {"type": "integer", "minimum": 1},
+            "memoryMiB": {"type": "integer", "minimum": 1}
+          }
+        }
+      }
+    },
+    "operator": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "watchAllNamespaces": {"type": "boolean"},
+        "registry": {"type": "string"},
+        "registryInsecure": {"type": "boolean"},
+        "registryMirror": {"type": "string"},
+        "extraArgs": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "genesis": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "startDelay": {"type": "string", "pattern": "^[0-9]+(ms|s|m|h)$"},
+        "prepull": {"type": "boolean"},
+        "overrides": {"type": "array", "items": {"type": "string", "pattern": "^[A-Za-z.]+=[0-9]+$"}},
+        "allowInconsistentExUnits": {"type": "boolean"},
+        "extraArgs": {"type": "array", "items": {"type": "string"}},
+        "storage": {"$ref": "#/definitions/storage"}
+      }
+    },
+    "engine": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "profiles": {"type": "string", "minLength": 1},
+        "wallets": {"type": "integer", "minimum": 1},
+        "scale": {"anyOf": [{"type": "number", "exclusiveMinimum": 0}, {"type": "string", "pattern": "^[0-9]*[1-9][0-9]*([.][0-9]+)?$|^0?[.][0-9]*[1-9][0-9]*$"}]},
+        "pools": {"type": "integer", "minimum": 0},
+        "attacks": {"type": "array", "items": {"type": "string", "pattern": "^[a-z0-9-]+$"}, "uniqueItems": true},
+        "runIdentity": {"type": "string"},
+        "extraArgs": {"type": "array", "items": {"type": "string"}},
+        "storage": {"$ref": "#/definitions/storage"},
+        "ui": {
+          "type": "object",
+          "properties": {
+            "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+            "expose": {"type": "boolean"},
+            "service": {
+              "type": "object",
+              "properties": {"type": {"enum": ["ClusterIP", "NodePort", "LoadBalancer"]}}
+            }
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "image": {
+      "type": "object",
+      "properties": {
+        "repository": {"type": "string", "minLength": 1},
+        "tag": {"type": "string"},
+        "digest": {"type": "string", "pattern": "^(sha256:[0-9a-f]{64})?$"}
+      }
+    },
+    "storage": {
+      "type": "object",
+      "properties": {
+        "size": {"type": "string", "minLength": 1},
+        "storageClassName": {"type": "string"}
+      }
+    }
+  }
+}

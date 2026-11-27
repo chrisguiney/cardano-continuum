@@ -1,0 +1,322 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.23.0
+  name: continuumnetworks.continuum.blinklabs.io
+spec:
+  group: continuum.blinklabs.io
+  names:
+    kind: ContinuumNetwork
+    listKind: ContinuumNetworkList
+    plural: continuumnetworks
+    singular: continuumnetwork
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: ContinuumNetwork is a simulated Cardano network that ContinuumPools
+          join.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: ContinuumNetworkSpec describes a simulated Cardano network.
+            properties:
+              budget:
+                default:
+                  cpuMillis: 4000
+                  maxPools: 16
+                  memoryMiB: 16384
+                description: |-
+                  Budget caps the total resources the network's pools may request. Left
+                  out, it is the single-machine default (see DefaultMaxPools).
+                properties:
+                  cpuMillis:
+                    default: 4000
+                    description: CPUMillis is the total CPU request budget in millicores.
+                    format: int64
+                    minimum: 0
+                    type: integer
+                  maxPools:
+                    default: 16
+                    description: MaxPools is the largest number of pool workloads
+                      the network may run.
+                    format: int32
+                    minimum: 0
+                    type: integer
+                  memoryMiB:
+                    default: 16384
+                    description: MemoryMiB is the total memory request budget in mebibytes.
+                    format: int64
+                    minimum: 0
+                    type: integer
+                required:
+                - cpuMillis
+                - maxPools
+                - memoryMiB
+                type: object
+              epochLength:
+                description: EpochLength is the number of slots per epoch.
+                format: int64
+                minimum: 1
+                type: integer
+              genesisRef:
+                description: |-
+                  GenesisRef names the genesis ConfigMap the operator mounts into every
+                  node on this network.
+                minLength: 1
+                type: string
+              imagePullSecrets:
+                description: |-
+                  ImagePullSecrets names Secrets the operator attaches to every pod it
+                  renders. The developer registry is open, so the default is none.
+                items:
+                  type: string
+                type: array
+              images:
+                additionalProperties:
+                  type: string
+                description: |-
+                  Images sets the default image per implementation. A ContinuumPool's
+                  image overrides it. Unset implementations use the operator's built-in
+                  default.
+                type: object
+              magic:
+                description: Magic is the network magic every node on this network
+                  uses.
+                format: int32
+                minimum: 1
+                type: integer
+              parquet:
+                description: |-
+                  Parquet adds a mithril2pq sidecar to one pool's pod on the network,
+                  to write that pool's chain as a Parquet dataset.
+                properties:
+                  enabled:
+                    description: |-
+                      Enabled adds the sidecar to the source pool's pod. It mounts the
+                      node's data volume read-only and writes Parquet to OutputClaim.
+                    type: boolean
+                  image:
+                    description: |-
+                      Image runs the sidecar. It must hold the mithril2pq binary at
+                      /usr/local/bin/mithril2pq, which the sidecar runs directly with -watch
+                      and no shell; the mithril2pq Dockerfile target does.
+                    type: string
+                  intervalSeconds:
+                    description: IntervalSeconds is the pause between conversion passes
+                      (mithril2pq -watch).
+                    format: int32
+                    minimum: 1
+                    type: integer
+                  outputClaim:
+                    description: |-
+                      OutputClaim names the PersistentVolumeClaim mounted at /parquet in
+                      the sidecar. The source pool writes to /parquet/<pool name>.
+                    type: string
+                  pool:
+                    description: |-
+                      Pool is the PoolID of the source pool. By default the operator picks
+                      one: the lowest-named validating pool, else the lowest-named forging
+                      pool. The choice is recorded in status.parquetPool.
+                    type: string
+                type: object
+                x-kubernetes-validations:
+                - message: enabled needs image, outputClaim and intervalSeconds
+                  rule: '!(has(self.enabled) && self.enabled) || (has(self.image)
+                    && size(self.image) > 0 && has(self.outputClaim) && size(self.outputClaim)
+                    > 0 && has(self.intervalSeconds) && self.intervalSeconds > 0)'
+              securityParam:
+                description: SecurityParam is the Ouroboros security parameter k.
+                format: int64
+                minimum: 1
+                type: integer
+              topology:
+                description: Topology controls which peers each pool dials.
+                properties:
+                  policy:
+                    description: Policy selects the peer graph shape.
+                    enum:
+                    - relayed
+                    - mesh
+                    type: string
+                required:
+                - policy
+                type: object
+            required:
+            - budget
+            - epochLength
+            - genesisRef
+            - magic
+            - securityParam
+            - topology
+            type: object
+          status:
+            description: ContinuumNetworkStatus is the observed state of a ContinuumNetwork.
+            properties:
+              conditions:
+                description: Conditions report the network's observed state.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              forgingStakeRatio:
+                description: ForgingStakeRatio is the fraction of stake held by forging
+                  pools.
+                type: string
+              genesisHash:
+                description: GenesisHash is the hash of the genesis the network was
+                  started from.
+                type: string
+              images:
+                additionalProperties:
+                  description: ResolvedImage is an image reference pinned to the digest
+                    it resolved to.
+                  properties:
+                    build:
+                      description: Build describes how the image was produced.
+                      properties:
+                        dirty:
+                          description: |-
+                            Dirty is true when the build included uncommitted source. A finding
+                            from a dirty build is not reproducible from its commit.
+                          type: boolean
+                        mode:
+                          description: Mode is how the build was produced.
+                          enum:
+                          - upstream
+                          - fast
+                          - repro
+                          type: string
+                        revisions:
+                          additionalProperties:
+                            type: string
+                          description: |-
+                            Revisions maps each dependency group (for example dingo, gouroboros,
+                            plutigo, ouroboros-mock) to the revision it was built from.
+                          type: object
+                      type: object
+                    commit:
+                      description: |-
+                        Commit is the source commit, from the OCI revision label or the image
+                        ENV COMMIT_HASH. Empty for third-party images that carry neither.
+                      type: string
+                    digest:
+                      description: |-
+                        Digest is the manifest digest the reference resolved to. Pods run
+                        image@digest, so a moved tag rolls only pods whose digest changed.
+                      type: string
+                    ref:
+                      description: Ref is the reference as configured.
+                      type: string
+                  type: object
+                description: |-
+                  Images holds the digest and commit each implementation resolved to for
+                  this run. Dingo's entry carries its build provenance.
+                type: object
+              parquetPool:
+                description: |-
+                  ParquetPool is the name of the pool whose pod carries the mithril2pq
+                  sidecar; empty when the sidecar is off or no pool can carry it.
+                type: string
+              phase:
+                description: Phase is a coarse summary of the network's state.
+                type: string
+              tips:
+                additionalProperties:
+                  description: TipStatus is a node's chain tip as last observed by
+                    the operator.
+                  properties:
+                    hash:
+                      description: Hash is the tip block hash, hex encoded.
+                      type: string
+                    height:
+                      description: Height is the block number of the tip.
+                      format: int64
+                      type: integer
+                    slot:
+                      description: Slot is the tip slot.
+                      format: int64
+                      type: integer
+                  type: object
+                description: Tips holds the last observed tip of each pool, keyed
+                  by pool name.
+                type: object
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

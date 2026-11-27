@@ -1,0 +1,184 @@
+{{- if .Values.engine.enabled }}
+{{- $e := .Values.engine }}
+{{- $node := printf "%s.%s.svc.%s" (include "continuum.poolName" 0) .Release.Namespace .Values.clusterDomain }}
+{{- $listen := ternary "0.0.0.0" "127.0.0.1" $e.ui.expose }}
+# Lets the engine patch its network's ContinuumPools (the pool plan) and read
+# their status (pod health).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: continuum-engine
+  labels:
+    {{- include "continuum.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: continuum-engine
+  labels:
+    {{- include "continuum.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [continuum.blinklabs.io]
+    resources: [continuumpools]
+    verbs: [get, list, watch, patch]
+  - apiGroups: [continuum.blinklabs.io]
+    resources: [continuumnetworks]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: continuum-engine
+  labels:
+    {{- include "continuum.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: continuum-engine
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: continuum-engine
+---
+# The StatefulSet's governing Service; it exposes no port.
+apiVersion: v1
+kind: Service
+metadata:
+  name: continuum-engine
+  labels:
+    {{- include "continuum.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  selector: {app: continuum-engine}
+{{- if $e.ui.expose }}
+---
+# The UI and its API, which have no authentication: whatever reaches this
+# Service can drive the engine.
+apiVersion: v1
+kind: Service
+metadata:
+  name: continuum-ui
+  labels:
+    {{- include "continuum.labels" . | nindent 4 }}
+spec:
+  type: {{ $e.ui.service.type }}
+  selector: {app: continuum-engine}
+  ports:
+    - name: http
+      port: {{ int $e.ui.port }}
+      targetPort: http
+{{- end }}
+---
+# Runs `continuum run --node` against pool 0's node-to-client bridge (the
+# operator's ntc sidecar, port 3002), persisting the event log and SQLite
+# store on the state volume, so a restarted pod resumes. One replica only:
+# two engines on one store would both pay. It mounts devnet-genesis, so it
+# starts once the genesis Job has published it.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: continuum-engine
+  labels:
+    {{- include "continuum.labels" . | nindent 4 }}
+  {{- with $e.runIdentity }}
+  annotations:
+    continuum.blinklabs.io/run: {{ . | quote }}
+  {{- end }}
+spec:
+  replicas: 1
+  serviceName: continuum-engine
+  selector:
+    matchLabels: {app: continuum-engine}
+  template:
+    metadata:
+      labels: {app: continuum-engine}
+    spec:
+      # SIGTERM flushes the log and checkpoints; that takes well under this.
+      terminationGracePeriodSeconds: 30
+      serviceAccountName: continuum-engine
+      enableServiceLinks: false
+      {{- include "continuum.pullSecrets" . | nindent 6 }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        fsGroup: 65532
+      initContainers:
+        # The engine exits when it cannot reach the node; waiting here keeps
+        # it out of crash-loop backoff while the pools start.
+        - name: wait-node
+          image: {{ .Values.images.wait }}
+          command: [sh, -c, 'until nc -w 2 "$0" 3002 </dev/null; do sleep 5; done', {{ $node | quote }}]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      containers:
+        - name: engine
+          image: {{ include "continuum.image" (dict "root" . "image" .Values.images.engine) }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          args:
+            - run
+            - --node={{ $node }}:3002
+            - --state=/state
+            - --genesis=/genesis/shelley-genesis.json
+            - --epochs=0
+            - --profiles={{ $e.profiles }}
+            - --wallets={{ int $e.wallets }}
+            - --scale={{ $e.scale }}
+            - --pools={{ int $e.pools }}
+            - --genesis-pools={{ include "continuum.totalPools" . }}
+            - --network=devnet
+            - --namespace={{ .Release.Namespace }}
+            - --serve={{ $listen }}:{{ int $e.ui.port }}
+            {{- if $e.ui.expose }}
+            - --allow-remote
+            {{- end }}
+            {{- with $e.attacks }}
+            - --attack={{ join "," . }}
+            {{- end }}
+            {{- range $e.extraArgs }}
+            - {{ . | quote }}
+            {{- end }}
+          env:
+            - name: CONTINUUM_SEED
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "continuum.seedSecret" . }}
+                  key: seed
+          {{- if $e.ui.expose }}
+          ports:
+            - name: http
+              containerPort: {{ int $e.ui.port }}
+          {{- end }}
+          {{- with $e.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - {name: state, mountPath: /state}
+            - {name: genesis, mountPath: /genesis, readOnly: true}
+            # SQLite's temporary files; the root filesystem is read-only.
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: genesis
+          configMap:
+            name: devnet-genesis
+  volumeClaimTemplates:
+    - metadata:
+        name: state
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with $e.storage.storageClassName }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ $e.storage.size }}
+{{- end }}

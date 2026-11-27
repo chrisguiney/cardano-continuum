@@ -1,0 +1,43 @@
+{{- if .Values.network.enabled }}
+{{- $n := .Values.network }}
+{{- $nodes := int .Values.pools.cardanoNode }}
+# The network and one forging pool per genesis pool. The operator starts each
+# pool once its keys-<i> Secret and the devnet-genesis ConfigMap, which the
+# genesis Job publishes, exist.
+apiVersion: continuum.blinklabs.io/v1alpha1
+kind: ContinuumNetwork
+metadata:
+  name: devnet
+  labels:
+    {{- include "continuum.labels" . | nindent 4 }}
+spec:
+  magic: {{ int $n.magic }}
+  epochLength: {{ int $n.epochLength }}
+  securityParam: {{ int $n.securityParam }}
+  genesisRef: devnet-genesis
+  topology:
+    policy: mesh
+  budget:
+    maxPools: {{ int $n.budget.maxPools }}
+    cpuMillis: {{ int $n.budget.cpuMillis }}
+    memoryMiB: {{ int $n.budget.memoryMiB }}
+  {{- with .Values.images.pullSecrets }}
+  imagePullSecrets:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- range $i := until (int (include "continuum.totalPools" .)) }}
+---
+apiVersion: continuum.blinklabs.io/v1alpha1
+kind: ContinuumPool
+metadata:
+  name: p{{ $i }}
+  labels:
+    {{- include "continuum.labels" $ | nindent 4 }}
+spec:
+  networkRef: devnet
+  poolId: continuum-pool-{{ $i }}
+  impl: {{ ternary "cardano-node" "dingo" (lt $i $nodes) }}
+  tier: forging
+  keysSecret: keys-{{ $i }}
+{{- end }}
+{{- end }}
