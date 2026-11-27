@@ -51,8 +51,7 @@ type Cluster struct {
 	gate Gate
 	tick time.Duration
 
-	mu sync.Mutex
-	// protects withheld, lost
+	mu       sync.Mutex // protects withheld, lost
 	withheld map[string]bool
 	lost     bool
 }

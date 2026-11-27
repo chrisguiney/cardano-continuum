@@ -75,8 +75,7 @@ type Pools struct {
 	writes  applier
 	reloads reloader
 
-	mu sync.Mutex
-	// protects seen
+	mu   sync.Mutex // protects seen
 	seen map[types.UID]int64
 }
 
