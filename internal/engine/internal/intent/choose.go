@@ -2,6 +2,7 @@ package intent
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"math/rand/v2"
@@ -28,8 +29,9 @@ type Chooser struct {
 
 // Voter classes as Submitted names them.
 const (
-	voterDRep = "drep"
-	voterSPO  = "spo"
+	voterDRep      = "drep"
+	voterSPO       = "spo"
+	voterCommittee = "committee"
 )
 
 // Voter is the voter an actor votes as: its pool, as an SPO, when it
@@ -76,8 +78,8 @@ func (ch *Chooser) Prepare(at sched.Time, a population.Actor, in agenda.Intent, 
 		if err != nil {
 			return nil, err.Error()
 		}
-		p.Action, p.Choice = &ref, voteChoice(r)
-		voter, _ := Voter(ch.env.Ring, a.ID)
+		voter, class := Voter(ch.env.Ring, a.ID)
+		p.Action, p.Choice = &ref, voteChoice(r, class, ref, ch.actionType(in.Proposal))
 		p.Power = ch.env.Chain.View().VotingPower(voter)
 	case profile.IntentMint:
 		p.Amount = mintQuantity
@@ -204,12 +206,53 @@ func (ch *Chooser) tokens(id population.ActorID) uint64 {
 	return sum
 }
 
-// voteChoice is an honest voter's choice: mostly yes.
-func voteChoice(r *rand.Rand) uint8 {
+// actionType is the type of the open proposal id, empty when it is not open.
+func (ch *Chooser) actionType(id agenda.ProposalID) string {
+	for _, p := range ch.env.Chain.View().OpenProposals() {
+		if p.ID == id {
+			return p.Type
+		}
+	}
+	return ""
+}
+
+// A proposal is favoured or contested, the same for every voter, and each
+// vote is drawn from its side's mix. Real votes agree per proposal (a
+// treasury ask is popular or it is not), and independent draws at the
+// overall mix would split every proposal near 69% yes, about the DRep
+// threshold, so ratification would be a coin toss. The sides' mixes and
+// each class's favoured share are set so the overall mix is mainnet's as
+// mithril2pq measured it: DReps about 69% yes, 24% no and 9% abstain, pools
+// about 82% yes.
+var (
+	// favouredMix and contestedMix are the yes, no and abstain shares of a
+	// vote on a favoured and on a contested proposal.
+	favouredMix  = [3]float64{0.9, 0.03, 0.07}
+	contestedMix = [3]float64{0.1, 0.8, 0.1}
+	// favoured is the share of proposals a voter class favours: yes is
+	// 0.9q + 0.1(1-q), so q is (yes - 0.1) / 0.8.
+	favoured = map[string]float64{voterDRep: 0.74, voterSPO: 0.9, voterCommittee: 0.9}
+)
+
+// alwaysFavoured are the action types every voter favours. The run's
+// parameter changes are the network's own maintenance (a change and its
+// revert), which a devnet must be able to enact.
+var alwaysFavoured = map[string]bool{"parameter_change": true}
+
+// voteChoice is an honest voter's choice on proposal id of type typ. The
+// side comes from the proposal's hash, which is uniform, so every voter
+// sees the same one; a class with a larger favoured share favours every
+// proposal a smaller one does.
+func voteChoice(r *rand.Rand, class string, id wire.Ref, typ string) uint8 {
+	side := float64(binary.BigEndian.Uint32(id.Tx[:4])) / (1 << 32)
+	m := contestedMix
+	if alwaysFavoured[typ] || side < favoured[class] {
+		m = favouredMix
+	}
 	switch x := r.Float64(); {
-	case x < 0.7:
+	case x < m[0]:
 		return common.GovVoteYes
-	case x < 0.9:
+	case x < m[0]+m[1]:
 		return common.GovVoteNo
 	}
 	return common.GovVoteAbstain
