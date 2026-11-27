@@ -121,9 +121,9 @@ image-mithril2pq: require-registry ## Build MITHRIL2PQ_SRC's mithril2pq target a
 # same-seed CLI fake runs whose logs must be byte-identical, and a replay.
 DETERMINISM_TESTS := Determinism|TestHandleIsPure|TestCrashInjectionConverges|TestRestartAfterOfflineRollback|TestIntersectionHandledAsRollback
 determinism: ## Run the determinism tests: same seed, same log; replay; crash recovery
-	go test -tags debug -count=1 -run '$(DETERMINISM_TESTS)' ./internal/engine ./cmd/continuum
-	GOMAXPROCS=1 go test -race -tags debug -count=1 -run '$(DETERMINISM_TESTS)' ./internal/engine ./cmd/continuum
-	GOMAXPROCS=8 go test -race -tags debug -count=1 -run '$(DETERMINISM_TESTS)' ./internal/engine ./cmd/continuum
+	go test -tags debug -count=1 -run '$(DETERMINISM_TESTS)' ./internal/engine ./internal/cli/sim ./internal/cli/attack
+	GOMAXPROCS=1 go test -race -tags debug -count=1 -run '$(DETERMINISM_TESTS)' ./internal/engine ./internal/cli/sim ./internal/cli/attack
+	GOMAXPROCS=8 go test -race -tags debug -count=1 -run '$(DETERMINISM_TESTS)' ./internal/engine ./internal/cli/sim ./internal/cli/attack
 
 # envtest runs a real kube-apiserver and etcd. setup-envtest is pinned and
 # installs, with the control-plane binaries it downloads, under .tools/.

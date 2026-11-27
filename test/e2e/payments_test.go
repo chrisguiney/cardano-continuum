@@ -21,7 +21,7 @@ import (
 
 const enginePod = "continuum-engine-0"
 
-// progress is the engine's periodic progress record (cmd/continuum live.go).
+// progress is the engine's periodic progress record (internal/cli/live).
 type progress struct {
 	Msg        string `json:"msg"`
 	Epoch      uint64 `json:"epoch"`

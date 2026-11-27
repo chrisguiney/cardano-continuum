@@ -1,7 +1,6 @@
-package main
+package serve
 
 import (
-	"bytes"
 	"context"
 	"path/filepath"
 	"strings"
@@ -13,33 +12,6 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 )
-
-// TestFakeRunMistakesFlag: mistakes are on by default for the shipped
-// profiles, whose competence falls below 1; the summary reports them, and
-// the replay command line must agree with the run's.
-func TestFakeRunMistakesFlag(t *testing.T) {
-	ctx := context.Background()
-	dir := filepath.Join(t.TempDir(), "run")
-	flags := []string{"--seed", "4", "--wallets", "30", "--epoch-slots", "120"}
-	var out bytes.Buffer
-	if err := run(ctx, append([]string{"run", "--fake", "--epochs", "2", "--out", dir}, flags...), &out); err != nil {
-		t.Fatalf("run: %v\n%s", err, out.String())
-	}
-	if !strings.Contains(out.String(), "mistakes true: rejections ") || !strings.Contains(out.String(), "findings 0 (fatal 0)") {
-		t.Fatalf("summary: %s", out.String())
-	}
-	log := filepath.Join(dir, "events.log")
-	out.Reset()
-	if err := run(ctx, append(append([]string{"replay"}, flags...), log), &out); err != nil || !strings.Contains(out.String(), ": 0 mismatches") {
-		t.Fatalf("replay: %v\n%s", err, out.String())
-	}
-	if err := run(ctx, append(append([]string{"replay", "--mistakes", "off"}, flags...), log), &out); err == nil {
-		t.Fatal("replay with mistakes off of a run with them on succeeded")
-	}
-	if err := run(ctx, []string{"run", "--fake", "--out", t.TempDir(), "--mistakes", "maybe"}, &out); err == nil {
-		t.Fatal("--mistakes maybe accepted")
-	}
-}
 
 // liar adds lovelace to the first output chain-sync delivers.
 type liar struct {

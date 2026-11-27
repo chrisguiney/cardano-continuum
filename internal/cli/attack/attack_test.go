@@ -1,4 +1,4 @@
-package main
+package attack_test
 
 import (
 	"bytes"

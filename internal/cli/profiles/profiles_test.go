@@ -1,4 +1,4 @@
-package main
+package profiles
 
 import (
 	"bytes"
@@ -8,17 +8,21 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"go.uber.org/goleak"
 )
 
 // The index maps each shipped fitted profile's hash to its target, so
 // grade.py can pick the target from a run's header. Regenerate with
 // `go run ./cmd/continuum profiles index --out profiles/index.json`.
+func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+
 func TestProfileIndexIsCurrent(t *testing.T) {
 	var out bytes.Buffer
-	if err := run(context.Background(), []string{"profiles", "index"}, &out); err != nil {
+	if err := Run(context.Background(), []string{"index"}, &out); err != nil {
 		t.Fatal(err)
 	}
-	want, err := os.ReadFile("../../profiles/index.json")
+	want, err := os.ReadFile("../../../profiles/index.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +37,7 @@ func TestProfileIndexIsCurrent(t *testing.T) {
 		if b, err := hex.DecodeString(h); err != nil || len(b) != 32 {
 			t.Errorf("bad hash %q", h)
 		}
-		if _, err := os.Stat(filepath.Join("../../profiles", e.Target)); err != nil {
+		if _, err := os.Stat(filepath.Join("../../../profiles", e.Target)); err != nil {
 			t.Errorf("%s: %v", e.Profile, err)
 		}
 	}
