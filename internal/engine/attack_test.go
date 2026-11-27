@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -224,9 +225,7 @@ func TestDeterminismAttacks(t *testing.T) {
 		w := newWorld(t, cfg)
 		w.run(attackUntil/2, 0, nil)
 		logs = append(logs, w.logBytes())
-		if len(attacks(t, w)) == 0 {
-			t.Fatal("no attack made")
-		}
+		requireEachAttack(t, w, adversary.Names()[:5]...)
 		diff, err := (&eventlog.Replayer{New: cfg.Factory(), Log: w.log}).Run(context.Background())
 		if err != nil || len(diff) > 0 {
 			t.Fatalf("replay of an attack run diverged: %v %v", err, diff)
@@ -234,6 +233,77 @@ func TestDeterminismAttacks(t *testing.T) {
 	}
 	if !bytes.Equal(logs[0], logs[1]) {
 		t.Fatal("two attack runs with one seed wrote different logs")
+	}
+}
+
+// requireEachAttack fails unless every attack in ns made a step in w.
+func requireEachAttack(t testing.TB, w *world, ns ...adversary.Name) {
+	t.Helper()
+	made := map[string]bool{}
+	for _, a := range attacks(t, w) {
+		made[a.Name] = true
+	}
+	for _, n := range ns {
+		if !made[string(n)] {
+			t.Fatalf("no %s step made: the run does not exercise it", n)
+		}
+	}
+}
+
+// TestDeterminismAttackCrash kills an attack run at sampled crash-hook
+// calls, so the adversaries' cost accounts and contested outputs go
+// through the snapshot. A crash between logging a send and making it
+// resends on recovery, which the uninterrupted run does not log, so the
+// logs are not byte-equal; each recovered run must replay its own log
+// exactly, pay no intent twice and file no finding.
+func TestDeterminismAttackCrash(t *testing.T) {
+	t.Parallel()
+	const until = attackUntil / 4
+	cfg := attackConfig(t, 9, 0, adversary.Names()...)
+	ref := newWorld(t, cfg)
+	ref.mem = &memStore{log: ref.log}
+	hooks := 0
+	ref.run(until, 15, func(int) bool { hooks++; return false })
+	requireEachAttack(t, ref, adversary.Names()[:5]...)
+	stride := max(hooks*crashStride/24, 1)
+	for at := 1; at <= hooks; at += stride {
+		t.Run(fmt.Sprintf("hook%d", at), func(t *testing.T) {
+			t.Parallel()
+			w := newWorld(t, cfg)
+			w.mem = &memStore{log: w.log}
+			if c := w.run(until, 15, func(n int) bool { return n == at }); c != 1 {
+				t.Fatalf("crash at %d: %d crashes", at, c)
+			}
+			w.finalSnapshot()
+			tally, err := AuditLog(context.Background(), w.log)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tally.DoublePaid != 0 || tally.Findings != 0 {
+				t.Fatalf("crash at hook %d of %d: %d double paid, %d findings", at, hooks, tally.DoublePaid, tally.Findings)
+			}
+		})
+	}
+}
+
+// TestDeterminismGapAttack runs the exunits-block-gap adversary on its
+// genesis twice with one seed and replays the run.
+func TestDeterminismGapAttack(t *testing.T) {
+	t.Parallel()
+	cfg := gapConfig(t, 9)
+	var logs [][]byte
+	for range 2 {
+		w := newWorld(t, cfg)
+		w.run(attackUntil/2, 0, nil)
+		logs = append(logs, w.logBytes())
+		requireEachAttack(t, w, adversary.ExUnitsGap)
+		diff, err := (&eventlog.Replayer{New: cfg.Factory(), Log: w.log}).Run(context.Background())
+		if err != nil || len(diff) > 0 {
+			t.Fatalf("replay of a gap run diverged: %v %v", err, diff)
+		}
+	}
+	if !bytes.Equal(logs[0], logs[1]) {
+		t.Fatal("two gap runs with one seed wrote different logs")
 	}
 }
 
