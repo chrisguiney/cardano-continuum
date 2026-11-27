@@ -15,7 +15,7 @@ GOLANGCI_LINT_VERSION := v2.15.0
 CONTROLLER_GEN_VERSION := v0.23.0
 CONTROLLER_GEN := go run sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_GEN_VERSION)
 
-.PHONY: web web-test lab lab-image lab-test profiles-index help build test test-race vet fmt-check lint check check-manifests manifests generate determinism models models-install harvest vectors scenarios
+.PHONY: web web-test lab lab-image lab-test profiles-index help build test test-race vet fmt-check lint check check-static check-manifests manifests generate determinism models models-install harvest vectors scenarios
 
 help: ## Show this list
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-16s %s\n", $$1, $$2}'
@@ -26,8 +26,26 @@ build: ## Compile every package (binaries arrive with their components)
 test: ## Run unit tests with the debug build tag
 	go test -tags debug ./...
 
-test-race: ## Run unit tests with the race detector and the debug build tag
-	go test -race -tags debug ./...
+# SHARD runs one slice of the tests, as a CI test job does. The slices
+# partition ./...: internal/engine, the slowest package, is split in two by
+# test name (-run and -skip of one pattern), and rest is the complement of
+# the other package lists, so the CI matrix runs every test exactly once.
+# Without SHARD, test-race runs them all.
+SHARD ?=
+ENGINE_SPLIT := '^Test[A-G]'
+SHARD_engine-a := -run $(ENGINE_SPLIT) ./internal/engine
+SHARD_engine-b := -skip $(ENGINE_SPLIT) ./internal/engine
+SHARD_engine-internal = $(shell go list ./internal/engine/... | grep -v '/internal/engine$$')
+SHARD_cli := ./internal/cli/...
+SHARD_rest = $(shell go list ./... | grep -v -e '/internal/engine$$' -e '/internal/engine/' -e '/internal/cli/')
+TEST_ARGS = $(if $(SHARD),$(or $(SHARD_$(SHARD)),$(error unknown SHARD $(SHARD): use engine-a, engine-b, engine-internal, cli or rest)),./...)
+
+# go test's default 10m limit per package binary is below what
+# internal/engine needs under the race detector on a 4-vCPU runner.
+TEST_TIMEOUT ?= 20m
+
+test-race: ## Run unit tests with the race detector and the debug build tag (SHARD=... for one CI slice)
+	go test -race -tags debug -timeout $(TEST_TIMEOUT) $(TEST_ARGS)
 
 vet: ## Run go vet
 	go vet ./...
@@ -47,7 +65,9 @@ web: ## Rebuild the web UI into web/dist (needs Node and npm)
 web-test: ## Typecheck and run the web UI's unit tests (needs Node and npm)
 	cd web && npm ci && npm run typecheck && npm test
 
-check: build vet fmt-check test-race lint check-manifests ## Everything CI runs
+check-static: build vet fmt-check lint check-manifests ## Everything CI's static job runs
+
+check: check-static test-race ## Everything CI runs
 
 manifests: ## Regenerate the CRD YAML and the operator ClusterRole from markers
 	$(CONTROLLER_GEN) crd paths="./api/..." output:crd:artifacts:config=config/crd/bases

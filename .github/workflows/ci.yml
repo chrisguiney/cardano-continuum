@@ -11,7 +11,9 @@ permissions:
   contents: read
 
 jobs:
-  check:
+  # make check is check-static plus test-race; CI runs the two halves, and
+  # the tests in shards, as parallel jobs so each fits a 4-vCPU runner.
+  static:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -23,16 +25,79 @@ jobs:
         uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false
+
+      - name: Restore Go caches
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-static-${{ hashFiles('go.mod', 'go.sum') }}
+          restore-keys: go-${{ runner.os }}-static-
+
+      - name: Read the golangci-lint version
+        id: lint
+        run: echo "version=$(sed -n 's/^GOLANGCI_LINT_VERSION := //p' Makefile)" >> "$GITHUB_OUTPUT"
 
       - name: Install golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: v2.15.0
+          version: ${{ steps.lint.outputs.version }}
           install-only: true
 
-      - name: make check
-        run: make check
+      - name: make check-static
+        run: make check-static
+
+      # Saved whatever the outcome: a cache saved only on success is never
+      # written while the job keeps failing, and every run starts cold.
+      - name: Save Go caches
+        if: always()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-static-${{ hashFiles('go.mod', 'go.sum') }}
+
+  test:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [engine-a, engine-b, engine-internal, cli, rest]
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Restore Go caches
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-test-${{ matrix.shard }}-${{ hashFiles('go.mod', 'go.sum') }}
+          restore-keys: go-${{ runner.os }}-test-${{ matrix.shard }}-
+
+      - name: make test-race
+        run: make test-race SHARD=${{ matrix.shard }}
+
+      - name: Save Go caches
+        if: always()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-test-${{ matrix.shard }}-${{ hashFiles('go.mod', 'go.sum') }}
 
   # The web UI's typecheck and Vitest unit tests need Node, so they run in
   # their own job. make check stays free of Node: web/dist is committed.
