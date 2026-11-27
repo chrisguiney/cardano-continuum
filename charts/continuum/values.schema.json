@@ -11,6 +11,7 @@
         "operator": {"$ref": "#/definitions/image"},
         "genesis": {"$ref": "#/definitions/image"},
         "engine": {"$ref": "#/definitions/image"},
+        "ui": {"$ref": "#/definitions/image"},
         "wait": {"type": "string", "minLength": 1}
       }
     },
@@ -88,17 +89,23 @@
         "runIdentity": {"type": "string"},
         "extraArgs": {"type": "array", "items": {"type": "string"}},
         "storage": {"$ref": "#/definitions/storage"},
-        "ui": {
+        "api": {
           "type": "object",
-          "properties": {
-            "port": {"type": "integer", "minimum": 1, "maximum": 65535},
-            "expose": {"type": "boolean"},
-            "service": {
-              "type": "object",
-              "properties": {"type": {"enum": ["ClusterIP", "NodePort", "LoadBalancer"]}}
-            }
-          }
-        }
+          "properties": {"port": {"type": "integer", "minimum": 1, "maximum": 65535}}
+        },
+        "ui": {"not": {}, "description": "removed: the UI is its own Deployment, configured by the top-level ui value"}
+      }
+    },
+    "ui": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+        "service": {
+          "type": "object",
+          "properties": {"type": {"enum": ["ClusterIP", "NodePort", "LoadBalancer"]}}
+        },
+        "resources": {"type": "object"}
       }
     }
   },

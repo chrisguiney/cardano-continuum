@@ -23,6 +23,10 @@ images:
     repository: continuum
     tag: latest
     digest: ""
+  ui:
+    repository: continuum-ui
+    tag: latest
+    digest: ""
   # Has sh and nc: the engine's init container waits with it for pool 0.
   wait: busybox:1.37.0
 
@@ -127,12 +131,21 @@ engine:
   storage:
     size: 1Gi
     storageClassName: ""
-  ui:
+  # The live API, on the ClusterIP Service continuum-api for the UI to
+  # forward to. It has no authentication.
+  api:
     port: 8088
-    # The API has no authentication. false serves on the pod's loopback,
-    # reachable only by kubectl port-forward. true serves on every address
-    # behind a Service, so anything that reaches the Service can drive the
-    # engine.
-    expose: false
-    service:
-      type: ClusterIP
+
+# The web UI (continuum-ui proxy), a Deployment apart from the engine so a new
+# UI image never restarts or resets the run. It forwards /api/* to
+# continuum-api, so whatever reaches the continuum-ui Service can drive the
+# engine; make up port-forwards to it.
+ui:
+  enabled: true
+  port: 8088
+  service:
+    type: ClusterIP
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi

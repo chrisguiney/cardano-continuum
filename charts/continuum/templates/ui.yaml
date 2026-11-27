@@ -1,0 +1,68 @@
+{{- if and .Values.ui.enabled .Values.engine.enabled }}
+{{- $u := .Values.ui }}
+{{- $api := printf "http://continuum-api.%s.svc.%s:%d" .Release.Namespace .Values.clusterDomain (int .Values.engine.api.port) }}
+# The web UI: continuum-ui proxy serves the single-page app and forwards
+# /api/* to the engine's continuum-api Service. It is a Deployment of its own
+# so a new UI image rolls out without touching the engine StatefulSet, whose
+# run resumes only under the binary that wrote it.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: continuum-ui
+  labels:
+    {{- include "continuum.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: continuum-ui}
+  template:
+    metadata:
+      labels: {app: continuum-ui}
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      {{- include "continuum.pullSecrets" . | nindent 6 }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+      containers:
+        - name: ui
+          image: {{ include "continuum.image" (dict "root" . "image" .Values.images.ui) }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          args:
+            - proxy
+            - --addr=0.0.0.0:{{ int $u.port }}
+            - --allow-remote
+            - --api={{ $api }}
+          ports:
+            - name: http
+              containerPort: {{ int $u.port }}
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 5
+          {{- with $u.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+---
+# The UI and the API it forwards, which have no authentication: whatever
+# reaches this Service can drive the engine. make up port-forwards to it.
+apiVersion: v1
+kind: Service
+metadata:
+  name: continuum-ui
+  labels:
+    {{- include "continuum.labels" . | nindent 4 }}
+spec:
+  type: {{ $u.service.type }}
+  selector: {app: continuum-ui}
+  ports:
+    - name: http
+      port: {{ int $u.port }}
+      targetPort: http
+{{- end }}

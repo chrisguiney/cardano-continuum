@@ -2,7 +2,7 @@
 
 The Helm chart that installs continuum into one namespace of any Kubernetes
 cluster: the operator, the genesis Job, the `ContinuumNetwork` and its pools,
-and the engine with its UI. `make up` drives it; see the repository
+the engine and the web UI. `make up` drives it; see the repository
 [README](../../README.md#running-on-kubernetes). Every value is described in
 [`values.yaml`](values.yaml) and typed in `values.schema.json`.
 
@@ -13,7 +13,8 @@ and the engine with its UI. `make up` drives it; see the repository
 | `templates/operator.yaml` | ServiceAccount, ClusterRole and binding (named after the namespace), Deployment |
 | `templates/genesis.yaml` | seed Secret, genesis volume, the Job's RBAC, the Job |
 | `templates/network.yaml` | the `devnet` network and pools `p0`..`pN` |
-| `templates/engine.yaml` | RBAC, Services, the engine StatefulSet |
+| `templates/engine.yaml` | RBAC, the governing Service, the `continuum-api` ClusterIP Service, the engine StatefulSet |
+| `templates/ui.yaml` | the `continuum-ui` Deployment (`continuum-ui proxy`) and Service |
 | `ci/nondefault-values.yaml` | the second values file `make chart-check` renders |
 
 Do not edit `crds/` or `files/` by hand: `make check-manifests` fails when
@@ -45,5 +46,13 @@ counts, the seed, the network parameters or `genesis.overrides` changes the
 genesis itself: the new Job fails with "holds a devnet for spec", and the
 release must be uninstalled (with its namespace) first. `make up` does that,
 and resets the engine's run, when `devup run` reports a change.
+
+The UI is its own Deployment: `continuum-ui proxy` serves the single-page
+app and forwards `/api/*` to the engine's `continuum-api` Service. An upgrade
+that changes only `images.ui` or `ui.*` rolls the UI pod and leaves the
+engine StatefulSet, and its run, untouched; `devup run` reads only the engine
+image. Neither Service has authentication, so `ui.service.type` stays
+`ClusterIP` unless the cluster's network is trusted; `make up` port-forwards
+to `svc/continuum-ui`.
 
 `helm uninstall` leaves the CRDs, as Helm does for `crds/`.

@@ -1,7 +1,6 @@
 {{- if .Values.engine.enabled }}
 {{- $e := .Values.engine }}
 {{- $node := printf "%s.%s.svc.%s" (include "continuum.poolName" 0) .Release.Namespace .Values.clusterDomain }}
-{{- $listen := ternary "0.0.0.0" "127.0.0.1" $e.ui.expose }}
 # Lets the engine patch its network's ContinuumPools (the pool plan) and read
 # their status (pod health).
 apiVersion: v1
@@ -49,24 +48,23 @@ metadata:
 spec:
   clusterIP: None
   selector: {app: continuum-engine}
-{{- if $e.ui.expose }}
 ---
-# The UI and its API, which have no authentication: whatever reaches this
-# Service can drive the engine.
+# The engine's live API, for the UI Deployment (templates/ui.yaml) to
+# forward to. It has no authentication: whatever reaches this Service can
+# drive the engine, so it stays ClusterIP.
 apiVersion: v1
 kind: Service
 metadata:
-  name: continuum-ui
+  name: continuum-api
   labels:
     {{- include "continuum.labels" . | nindent 4 }}
 spec:
-  type: {{ $e.ui.service.type }}
+  type: ClusterIP
   selector: {app: continuum-engine}
   ports:
     - name: http
-      port: {{ int $e.ui.port }}
+      port: {{ int $e.api.port }}
       targetPort: http
-{{- end }}
 ---
 # Runs `continuum run --node` against pool 0's node-to-client bridge (the
 # operator's ntc sidecar, port 3002), persisting the event log and SQLite
@@ -129,10 +127,10 @@ spec:
             - --genesis-pools={{ include "continuum.totalPools" . }}
             - --network=devnet
             - --namespace={{ .Release.Namespace }}
-            - --serve={{ $listen }}:{{ int $e.ui.port }}
-            {{- if $e.ui.expose }}
+            # The UI pod reaches the API through continuum-api, so it listens
+            # on the pod's addresses rather than its loopback.
+            - --serve=0.0.0.0:{{ int $e.api.port }}
             - --allow-remote
-            {{- end }}
             {{- with $e.attacks }}
             - --attack={{ join "," . }}
             {{- end }}
@@ -145,11 +143,9 @@ spec:
                 secretKeyRef:
                   name: {{ include "continuum.seedSecret" . }}
                   key: seed
-          {{- if $e.ui.expose }}
           ports:
             - name: http
-              containerPort: {{ int $e.ui.port }}
-          {{- end }}
+              containerPort: {{ int $e.api.port }}
           {{- with $e.resources }}
           resources:
             {{- toYaml . | nindent 12 }}

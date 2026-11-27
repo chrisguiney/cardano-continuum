@@ -71,6 +71,9 @@ func installChart(t *testing.T, ns string, p parts, sets ...string) *release {
 		"images.operator.digest=" + digestOf(koBuild(t, "continuum-operator")),
 		"images.genesis.digest=" + digestOf(koBuild(t, "continuum-genesis")),
 		"images.engine.digest=" + digestOf(koBuild(t, "continuum")),
+		// The tests drive the engine's API directly, so they skip building
+		// and running the UI image.
+		"ui.enabled=false",
 	}, p.sets()...)
 	r := &release{ns: ns, sets: append(all, sets...)}
 	r.helm(t, "install")

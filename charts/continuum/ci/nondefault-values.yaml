@@ -1,5 +1,6 @@
 # A non-default install for `make chart-check`: dev images by digest from a
-# private registry, more pools, a custom attack set, an exposed UI.
+# private registry, more pools, a custom attack set, a NodePort UI on another
+# port than the engine API.
 images:
   registry: registry.example.com/continuum
   pullPolicy: Always
@@ -10,6 +11,8 @@ images:
     digest: sha256:2222222222222222222222222222222222222222222222222222222222222222
   engine:
     digest: sha256:3333333333333333333333333333333333333333333333333333333333333333
+  ui:
+    digest: sha256:4444444444444444444444444444444444444444444444444444444444444444
 pools:
   cardanoNode: 5
   dingo: 2
@@ -29,7 +32,9 @@ engine:
   scale: 1
   attacks: [dust-flood, exunits-block-gap]
   runIdentity: image=registry.example.com/continuum/continuum@sha256:3333;profiles=preprod;seed=00;attacks=dust-flood
-  ui:
-    expose: true
-    service:
-      type: NodePort
+  api:
+    port: 9090
+ui:
+  port: 8080
+  service:
+    type: NodePort

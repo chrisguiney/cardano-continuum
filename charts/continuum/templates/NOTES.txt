@@ -3,13 +3,16 @@ renders and publishes the devnet, the operator starts {{ include "continuum.tota
 the engine waits for pool 0.
 
   kubectl -n {{ .Release.Namespace }} get continuumpools,pods
-{{- if .Values.engine.enabled }}
+{{- if and .Values.engine.enabled .Values.ui.enabled }}
 
-The UI has no authentication.
-{{- if .Values.engine.ui.expose }} It is exposed by the {{ .Values.engine.ui.service.type }} Service continuum-ui.
-{{- else }} It listens on the engine pod's loopback only:
+The UI is the {{ .Values.ui.service.type }} Service continuum-ui, which forwards /api to the
+engine. Neither has authentication.
 
-  kubectl -n {{ .Release.Namespace }} port-forward pod/continuum-engine-0 {{ .Values.engine.ui.port }}
-  open http://127.0.0.1:{{ .Values.engine.ui.port }}
-{{- end }}
+  kubectl -n {{ .Release.Namespace }} port-forward svc/continuum-ui {{ .Values.ui.port }}
+  open http://127.0.0.1:{{ .Values.ui.port }}
+{{- else if .Values.engine.enabled }}
+
+The engine's API (no UI, no authentication) is the ClusterIP Service continuum-api:
+
+  kubectl -n {{ .Release.Namespace }} port-forward svc/continuum-api {{ .Values.engine.api.port }}
 {{- end }}

@@ -33,9 +33,9 @@ func TestHonestM3(t *testing.T) {
 	b := bootNetwork(t, spec, 1)
 	ns, pods, start := b.ns, b.pods, b.start
 	// The chart passes --genesis-pools (4), --network and --namespace, and
-	// serves on the pod's loopback port 8088.
+	// serves the API on the pod's port 8088, which the test port-forwards to.
 	deployEngine(t, b.release, "engine.profiles=m3", "engine.wallets=30", "engine.pools=4", "engine.scale=1",
-		"engine.attacks=[]", `engine.extraArgs=["--floor=60"]`, "engine.ui.port=8088")
+		"engine.attacks=[]", `engine.extraArgs=["--floor=60"]`, "engine.api.port=8088")
 
 	epoch := time.Duration(spec.EpochLength) * spec.SlotLength
 	poll(t, time.Until(start.Add(epoch+time.Minute)), 15*time.Second, "the engine in epoch 1", func(ctx context.Context) (bool, error) {
