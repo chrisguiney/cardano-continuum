@@ -25,7 +25,7 @@ node implementations.
 The Helm chart in [`charts/continuum`](charts/continuum/README.md) installs
 the whole system into one namespace of any Kubernetes cluster: the operator
 and its CRDs, the genesis Job, a devnet of cardano-node and dingo pools, and
-the engine serving the live UI. `make up` builds the images and drives the
+the engine with its live API and the web UI in front of it. `make up` builds the images and drives the
 chart; `helm install` works as well.
 
 Prerequisites:
@@ -51,16 +51,20 @@ open http://127.0.0.1:8088
 ```
 
 `make up` runs `make images`, which builds `continuum`,
-`continuum-operator` and `continuum-genesis` with ko for `PLATFORM`
+`continuum-operator`, `continuum-genesis` and `continuum-ui` with ko for `PLATFORM`
 (default `linux/` and this machine's architecture), pushes them and records
 their digests in `.tools/images`. It then applies the chart's CRDs, which
 Helm never upgrades, and runs `helm upgrade --install` with those digests
 and the variables below. It waits, bounded, for the genesis Job, for every
-pool to forge on one chain and for the engine, and keeps a
-`kubectl port-forward` to the UI running. The UI listens on the engine pod's
-`127.0.0.1` because its API is unauthenticated; from another host use
-`ssh -L 8088:127.0.0.1:8088 <host>`. `engine.ui.expose=true` puts it behind
-a Service instead, reachable by anything that reaches the Service.
+pool to forge on one chain, for the engine and for the UI, and keeps a
+`kubectl port-forward` to the `continuum-ui` Service running on
+`127.0.0.1`. The UI is its own Deployment (`continuum-ui proxy`), which
+forwards `/api` to the engine's ClusterIP `continuum-api` Service, so a
+change to `web/` alone rolls the UI pod and keeps the run: the run identity
+names only the engine image, and the engine binary does not link the UI.
+Neither Service has authentication; from another host use
+`ssh -L 8088:127.0.0.1:8088 <host>`. `ui.service.type` makes the UI a
+NodePort or LoadBalancer instead, reachable by anything that reaches it.
 
 Variables, passed as `make up NAME=value`:
 
@@ -193,10 +197,13 @@ suite: GitHub's runners have no cluster.
 
 ## Web UI
 
-`continuum serve --log run1/events.log` serves the web UI and its API on
-`127.0.0.1:8088`. The single-page app (Preact, Vite, TypeScript) is in `web/`;
-its build, `web/dist`, is committed and embedded in the binary, so Go builds
-need no Node. After changing `web/src`, run `make web` and commit `web/dist`;
+`continuum-ui serve --log run1/events.log` serves the web UI and its API on
+`127.0.0.1:8088`; it takes `continuum serve`'s flags. `continuum serve` and
+`continuum run --serve` answer the JSON API only, and
+`continuum-ui proxy --api http://127.0.0.1:8088 --addr 127.0.0.1:8089` puts
+the UI in front of either. The single-page app (Preact, Vite, TypeScript) is
+in `web/`; its build, `web/dist`, is committed and embedded in
+`continuum-ui` (never in `continuum`), so Go builds need no Node. After changing `web/src`, run `make web` and commit `web/dist`;
 `make web-test` typechecks and runs the unit tests. Screenshots are in
 `docs/screenshots/`; the `-sample` ones use stand-in API data because a fake
 run has no pools and writes its log only when it ends.

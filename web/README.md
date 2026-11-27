@@ -1,6 +1,9 @@
 # web
 
-The single-page UI served by `continuum serve`: Preact, Vite and TypeScript.
+The single-page UI served by `continuum-ui` (`proxy` in front of a live
+engine, `serve --log` over a recorded run): Preact, Vite and TypeScript. The
+engine binary, `continuum`, does not link this package (an archtest rule
+holds it), so a UI change never changes the engine image.
 
 - `web.go`: embeds `dist/` and serves it; paths without an extension fall back
   to `index.html` so client routes survive a reload.

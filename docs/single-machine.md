@@ -63,13 +63,13 @@ for a run that is graded.
 `make up` checks that the context exists and answers and warns when the
 first node's allocatable memory is below 48 GiB (`MIN_MEM_GIB`; Docker
 Desktop given 48 GB reports about 47 GiB, so expect the warning there). It
-builds the operator, genesis and engine images with ko and pushes them to
+builds the operator, genesis, engine and UI images with ko and pushes them to
 `CONTINUUM_REGISTRY` (`make images`), applies the chart's CRDs and runs
 `helm upgrade --install`. The genesis Job pulls the node images, renders the
 genesis and publishes it; the operator starts the pools as their keys
 appear; the engine waits for pool 0. `make up` then waits for one chain (10
-blocks forged, every cardano-node tip within k), for the engine, and
-port-forwards its UI. A second run upgrades the release in place.
+blocks forged, every cardano-node tip within k), for the engine and the UI
+Deployment, and port-forwards the UI's Service. A second run upgrades the release in place.
 
 An engine resumes its event log only under the binary, seed, profile set
 and attacks that wrote it; a pod given another refuses its log ("eventlog:
@@ -81,7 +81,9 @@ and the genesis overrides, which `make up` reads back from the deployed
 release. When an install would change any of them it logs why, for example
 "engine binary changed: a run can't be resumed by a different binary;
 resetting the network", and runs `make down` first, so the chain and the
-engine store start fresh. `make up KEEP_RUN=1` refuses instead. A deploy
+engine store start fresh. `make up KEEP_RUN=1` refuses instead. The UI
+image is not part of the identity: the UI is a Deployment of its own, so a
+change to `web/` alone rolls the UI pod and the run carries on. A deploy
 with no recorded identity counts as changed. A plain `helm upgrade` does no
 such check: a changed genesis makes the new genesis Job fail with "holds a
 devnet for spec".
@@ -94,9 +96,10 @@ stay.
 ## Reaching the UI
 
 `http://127.0.0.1:8088` on the machine that ran `make up`: a supervised
-`kubectl port-forward` to the engine pod's loopback (pid and log under
-`~/.cache/continuum/<namespace>/`). The API has no authentication, so it
-listens on `127.0.0.1` only. From another host use
+`kubectl port-forward` to `svc/continuum-ui` (pid and log under
+`~/.cache/continuum/<namespace>/`), whose pod forwards `/api` to the
+engine's `continuum-api` Service. The API has no authentication, so the
+forward listens on `127.0.0.1` only. From another host use
 `ssh -L 8088:127.0.0.1:8088 <host>`; `UI_ADDRESS=0.0.0.0` exposes it to the
 LAN and with it the control endpoints.
 
@@ -122,7 +125,9 @@ make up CONTEXT=docker-desktop IMAGE_REF=tag
 ```
 
 ko builds are reproducible, so the images `make up` rebuilds have the
-digests just imported. Repeat the loop after changing the code.
+digests just imported. Repeat the loop after changing the code; `.tools/images`
+lists all four images, `continuum-ui` included, and an unchanged image
+imports under the tag it already has.
 
 ## Measurements
 
