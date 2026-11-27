@@ -10,6 +10,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/clock"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/intent"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
@@ -125,7 +126,7 @@ func (e *Engine) injectSPOProbe(ctx context.Context, at sched.Time) (string, err
 	if target.ID == "" {
 		return "no open proposal stake pools may not vote on", nil
 	}
-	ref, err := parseProposal(target.ID)
+	ref, err := intent.ParseProposal(target.ID)
 	if err != nil {
 		return err.Error(), nil
 	}
@@ -136,7 +137,7 @@ func (e *Engine) injectSPOProbe(ctx context.Context, at sched.Time) (string, err
 	if !ok {
 		return "no registered pool", nil
 	}
-	voter, _ := voterOf(e, id)
+	voter, _ := intent.Voter(e.co.Ring, id)
 	return e.start(ctx, at, &wire.Pending{Actor: uint64(id), Args: wire.Args{Kind: string(profile.IntentVote)}, Gov: wire.Gov{Action: &ref, Choice: common.GovVoteYes, Power: e.win.View().VotingPower(voter), Probe: true}})
 }
 

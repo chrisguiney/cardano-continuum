@@ -14,6 +14,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/clock"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/cohort"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/intent"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/pay"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/window"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
@@ -33,8 +34,9 @@ func blake2b256(b []byte) common.Blake2b256 { return common.Blake2b256Hash(b) }
 func (e *Engine) Snapshot() ([]byte, error) {
 	sv := e.win.Saved()
 	nextID, deposits := e.pay.Counters()
+	ct := e.in.Saved()
 	s := snapshot{Version: snapshotVersion, Now: e.clk.Now(), NextIntent: nextID, Conf: sv.Conf, Fees: sv.Fees, Foreign: sv.Foreign, RefillAt: e.refillAt, Deposits: deposits, Market: e.pc.Market(), Lost: e.lost,
-		Contracts: e.in.n, DeployAt: e.in.at, DeployN: e.in.drawn}
+		Contracts: ct.N, DeployAt: ct.At, DeployN: ct.Drawn}
 	for _, id := range e.co.IDs() {
 		a, _ := e.co.Get(id)
 		st := e.co.Rec(id)
@@ -93,13 +95,9 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 	e.clk.Restore(s.Now)
 	e.pc.SetMarket(s.Market)
 	e.paused, e.rateK, e.waves, e.adoptions, e.stalled, e.lost = s.Paused, s.RateK, s.Waves, s.Adoptions, s.Stalled, s.Lost
-	e.in.n, e.in.at, e.in.drawn = max(s.Contracts, 1), s.DeployAt, s.DeployN
-	for i := uint64(1); i < e.in.n; i++ {
-		if err := e.in.bookContract(i); err != nil {
-			return nil, err
-		}
+	if err := e.in.Load(intent.State{N: s.Contracts, At: s.DeployAt, Drawn: s.DeployN}); err != nil {
+		return nil, err
 	}
-	e.in.pushDeploy()
 	if len(s.Weights) > 0 {
 		e.weights = map[profile.IntentKind]float64{}
 		for _, w := range s.Weights {
@@ -288,6 +286,9 @@ func (c evsched) Retry(at sched.Time, id uint64) {
 	c.Push(at, clock.Event{Kind: clock.Retry, Intent: id})
 }
 
+// Deploy implements intent.Clock.
+func (c evsched) Deploy(at sched.Time) { c.Push(at, clock.Event{Kind: clock.Deploy}) }
+
 func (c evsched) Birth(at sched.Time, idx int) sched.Handle {
 	return c.Push(at, clock.Event{Kind: clock.Birth, Birth: idx})
 }
@@ -369,12 +370,12 @@ func (h hooks) Frustrate(at sched.Time, id population.ActorID) error {
 
 // Attempt implements pay.Builder.
 func (h hooks) Attempt(ctx context.Context, at sched.Time, p *wire.Pending) (build.Built, []Ref, uint64, string, error) {
-	return h.e.in.attemptOf(ctx, at, p)
+	return h.e.in.Attempt(ctx, at, p)
 }
 
 // Submitted implements pay.Builder.
 func (h hooks) Submitted(at sched.Time, p *wire.Pending, built build.Built, inputs []Ref) {
-	h.e.in.emitSubmitted(at, p, built, inputs)
+	h.e.in.Submitted(at, p, built, inputs)
 }
 
 // logged is the ledger's Committer inside the pure engine. It writes

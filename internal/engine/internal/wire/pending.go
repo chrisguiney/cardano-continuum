@@ -15,6 +15,15 @@ type Coin struct {
 	Lovelace uint64
 }
 
+// SumCoins is the coins' lovelace.
+func SumCoins(cs []Coin) uint64 {
+	var sum uint64
+	for _, c := range cs {
+		sum += c.Lovelace
+	}
+	return sum
+}
+
 // Pending is an intent the planner's ledger holds unfinished. Its inputs
 // and reservation are the ledger's. The pay component keeps it; the intent,
 // attack, faucet and judge components read and fill its parts.

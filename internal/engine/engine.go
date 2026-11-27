@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand/v2"
 
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
@@ -12,6 +11,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/clock"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/cohort"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/intent"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/journal"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/pace"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/pay"
@@ -53,9 +53,6 @@ var (
 // minPayment is what an adversary's probe payments send.
 const (
 	minPayment   = 2_000_000
-	feeHeadroom  = 1_000_000
-	minFraction  = 0.05
-	fracSpread   = 0.25
 	censusStream = "census"
 )
 
@@ -85,7 +82,7 @@ type Engine struct {
 	pay   *pay.Pay
 	retry *pay.Retry
 	pc    *pace.Pace
-	in    *intent
+	in    *intent.Intent
 
 	guard policy.Guard
 	// dark is the pool plan: pools the engine wants not forging. down are
@@ -178,9 +175,7 @@ func New(cfg Config) (*Engine, error) {
 		return nil, fmt.Errorf("engine: view: %w", err)
 	}
 	e.co.Births.Start(0)
-	if e.in.deployRate() > 0 {
-		e.in.scheduleDeploy(0)
-	}
+	e.in.Begin(0)
 	e.jr.Drop() // genesis spawns are configuration, not decisions
 	return e, nil
 }
@@ -214,7 +209,6 @@ func newEmpty(cfg Config) (*Engine, error) {
 		images: map[population.ActorID]string{},
 		advs:   map[population.ActorID]adversary.Policy{}, costs: adversary.NewLedger(), contested: map[Ref]bool{},
 	}
-	e.in = newIntent(e)
 	e.retry = pay.NewRetry(pay.Spec{Policy: cfg.retry(), Diagnoser: diag}, e.pay,
 		pay.Env{Actors: hooks{e}, Builder: hooks{e}, Journal: &e.jr, Sched: evsched{&e.clk}, Chain: e.win})
 	if e.guard, err = policy.New(cfg.floor()); err != nil {
@@ -244,6 +238,7 @@ func newEmpty(cfg Config) (*Engine, error) {
 	e.co = cohort.New(cohort.Spec{Seed: cfg.Seed, Census: cfg.Seed.Derive(censusStream), Slots: cfg.Slots, Proposer: proposerName,
 		ActorKeys: ks, RootKeys: rootKeys, Pools: gpools, PoolStake: cfg.GenesisPoolStake},
 		cohort.Env{Sched: evsched{&e.clk}, Emit: &e.jr, Chain: e.win, Att: hooks{e}, Pace: hooks{e}})
+	e.in = intent.New(intentSpec(e), intentEnv(e))
 	if err := e.co.Ring.Gen.Book(); err != nil {
 		return nil, err
 	}
@@ -363,7 +358,7 @@ func (e *Engine) run(ctx context.Context, at sched.Time, ev clock.Event) error {
 	case clock.Adopt:
 		e.adopt(at, ev.Intent)
 	case clock.Deploy:
-		return e.in.deploy(at)
+		return e.in.Deploy(at)
 	}
 	return nil
 }
@@ -407,24 +402,6 @@ func (e *Engine) act(ctx context.Context, at sched.Time, id population.ActorID) 
 	}
 	e.pc.Next(a, subject(st), at)
 	return nil
-}
-
-// paymentSize is the amount of a payment from an actor holding bal, never
-// below floor, the min-UTxO of the payee's output (build.MinPayment).
-// Without a profile distribution it is a drawn fraction of the balance.
-// With one it is a draw from the distribution, capped so the payment leaves
-// feeHeadroom: an oversize draw pays what the wallet can rather than being
-// skipped, which would bias the sizes of the payments that do go out
-// toward the body.
-func paymentSize(a *profile.Amount, bal, floor uint64, r *rand.Rand) uint64 {
-	if a == nil {
-		return max(uint64(float64(bal)*(minFraction+fracSpread*r.Float64())), floor)
-	}
-	ceiling := float64(bal) - feeHeadroom
-	if ceiling < float64(floor) {
-		return floor
-	}
-	return max(uint64(min(a.Sample(r), ceiling)), floor)
 }
 
 // submitResult feeds the node's answer to the payment's retry machine.

@@ -15,6 +15,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/intent"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/pay"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
@@ -177,8 +178,8 @@ type shot struct {
 // reserves and logs it. against is the honest intent a front-run outbids.
 // It returns why the step was not made, if it was not.
 func (e *Engine) strike(ctx context.Context, at sched.Time, id population.ActorID, step adversary.Step, against uint64) (string, error) {
-	intent := e.pay.Next()
-	s, why, err := e.build(ctx, at, id, intent, step)
+	iid := e.pay.Next()
+	s, why, err := e.build(ctx, at, id, iid, step)
 	if why != "" || err != nil {
 		return why, err
 	}
@@ -187,18 +188,18 @@ func (e *Engine) strike(ctx context.Context, at sched.Time, id population.ActorI
 		return fmt.Sprintf("cost ceiling: step costs %d, %d left this epoch", s.cost, left), nil
 	}
 	for _, b := range s.txs {
-		if err := e.pay.Reserve(ctx, intent, id, TxID(b.ID), s.inputs, s.ttl); err != nil {
+		if err := e.pay.Reserve(ctx, iid, id, TxID(b.ID), s.inputs, s.ttl); err != nil {
 			return "reserve: " + err.Error(), nil
 		}
 	}
 	if err := e.costs.Charge(id, epoch, s.cost); err != nil {
-		return "", fmt.Errorf("engine: charge attack %d: %w", intent, err)
+		return "", fmt.Errorf("engine: charge attack %d: %w", iid, err)
 	}
-	e.pay.Claim(intent)
+	e.pay.Claim(iid)
 	p := s.rec
-	p.ID, p.Actor, p.Attack, p.Want = intent, uint64(id), string(step.Attack), wire.WantOf(s.want)
+	p.ID, p.Actor, p.Attack, p.Want = iid, uint64(id), string(step.Attack), wire.WantOf(s.want)
 	p.Tx, p.TTL, p.Cbor, p.Awaiting, p.Jump = TxID(s.txs[0].ID), s.ttl, s.txs[0].Tx, true, against != 0
-	body := Attack{Intent: intent, Name: string(step.Attack), Mutation: s.mutation, Cost: s.cost, Against: against, Payees: s.payees, Spend: p.Locked}
+	body := Attack{Intent: iid, Name: string(step.Attack), Mutation: s.mutation, Cost: s.cost, Against: against, Payees: s.payees, Spend: p.Locked}
 	for _, b := range s.txs {
 		p.Txs = append(p.Txs, TxID(b.ID))
 		body.Txs = append(body.Txs, TxID(b.ID))
@@ -214,27 +215,27 @@ func (e *Engine) strike(ctx context.Context, at sched.Time, id population.ActorI
 	e.pc.Excite(at)
 	e.jr.Emit(at, KindAttack, id, body)
 	for _, b := range s.txs {
-		e.in.emitSubmitted(at, &p, b, s.inputs)
+		e.in.Submitted(at, &p, b, s.inputs)
 	}
 	return "", nil
 }
 
 // build makes step's transactions for adversary id.
-func (e *Engine) build(ctx context.Context, at sched.Time, id population.ActorID, intent uint64, step adversary.Step) (shot, string, error) {
+func (e *Engine) build(ctx context.Context, at sched.Time, id population.ActorID, iid uint64, step adversary.Step) (shot, string, error) {
 	var s shot
 	var why string
 	var err error
 	switch step.Attack {
 	case adversary.DustFlood:
-		s, why, err = e.dust(ctx, at, id, intent, step)
+		s, why, err = e.dust(ctx, at, id, iid, step)
 	case adversary.Contention, adversary.FrontRun:
-		s, why, err = e.grab(ctx, at, id, intent, step)
+		s, why, err = e.grab(ctx, at, id, iid, step)
 	case adversary.Malformed:
-		s, why, err = e.malformed(ctx, at, id, intent, step)
+		s, why, err = e.malformed(ctx, at, id, iid, step)
 	case adversary.DoubleSpend:
-		s, why, err = e.race(ctx, at, id, intent, step)
+		s, why, err = e.race(ctx, at, id, iid, step)
 	case adversary.ExUnitsGap:
-		s, why, err = e.gap(ctx, at, id, intent, step)
+		s, why, err = e.gap(ctx, at, id, iid, step)
 	default:
 		return shot{}, "no builder for " + string(step.Attack), nil
 	}
@@ -248,8 +249,8 @@ func (e *Engine) build(ctx context.Context, at sched.Time, id population.ActorID
 }
 
 // fund selects the adversary's inputs for need lovelace.
-func (e *Engine) fund(id population.ActorID, intent uint64, need uint64) ([]Coin, string) {
-	avail := e.pay.Coins(id, plan.IntentID(intent))
+func (e *Engine) fund(id population.ActorID, iid uint64, need uint64) ([]Coin, string) {
+	avail := e.pay.Coins(id, plan.IntentID(iid))
 	coins := e.sel.Select(avail, need)
 	if coins == nil {
 		return nil, fmt.Sprintf("spendable %d below %d", pay.SumCoins(avail), need)
@@ -266,9 +267,9 @@ func refs(coins []Coin) []Ref {
 }
 
 // dust pays every payee one output of exactly its min-UTxO.
-func (e *Engine) dust(ctx context.Context, at sched.Time, id population.ActorID, intent uint64, step adversary.Step) (shot, string, error) {
+func (e *Engine) dust(ctx context.Context, at sched.Time, id population.ActorID, iid uint64, step adversary.Step) (shot, string, error) {
 	outs := make([]build.Output, len(step.Payees))
-	s := shot{rec: wire.Pending{Args: wire.Args{Kind: dustKind}}, want: mistake.Expect(0, false), ttl: e.in.ttl(at, false, false)}
+	s := shot{rec: wire.Pending{Args: wire.Args{Kind: dustKind}}, want: mistake.Expect(0, false), ttl: e.in.TTL(at, false, false)}
 	for i, p := range step.Payees {
 		outs[i] = build.Output{To: build.AlwaysSucceeds.Address(e.cfg.NetworkID), Amount: dustGuess}
 		if !p.Script {
@@ -276,7 +277,7 @@ func (e *Engine) dust(ctx context.Context, at sched.Time, id population.ActorID,
 		}
 		s.payees = append(s.payees, uint64(p.Actor))
 	}
-	coins, why := e.fund(id, intent, uint64(len(outs))*dustGuess*2+feeHeadroom)
+	coins, why := e.fund(id, iid, uint64(len(outs))*dustGuess*2+feeHeadroom)
 	if why != "" {
 		return shot{}, why, nil
 	}
@@ -330,17 +331,17 @@ func (e *Engine) atMinimum(tx []byte, outs []build.Output) (bool, error) {
 
 // grab spends a shared script output: contention, or a front-run when the
 // step bids a tip.
-func (e *Engine) grab(ctx context.Context, at sched.Time, id population.ActorID, intent uint64, step adversary.Step) (shot, string, error) {
+func (e *Engine) grab(ctx context.Context, at sched.Time, id population.ActorID, iid uint64, step adversary.Step) (shot, string, error) {
 	ref := Ref{Tx: TxID(step.Spend.Ref.Tx), Index: step.Spend.Ref.Index}
-	s := shot{rec: wire.Pending{Args: wire.Args{Kind: unlockKind, Locked: &ref, Amount: step.Spend.Lovelace}}, ttl: e.in.ttl(at, false, true)}
+	s := shot{rec: wire.Pending{Args: wire.Args{Kind: unlockKind, Locked: &ref, Amount: step.Spend.Lovelace}}, ttl: e.in.TTL(at, false, true)}
 	// The honest spend it races may land first.
-	s.want = expect(e.cfg.Build, 0, true, specs[unlockKind].again)
-	coins, why := e.fund(id, intent, scriptHeadroom)
+	s.want = expect(e.cfg.Build, 0, true, intent.Again(unlockKind))
+	coins, why := e.fund(id, iid, scriptHeadroom)
 	if why != "" {
 		return shot{}, why, nil
 	}
 	w := e.co.Wallet(id)
-	b, err := buildUnlock(ctx, e, w, build.Spend{Inputs: e.ledgerUtxos(w, coins), TTL: s.ttl, Tip: step.Tip}, &s.rec)
+	b, err := e.in.Unlock(ctx, w, build.Spend{Inputs: e.ledgerUtxos(w, coins), TTL: s.ttl, Tip: step.Tip}, &s.rec)
 	if err != nil {
 		return shot{}, "", err
 	}
@@ -350,10 +351,10 @@ func (e *Engine) grab(ctx context.Context, at sched.Time, id population.ActorID,
 
 // malformed builds a valid self-payment and mutates it, or raw-builds a
 // steal of the victim's output.
-func (e *Engine) malformed(ctx context.Context, at sched.Time, id population.ActorID, intent uint64, step adversary.Step) (shot, string, error) {
-	s := shot{rec: wire.Pending{Args: wire.Args{To: uint64(id), Amount: minPayment}}, ttl: e.in.ttl(at, false, false), mutation: step.Mutation.String()}
+func (e *Engine) malformed(ctx context.Context, at sched.Time, id population.ActorID, iid uint64, step adversary.Step) (shot, string, error) {
+	s := shot{rec: wire.Pending{Args: wire.Args{To: uint64(id), Amount: minPayment}}, ttl: e.in.TTL(at, false, false), mutation: step.Mutation.String()}
 	s.want = adversary.Expect(step.Mutation)
-	coins, why := e.fund(id, intent, minPayment+feeHeadroom)
+	coins, why := e.fund(id, iid, minPayment+feeHeadroom)
 	if why != "" {
 		return shot{}, why, nil
 	}
@@ -411,9 +412,9 @@ func mutantID(tx []byte) common.Blake2b256 {
 }
 
 // race pays each payee from the same inputs.
-func (e *Engine) race(ctx context.Context, at sched.Time, id population.ActorID, intent uint64, step adversary.Step) (shot, string, error) {
-	s := shot{rec: wire.Pending{Args: wire.Args{To: uint64(step.Payees[0].Actor), Amount: minPayment}}, want: mistake.Expect(0, false), ttl: e.in.ttl(at, false, false)}
-	coins, why := e.fund(id, intent, minPayment+feeHeadroom)
+func (e *Engine) race(ctx context.Context, at sched.Time, id population.ActorID, iid uint64, step adversary.Step) (shot, string, error) {
+	s := shot{rec: wire.Pending{Args: wire.Args{To: uint64(step.Payees[0].Actor), Amount: minPayment}}, want: mistake.Expect(0, false), ttl: e.in.TTL(at, false, false)}
+	coins, why := e.fund(id, iid, minPayment+feeHeadroom)
 	if why != "" {
 		return shot{}, why, nil
 	}
@@ -438,16 +439,16 @@ var gapToken = []byte("gap")
 // gap mints under a burn loop sized to spend the step's memory, declaring
 // what the builder measured it spend, which must land between the block
 // and transaction limits.
-func (e *Engine) gap(ctx context.Context, at sched.Time, id population.ActorID, intent uint64, step adversary.Step) (shot, string, error) {
-	s := shot{rec: wire.Pending{Args: wire.Args{To: uint64(id)}}, want: adversary.GapExpect(), ttl: e.in.ttl(at, false, false)}
-	coins, why := e.fund(id, intent, 2*adversary.GapCollateral+scriptHeadroom)
+func (e *Engine) gap(ctx context.Context, at sched.Time, id population.ActorID, iid uint64, step adversary.Step) (shot, string, error) {
+	s := shot{rec: wire.Pending{Args: wire.Args{To: uint64(id)}}, want: adversary.GapExpect(), ttl: e.in.TTL(at, false, false)}
+	coins, why := e.fund(id, iid, 2*adversary.GapCollateral+scriptHeadroom)
 	if why != "" {
 		return shot{}, why, nil
 	}
 	w := e.co.Wallet(id)
 	b, err := e.builder.Plutus().Mint(ctx, w, build.Mint{
 		Spend: build.Spend{Inputs: e.ledgerUtxos(w, coins), TTL: s.ttl}, Policy: build.Burn(build.BurnSize(step.Memory)),
-		Name: gapToken, Quantity: 1, Redeemer: unitDatum(), Collateral: adversary.GapCollateral,
+		Name: gapToken, Quantity: 1, Redeemer: intent.UnitDatum(), Collateral: adversary.GapCollateral,
 	})
 	if err != nil {
 		return shot{}, "", err
@@ -568,10 +569,10 @@ func (e *Engine) lockOwner(d *common.Datum) (population.ActorID, bool) {
 	if len(e.owners) != len(e.co.IDs()) {
 		e.owners = make(map[string]population.ActorID, len(e.co.IDs()))
 		for _, id := range e.co.IDs() {
-			e.owners[string(datumKey(actorDatum(id)))] = id
+			e.owners[string(intent.DatumKey(intent.ActorDatum(id)))] = id
 		}
 	}
-	id, ok := e.owners[string(datumKey(*d))]
+	id, ok := e.owners[string(intent.DatumKey(*d))]
 	return id, ok && !e.isAdversary(id)
 }
 
@@ -611,7 +612,7 @@ func (v view) Remaining(id population.ActorID) uint64 {
 
 var _ adversary.View = view{}
 
-func oneShotBuild(context.Context, *Engine, keys.Wallet, build.Spend, *wire.Pending) (build.Built, error) {
+func oneShotBuild(context.Context, keys.Wallet, build.Spend, *wire.Pending) (build.Built, error) {
 	return build.Built{}, fmt.Errorf("engine: a one-shot attack is never rebuilt")
 }
 

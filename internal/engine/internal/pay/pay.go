@@ -241,13 +241,7 @@ func Refusable(v wire.Verdict, resend bool) bool {
 }
 
 // SumCoins is the coins' lovelace.
-func SumCoins(cs []wire.Coin) uint64 {
-	var sum uint64
-	for _, c := range cs {
-		sum += c.Lovelace
-	}
-	return sum
-}
+func SumCoins(cs []wire.Coin) uint64 { return wire.SumCoins(cs) }
 
 func attempt(a population.ActorID, tx wire.TxID, inputs []wire.Ref, ttl uint64) plan.Attempt {
 	ins := make([]plan.Ref, len(inputs))

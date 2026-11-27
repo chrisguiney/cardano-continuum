@@ -198,7 +198,7 @@ type pendingRec struct {
 	NotBefore sched.Time `cbor:"11,keyasint,omitempty"`
 	// Refill marks the faucet's refill, which M does not drive.
 	Refill bool `cbor:"12,keyasint,omitempty"`
-	// Kind is the intent's builder (intents.go); empty is a payment. To is
+	// Kind is the intent's builder (internal/intent); empty is a payment. To is
 	// the payee, pool or DRep it names, Amount what a payment pays, a lock
 	// locks, a mint or burn moves, or an unlock frees.
 	Kind string `cbor:"13,keyasint,omitempty"`

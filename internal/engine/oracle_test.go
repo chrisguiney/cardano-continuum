@@ -11,6 +11,7 @@ import (
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/intent"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/window"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/mistake"
@@ -60,9 +61,7 @@ func findings(t testing.TB, r eventlog.Reader) []oracle.Finding {
 // "inputs spent" answers to a send that may already be at a node.
 func mistakeClasses() []submit.Class {
 	cs := mistake.Expect(mistake.Of(mistake.Kinds()...), true).Classes
-	for _, sp := range specs {
-		cs = append(cs, sp.again...)
-	}
+	cs = append(cs, intent.AllAgain()...)
 	return cs
 }
 

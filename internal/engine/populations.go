@@ -174,6 +174,22 @@ func (c *Config) population(name string) (profile.Population, bool) {
 	return profile.Population{}, false
 }
 
+// deployRate is new contracts per second, zero without a contract
+// population.
+func deployRate(c *Config) float64 {
+	cp, ok := c.contractParams()
+	if !ok {
+		return 0
+	}
+	wallets := 0
+	for _, co := range c.Cohorts {
+		if p, _ := c.Profiles.Get(co.Profile); p.Kind == profile.Wallet && co.Profile != proposerName {
+			wallets += co.Count
+		}
+	}
+	return cp.New * float64(wallets) / secondsPerDay
+}
+
 // contractParams is the file's contract population, if it has one.
 func (c *Config) contractParams() (*profile.ContractParams, bool) {
 	for _, p := range c.Populations {
@@ -190,4 +206,4 @@ func subject(st *cohort.Actor) pace.Subject {
 }
 
 // Contracts is the number of contracts deployed, contract 0 included.
-func (e *Engine) Contracts() int { return e.in.count() }
+func (e *Engine) Contracts() int { return e.in.Count() }

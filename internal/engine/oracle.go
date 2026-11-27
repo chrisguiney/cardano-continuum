@@ -13,6 +13,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/intent"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
@@ -124,7 +125,7 @@ func (e *Engine) judge(at sched.Time, p *wire.Pending, r SubmitResult, out submi
 	}
 	// An adversary racing for the same shared output may have spent it.
 	spent := p.M.Sent || len(p.Txs) > 1 || (p.Locked != nil && e.contested[*p.Locked])
-	want := expect(e.cfg.Build, p.Carried, spent, specs[p.KindOf()].again)
+	want := expect(e.cfg.Build, p.Carried, spent, intent.Again(p.KindOf()))
 	if p.Probe {
 		// The probe's honest bytes break only the GOV rule's voter check.
 		want.Accept = false
@@ -143,7 +144,7 @@ func (e *Engine) judge(at sched.Time, p *wire.Pending, r SubmitResult, out submi
 		fs = append(fs, f)
 	}
 	if r.Again != nil {
-		again := expect(e.cfg.Build, p.Carried, true, specs[p.KindOf()].again)
+		again := expect(e.cfg.Build, p.Carried, true, intent.Again(p.KindOf()))
 		a.Expected, a.Answers = &again, []oracle.Answer{{Node: node, Outcome: answerOutcome(*r.Again)}}
 		fs = append(fs, oracle.Judge(a, e.cfg.Run)...)
 	}
