@@ -11,6 +11,7 @@ import (
 	"sort"
 	"text/tabwriter"
 
+	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/tlaflags"
 	"github.com/chrisguiney/cardano-continuum/internal/rng"
 	"github.com/chrisguiney/cardano-continuum/internal/scenario"
 	"github.com/chrisguiney/cardano-continuum/internal/tla"
@@ -162,7 +163,7 @@ func saveAll(dir string, ss []scenario.Scenario) error {
 
 // harvestFlags configure `scenario harvest`.
 type harvestFlags struct {
-	tlaFlags
+	tlaflags.Flags
 	rows, walks, depth int
 	walkSeed           int64
 	era                string
@@ -171,7 +172,7 @@ type harvestFlags struct {
 func cmdScenarioHarvest(ctx context.Context, args []string, out io.Writer) error {
 	fs := flag.NewFlagSet("scenario harvest", flag.ContinueOnError)
 	var f harvestFlags
-	f.register(fs)
+	f.Register(fs)
 	fs.IntVar(&f.rows, "rows", 4, "scenarios kept per table violation")
 	fs.IntVar(&f.walks, "walks", 0, "Mode B: random walks over Utxo.tla's ledger")
 	fs.IntVar(&f.depth, "depth", 6, "transactions offered per walk")
@@ -180,12 +181,12 @@ func cmdScenarioHarvest(ctx context.Context, args []string, out io.Writer) error
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	tools, cleanup, err := f.resolve("scenario harvest")
+	tools, cleanup, err := f.Resolve("scenario harvest")
 	if err != nil {
 		return err
 	}
 	defer cleanup()
-	dir, commit, err := tla.Fetch(ctx, f.repo, f.ref, f.cache)
+	dir, commit, err := tla.Fetch(ctx, f.Repo, f.Ref, f.Cache)
 	if err != nil {
 		return fmt.Errorf("scenario harvest: %w", err)
 	}
@@ -194,10 +195,10 @@ func cmdScenarioHarvest(ctx context.Context, args []string, out io.Writer) error
 	if err != nil {
 		return fmt.Errorf("scenario harvest: %w", err)
 	}
-	if err := saveAll(f.out, ss); err != nil {
+	if err := saveAll(f.Out, ss); err != nil {
 		return err
 	}
-	_, _ = fmt.Fprintf(out, "commit %s: %d scenarios written to %s\n", commit, len(ss), f.out)
+	_, _ = fmt.Fprintf(out, "commit %s: %d scenarios written to %s\n", commit, len(ss), f.Out)
 	return routing(dir, out)
 }
 
@@ -237,14 +238,14 @@ func (h harvester) utxo(ctx context.Context) ([]scenario.Scenario, error) {
 	}
 	var out []scenario.Scenario
 	for _, cfg := range cfgs {
-		ex, err := tla.ExportUtxo(ctx, h.tools, dir, cfg, h.f.timeout)
+		ex, err := tla.ExportUtxo(ctx, h.tools, dir, cfg, h.f.Timeout)
 		if err != nil {
 			return nil, err
 		}
 		if ex.Status != tla.Violation {
 			return nil, fmt.Errorf("%s: tlc %s: %s", ex.Name, ex.Status, ex.Detail)
 		}
-		out = append(out, scenario.FromUtxo(ex, scenario.SourceTrace, h.f.repo, h.commit, h.f.rows)...)
+		out = append(out, scenario.FromUtxo(ex, scenario.SourceTrace, h.f.Repo, h.commit, h.f.rows)...)
 	}
 	return out, nil
 }
@@ -259,14 +260,14 @@ func (h harvester) witnesses(ctx context.Context) ([]scenario.Scenario, error) {
 	}
 	var out []scenario.Scenario
 	for _, cfg := range cfgs {
-		ex, err := tla.ExportWitnesses(ctx, h.tools, dir, cfg, h.f.timeout)
+		ex, err := tla.ExportWitnesses(ctx, h.tools, dir, cfg, h.f.Timeout)
 		if err != nil {
 			return nil, err
 		}
 		if ex.Status != tla.Violation {
 			return nil, fmt.Errorf("%s: tlc %s: %s", ex.Name, ex.Status, ex.Detail)
 		}
-		out = append(out, scenario.FromWitnesses(ex, h.f.repo, h.commit, h.f.rows)...)
+		out = append(out, scenario.FromWitnesses(ex, h.f.Repo, h.commit, h.f.rows)...)
 	}
 	return out, nil
 }
@@ -289,7 +290,7 @@ func (h harvester) codec(ctx context.Context) ([]scenario.Scenario, error) {
 		return nil, err
 	}
 	sum, err := tla.Harvest(ctx, tla.Options{
-		Repo: h.dir, Out: seeds, Families: fams, Tools: h.tools, Timeout: h.f.timeout, Workers: h.f.workers,
+		Repo: h.dir, Out: seeds, Families: fams, Tools: h.tools, Timeout: h.f.Timeout, Workers: h.f.Workers,
 	})
 	if err != nil {
 		return nil, err
@@ -299,14 +300,14 @@ func (h harvester) codec(ctx context.Context) ([]scenario.Scenario, error) {
 		if seed.Status != tla.Violation {
 			return nil, fmt.Errorf("%s: tlc %s: %s", seed.Name, seed.Status, seed.Detail)
 		}
-		s, err := scenario.FromCodecSeed(seed, h.f.repo, h.commit)
+		s, err := scenario.FromCodecSeed(seed, h.f.Repo, h.commit)
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, s)
 	}
 	if h.has("cbor-codec") {
-		out = append(out, scenario.CodecTable(h.f.repo, h.commit)...)
+		out = append(out, scenario.CodecTable(h.f.Repo, h.commit)...)
 	}
 	return out, nil
 }
@@ -319,11 +320,11 @@ func (h harvester) walk(ctx context.Context) ([]scenario.Scenario, error) {
 	var out []scenario.Scenario
 	for i := range h.f.walks {
 		spec := tla.WalkSpec{Era: h.f.era, Depth: h.f.depth, Seed: h.f.walkSeed + int64(i)}
-		ex, err := tla.Walk(ctx, h.tools, dir, spec, h.f.timeout)
+		ex, err := tla.Walk(ctx, h.tools, dir, spec, h.f.Timeout)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, scenario.FromUtxo(ex, scenario.SourceWalk, h.f.repo, h.commit, 0)...)
+		out = append(out, scenario.FromUtxo(ex, scenario.SourceWalk, h.f.Repo, h.commit, 0)...)
 	}
 	return out, nil
 }

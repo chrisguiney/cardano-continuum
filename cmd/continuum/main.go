@@ -44,6 +44,7 @@ import (
 	clibisect "github.com/chrisguiney/cardano-continuum/internal/cli/bisect"
 	clibuild "github.com/chrisguiney/cardano-continuum/internal/cli/build"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/export"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/harvest"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/image"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/profiles"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/kube"
@@ -101,9 +102,9 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 	case "serve":
 		return cmdServe(ctx, args[1:], out, kube.Open)
 	case "harvest":
-		return cmdHarvest(ctx, args[1:], out)
+		return harvest.Run(ctx, args[1:], out)
 	case "vectors":
-		return cmdVectors(ctx, args[1:], out)
+		return harvest.Vectors(ctx, args[1:], out)
 	case "scenario":
 		return cmdScenario(ctx, args[1:], out)
 	}
