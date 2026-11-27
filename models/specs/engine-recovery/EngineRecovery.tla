@@ -202,8 +202,9 @@ Feasible(s, e) ==
 \* design A counts the block that has just become Depth deep. A rollback
 \* truncates the points; design B unwinds the counters of the removed
 \* blocks, design A keeps its counters (a feasible rollback never reaches
-\* them). The step is total so replay of any log is defined; the live loop
-\* only takes feasible steps."
+\* them). With NoUnwind, design B truncates its points and forgets to
+\* unwind the removed blocks' counters. The step is total so replay of any
+\* log is defined; the live loop only takes feasible steps."
 \* Literally: "Step of s and e is defined as: in the case e.k equals "tick",
 \*   s with ticks increased by 1; in the case e.k equals "fwd" and Variant
 \*   equals "Undo", s with e.b appended to pts, conf set to the length of
@@ -213,7 +214,8 @@ Feasible(s, e) ==
 \*   conf increased by 1 and the actor of element s.conf plus 1 of v bumped,
 \*   else s with pts v; in the case e.k equals "back" and Variant equals
 \*   "Undo", letting n be Min of e.n and the length of s.pts, s with pts cut
-\*   to its first n, conf n, act Minus Derive of the removed blocks, and ud
+\*   to its first n, conf n, act Minus Derive of the removed blocks (Zero
+\*   under NoUnwind), and ud
 \*   reduced by the number removed, not below 0; in every other case, s with
 \*   pts cut to its first n and conf set to Min of conf and n."
 Step(s, e) ==
@@ -230,8 +232,10 @@ Step(s, e) ==
                 ELSE [s EXCEPT !.pts = v]
       [] e.k = "back" /\ Variant = "Undo" ->
             LET n == Min(e.n, Len(s.pts))
+                d == IF Mutation = "NoUnwind" THEN Zero
+                     ELSE Derive(SubSeq(s.pts, n + 1, Len(s.pts)))
             IN  [s EXCEPT !.pts = SubSeq(@, 1, n), !.conf = n,
-                          !.act = Minus(@, Derive(SubSeq(s.pts, n + 1, Len(s.pts)))),
+                          !.act = Minus(@, d),
                           !.ud = Max(0, @ - (Len(s.pts) - n))]
       [] OTHER ->
             LET n == Min(e.n, Len(s.pts))
@@ -244,11 +248,14 @@ Step(s, e) ==
 RECURSIVE Replay(_, _)
 Replay(s, log) == IF log = <<>> THEN s ELSE Replay(Step(s, Head(log)), Tail(log))
 
-\* In English: "The log entries written after the checkpoint."
+\* In English: "The log entries written after the checkpoint. With
+\* SkipTail a restart recovers the checkpoint alone and drops them."
 \* Literally: "LogTail is defined as: if ck.seq is at least the length of
-\*   slog then the empty sequence, else the elements of slog from ck.seq
-\*   plus 1 to the end."
-LogTail == IF ck.seq >= Len(slog) THEN <<>> ELSE SubSeq(slog, ck.seq + 1, Len(slog))
+\*   slog or Mutation equals "SkipTail" then the empty sequence, else the
+\*   elements of slog from ck.seq plus 1 to the end."
+LogTail ==
+    IF ck.seq >= Len(slog) \/ Mutation = "SkipTail" THEN <<>>
+    ELSE SubSeq(slog, ck.seq + 1, Len(slog))
 
 \* In English: "What a restart recovers from the store: the checkpoint with
 \* the log tail replayed on top."
@@ -478,19 +485,35 @@ Restart ==
                       /\ halted' = TRUE
     /\ UNCHANGED <<node, store, crashes, half>>
 
-\* In English: "Nothing happens. Keeps TLC from reporting the end of the
-\* bounded run as a deadlock; a stuck engine is caught by NeverHalted."
-\* Literally: "Idle is defined as: vars is unchanged."
-Idle == UNCHANGED vars
+\* In English: "The engine has caught up with the node: running, at the
+\* node's tip, log flushed, checkpoint current."
+\* Literally: "CaughtUp is defined as: up is true, srv equals chain, st.pts
+\*   equals chain, pend is empty, and ck equals the record whose seq is the
+\*   length of slog and whose st is st."
+CaughtUp ==
+    /\ up /\ srv = chain /\ st.pts = chain /\ pend = <<>>
+    /\ ck = [seq |-> Len(slog), st |-> st]
 
-\* In English: "A step is a node step, a crash, an engine step, or nothing."
+\* In English: "The run is over, in one of the two states the model means
+\* to end in: the engine has caught up, or it has halted on a rollback it
+\* cannot unwind (the code returns ErrRollbackBelowConfirmed; NeverHalted
+\* reports it). Any other state with no step is a stuck engine, which
+\* TLC's deadlock check reports."
+\* Literally: "Done is defined as: CaughtUp or halted, and vars is
+\*   unchanged."
+Done ==
+    /\ CaughtUp \/ halted
+    /\ UNCHANGED vars
+
+\* In English: "A step is a node step, a crash, an engine step, or the
+\* end of the run."
 \* Literally: "Next is defined as: NodeExtend, or NodeRollback, or Crash, or
 \*   Fetch, or Tick, or CommitLog, or CommitCkpt, or CommitCkptRest, or
-\*   Restart, or Idle."
+\*   Restart, or Done."
 Next ==
     \/ NodeExtend \/ NodeRollback \/ Crash
     \/ Fetch \/ Tick \/ CommitLog \/ CommitCkpt \/ CommitCkptRest \/ Restart
-    \/ Idle
+    \/ Done
 
 \* In English: "The engine's own steps are weakly fair: one that stays
 \* possible is eventually taken. The node and crashes get no fairness, and
@@ -606,12 +629,8 @@ UndoCoversWindow ==
 \* In English: "Once the node stops changing and the crashes are over, the
 \* engine eventually catches up for good: running, at the node's tip, log
 \* flushed, checkpoint current."
-\* Literally: "CatchesUp is defined as: eventually always, up is true, srv
-\*   equals chain, st.pts equals chain, pend is empty, and ck equals the
-\*   record whose seq is the length of slog and whose st is st."
-CatchesUp ==
-    <>[](/\ up /\ srv = chain /\ st.pts = chain /\ pend = <<>>
-         /\ ck = [seq |-> Len(slog), st |-> st])
+\* Literally: "CatchesUp is defined as: eventually always CaughtUp."
+CatchesUp == <>[]CaughtUp
 
 -----------------------------------------------------------------------------
 \* Reachability probes: each claims a situation never happens; the Probe

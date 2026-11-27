@@ -55,8 +55,9 @@ engine at every step. This is a design model: it constrains
   one interleaving of these two steps. `SplitCommit` splits the checkpoint
   itself into a points write and a separate actor-state write.
 - `NoUndo` and the stuck restart are caught by `NeverHalted` (an explicit
-  "cannot unwind" flag), not by a deadlock. An `Idle` step keeps TLC from
-  reporting the end of the bounded run as a deadlock.
+  "cannot unwind" flag), not by a deadlock. The run ends in `Done`: the
+  engine caught up (`CaughtUp`) or halted. TLC's deadlock check is on, so any
+  other state with no step fails the config.
 - The plan's bounds were two actors and a chain of up to 4 blocks. At those
   bounds, with 2 rollbacks and 2 crashes, TLC passed 11.6 million distinct
   states without finishing (the log is a history variable). The main configs
@@ -84,16 +85,16 @@ engine at every step. This is a design model: it constrains
 
 | Invariant | Says | Broken by |
 | --- | --- | --- |
-| `TypeOK` | every variable has its shape | - |
+| `TypeOK` | every variable has its shape | - (a shape check; no mutation is meant to break it) |
 | `NeverHalted` | the engine never meets a rollback it cannot unwind | `EngineNoUndoBug` |
 | `CursorAgrees` | the engine's points equal the node's read pointer for it | `EngineIntersectAtTipBug` |
-| `MemConsistent` | in memory, actors = Derive(confirmed blocks) | - |
+| `MemConsistent` | in memory, actors = Derive(confirmed blocks) | `EngineNoUnwindBug` |
 | `LogBeforeEffect` | the checkpoint never reflects an entry the durable log lacks | `EngineLogAfterEffectBug` |
 | `CheckpointConsistent` | the checkpoint's points and actors were written together | `EngineSplitCommitBug` |
 | `ReplayReproduces` | replaying the whole log from nothing = checkpoint + replayed tail | `EngineUnloggedClockBug` |
-| `StoreMatchesChain` | once caught up and flushed, what a restart recovers is the chain and Derive of it | - |
+| `StoreMatchesChain` | once caught up and flushed, what a restart recovers is the chain and Derive of it | `EngineRecoverSkipsTailBug` |
 | `StableOnly` (A) | every block the durable or in-memory actors reflect is still on the node's chain | `EngineConfirmAtDepthZeroBug` |
-| `UndoCoversWindow` (B) | recovered undo covers every recovered block the node has dropped | (`EngineNoUndoBug` also breaks it) |
+| `UndoCoversWindow` (B) | recovered undo covers every recovered block the node has dropped | `EngineNoUndoWindowBug` |
 | `CatchesUp` (liveness) | with fair engine steps, it ends up running, at the tip, flushed and checkpointed | `EngineNoUndoLiveBug` |
 
 ## Configs and state counts
@@ -101,7 +102,9 @@ engine at every step. This is a design model: it constrains
 All configs use K = 2 and `MaxTicks = 1`. Unless noted, they also use one
 actor, `MaxLen = 4`, `MaxRollbacks = 2`, `MaxCrashes = 2` and
 `MaxBatch = 1`. TLC 2.19 (tla2tools 1.7.4, as `make models-install` pins), `-workers auto`. A counterexample's length is
-given in states.
+given in states. Every config checks for deadlock: the run ends in `Done`
+(caught up, or halted). The deadlock check is not decorative: without `Done`,
+`EngineStable` deadlocks at the end of its bounded run.
 
 | Config | Variant | Mutation or probe | Expected | TLC reported |
 | --- | --- | --- | --- | --- |
@@ -118,6 +121,9 @@ given in states.
 | `EngineIntersectAtTipBug` | A | restart ignores the older intersection | `CursorAgrees` | violated, trace 7 |
 | `EngineConfirmAtDepthZeroBug` | A | counts the tip, no undo | `StableOnly` | violated, trace 4 |
 | `EngineUnloggedClockBug` | A | tick not logged | `ReplayReproduces` | violated, trace 3 |
+| `EngineNoUnwindBug` | B | rollback truncates points, keeps counters | `MemConsistent` | violated |
+| `EngineRecoverSkipsTailBug` | A | restart recovers the checkpoint, drops the log tail | `StoreMatchesChain` | violated |
+| `EngineNoUndoWindowBug` | B | undo only in memory | `UndoCoversWindow` | violated |
 | `EngineProbeOfflineRollbackBug` | A | probe | `ProbeNoOfflineRollback` | violated: reachable, trace 7 |
 | `EngineProbeTailReplayBug` | A | probe | `ProbeNoTailReplay` | violated: reachable, trace 4 |
 | `EngineUndoProbeDurableUnwindBug` | B | probe | `ProbeNoDurableUnwind` | violated: reachable, trace 8 |
