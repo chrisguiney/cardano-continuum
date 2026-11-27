@@ -37,6 +37,61 @@ export function appendDecision(list: Decision[], d: Decision, cap: number): Deci
   return out.length > cap ? out.slice(0, cap) : out;
 }
 
+/** IdleMode is how the decisions feed shows idle decisions. */
+export type IdleMode = "group" | "hide" | "show";
+
+/** IdleRun is a run of consecutive idle decisions shown as one row. */
+export interface IdleRun {
+  type: "idle";
+  /** key is the first decision's id, stable while the run grows. */
+  key: number;
+  count: number;
+  /** actors is the number of distinct actors in actorIds. */
+  actors: number;
+  actorIds: ReadonlySet<number>;
+  /** from and to are the simulated times of the first and last decision. */
+  from: number;
+  to: number;
+}
+
+/** FeedRow is one row of the decisions feed. */
+export type FeedRow = { type: "decision"; d: Decision } | IdleRun;
+
+export const isIdle = (d: Decision): boolean => d.intent === "idle";
+
+function extend(r: IdleRun, d: Decision): IdleRun {
+  const actorIds = r.actorIds.has(d.actor) ? r.actorIds : new Set([...r.actorIds, d.actor]);
+  return { ...r, count: r.count + 1, actors: actorIds.size, actorIds, from: Math.min(r.from, d.at), to: Math.max(r.to, d.at) };
+}
+
+/**
+ * foldDecisions adds a batch (oldest first) to rows (newest first) and keeps
+ * at most cap rows. Idle decisions arrive far faster than anything else, so
+ * in "group" mode each run of them between two other decisions becomes one
+ * counting row; "hide" drops them and "show" keeps each.
+ */
+export function foldDecisions(rows: FeedRow[], batch: Decision[], cap: number, mode: IdleMode): FeedRow[] {
+  const out = rows.slice();
+  for (const d of batch) {
+    if (!isIdle(d) || mode === "show") {
+      out.unshift({ type: "decision", d });
+      continue;
+    }
+
+    if (mode === "hide") continue;
+
+    const head = out[0];
+    if (head?.type === "idle") {
+      out[0] = extend(head, d);
+      continue;
+    }
+
+    out.unshift({ type: "idle", key: d.id, count: 1, actors: 1, actorIds: new Set([d.actor]), from: d.at, to: d.at });
+  }
+
+  return out.length > cap ? out.slice(0, cap) : out;
+}
+
 export interface FeedOptions {
   base: string;
   filter: FeedFilter;

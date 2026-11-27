@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
-import { Feed, appendDecision, type EventSourceLike, type FeedFilter, type FeedState } from "../lib/feed";
+import { Feed, foldDecisions, type EventSourceLike, type FeedFilter, type FeedRow, type FeedState, type IdleMode, type IdleRun } from "../lib/feed";
 import { simTime } from "../lib/format";
-import { VIEW_BLURB } from "../lib/help";
+import { FIELD_HELP, VIEW_BLURB } from "../lib/help";
 import { useEnums } from "../lib/meta";
 import { usePoll } from "../lib/hooks";
 import { buildQuery, parseQuery, writeQuery } from "../lib/query";
@@ -11,6 +11,23 @@ import { Blurb } from "./fields";
 import { DecisionFilterBar, type DecisionFilterState } from "./filterbars";
 
 const CAP = 500;
+/** RAW_CAP bounds the decisions kept to re-fold when the idle mode changes. */
+const RAW_CAP = 5000;
+/** FLUSH_MS batches renders: one per interval however fast decisions arrive. */
+const FLUSH_MS = 300;
+
+function IdleRow({ r }: { r: IdleRun }) {
+  const span = r.from === r.to ? simTime(r.from) : `${simTime(r.from)} – ${simTime(r.to)}`;
+  return (
+    <li class="idle-run">
+      <span class="when">{span}</span>
+      <span class="kind">idle</span>
+      <span class="muted">
+        {r.count.toLocaleString()} idle decision{r.count === 1 ? "" : "s"} from {r.actors.toLocaleString()} actor{r.actors === 1 ? "" : "s"}
+      </span>
+    </li>
+  );
+}
 
 function Why({ d }: { d: Decision }) {
   if (!d.scores?.length && d.body === undefined) return null;
@@ -49,30 +66,59 @@ function parseFilter(f: DecisionFilterState): FeedFilter {
 }
 
 export function Decisions() {
-  const [rows, setRows] = useState<Decision[]>([]);
+  const [rows, setRows] = useState<FeedRow[]>([]);
   const [state, setState] = useState<FeedState>("connecting");
   const [gap, setGap] = useState(false);
   const [filt, setFilt] = useState<DecisionFilterState>(() => parseQuery(location.search, DEFAULTS));
+  const [mode, setMode] = useState<IdleMode>("group");
+  const [paused, setPaused] = useState(false);
+  const [waiting, setWaiting] = useState(0);
   const enums = useEnums();
   const { data: snap } = usePoll<Snapshot>("/api/overview", 10000);
   const feed = useRef<Feed | null>(null);
+  // raw holds the newest decisions oldest first, so a mode change can
+  // re-fold them; pending holds those not yet drawn.
+  const raw = useRef<Decision[]>([]);
+  const pending = useRef<Decision[]>([]);
+  const view = useRef({ mode, paused });
+  view.current = { mode, paused };
 
   useEffect(() => {
     const f = new Feed({
       base: "/api/decisions",
       filter: {},
       open: (u) => new EventSource(u) as unknown as EventSourceLike,
-      onDecision: (d) => setRows((r) => appendDecision(r, d, CAP)),
+      onDecision: (d) => {
+        raw.current.push(d);
+        if (raw.current.length > RAW_CAP) raw.current.splice(0, raw.current.length - RAW_CAP);
+        pending.current.push(d);
+      },
       onGap: () => setGap(true),
       onReset: () => {
+        raw.current = [];
+        pending.current = [];
         setRows([]);
+        setWaiting(0);
         setGap(false);
       },
       onState: setState,
     });
     feed.current = f;
     f.start();
-    return () => f.stop();
+    const t = setInterval(() => {
+      const batch = pending.current;
+      if (batch.length === 0) return;
+      if (view.current.paused) {
+        setWaiting(batch.length);
+        return;
+      }
+      pending.current = [];
+      setRows((r) => foldDecisions(r, batch, CAP, view.current.mode));
+    }, FLUSH_MS);
+    return () => {
+      clearInterval(t);
+      f.stop();
+    };
   }, []);
 
   useEffect(() => {
@@ -80,27 +126,49 @@ export function Decisions() {
     writeQuery(buildQuery({ ...filt }, DEFAULTS));
   }, [filt]);
 
+  useEffect(() => {
+    if (paused) return;
+    pending.current = [];
+    setWaiting(0);
+    setRows(foldDecisions([], raw.current, CAP, mode));
+  }, [mode, paused]);
+
   return (
     <>
       <h1>Decisions</h1>
       <Blurb text={VIEW_BLURB.decisions!} />
       <form class="filters" aria-label="Filter decisions" onSubmit={(e) => e.preventDefault()}>
         <DecisionFilterBar f={filt} enums={enums} profiles={snap?.population.by_profile ?? {}} onChange={(k, v) => setFilt((f) => ({ ...f, [k]: v }))} />
-        <span class={`tag ${state === "live" ? "ok" : "warn"}`} role="status">{state}</span>
+        <label title={FIELD_HELP.idle!.help}>
+          {FIELD_HELP.idle!.label}{" "}
+          <select value={mode} onChange={(e) => setMode((e.target as HTMLSelectElement).value as IdleMode)}>
+            <option value="group">group</option>
+            <option value="hide">hide</option>
+            <option value="show">show each</option>
+          </select>
+        </label>
+        <button type="button" title={FIELD_HELP.pause!.help} aria-pressed={paused} onClick={() => setPaused((p) => !p)}>
+          {paused ? `Resume${waiting ? ` (${waiting.toLocaleString()} new)` : ""}` : "Pause"}
+        </button>
+        <span class={`tag ${state === "live" ? "ok" : "warn"}`} role="status">{paused ? "paused" : state}</span>
       </form>
       {gap && <p class="banner warn">Some decisions were dropped before this connection could replay them.</p>}
-      <p class="muted">Newest first, last {CAP} shown.</p>
+      <p class="muted">Newest first, last {CAP} rows shown.</p>
       <ul class="feed">
-        {rows.map((d) => (
-          <li key={d.id}>
-            <span class="when">{simTime(d.at)}</span>
-            <span class="kind">{d.kind}</span>
-            <Link to={`/actors/${d.actor}`}>actor {d.actor}</Link>
-            {d.profile && <span class="muted"> {d.profile}</span>}
-            {d.intent && <strong> {d.intent}</strong>}
-            <Why d={d} />
-          </li>
-        ))}
+        {rows.map((r) =>
+          r.type === "idle" ? (
+            <IdleRow key={`i${r.key}`} r={r} />
+          ) : (
+            <li key={r.d.id}>
+              <span class="when">{simTime(r.d.at)}</span>
+              <span class="kind">{r.d.kind}</span>
+              <Link to={`/actors/${r.d.actor}`}>actor {r.d.actor}</Link>
+              {r.d.profile && <span class="muted"> {r.d.profile}</span>}
+              {r.d.intent && <strong> {r.d.intent}</strong>}
+              <Why d={r.d} />
+            </li>
+          ),
+        )}
         {rows.length === 0 && <li class="empty">Waiting for decisions…</li>}
       </ul>
     </>

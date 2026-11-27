@@ -23,6 +23,8 @@ export const FIELD_HELP: Record<string, FieldHelp> = {
   voter_class: { label: "Voter", help: "Who cast a governance vote: drep (a delegated representative, voting with the stake delegated to it), spo (a stake pool operator, voting with its pool's stake) or committee (a constitutional committee member, one vote each)." },
   action_type: { label: "Action type", help: "What a governance proposal asks for, such as info (a poll that changes nothing), parameter_change, treasury_withdrawals, no_confidence or hard_fork_initiation. Stake pools may vote only on some types." },
   actor: { label: "Actor id", help: "Show only decisions from the actor with this number. Leave empty for all actors." },
+  idle: { label: "Idle", help: "Idle decisions (an actor woke and chose to do nothing) outnumber everything else. group: each run of them between two other decisions is one row with a count. hide: leave them out. show each: one row per idle decision." },
+  pause: { label: "Pause", help: "Stop the feed from scrolling so you can read it. New decisions are still received and counted, and appear when you resume." },
   limit: { label: "Rows per page", help: "How many actors to load at a time." },
   sort: { label: "Sort by", help: "The column the table is ordered by. Clicking a column heading does the same." },
   dir: { label: "Order", help: "Ascending counts up (a to z, small to large); descending counts down." },

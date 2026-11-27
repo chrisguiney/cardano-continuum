@@ -109,6 +109,7 @@ tr.dim { opacity: .6; }
 .feed, .timeline { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
 .feed li, .timeline li { padding: .45rem .8rem; border-bottom: 1px solid var(--border); }
 .feed li:last-child, .timeline li:last-child { border-bottom: 0; }
+.feed li.idle-run { color: var(--muted); font-size: .92em; }
 .when { font-family: ui-monospace, monospace; color: var(--muted); margin-right: .6rem; }
 .kind { font-weight: 600; margin-right: .6rem; }
 .scores { margin: .4rem 0; font-size: .9rem; }
