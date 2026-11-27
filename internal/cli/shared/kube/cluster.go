@@ -1,4 +1,4 @@
-package main
+package kube
 
 import (
 	"context"
@@ -16,13 +16,26 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/imageset"
 )
 
-// kubeCluster is imageCluster over a controller-runtime client.
-type kubeCluster struct {
+// Client is the part of the Kubernetes API the commands use: the
+// ContinuumNetwork, its ContinuumPools, and an image patch.
+type Client interface {
+	Network(ctx context.Context, name string) (*v1alpha1.ContinuumNetwork, error)
+	Pools(ctx context.Context, network string) ([]v1alpha1.ContinuumPool, error)
+	Apply(ctx context.Context, c imageset.Change) error
+}
+
+// Opener connects to the cluster named by kubeconfig (empty: the usual
+// KUBECONFIG rules) and works in namespace.
+type Opener func(kubeconfig, namespace string) (Client, error)
+
+// Cluster is Client over a controller-runtime client.
+type Cluster struct {
 	c  client.Client
 	ns string
 }
 
-func openKube(kubeconfig, namespace string) (imageCluster, error) {
+// Open connects to the cluster named by kubeconfig; it is an Opener.
+func Open(kubeconfig, namespace string) (Client, error) {
 	rules := clientcmd.NewDefaultClientConfigLoadingRules()
 	rules.ExplicitPath = kubeconfig
 	cfg, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(rules, nil).ClientConfig()
@@ -37,10 +50,11 @@ func openKube(kubeconfig, namespace string) (imageCluster, error) {
 	if err != nil {
 		return nil, fmt.Errorf("connect to cluster: %w", err)
 	}
-	return &kubeCluster{c: c, ns: namespace}, nil
+	return &Cluster{c: c, ns: namespace}, nil
 }
 
-func (k *kubeCluster) Network(ctx context.Context, name string) (*v1alpha1.ContinuumNetwork, error) {
+// Network returns the named ContinuumNetwork.
+func (k *Cluster) Network(ctx context.Context, name string) (*v1alpha1.ContinuumNetwork, error) {
 	var n v1alpha1.ContinuumNetwork
 	if err := k.c.Get(ctx, types.NamespacedName{Namespace: k.ns, Name: name}, &n); err != nil {
 		return nil, fmt.Errorf("get network %s/%s: %w", k.ns, name, err)
@@ -48,7 +62,8 @@ func (k *kubeCluster) Network(ctx context.Context, name string) (*v1alpha1.Conti
 	return &n, nil
 }
 
-func (k *kubeCluster) Pools(ctx context.Context, network string) ([]v1alpha1.ContinuumPool, error) {
+// Pools lists the ContinuumPools of network.
+func (k *Cluster) Pools(ctx context.Context, network string) ([]v1alpha1.ContinuumPool, error) {
 	var l v1alpha1.ContinuumPoolList
 	if err := k.c.List(ctx, &l, client.InNamespace(k.ns)); err != nil {
 		return nil, fmt.Errorf("list pools in %s: %w", k.ns, err)
@@ -64,7 +79,7 @@ func (k *kubeCluster) Pools(ctx context.Context, network string) ([]v1alpha1.Con
 
 // Apply merge-patches only the one field, so a concurrent edit of anything
 // else on the object is not overwritten.
-func (k *kubeCluster) Apply(ctx context.Context, c imageset.Change) error {
+func (k *Cluster) Apply(ctx context.Context, c imageset.Change) error {
 	var obj client.Object
 	var body map[string]any
 	switch c.Kind {
@@ -82,4 +97,19 @@ func (k *kubeCluster) Apply(ctx context.Context, c imageset.Change) error {
 		return fmt.Errorf("encode patch: %w", err)
 	}
 	return k.c.Patch(ctx, obj, client.RawPatch(types.MergePatchType, patch))
+}
+
+// PatchPool merge-patches the listed spec fields of ContinuumPool name.
+func (k *Cluster) PatchPool(ctx context.Context, name string, spec map[string]any) error {
+	patch, err := json.Marshal(map[string]any{"spec": spec})
+	if err != nil {
+		return fmt.Errorf("encode patch: %w", err)
+	}
+	obj := &v1alpha1.ContinuumPool{}
+	obj.SetNamespace(k.ns)
+	obj.SetName(name)
+	if err := k.c.Patch(ctx, obj, client.RawPatch(types.MergePatchType, patch)); err != nil {
+		return fmt.Errorf("patch pool %s/%s: %w", k.ns, name, err)
+	}
+	return nil
 }

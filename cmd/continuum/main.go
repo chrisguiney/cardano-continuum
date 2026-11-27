@@ -43,7 +43,9 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	clibuild "github.com/chrisguiney/cardano-continuum/internal/cli/build"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/export"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/image"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/profiles"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/kube"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
@@ -87,7 +89,7 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 	case "export":
 		return export.Run(ctx, args[1:], out)
 	case "image":
-		return cmdImage(ctx, args[1:], out, openKube)
+		return image.Run(ctx, args[1:], out)
 	case "profiles":
 		return profiles.Run(ctx, args[1:], out)
 	case "build":
@@ -95,7 +97,7 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 	case "bisect":
 		return cmdBisect(ctx, args[1:], out)
 	case "serve":
-		return cmdServe(ctx, args[1:], out, openKube)
+		return cmdServe(ctx, args[1:], out, kube.Open)
 	case "harvest":
 		return cmdHarvest(ctx, args[1:], out)
 	case "vectors":

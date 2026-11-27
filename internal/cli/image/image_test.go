@@ -1,74 +1,36 @@
-package main
+package image
 
 import (
 	"bytes"
-	"context"
 	"flag"
 	"fmt"
 	"os"
 	"slices"
 	"testing"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/kube"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/kubetest"
 	"github.com/chrisguiney/cardano-continuum/internal/imageset"
 )
 
 var update = flag.Bool("update", false, "rewrite testdata/*.golden")
 
-// fakeCluster records the patches the command applies.
-type fakeCluster struct {
-	net     *v1alpha1.ContinuumNetwork
-	pools   []v1alpha1.ContinuumPool
-	applied []imageset.Change
-}
-
-func (f *fakeCluster) Network(context.Context, string) (*v1alpha1.ContinuumNetwork, error) {
-	return f.net, nil
-}
-
-func (f *fakeCluster) Pools(context.Context, string) ([]v1alpha1.ContinuumPool, error) {
-	return f.pools, nil
-}
-
-func (f *fakeCluster) Apply(_ context.Context, c imageset.Change) error {
-	f.applied = append(f.applied, c)
-	return nil
-}
-
-func newFake() *fakeCluster {
-	f := &fakeCluster{net: &v1alpha1.ContinuumNetwork{
-		ObjectMeta: metav1.ObjectMeta{Name: "demo"},
-		Spec:       v1alpha1.ContinuumNetworkSpec{Images: v1alpha1.ImageSet{v1alpha1.Dingo: "dingo:main"}},
-	}}
-	for _, i := range []int{4, 1, 3, 0, 2} {
-		f.pools = append(f.pools, v1alpha1.ContinuumPool{
-			ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("p%d", i)},
-			Spec: v1alpha1.ContinuumPoolSpec{
-				PoolID: fmt.Sprintf("pool%d", i), Implementation: v1alpha1.Dingo, Tier: v1alpha1.TierForging,
-			},
-		})
-	}
-	return f
-}
-
-func runImage(t *testing.T, f *fakeCluster, args ...string) (string, error) {
+func runImage(t *testing.T, f *kubetest.Fake, args ...string) (string, error) {
 	t.Helper()
 	var out bytes.Buffer
-	open := func(string, string) (imageCluster, error) { return f, nil }
-	err := cmdImage(t.Context(), append([]string{"set"}, args...), &out, open)
+	open := func(string, string) (kube.Client, error) { return f, nil }
+	err := RunWith(t.Context(), append([]string{"set"}, args...), &out, open)
 	return out.String(), err
 }
 
 func TestImageSetPatchesSelectedPools(t *testing.T) {
-	f := newFake()
+	f := kubetest.New()
 	// Flags may follow the positional argument, as in the usage line.
 	if _, err := runImage(t, f, "dingo=dingo:dev", "--network", "demo", "--pools", "40%"); err != nil {
 		t.Fatal(err)
 	}
 	var got []string
-	for _, c := range f.applied {
+	for _, c := range f.Applied {
 		if c.Kind != imageset.KindPool || c.To != "dingo:dev" {
 			t.Fatalf("unexpected patch %+v", c)
 		}
@@ -80,17 +42,17 @@ func TestImageSetPatchesSelectedPools(t *testing.T) {
 }
 
 func TestImageSetNetworkDefault(t *testing.T) {
-	f := newFake()
+	f := kubetest.New()
 	if _, err := runImage(t, f, "--network", "demo", "dingo=dingo:dev"); err != nil {
 		t.Fatal(err)
 	}
-	if len(f.applied) != 1 || f.applied[0].Kind != imageset.KindNetwork || f.applied[0].To != "dingo:dev" {
-		t.Fatalf("applied %+v", f.applied)
+	if len(f.Applied) != 1 || f.Applied[0].Kind != imageset.KindNetwork || f.Applied[0].To != "dingo:dev" {
+		t.Fatalf("applied %+v", f.Applied)
 	}
 }
 
 func TestImageSetDryRunGolden(t *testing.T) {
-	f := newFake()
+	f := kubetest.New()
 	var all bytes.Buffer
 	for _, args := range [][]string{
 		{"dingo=ghcr.io/x/dingo:dev-abc", "--network", "demo", "--dry-run"},
@@ -104,8 +66,8 @@ func TestImageSetDryRunGolden(t *testing.T) {
 		}
 		fmt.Fprintf(&all, "$ continuum image set %v\n%s", args, out)
 	}
-	if len(f.applied) != 0 {
-		t.Fatalf("dry run applied %+v", f.applied)
+	if len(f.Applied) != 0 {
+		t.Fatalf("dry run applied %+v", f.Applied)
 	}
 	const path = "testdata/image-set-dry-run.golden"
 	if *update {
@@ -132,12 +94,12 @@ func TestImageSetUsageErrors(t *testing.T) {
 		{"--network", "demo", "dingo=x", "extra"},
 		{"--network", "demo", "bogus=x"},
 	} {
-		f := newFake()
+		f := kubetest.New()
 		if _, err := runImage(t, f, args...); err == nil {
 			t.Errorf("%v accepted", args)
 		}
-		if len(f.applied) != 0 {
-			t.Errorf("%v applied %+v", args, f.applied)
+		if len(f.Applied) != 0 {
+			t.Errorf("%v applied %+v", args, f.Applied)
 		}
 	}
 }

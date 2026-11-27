@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/kube"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/imageset"
 	"github.com/chrisguiney/cardano-continuum/internal/rerun"
@@ -15,13 +16,13 @@ import (
 
 // replayDeps are the outside world a live `replay --image` touches.
 type replayDeps struct {
-	open openCluster
+	open kube.Opener
 	// want returns the header the live re-run would record, from the
 	// devnet's genesis and protocol parameters.
 	want func(ctx context.Context, sf simFlags, lf liveFlags) (eventlog.HeaderBody, error)
 }
 
-func realReplayDeps() replayDeps { return replayDeps{open: openKube, want: liveWant} }
+func realReplayDeps() replayDeps { return replayDeps{open: kube.Open, want: liveWant} }
 
 // liveWant derives the header a live run on the node at lf.node would write.
 func liveWant(ctx context.Context, sf simFlags, lf liveFlags) (eventlog.HeaderBody, error) {
@@ -88,7 +89,7 @@ func replayImage(ctx context.Context, assign, logPath string, live bool, sf simF
 // clusterRunner sets the network's default image through the operator's
 // ContinuumNetwork field, which rolls the pods running that implementation.
 type clusterRunner struct {
-	cl  imageCluster
+	cl  kube.Client
 	out io.Writer
 }
 

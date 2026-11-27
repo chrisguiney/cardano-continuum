@@ -14,6 +14,8 @@ import (
 
 	"github.com/blinklabs-io/bursa"
 
+	"flag"
+
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 )
 
@@ -156,3 +158,5 @@ func TestServeAdversariesAndActors(t *testing.T) {
 func itoa(n uint64) string { return jsonNum(n) }
 
 func jsonNum(n uint64) string { b, _ := json.Marshal(n); return string(b) }
+
+var update = flag.Bool("update", false, "rewrite testdata/*.golden")

@@ -1,4 +1,4 @@
-package main
+package image
 
 import (
 	"context"
@@ -9,23 +9,20 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/flagx"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/kube"
 	"github.com/chrisguiney/cardano-continuum/internal/imageset"
 )
 
-// imageCluster is the part of the Kubernetes API `image set` uses.
-type imageCluster interface {
-	Network(ctx context.Context, name string) (*v1alpha1.ContinuumNetwork, error)
-	Pools(ctx context.Context, network string) ([]v1alpha1.ContinuumPool, error)
-	Apply(ctx context.Context, c imageset.Change) error
-}
-
-// openCluster connects to the cluster named by kubeconfig (empty: the
-// usual KUBECONFIG rules) and works in namespace.
-type openCluster func(kubeconfig, namespace string) (imageCluster, error)
-
 const imageUsage = "usage: continuum image set <impl>=<ref> --network N [--namespace NS] [--pools N% | --pool ID] [--tier T] [--dry-run]"
 
-func cmdImage(ctx context.Context, args []string, out io.Writer, open openCluster) error {
+// Run handles `continuum image set`, patching the network or its pools to a
+// new node image through the cluster named by --kubeconfig.
+func Run(ctx context.Context, args []string, out io.Writer) error {
+	return RunWith(ctx, args, out, kube.Open)
+}
+
+// RunWith is Run over a cluster opener, so a test supplies a fake cluster.
+func RunWith(ctx context.Context, args []string, out io.Writer, open kube.Opener) error {
 	if len(args) == 0 || args[0] != "set" {
 		return errors.New(imageUsage)
 	}

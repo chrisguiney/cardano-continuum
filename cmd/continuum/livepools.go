@@ -2,13 +2,9 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"sync"
-
-	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
@@ -20,21 +16,6 @@ import (
 type poolCluster interface {
 	Pools(ctx context.Context, network string) ([]v1alpha1.ContinuumPool, error)
 	PatchPool(ctx context.Context, name string, spec map[string]any) error
-}
-
-// PatchPool merge-patches the listed spec fields of ContinuumPool name.
-func (k *kubeCluster) PatchPool(ctx context.Context, name string, spec map[string]any) error {
-	patch, err := json.Marshal(map[string]any{"spec": spec})
-	if err != nil {
-		return fmt.Errorf("encode patch: %w", err)
-	}
-	obj := &v1alpha1.ContinuumPool{}
-	obj.SetNamespace(k.ns)
-	obj.SetName(name)
-	if err := k.c.Patch(ctx, obj, client.RawPatch(types.MergePatchType, patch)); err != nil {
-		return fmt.Errorf("patch pool %s/%s: %w", k.ns, name, err)
-	}
-	return nil
 }
 
 // livePools applies the engine's pool plan to the ContinuumPools of a

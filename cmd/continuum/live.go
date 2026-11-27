@@ -21,6 +21,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/kube"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/genesis"
@@ -429,7 +430,7 @@ func livePlan(d *engine.Deps, cfg engine.Config, lf liveFlags, magic uint32, log
 	if lf.kubeNetwork == "" {
 		return nil, nil
 	}
-	cl, err := openKube(lf.kubeconfig, lf.namespace)
+	cl, err := kube.Open(lf.kubeconfig, lf.namespace)
 	if err != nil {
 		return nil, err
 	}
@@ -444,7 +445,7 @@ func livePlan(d *engine.Deps, cfg engine.Config, lf liveFlags, magic uint32, log
 	lp := newLivePools(pc, lf.kubeNetwork, lf.poolFormat, actors, log)
 	d.Pools, d.Pods = lp, lp
 	lt := newLiveTips(pc, lf.kubeNetwork, magic, cfg.K, log)
-	lt.kube = kubeView{cl: cl, network: lf.kubeNetwork}
+	lt.kube = kube.View{Cl: cl, Network: lf.kubeNetwork}
 	d.Tips, d.ViewEvery = lt, viewEvery
 	return lt, nil
 }

@@ -11,8 +11,8 @@ import (
 	"net/netip"
 	"os"
 
-	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/kube"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
@@ -30,7 +30,7 @@ const serveUsage = "usage: continuum serve --log EVENTS.LOG [--store DB] [--addr
 // without ever repairing it, so it can follow a run that is still writing;
 // --controls makes it the log's writer, which is only safe on a log no
 // engine is appending to.
-func cmdServe(ctx context.Context, args []string, out io.Writer, open openCluster) error {
+func cmdServe(ctx context.Context, args []string, out io.Writer, open kube.Opener) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	logPath := fs.String("log", "", "event log to serve (required)")
 	control := fs.String("control", "", "control run log (same seed, no adversaries), for the Adversaries page's deltas")
@@ -81,7 +81,7 @@ func cmdServe(ctx context.Context, args []string, out io.Writer, open openCluste
 		if err != nil {
 			return err
 		}
-		cfg.Kube = kubeView{cl: cl, network: *network}
+		cfg.Kube = kube.View{Cl: cl, Network: *network}
 	}
 	if *keep < 1 {
 		return errors.New("--explorer-blocks must be at least 1")
@@ -166,24 +166,6 @@ func openExistingStore(ctx context.Context, path string) (*store.DB, error) {
 		return nil, fmt.Errorf("--store: %w", err)
 	}
 	return store.Open(ctx, path)
-}
-
-// kubeView adapts the image command's cluster client to view.Kube.
-type kubeView struct {
-	cl      imageCluster
-	network string
-}
-
-func (k kubeView) Topology(ctx context.Context) (v1alpha1.TopologyMode, error) {
-	n, err := k.cl.Network(ctx, k.network)
-	if err != nil {
-		return "", err
-	}
-	return n.Spec.Topology.Policy, nil
-}
-
-func (k kubeView) Pools(ctx context.Context) ([]v1alpha1.ContinuumPool, error) {
-	return k.cl.Pools(ctx, k.network)
 }
 
 // measureLog folds the control run's log into its metrics.

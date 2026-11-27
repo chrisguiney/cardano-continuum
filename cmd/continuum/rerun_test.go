@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/kube"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/kubetest"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/rerun"
 )
@@ -44,7 +46,7 @@ func TestReplayImageRejectsABadAssignment(t *testing.T) {
 
 // liveDeps returns deps whose want header is the fake log's own, or a
 // different one, and a cluster that records the patches.
-func liveDeps(t *testing.T, log string, same bool) (replayDeps, *fakeCluster) {
+func liveDeps(t *testing.T, log string, same bool) (replayDeps, *kubetest.Fake) {
 	t.Helper()
 	l, err := eventlog.Open(log)
 	if err != nil {
@@ -58,9 +60,9 @@ func liveDeps(t *testing.T, log string, same bool) (replayDeps, *fakeCluster) {
 	if !same {
 		h.GenesisHash = []byte("other")
 	}
-	fc := newFake()
+	fc := kubetest.New()
 	return replayDeps{
-		open: func(string, string) (imageCluster, error) { return fc, nil },
+		open: func(string, string) (kube.Client, error) { return fc, nil },
 		want: func(context.Context, simFlags, liveFlags) (eventlog.HeaderBody, error) { return h, nil },
 	}, fc
 }
@@ -73,7 +75,7 @@ func TestReplayImageLiveRefusesOnMismatch(t *testing.T) {
 	if !errors.Is(err, rerun.ErrFingerprint) {
 		t.Fatalf("err = %v, want ErrFingerprint", err)
 	}
-	if len(fc.applied) != 0 {
+	if len(fc.Applied) != 0 {
 		t.Fatal("patched the network despite the mismatch")
 	}
 }
@@ -86,8 +88,8 @@ func TestReplayImageLiveSetsTheNetworkImage(t *testing.T) {
 	if err := cmdReplayWith(context.Background(), args, &out, deps); err != nil {
 		t.Fatalf("%v\n%s", err, out.String())
 	}
-	if len(fc.applied) != 1 || fc.applied[0].To != "reg/dingo:x" {
-		t.Fatalf("applied %+v", fc.applied)
+	if len(fc.Applied) != 1 || fc.Applied[0].To != "reg/dingo:x" {
+		t.Fatalf("applied %+v", fc.Applied)
 	}
 }
 
