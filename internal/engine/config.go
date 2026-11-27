@@ -79,8 +79,20 @@ type Cohort struct {
 }
 
 // Config is everything an engine is built from besides its inputs. Two
-// engines with equal configs fed equal inputs make equal decisions.
+// engines with equal configs fed equal inputs make equal decisions. Its
+// fields live in embedded groups, so a read is still cfg.K; only a
+// composite literal names the group.
 type Config struct {
+	Seeded
+	Chain
+	Submit
+	Funding
+	Guard
+	World
+}
+
+// Seeded is what names a run: its seed, profiles and genesis cohorts.
+type Seeded struct {
 	Seed     rng.Seed
 	Profiles *profile.Registry
 	// Fitted, when set, is Profiles before a rate scale: the header's profile
@@ -90,7 +102,13 @@ type Config struct {
 	Fitted  *profile.Registry
 	Scale   float64
 	Cohorts []Cohort
-	Slots   sched.Slots
+	// BinaryVersion goes into the log header.
+	BinaryVersion string
+}
+
+// Chain is the shape of the chain the run lives on.
+type Chain struct {
+	Slots sched.Slots
 	// K is the security parameter: a block is durable once K blocks follow it.
 	K uint64
 	// BlockEvery is the fake chain's block interval in slots. It is part of
@@ -105,18 +123,40 @@ type Config struct {
 	ChainParams *conway.ConwayProtocolParameters
 	// TTL is how many slots after its decision a payment stays valid.
 	TTL uint64
+	// NOpt is the protocol parameter nOpt, the view's saturation cap; zero
+	// means none is known. GovLifetime is govActionLifetime in epochs.
+	// Both come from the node's (or the fake chain's) parameters.
+	NOpt, GovLifetime uint64
+	// Horizon is the stability window 3k/f in slots: a node translates a
+	// script transaction's validity interval to time only within it, and
+	// answers PastHorizon beyond. A script attempt's TTL stays inside it;
+	// zero means no bound.
+	Horizon uint64
+}
+
+// Submit is how payments are chosen, retried and judged.
+type Submit struct {
 	// Selector chooses payment inputs; nil means LargestFirst.
 	Selector Selector
-	// BinaryVersion goes into the log header.
-	BinaryVersion string
-
 	// Retry shapes the waits between attempts at a payment; the zero value
 	// means submit.DefaultPolicy. It is part of the log header.
 	Retry submit.Policy
 	// Diagnoser reads a node's rejection for the retry machine; nil means
 	// submit.Perfect. It chooses the fix and never the refusal.
 	Diagnoser submit.Diagnoser
+	// Mistakes makes actors err (internal/mistake): each intent samples
+	// one honest mistake from the actor's competence and care, every
+	// attempt carries it until a fix removes it, and a rejection is read
+	// by an actor of that competence. Off, every attempt is as built.
+	Mistakes bool
+	// Run names the run in each oracle finding's replay command. Findings
+	// are decisions, so a replay must use the same Run.
+	Run oracle.Run
+}
 
+// Funding is how the genesis is funded and how the pools and committee
+// start.
+type Funding struct {
 	// Faucet, when positive, is the lovelace the run's faucet holds at
 	// genesis, and the population starts with nothing: the faucet refills
 	// it. The faucet is keys.Store.Faucet of the root Seed, the wallet
@@ -126,20 +166,6 @@ type Config struct {
 	// RefillEvery is the slots between the faucet's refill rounds. It must
 	// be positive when Faucet is.
 	RefillEvery uint64
-
-	// NOpt is the protocol parameter nOpt, the view's saturation cap; zero
-	// means none is known. GovLifetime is govActionLifetime in epochs.
-	// Both come from the node's (or the fake chain's) parameters.
-	NOpt, GovLifetime uint64
-
-	// Floor is the stake-floor guard's configuration; the zero value is a
-	// 50% floor with a margin of one pool.
-	Floor policy.Config
-	// SimulatedPods: no operator runs the pools (the fake chain), so every
-	// pod runs unless a PoolStatus input says otherwise, and a repair
-	// brings it back at once.
-	SimulatedPods bool
-
 	// GenesisPools is the number of pools the genesis registers
 	// (internal/genesis Spec.Pools), each owner holding GenesisPoolStake
 	// delegated to it. The first GenesisPools pool actors operate them.
@@ -148,29 +174,28 @@ type Config struct {
 	// Committee is the number of genesis constitutional committee members,
 	// the run seed's keystore.Committee(0..Committee-1).
 	Committee int
+}
 
-	// Mistakes makes actors err (internal/mistake): each intent samples
-	// one honest mistake from the actor's competence and care, every
-	// attempt carries it until a fix removes it, and a rejection is read
-	// by an actor of that competence. Off, every attempt is as built.
-	Mistakes bool
-	// Horizon is the stability window 3k/f in slots: a node translates a
-	// script transaction's validity interval to time only within it, and
-	// answers PastHorizon beyond. A script attempt's TTL stays inside it;
-	// zero means no bound.
-	Horizon uint64
-	// Run names the run in each oracle finding's replay command. Findings
-	// are decisions, so a replay must use the same Run.
-	Run oracle.Run
+// Guard is the stake-floor guard and the pods behind the pools.
+type Guard struct {
+	// Floor is the stake-floor guard's configuration; the zero value is a
+	// 50% floor with a margin of one pool.
+	Floor policy.Config
+	// SimulatedPods: no operator runs the pools (the fake chain), so every
+	// pod runs unless a PoolStatus input says otherwise, and a repair
+	// brings it back at once.
+	SimulatedPods bool
+}
+
+// World is a fitted file's non-wallet populations and chain-wide rates, as
+// Populate set them, with the clearance for adversaries. The log header's
+// profile hash covers the populations and rates.
+type World struct {
+	Populations []profile.Population
+	Network     profile.Network
 	// Adversaries is the proof (adversary.Clear) that the node is on the
 	// run's devnet. Without it New refuses any adversary actor.
 	Adversaries adversary.Clearance
-
-	// Populations and Network are a fitted file's non-wallet populations
-	// and chain-wide rates, as Populate set them. The log header's profile
-	// hash covers them.
-	Populations []profile.Population
-	Network     profile.Network
 }
 
 // Fund is one genesis output.
@@ -188,7 +213,7 @@ var (
 // maxActors keeps every actor ID a valid CIP-1852 account index.
 const maxActors = 1 << 30
 
-func (c *Config) retry() submit.Policy {
+func (c *Submit) retry() submit.Policy {
 	if c.Retry == (submit.Policy{}) {
 		return submit.DefaultPolicy
 	}
@@ -417,7 +442,7 @@ func SeedFromInt(n uint64) rng.Seed {
 // defaultFloor fills the fields of Config.Floor left zero.
 var defaultFloor = policy.Config{Floor: 50, Margin: 1}
 
-func (c *Config) floor() policy.Config {
+func (c *Guard) floor() policy.Config {
 	f := c.Floor
 	if f.Floor == 0 {
 		f.Floor = defaultFloor.Floor
@@ -455,4 +480,42 @@ func (c *Config) checkAdversaries() error {
 		}
 	}
 	return nil
+}
+
+// population is the population called name.
+func (c *World) population(name string) (profile.Population, bool) {
+	for _, p := range c.Populations {
+		if p.Name == name {
+			return p, true
+		}
+	}
+	return profile.Population{}, false
+}
+
+// contractParams is the file's contract population, if it has one.
+func (c *World) contractParams() (*profile.ContractParams, bool) {
+	for _, p := range c.Populations {
+		if p.Contract != nil {
+			return p.Contract, true
+		}
+	}
+	return nil, false
+}
+
+// GenesisPoolActors maps each genesis pool's index to the pool actor that
+// operates it, so a live run can find the pool's ContinuumPool.
+func (c *Config) GenesisPoolActors() (map[int]uint64, error) {
+	root, err := keys.New(c.Seed, c.NetworkID)
+	if err != nil {
+		return nil, fmt.Errorf("engine: root keystore: %w", err)
+	}
+	gs, err := c.genesisPools(root)
+	if err != nil {
+		return nil, err
+	}
+	out := map[int]uint64{}
+	for _, g := range gs {
+		out[g.Index] = uint64(g.Actor)
+	}
+	return out, nil
 }

@@ -8,7 +8,6 @@ files internal/engine 45
 members internal/agenda world 22
 members internal/chain View 67
 members internal/chain par 23
-members internal/engine Config 44
 members internal/engine Engine 30
 members internal/engine pendingRec 30
 members internal/engine snapshot 31
@@ -31,4 +30,3 @@ nesting internal/profile parseDist 4
 nesting internal/scenario CodecTable 4
 nesting internal/scenario SampleVectors 4
 stray-methods internal/chain View 35
-stray-methods internal/engine Config 3

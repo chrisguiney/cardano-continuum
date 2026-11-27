@@ -164,16 +164,6 @@ func sortedKeys[V any](m map[string]V) []string {
 	return ks
 }
 
-// population is the population called name.
-func (c *Config) population(name string) (profile.Population, bool) {
-	for _, p := range c.Populations {
-		if p.Name == name {
-			return p, true
-		}
-	}
-	return profile.Population{}, false
-}
-
 // deployRate is new contracts per second, zero without a contract
 // population.
 func deployRate(c *Config) float64 {
@@ -188,16 +178,6 @@ func deployRate(c *Config) float64 {
 		}
 	}
 	return cp.New * float64(wallets) / secondsPerDay
-}
-
-// contractParams is the file's contract population, if it has one.
-func (c *Config) contractParams() (*profile.ContractParams, bool) {
-	for _, p := range c.Populations {
-		if p.Contract != nil {
-			return p.Contract, true
-		}
-	}
-	return nil, false
 }
 
 // subject is the pace's view of an actor's record.
