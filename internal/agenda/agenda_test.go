@@ -665,3 +665,43 @@ func TestCivicDRepRegistersAtChainDeposit(t *testing.T) {
 		t.Fatalf("without the chain's deposits the mainnet deposit should hold: %+v", s)
 	}
 }
+
+func TestChooseRecordsWeights(t *testing.T) {
+	scores := []Score{
+		{Kind: profile.IntentSend, Value: 1, Why: "a"},
+		{Kind: profile.IntentDelegate, Value: 2, Why: "b"},
+		{Kind: profile.IntentVote, Value: 2, Why: "c"},
+		{Kind: profile.IntentMint, Value: 2, Why: "d"},
+	}
+	w := map[profile.IntentKind]float64{
+		profile.IntentDelegate: 3,
+		profile.IntentVote:     0,
+		profile.IntentMint:     math.NaN(),
+	}
+	_, out := Choose(1, rand.New(rand.NewPCG(1, 2)), scores, w)
+	got := map[profile.IntentKind]float64{}
+	for _, s := range out {
+		if s.Weight == nil {
+			t.Fatalf("%s: weight not recorded", s.Kind)
+		}
+		got[s.Kind] = *s.Weight
+	}
+	want := map[profile.IntentKind]float64{
+		profile.IntentSend:     1,
+		profile.IntentDelegate: 3,
+		profile.IntentVote:     0,
+		profile.IntentMint:     0,
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("%s: weight %v want %v", k, got[k], v)
+		}
+	}
+	if scores[0].Weight != nil {
+		t.Error("input scores mutated")
+	}
+	b, err := json.Marshal(out)
+	if err != nil || !strings.Contains(string(b), `"weight":0`) {
+		t.Errorf("zero weight must be encoded: %s %v", b, err)
+	}
+}

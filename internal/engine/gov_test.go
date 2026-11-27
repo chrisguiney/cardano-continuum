@@ -10,6 +10,7 @@ import (
 
 	"github.com/blinklabs-io/gouroboros/ledger/conway"
 
+	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/steer"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
@@ -463,5 +464,38 @@ func TestDRepsVoteWithTheirOwnStake(t *testing.T) {
 
 	if g.power["drep"] == 0 {
 		t.Fatalf("DRep votes carry no stake: votes %v, power %v", g.votes, g.power)
+	}
+}
+
+// A population actor's decision names the clock that fired, and the scores
+// it carries are that kind's alone: the chance in the UI is within the
+// clock. An agenda actor's decision has no clock.
+func TestPopulationDecisionRecordsClock(t *testing.T) {
+	t.Parallel()
+	cfg := populationConfig(t, 9, populationFile(t, govYAML))
+	w := newWorld(t, cfg)
+	p := cleanRun(t, w, 2*3600*1000)
+
+	clocked := 0
+	for _, rec := range logRecords(t, p.log) {
+		if rec.Kind != KindIntentChosen {
+			continue
+		}
+		var d agenda.Decision
+		if err := eventlog.Decode(rec.Body, &d); err != nil {
+			t.Fatal(err)
+		}
+		if d.Clock == "" {
+			continue
+		}
+		clocked++
+		for _, s := range d.Scores {
+			if s.Kind != d.Clock && s.Kind != agenda.Idle {
+				t.Fatalf("clock %s with a %s score: %+v", d.Clock, s.Kind, d)
+			}
+		}
+	}
+	if clocked == 0 {
+		t.Fatal("no decision recorded a clock")
 	}
 }

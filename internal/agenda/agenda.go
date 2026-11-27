@@ -78,6 +78,11 @@ type Score struct {
 	Target   population.ActorID `json:"target,omitempty"`
 	Proposal ProposalID         `json:"proposal,omitempty"`
 	Why      string             `json:"why"`
+	// Weight is the multiplier Choose applied to Value: the profile weight
+	// with any override, 1 when unset, clamped like Value. Nil on a score
+	// that was not drawn from; a pointer so an explicit zero is recorded.
+	// The draw is proportional to Value times Weight.
+	Weight *float64 `json:"weight,omitempty"`
 }
 
 // Intent is the chosen action.
@@ -92,6 +97,10 @@ type Intent struct {
 type Decision struct {
 	Intent Intent  `json:"intent"`
 	Scores []Score `json:"scores"`
+	// Clock is the intent kind whose fitted clock fired, for a population
+	// actor; empty for an actor that chooses among every intent. The scores
+	// are then only that kind's, so a chance is within the clock.
+	Clock profile.IntentKind `json:"clock,omitempty"`
 }
 
 // Policy scores the intents available to an actor. It must be a pure function
@@ -180,14 +189,18 @@ func Choose(actor population.ActorID, r *rand.Rand, scores []Score, w map[profil
 	})
 	eff := make([]float64, len(out))
 	total := 0.0
+
 	for i, s := range out {
 		weight := 1.0
 		if x, ok := w[s.Kind]; ok {
-			weight = x
+			weight = finite(x)
 		}
-		eff[i] = finite(s.Value) * finite(weight)
+
+		out[i].Weight = &weight
+		eff[i] = finite(s.Value) * weight
 		total += eff[i]
 	}
+
 	if total <= 0 || math.IsInf(total, 0) {
 		return Intent{Kind: Idle, Actor: actor}, out
 	}

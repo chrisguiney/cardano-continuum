@@ -28,9 +28,11 @@ func txid(b byte) engine.TxID { return engine.TxID(bytes.Repeat([]byte{b}, 32)) 
 
 func fixture(t testing.TB) []eventlog.Record {
 	t.Helper()
+	weight := 2.0
 	dec := agenda.Decision{
 		Intent: agenda.Intent{Kind: "send", Actor: 1, Target: 2},
-		Scores: []agenda.Score{{Kind: "idle", Value: 0.25, Why: "base"}, {Kind: "send", Value: 0.75, Target: 2, Why: "rich"}},
+		Scores: []agenda.Score{{Kind: "idle", Value: 0.25, Why: "base"}, {Kind: "send", Value: 0.75, Target: 2, Why: "rich", Weight: &weight}},
+		Clock:  "send",
 	}
 	pt := eventlog.ChainPoint{Slot: 77, Hash: bytes.Repeat([]byte{7}, 32)}
 	content := engine.BlockContent{Txs: []engine.TxDigest{{ID: txid(0xa2), Fee: 180000}}}
@@ -137,6 +139,9 @@ func TestTailBuildsProjection(t *testing.T) {
 	defer sub.Close()
 	if len(sub.Replay) != 1 || sub.Replay[0].Profile != "hodl" || len(sub.Replay[0].Scores) != 2 || sub.Replay[0].Intent != "send" {
 		t.Fatalf("replay %+v", sub.Replay)
+	}
+	if w := sub.Replay[0].Scores[1].Weight; sub.Replay[0].Clock != "send" || w == nil || *w != 2 {
+		t.Fatalf("clock %q weight %v not carried to the feed", sub.Replay[0].Clock, w)
 	}
 	all, _ := h.Subscribe(Filter{}, ptr(0))
 	defer all.Close()

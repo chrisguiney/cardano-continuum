@@ -56,17 +56,20 @@
           {
             "kind": "idle",
             "value": 1,
-            "why": "disruptor waits; attack steps come from its hook"
+            "why": "disruptor waits; attack steps come from its hook",
+            "weight": 1
           },
           {
             "kind": "malformed-cbor",
             "value": 3,
-            "why": "attack"
+            "why": "attack",
+            "weight": 1
           },
           {
             "kind": "send",
             "value": 0.3,
-            "why": "cover traffic"
+            "why": "cover traffic",
+            "weight": 1
           }
         ]
       },
@@ -80,17 +83,20 @@
           {
             "kind": "idle",
             "value": 1,
-            "why": "disruptor waits; attack steps come from its hook"
+            "why": "disruptor waits; attack steps come from its hook",
+            "weight": 1
           },
           {
             "kind": "malformed-cbor",
             "value": 3,
-            "why": "attack"
+            "why": "attack",
+            "weight": 1
           },
           {
             "kind": "send",
             "value": 0.3,
-            "why": "cover traffic"
+            "why": "cover traffic",
+            "weight": 1
           }
         ]
       },
@@ -104,17 +110,20 @@
           {
             "kind": "idle",
             "value": 1,
-            "why": "disruptor waits; attack steps come from its hook"
+            "why": "disruptor waits; attack steps come from its hook",
+            "weight": 1
           },
           {
             "kind": "malformed-cbor",
             "value": 3,
-            "why": "attack"
+            "why": "attack",
+            "weight": 1
           },
           {
             "kind": "send",
             "value": 0.3,
-            "why": "cover traffic"
+            "why": "cover traffic",
+            "weight": 1
           }
         ]
       },
@@ -128,17 +137,20 @@
           {
             "kind": "idle",
             "value": 1,
-            "why": "disruptor waits; attack steps come from its hook"
+            "why": "disruptor waits; attack steps come from its hook",
+            "weight": 1
           },
           {
             "kind": "malformed-cbor",
             "value": 3,
-            "why": "attack"
+            "why": "attack",
+            "weight": 1
           },
           {
             "kind": "send",
             "value": 0.3,
-            "why": "cover traffic"
+            "why": "cover traffic",
+            "weight": 1
           }
         ]
       },
@@ -152,17 +164,20 @@
           {
             "kind": "idle",
             "value": 1,
-            "why": "disruptor waits; attack steps come from its hook"
+            "why": "disruptor waits; attack steps come from its hook",
+            "weight": 1
           },
           {
             "kind": "malformed-cbor",
             "value": 3,
-            "why": "attack"
+            "why": "attack",
+            "weight": 1
           },
           {
             "kind": "send",
             "value": 0.3,
-            "why": "cover traffic"
+            "why": "cover traffic",
+            "weight": 1
           }
         ]
       },
@@ -176,17 +191,20 @@
           {
             "kind": "idle",
             "value": 1,
-            "why": "disruptor waits; attack steps come from its hook"
+            "why": "disruptor waits; attack steps come from its hook",
+            "weight": 1
           },
           {
             "kind": "malformed-cbor",
             "value": 3,
-            "why": "attack"
+            "why": "attack",
+            "weight": 1
           },
           {
             "kind": "send",
             "value": 0.3,
-            "why": "cover traffic"
+            "why": "cover traffic",
+            "weight": 1
           }
         ]
       },
@@ -200,17 +218,20 @@
           {
             "kind": "idle",
             "value": 1,
-            "why": "disruptor waits; attack steps come from its hook"
+            "why": "disruptor waits; attack steps come from its hook",
+            "weight": 1
           },
           {
             "kind": "malformed-cbor",
             "value": 3,
-            "why": "attack"
+            "why": "attack",
+            "weight": 1
           },
           {
             "kind": "send",
             "value": 0.3,
-            "why": "cover traffic"
+            "why": "cover traffic",
+            "weight": 1
           }
         ]
       },
@@ -224,17 +245,20 @@
           {
             "kind": "idle",
             "value": 1,
-            "why": "disruptor waits; attack steps come from its hook"
+            "why": "disruptor waits; attack steps come from its hook",
+            "weight": 1
           },
           {
             "kind": "malformed-cbor",
             "value": 3,
-            "why": "attack"
+            "why": "attack",
+            "weight": 1
           },
           {
             "kind": "send",
             "value": 0.3,
-            "why": "cover traffic"
+            "why": "cover traffic",
+            "weight": 1
           }
         ]
       },
@@ -248,17 +272,20 @@
           {
             "kind": "idle",
             "value": 1,
-            "why": "disruptor waits; attack steps come from its hook"
+            "why": "disruptor waits; attack steps come from its hook",
+            "weight": 1
           },
           {
             "kind": "malformed-cbor",
             "value": 3,
-            "why": "attack"
+            "why": "attack",
+            "weight": 1
           },
           {
             "kind": "send",
             "value": 0.3,
-            "why": "cover traffic"
+            "why": "cover traffic",
+            "weight": 1
           }
         ]
       },
@@ -272,17 +299,20 @@
           {
             "kind": "idle",
             "value": 1,
-            "why": "disruptor waits; attack steps come from its hook"
+            "why": "disruptor waits; attack steps come from its hook",
+            "weight": 1
           },
           {
             "kind": "malformed-cbor",
             "value": 3,
-            "why": "attack"
+            "why": "attack",
+            "weight": 1
           },
           {
             "kind": "send",
             "value": 0.3,
-            "why": "cover traffic"
+            "why": "cover traffic",
+            "weight": 1
           }
         ]
       }

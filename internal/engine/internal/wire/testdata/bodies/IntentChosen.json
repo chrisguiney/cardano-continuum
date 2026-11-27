@@ -1,1 +1,1 @@
-{"intent":{"kind":"IntentKindd","actor":4,"target":5,"proposal":"ProposalIDg"},"scores":[{"kind":"IntentKindj","value":10.25,"target":11,"proposal":"ProposalIDm","why":"stringn"}]}
+{"intent":{"kind":"IntentKindd","actor":4,"target":5,"proposal":"ProposalIDg"},"scores":[{"kind":"IntentKindj","value":10.25,"target":11,"proposal":"ProposalIDm","why":"stringn","weight":15.25}],"clock":"IntentKindq"}

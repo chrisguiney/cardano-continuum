@@ -319,7 +319,10 @@ type Decision struct {
 	Profile string         `json:"profile,omitempty"`
 	Intent  string         `json:"intent,omitempty"`
 	Scores  []agenda.Score `json:"scores,omitempty"`
-	Body    any            `json:"body,omitempty"`
+	// Clock is the intent kind whose fitted clock fired, for a population
+	// actor's decision; the scores are that kind's alone.
+	Clock string `json:"clock,omitempty"`
+	Body  any    `json:"body,omitempty"`
 }
 
 // Filter selects decisions on the feed. Every set field must match.

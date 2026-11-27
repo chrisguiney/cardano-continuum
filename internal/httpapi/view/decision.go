@@ -23,7 +23,7 @@ func ToDecision(r eventlog.Record, profile string) (Decision, error) {
 		if err := eventlog.Decode(r.Body, &dec); err != nil {
 			return d, fmt.Errorf("decision seq %d: %w", r.Seq, err)
 		}
-		d.Intent, d.Scores = string(dec.Intent.Kind), dec.Scores
+		d.Intent, d.Scores, d.Clock = string(dec.Intent.Kind), dec.Scores, string(dec.Clock)
 		return d, nil
 	}
 	if r.Kind == engine.KindSubmitted {

@@ -99,7 +99,7 @@ func (x *actorIndex) leave(state string) {
 
 func (x *actorIndex) recordDecision(id uint64, r eventlog.Record, d agenda.Decision) {
 	a := x.actor(id)
-	a.recent = append(a.recent, Decision{ID: r.Seq, At: int64(r.At), Kind: r.Kind, Actor: id, Intent: string(d.Intent.Kind), Scores: d.Scores})
+	a.recent = append(a.recent, Decision{ID: r.Seq, At: int64(r.At), Kind: r.Kind, Actor: id, Intent: string(d.Intent.Kind), Scores: d.Scores, Clock: string(d.Clock)})
 	if len(a.recent) > maxRecent {
 		a.recent = slices.Delete(a.recent, 0, len(a.recent)-maxRecent)
 	}

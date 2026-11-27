@@ -352,6 +352,16 @@ func (pp *Pop) fire(id population.ActorID, st Subject, r *rand.Rand) Clock {
 // agenda for proposing; it proposes whenever its clock fires.
 func (pp *Pop) Decide(a population.Actor, st Subject, r *rand.Rand) (agenda.Decision, build.ActionType) {
 	c := pp.fire(a.ID, st, r)
+	d, act := pp.decideFired(a, st, r, c)
+	if c.Kind != agenda.Idle {
+		d.Clock = c.Kind
+	}
+
+	return d, act
+}
+
+// decideFired is Decide once the clock has fired.
+func (pp *Pop) decideFired(a population.Actor, st Subject, r *rand.Rand, c Clock) (agenda.Decision, build.ActionType) {
 	if c.Kind == agenda.Idle {
 		return agenda.Decision{Intent: agenda.Intent{Kind: agenda.Idle, Actor: a.ID},
 			Scores: []agenda.Score{{Kind: agenda.Idle, Value: 1, Why: "registered: waking at the fitted rates from now"}}}, ""

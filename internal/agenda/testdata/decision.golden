@@ -9,22 +9,26 @@
       "kind": "delegate",
       "value": 1,
       "target": 11,
-      "why": "pool 11 beats current by 0.0200, patience 0.0100"
+      "why": "pool 11 beats current by 0.0200, patience 0.0100",
+      "weight": 1
     },
     {
       "kind": "idle",
       "value": 1,
-      "why": "yield farmer waits"
+      "why": "yield farmer waits",
+      "weight": 1
     },
     {
       "kind": "register_stake",
       "value": 0,
-      "why": "stake key already registered"
+      "why": "stake key already registered",
+      "weight": 1
     },
     {
       "kind": "withdraw_rewards",
       "value": 0.05,
-      "why": "collect rewards"
+      "why": "collect rewards",
+      "weight": 1
     }
   ]
 }
