@@ -53,25 +53,55 @@ type Config struct {
 // a rollback past it is ErrTooDeep. That is the planner-reservations
 // contract (models/specs/planner-reservations, rule 5) and engine-recovery
 // design A, where durable state comes from settled blocks only.
+//
+// View is a composite: each part owns its state and the methods on it, and
+// the parts' reads are promoted. View itself folds blocks across the parts
+// and answers the reads that need more than one.
+//
+//	```mermaid
+//	flowchart LR
+//	  view[View: Apply / Rollback] --> span[span: tip, settled, window]
+//	  view --> utxos[utxos: outputs, balances]
+//	  view --> accounts[accounts: stake creds, DReps]
+//	  view --> registry[registry: pools]
+//	  view --> gov[gov: proposals, votes]
+//	  view --> ep[epochs: mark, set]
+//	  ep -- distribution --> accounts
+//	  ep -- reap --> registry
+//	```
 type View struct {
 	cfg Config
-
-	tip      Point
-	height   uint64
-	settled  Point
-	settledH uint64
-
+	span
 	utxos
 	accounts
 	registry
 	// epoch state and the stake snapshots: see ledger.go
 	ep epochs
-	// governance state: see gov.go
 	gov
+}
+
+// span is where the view stands on the chain: the tip, the settled point
+// and the blocks between them.
+type span struct {
+	slots    sched.Slots
+	tip      Point
+	height   uint64
+	settled  Point
+	settledH uint64
 	// window holds the blocks above the settled point, oldest first. It is
 	// never longer than K.
 	window []undo
 }
+
+// Tip is the point of the last applied block.
+func (s *span) Tip() Point { return s.tip }
+
+// Settled is the K-deep point: the newest block that has had K successors
+// in the view. It never moves back.
+func (s *span) Settled() Point { return s.settled }
+
+// Epoch is the epoch of the tip's slot.
+func (s *span) Epoch() uint64 { return s.slots.EpochOfSlot(s.tip.Slot) }
 
 // StakeState is a tracked stake credential.
 type StakeState struct {
@@ -129,7 +159,8 @@ func New(cfg Config, s State) (*View, error) {
 		return nil, fmt.Errorf("chain: new view: need K > 0 and a book (K = %d)", cfg.K)
 	}
 	v := &View{
-		cfg: cfg, tip: s.At, height: s.Height, settled: s.At, settledH: s.Height,
+		cfg:      cfg,
+		span:     span{slots: cfg.Slots, tip: s.At, height: s.Height, settled: s.At, settledH: s.Height},
 		utxos:    newUtxos(cfg.Book),
 		accounts: newAccounts(cfg.Book),
 		registry: newRegistry(cfg.Book),
@@ -156,16 +187,6 @@ func New(cfg Config, s State) (*View, error) {
 	}
 	return v, nil
 }
-
-// Tip is the point of the last applied block.
-func (v *View) Tip() Point { return v.tip }
-
-// Settled is the K-deep point: the newest block that has had K successors
-// in the view. It never moves back.
-func (v *View) Settled() Point { return v.settled }
-
-// Epoch is the epoch of the tip's slot.
-func (v *View) Epoch() uint64 { return v.cfg.Slots.EpochOfSlot(v.tip.Slot) }
 
 // PoolRegistered reports whether the pool actor's pool is registered and
 // not yet past its retirement epoch.

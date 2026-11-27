@@ -5,7 +5,6 @@
 # stray-methods (methods outside the type's file), files (> 25 per package, tests counted).
 files internal/engine 45
 members internal/agenda world 22
-members internal/chain View 27
 members internal/chain par 23
 members internal/engine Engine 30
 members internal/engine pendingRec 30
