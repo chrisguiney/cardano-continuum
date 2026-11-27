@@ -32,8 +32,8 @@
 //	    epoch only
 //	5   Floor.inflight: every guarded transaction in flight is listed, a
 //	    pool registration only as a Reregister, which policy does not count
-//	6   policy.State's forging set, fed the plan (Floor.Dark) and the
-//	    observed pods (Floor.PodRunning); Floor.Forging answers the agendas
+//	6   policy.State's forging set, fed the plan (pods.Dark) and the
+//	    observed pods (pods.PodRunning); Floor.Forging answers the agendas
 //	7   chain.View.PolicyState: the denominator is the snapshot's own
 //	8   policy.Guard, with the margin from policy.Config
 //	9   internal/agenda (RetirePool offered only for a dark pool) and

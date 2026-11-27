@@ -26,7 +26,7 @@
 //	Process           Pay.Advance, then Retry.Settle and Retry.Release: an
 //	                  intent is forgotten only when settled or every attempt is
 //	                  dead (Book.drop has no other caller)
-//	Restart           Pay.Open, with the Book restored from the snapshot
+//	Restart           Pay.Load, with the Book restored from the snapshot
 //
 // The chain actions (Extend, IncludeTx, AdvSpend, Rollback, MempoolDrop)
 // arrive as the chain events Pay.Advance passes on.
