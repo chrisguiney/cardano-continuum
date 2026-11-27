@@ -10,6 +10,7 @@ import (
 )
 
 func TestReleasable(t *testing.T) {
+	t.Parallel()
 	now := metav1.Now()
 	mk := func(deleting bool, phase corev1.PodPhase, states ...corev1.ContainerState) *corev1.Pod {
 		p := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Finalizers: []string{render.Finalizer}}}

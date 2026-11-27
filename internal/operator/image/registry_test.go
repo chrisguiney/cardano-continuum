@@ -11,6 +11,7 @@ func env(m map[string]string) func(string) string {
 }
 
 func TestRegistryPrecedence(t *testing.T) {
+	t.Parallel()
 	e := env(map[string]string{EnvRegistry: "env.example:5000/c"})
 	tests := []struct {
 		name, flag string
@@ -30,6 +31,7 @@ func TestRegistryPrecedence(t *testing.T) {
 }
 
 func TestPushNeedsRegistry(t *testing.T) {
+	t.Parallel()
 	if _, err := NewSettings("", nil, env(nil), ""); err != nil {
 		t.Fatalf("no push, no registry: %v", err)
 	}
@@ -40,6 +42,7 @@ func TestPushNeedsRegistry(t *testing.T) {
 }
 
 func TestInsecureSettingFansOut(t *testing.T) {
+	t.Parallel()
 	on := env(map[string]string{EnvRegistry: "localhost:5000/continuum", EnvInsecure: "true"})
 	s, err := NewSettings("", nil, on, "")
 	if err != nil {
@@ -78,6 +81,7 @@ func TestInsecureSettingFansOut(t *testing.T) {
 }
 
 func TestInsecureRejectsGarbage(t *testing.T) {
+	t.Parallel()
 	_, err := NewSettings("", nil, env(map[string]string{EnvInsecure: "maybe"}), "")
 	if err == nil {
 		t.Fatal("want error for unparsable CONTINUUM_REGISTRY_INSECURE")

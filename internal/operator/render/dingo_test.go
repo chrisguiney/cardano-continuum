@@ -33,6 +33,7 @@ func dingoArgs(spec corev1.PodSpec) string {
 }
 
 func TestRenderDingoRelay(t *testing.T) {
+	t.Parallel()
 	w := render(t, Dingo{}, pool("ns", "r", v1alpha1.Dingo, v1alpha1.TierValidating), "r@sha256:aaaa")
 	spec := w.StatefulSet.Spec.Template.Spec
 	if slices.ContainsFunc(spec.Volumes, func(v corev1.Volume) bool { return v.Secret != nil }) {
@@ -74,6 +75,7 @@ func TestRenderDingoRelay(t *testing.T) {
 // keystore refuses a key file with group or other access, so the files stay
 // at 0400 and the node runs as their owner.
 func TestRenderDingoForging(t *testing.T) {
+	t.Parallel()
 	w := render(t, Dingo{}, pool("ns", "a", v1alpha1.Dingo, v1alpha1.TierForging), "r@sha256:aaaa")
 	spec := w.StatefulSet.Spec.Template.Spec
 	cfg := parseDingo(t, w)
@@ -122,6 +124,7 @@ func TestRenderDingoForging(t *testing.T) {
 // dingo applies over its config file. The rendered container sets each to
 // the config's own value, so the file is what the node runs with.
 func TestDingoEnvMatchesConfig(t *testing.T) {
+	t.Parallel()
 	w := render(t, Dingo{}, pool("ns", "a", v1alpha1.Dingo, v1alpha1.TierForging), "r@sha256:aaaa")
 	cfg := parseDingo(t, w)
 	env := map[string]string{}
@@ -145,6 +148,7 @@ func TestDingoEnvMatchesConfig(t *testing.T) {
 }
 
 func TestDingoDataDir(t *testing.T) {
+	t.Parallel()
 	if got, want := (Dingo{}).DataDir(), DataMount+"/db/immutable"; got != want {
 		t.Fatalf("DataDir %q, want %q", got, want)
 	}

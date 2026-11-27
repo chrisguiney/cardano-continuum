@@ -8,6 +8,7 @@ import (
 )
 
 func TestAdmitBudget(t *testing.T) {
+	t.Parallel()
 	b := v1alpha1.BudgetSpec{MaxPools: 2, CPUMillis: 1000, MemoryMiB: 2048}
 	small := Demand{CPUMillis: 400, MemoryMiB: 512}
 	tests := []struct {
@@ -26,6 +27,7 @@ func TestAdmitBudget(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := Admit(b, tt.queue, tt.self)
 			if tt.limit == "" {
 				if err != nil {

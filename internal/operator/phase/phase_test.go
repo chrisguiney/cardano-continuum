@@ -12,6 +12,7 @@ import (
 )
 
 func TestPhaseOf(t *testing.T) {
+	t.Parallel()
 	ready := &corev1.Pod{Status: corev1.PodStatus{Phase: corev1.PodRunning, Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}}}
 	pending := &corev1.Pod{Status: corev1.PodStatus{Phase: corev1.PodPending}}
 	live := pool("ns", "a", v1alpha1.CardanoNode, v1alpha1.TierForging)
@@ -40,6 +41,7 @@ func mark(slot uint64) chain.Mark {
 }
 
 func TestJudge(t *testing.T) {
+	t.Parallel()
 	start := time.Unix(1_700_000_000, 0)
 	// f=0.05 makes a block every 20 slots on average: the lag threshold is
 	// ceil(10/0.05)=200 slots. With a 1/4 stake share the forging window is
@@ -86,6 +88,7 @@ func TestJudge(t *testing.T) {
 }
 
 func TestFactsWindows(t *testing.T) {
+	t.Parallel()
 	f := Facts{F: 0.05, Share: 0.25, Epoch: 1000, K: 100}
 	if got := f.LagSlots(); got != 200 {
 		t.Errorf("lag %d, want 200", got)

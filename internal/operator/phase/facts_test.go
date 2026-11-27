@@ -12,6 +12,7 @@ const shelleyJSON = `{"activeSlotsCoeff":0.05,"epochLength":432,"securityParam":
 "systemStart":"2026-11-26T10:00:00Z","staking":{"pools":{"aa":{},"bb":{},"cc":{},"dd":{}},"stake":{}}}`
 
 func TestFactsOfGenesis(t *testing.T) {
+	t.Parallel()
 	f, err := FactsOf([]byte(shelleyJSON))
 	if err != nil {
 		t.Fatal(err)
@@ -26,6 +27,7 @@ func TestFactsOfGenesis(t *testing.T) {
 }
 
 func TestFactsOfRejects(t *testing.T) {
+	t.Parallel()
 	for name, doc := range map[string]string{
 		"not json":       `{`,
 		"no start":       `{"slotLength":1}`,
@@ -39,6 +41,7 @@ func TestFactsOfRejects(t *testing.T) {
 }
 
 func TestWithPriorTip(t *testing.T) {
+	t.Parallel()
 	prior := v1alpha1.TipStatus{Slot: 74, Height: 6}
 	if got := withPriorTip(Seen{}, prior); !got.HaveTip || got.Tip.Slot != 74 || got.Tip.Height != 6 {
 		t.Errorf("empty window: %+v", got)

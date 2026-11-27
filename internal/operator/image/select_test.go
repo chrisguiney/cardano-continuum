@@ -8,6 +8,7 @@ import (
 )
 
 func TestSelectPrecedence(t *testing.T) {
+	t.Parallel()
 	def := v1alpha1.ImageSet{v1alpha1.Dingo: "def/dingo:main"}
 	net := v1alpha1.ImageSet{v1alpha1.Dingo: "net/dingo:main"}
 	tests := []struct {
@@ -25,6 +26,7 @@ func TestSelectPrecedence(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, src := Select(tt.def, tt.net, tt.impl, tt.pool)
 			if got != tt.want || src != tt.src {
 				t.Fatalf("Select = %q, %v; want %q, %v", got, src, tt.want, tt.src)
@@ -34,6 +36,7 @@ func TestSelectPrecedence(t *testing.T) {
 }
 
 func TestPullPolicy(t *testing.T) {
+	t.Parallel()
 	d := "sha256:" + "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 	tests := []struct {
 		ref  string
@@ -53,6 +56,7 @@ func TestPullPolicy(t *testing.T) {
 }
 
 func TestNeedsRollOnlyOnDigest(t *testing.T) {
+	t.Parallel()
 	cur := v1alpha1.ResolvedImage{Ref: "r/d:main", Digest: "sha256:aa"}
 	tests := []struct {
 		name string

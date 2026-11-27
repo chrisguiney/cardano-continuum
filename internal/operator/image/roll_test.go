@@ -8,6 +8,7 @@ import (
 )
 
 func TestRollRecordsDigests(t *testing.T) {
+	t.Parallel()
 	now := time.Unix(1700000000, 0)
 	cur := v1alpha1.ResolvedImage{Ref: "dingo:main", Digest: "sha256:old"}
 	next := v1alpha1.ResolvedImage{Ref: "dingo:dev", Digest: "sha256:new"}
@@ -18,6 +19,7 @@ func TestRollRecordsDigests(t *testing.T) {
 }
 
 func TestRollNilWhenNothingRolled(t *testing.T) {
+	t.Parallel()
 	now := time.Unix(1700000000, 0)
 	img := v1alpha1.ResolvedImage{Digest: "sha256:a"}
 	cases := map[string][2]v1alpha1.ResolvedImage{

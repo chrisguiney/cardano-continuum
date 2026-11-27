@@ -101,6 +101,7 @@ func stored(t *testing.T, r *applier, set *appsv1.StatefulSet) *appsv1.StatefulS
 // the stored StatefulSet. DeepDerivative reads a missing map key, an empty
 // string, a zero value and a shorter list as "unset, keep the live value".
 func TestUpdateRollsOnRemoval(t *testing.T) {
+	t.Parallel()
 	tests := map[string]struct {
 		add func(*appsv1.StatefulSet)
 		got func(*appsv1.StatefulSet) bool
@@ -141,6 +142,7 @@ func TestUpdateRollsOnRemoval(t *testing.T) {
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			r, c := newApplier(t)
 			old := rendered(t).StatefulSet
 			tc.add(old)
@@ -168,6 +170,7 @@ func TestUpdateRollsOnRemoval(t *testing.T) {
 // TestUpdateIgnoresServerDefaults: an object the server defaulted is not
 // rewritten when nothing the operator renders changed.
 func TestUpdateIgnoresServerDefaults(t *testing.T) {
+	t.Parallel()
 	r, c := newApplier(t)
 	cur := stored(t, r, rendered(t).StatefulSet)
 	if err := r.update(context.Background(), cur, rendered(t).StatefulSet); err != nil {
@@ -224,6 +227,7 @@ func applyTwice(t *testing.T, first, second func() *corev1.Service) (*writes, co
 // TestServiceRemovalPropagates: a dropped port or selector key reaches the
 // stored Service.
 func TestServiceRemovalPropagates(t *testing.T) {
+	t.Parallel()
 	with := func() *corev1.Service { return svcWith(t, true) }
 	without := func() *corev1.Service { return svcWith(t, false) }
 	_, got := applyTwice(t, with, without)
@@ -243,6 +247,7 @@ func TestServiceRemovalPropagates(t *testing.T) {
 
 // TestServiceIgnoresServerDefaults: defaulted Service fields cause no write.
 func TestServiceIgnoresServerDefaults(t *testing.T) {
+	t.Parallel()
 	same := func() *corev1.Service { return svcWith(t, true) }
 	c, _ := applyTwice(t, same, same)
 	if c.updates != 0 {

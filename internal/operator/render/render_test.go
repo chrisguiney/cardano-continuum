@@ -32,6 +32,7 @@ func render(t *testing.T, d NodeDriver, p *v1alpha1.ContinuumPool, img string) W
 
 // TestWorkloadNameIgnoresImplAndDigest: rule 1 of the fencing contract.
 func TestWorkloadNameIgnoresImplAndDigest(t *testing.T) {
+	t.Parallel()
 	reg := Drivers()
 	var names []string
 	for _, impl := range []v1alpha1.Implementation{v1alpha1.CardanoNode, v1alpha1.Dingo} {
@@ -62,6 +63,7 @@ func TestWorkloadNameIgnoresImplAndDigest(t *testing.T) {
 // TestKeyedPodTemplateHasFinalizer: rule 3. The finalizer is on the
 // template, so it is on the pod from its first moment.
 func TestKeyedPodTemplateHasFinalizer(t *testing.T) {
+	t.Parallel()
 	reg := Drivers()
 	for _, impl := range []v1alpha1.Implementation{v1alpha1.CardanoNode, v1alpha1.Dingo} {
 		forger := pool("ns", "a", impl, v1alpha1.TierForging)
@@ -84,6 +86,7 @@ func TestKeyedPodTemplateHasFinalizer(t *testing.T) {
 }
 
 func TestDuplicateNameDistinct(t *testing.T) {
+	t.Parallel()
 	forger := pool("ns", "a", v1alpha1.CardanoNode, v1alpha1.TierForging)
 	dup := pool("ns", "d", v1alpha1.CardanoNode, v1alpha1.TierForging)
 	dup.Spec.UnsafeDuplicateOf = "a"
@@ -96,6 +99,7 @@ func TestDuplicateNameDistinct(t *testing.T) {
 }
 
 func TestLogicalRendersNothing(t *testing.T) {
+	t.Parallel()
 	w, err := Render(CardanoNode{}, Input{Network: network("ns"), Pool: pool("ns", "l", v1alpha1.CardanoNode, v1alpha1.TierLogical)})
 	if err != nil {
 		t.Fatal(err)
@@ -106,6 +110,7 @@ func TestLogicalRendersNothing(t *testing.T) {
 }
 
 func TestDarkRendersZeroReplicas(t *testing.T) {
+	t.Parallel()
 	p := pool("ns", "a", v1alpha1.CardanoNode, v1alpha1.TierForging)
 	p.Spec.Dark = true
 	if r := render(t, CardanoNode{}, p, "r@sha256:aaaa").StatefulSet.Spec.Replicas; r == nil || *r != 0 {
@@ -113,6 +118,7 @@ func TestDarkRendersZeroReplicas(t *testing.T) {
 	}
 }
 
+// Not parallel: rewrites its golden file under -update.
 func TestRenderCardanoNodeRelay(t *testing.T) {
 	w := render(t, CardanoNode{}, pool("ns", "r", v1alpha1.CardanoNode, v1alpha1.TierValidating), "r@sha256:aaaa")
 	spec := w.StatefulSet.Spec.Template.Spec
@@ -131,6 +137,7 @@ func TestRenderCardanoNodeRelay(t *testing.T) {
 	golden(t, "cardano-node-relay", w)
 }
 
+// Not parallel: rewrites its golden file under -update.
 func TestRenderCardanoNodeForging(t *testing.T) {
 	w := render(t, CardanoNode{}, pool("ns", "a", v1alpha1.CardanoNode, v1alpha1.TierForging), "r@sha256:aaaa")
 	spec := w.StatefulSet.Spec.Template.Spec
@@ -184,6 +191,7 @@ func golden(t *testing.T, name string, w Workload) {
 }
 
 func TestDriverRegistry(t *testing.T) {
+	t.Parallel()
 	r := Drivers()
 	for _, impl := range []v1alpha1.Implementation{v1alpha1.CardanoNode, v1alpha1.Dingo, v1alpha1.Rogue} {
 		d, err := r.Driver(impl)
@@ -205,6 +213,7 @@ func TestDriverRegistry(t *testing.T) {
 // its own keys Secret, and reads its misbehaviours from that Secret, so a
 // scenario's schedule ends with the scenario's Secret.
 func TestRenderRogueForging(t *testing.T) {
+	t.Parallel()
 	p := pool("ns", "a", v1alpha1.Rogue, v1alpha1.TierForging)
 	w := render(t, Rogue{}, p, "localhost:5005/continuum/continuum-forger@sha256:aaaa")
 	if other := render(t, CardanoNode{}, pool("ns", "a", v1alpha1.CardanoNode, v1alpha1.TierForging), "r@sha256:aaaa"); other.StatefulSet.Name != w.StatefulSet.Name {
@@ -240,6 +249,7 @@ func TestRenderRogueForging(t *testing.T) {
 // publishes it, so the engine in another pod can follow and submit. Dingo
 // has no bridge yet.
 func TestRenderNtCBridge(t *testing.T) {
+	t.Parallel()
 	w := render(t, CardanoNode{}, pool("ns", "a", v1alpha1.CardanoNode, v1alpha1.TierForging), "r@sha256:aaaa")
 	spec := w.StatefulSet.Spec.Template.Spec
 	i := slices.IndexFunc(spec.Containers, func(c corev1.Container) bool { return c.Name == "ntc" })

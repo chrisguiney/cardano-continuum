@@ -23,6 +23,7 @@ func fixtureText(t *testing.T, name string) []byte {
 // The hash of the cold key in a pool's operational certificate is the issuer
 // hash of the headers that pool forges.
 func TestIssuerMatchesHeader(t *testing.T) {
+	t.Parallel()
 	raw, err := hex.DecodeString(string(fixtureText(t, "header.hex")))
 	if err != nil {
 		t.Fatal(err)
@@ -41,6 +42,7 @@ func TestIssuerMatchesHeader(t *testing.T) {
 }
 
 func TestIssuerOfHexPoolID(t *testing.T) {
+	t.Parallel()
 	id := string(fixtureText(t, "poolid.hex"))
 	got, err := IssuerOf(id, nil)
 	if err != nil || hex.EncodeToString(got[:]) != id {
@@ -49,6 +51,7 @@ func TestIssuerOfHexPoolID(t *testing.T) {
 }
 
 func TestIssuerErrors(t *testing.T) {
+	t.Parallel()
 	for name, files := range map[string]map[string][]byte{
 		"no certificate":  {},
 		"not an envelope": {render.OpCert: []byte("opcert")},

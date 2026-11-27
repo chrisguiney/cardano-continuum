@@ -46,6 +46,7 @@ func sidecarOf(spec corev1.PodSpec) (corev1.Container, bool) {
 // TestParquetDisabledIsNoop: with the sidecar disabled, the rendered
 // workload is the same whatever the other sidecar fields say.
 func TestParquetDisabledIsNoop(t *testing.T) {
+	t.Parallel()
 	for _, impl := range []v1alpha1.Implementation{v1alpha1.CardanoNode, v1alpha1.Dingo} {
 		for _, tier := range []v1alpha1.Tier{v1alpha1.TierValidating, v1alpha1.TierForging} {
 			p := pool("ns", "a", impl, tier)
@@ -65,6 +66,7 @@ func TestParquetDisabledIsNoop(t *testing.T) {
 // TestSidecarGoldens: the workloads with the sidecar, for both drivers,
 // relay and forging. The goldens without it stay as they were.
 func TestSidecarGoldens(t *testing.T) {
+	t.Parallel()
 	for _, impl := range []v1alpha1.Implementation{v1alpha1.CardanoNode, v1alpha1.Dingo} {
 		for _, tier := range []v1alpha1.Tier{v1alpha1.TierValidating, v1alpha1.TierForging} {
 			name := string(impl) + "-" + map[v1alpha1.Tier]string{v1alpha1.TierValidating: "relay", v1alpha1.TierForging: "forging"}[tier] + "-parquet"
@@ -78,6 +80,7 @@ func TestSidecarGoldens(t *testing.T) {
 // from the node's data volume and cannot write to it. Its only writable
 // mount is the output claim.
 func TestSidecarMountsDataReadOnly(t *testing.T) {
+	t.Parallel()
 	for _, impl := range []v1alpha1.Implementation{v1alpha1.CardanoNode, v1alpha1.Dingo} {
 		w := renderOn(t, Drivers()[impl], withParquet(), pool("ns", "a", impl, v1alpha1.TierForging))
 		spec := w.StatefulSet.Spec.Template.Spec
@@ -120,6 +123,7 @@ func TestSidecarMountsDataReadOnly(t *testing.T) {
 // TestSidecarCommand: mithril2pq -watch gets the driver's ImmutableDB, the network
 // magic and a per-pool output directory to mithril2pq.
 func TestSidecarCommand(t *testing.T) {
+	t.Parallel()
 	for _, impl := range []v1alpha1.Implementation{v1alpha1.CardanoNode, v1alpha1.Dingo} {
 		p := pool("ns", "a", impl, v1alpha1.TierValidating)
 		w := renderOn(t, Drivers()[impl], withParquet(), p)
@@ -149,6 +153,7 @@ func TestSidecarCommand(t *testing.T) {
 // TestSidecarNeedsDataDir: a driver with no ImmutableDB has nothing for the
 // sidecar to read, so rendering it is an error.
 func TestSidecarNeedsDataDir(t *testing.T) {
+	t.Parallel()
 	_, err := Render(stubDriver{impl: v1alpha1.CardanoNode}, Input{
 		Network: withParquet(),
 		Pool:    pool("ns", "a", v1alpha1.CardanoNode, v1alpha1.TierValidating),
@@ -163,6 +168,7 @@ func TestSidecarNeedsDataDir(t *testing.T) {
 // TestSidecarOnlyOnPodsThatRender: a logical pool renders nothing, so it
 // gets no sidecar either.
 func TestSidecarOnlyOnPodsThatRender(t *testing.T) {
+	t.Parallel()
 	w := renderOn(t, Drivers()[v1alpha1.Dingo], withParquet(), pool("ns", "l", v1alpha1.Dingo, v1alpha1.TierLogical))
 	if w.StatefulSet != nil {
 		t.Errorf("logical pool rendered a StatefulSet with a sidecar")
@@ -172,6 +178,7 @@ func TestSidecarOnlyOnPodsThatRender(t *testing.T) {
 // TestSidecarRunsNoShell: the mithril2pq image is distroless, so the
 // container must exec the binary directly with its own flags.
 func TestSidecarRunsNoShell(t *testing.T) {
+	t.Parallel()
 	for _, impl := range []v1alpha1.Implementation{v1alpha1.CardanoNode, v1alpha1.Dingo} {
 		w := renderOn(t, Drivers()[impl], withParquet(), pool("ns", "a", impl, v1alpha1.TierValidating))
 		sc, _ := sidecarOf(w.StatefulSet.Spec.Template.Spec)
@@ -189,6 +196,7 @@ func TestSidecarRunsNoShell(t *testing.T) {
 // TestPoolDemandCountsOneSidecar: the sidecar's requests count against the
 // budget once, for the source pool only.
 func TestPoolDemandCountsOneSidecar(t *testing.T) {
+	t.Parallel()
 	d := Drivers()[v1alpha1.Dingo]
 	if got := PoolDemand(d, false); got != d.Requests() {
 		t.Errorf("non-source: %+v, want %+v", got, d.Requests())
@@ -217,6 +225,7 @@ func poolWithID(name, id string, tier v1alpha1.Tier) v1alpha1.ContinuumPool {
 // lowest-named keyed pool, whatever order the pools arrive in; spec.Pool
 // overrides; off or no candidate is "".
 func TestParquetSource(t *testing.T) {
+	t.Parallel()
 	on := v1alpha1.ParquetSpec{Enabled: true}
 	f := poolWithID("f", "pf", v1alpha1.TierForging)
 	g := poolWithID("g", "pg", v1alpha1.TierForging)
@@ -244,6 +253,7 @@ func TestParquetSource(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			for range 3 {
 				if got := ParquetSource("net", tt.spec, tt.pools); got != tt.want {
 					t.Fatalf("source %q, want %q", got, tt.want)
@@ -258,6 +268,7 @@ func TestParquetSource(t *testing.T) {
 // source renders a sidecar, and every other pod renders as it does with the
 // sidecar off.
 func TestOnlySourcePodGetsSidecar(t *testing.T) {
+	t.Parallel()
 	n := withParquet()
 	pools := []v1alpha1.ContinuumPool{
 		poolWithID("f", "pf", v1alpha1.TierForging),

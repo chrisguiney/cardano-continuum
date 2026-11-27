@@ -8,6 +8,7 @@ import (
 )
 
 func TestPeersPolicy(t *testing.T) {
+	t.Parallel()
 	members := []Member{
 		{Name: "pool-a", PoolID: "a", Role: RoleForger},
 		{Name: "relay-a1", PoolID: "a", Role: RoleRelay},

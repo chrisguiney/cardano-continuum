@@ -60,6 +60,7 @@ func newResolver(insecure ...string) *RegistryResolver {
 }
 
 func TestResolveInsecureRegistry(t *testing.T) {
+	t.Parallel()
 	p := push(t, "main", map[string]string{revisionLabel: "abc123"}, nil)
 	ctx := context.Background()
 
@@ -80,6 +81,7 @@ func TestResolveInsecureRegistry(t *testing.T) {
 }
 
 func TestResolveCommit(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		labels map[string]string
@@ -92,6 +94,7 @@ func TestResolveCommit(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			p := push(t, "main", tt.labels, tt.env)
 			got, err := newResolver(p.host).Resolve(context.Background(), p.ref)
 			if err != nil {
@@ -105,6 +108,7 @@ func TestResolveCommit(t *testing.T) {
 }
 
 func TestResolveMovedTag(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(registry.New())
 	defer srv.Close()
 	host := strings.TrimPrefix(srv.URL, "http://")
@@ -129,6 +133,7 @@ func TestResolveMovedTag(t *testing.T) {
 }
 
 func TestBuildLabelsRoundTrip(t *testing.T) {
+	t.Parallel()
 	p := ident.LabelPrefix
 	p1 := push(t, "dev-x", map[string]string{
 		revisionLabel:                  "dingo7",
@@ -160,6 +165,7 @@ func TestBuildLabelsRoundTrip(t *testing.T) {
 }
 
 func TestBuildLabelsDefaultsAndErrors(t *testing.T) {
+	t.Parallel()
 	p := push(t, "main", nil, nil)
 	got, err := newResolver(p.host).Resolve(context.Background(), p.ref)
 	if err != nil || got.Build.Mode != v1alpha1.BuildModeUpstream || got.Build.Dirty {
@@ -180,6 +186,7 @@ func TestBuildLabelsDefaultsAndErrors(t *testing.T) {
 // mirror maps it to the host the operator can reach; the resolved Ref keeps
 // the original name, which the nodes' containerd maps the same way.
 func TestResolveThroughMirror(t *testing.T) {
+	t.Parallel()
 	p := push(t, "dev", nil, nil)
 	ref := strings.Replace(p.ref, p.host, "localhost:5001", 1)
 	r := NewResolver(ResolverConfig{
@@ -196,6 +203,7 @@ func TestResolveThroughMirror(t *testing.T) {
 }
 
 func TestParseMirrors(t *testing.T) {
+	t.Parallel()
 	got, err := ParseMirrors("localhost:5001=continuum-e2e-registry:5000, a:1=b:2")
 	if err != nil {
 		t.Fatal(err)

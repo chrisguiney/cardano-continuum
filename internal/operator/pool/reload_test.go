@@ -104,6 +104,7 @@ func (g *reloadRig) project() {
 // start, so a pod started before its peers existed never dials them unless
 // it is told to reread it.
 func TestCardanoNodeRendersReload(t *testing.T) {
+	t.Parallel()
 	w := renderOn(t, render.CardanoNode{}, testNetwork("ns"), pool("ns", "a", v1alpha1.CardanoNode, v1alpha1.TierForging))
 	if !slices.Equal(w.Reload, []string{"kill", "-HUP", "1"}) {
 		t.Fatalf("Reload = %q, want kill -HUP 1", w.Reload)
@@ -113,6 +114,7 @@ func TestCardanoNodeRendersReload(t *testing.T) {
 // TestReloadWaitsForProjection: the node rereads its topology only once the
 // kubelet has written the rendered one into the volume, and only once.
 func TestReloadWaitsForProjection(t *testing.T) {
+	t.Parallel()
 	g := newReloadRig(t)
 	g.now = g.now.Add(time.Minute)
 	g.exec.files[render.ConfigDir+"/topology.json"] = "stale"
@@ -132,6 +134,7 @@ func TestReloadWaitsForProjection(t *testing.T) {
 // TestReloadWaitsForStart: a signal sent before the node installs its
 // handler is lost, so a just-started container is left alone for a while.
 func TestReloadWaitsForStart(t *testing.T) {
+	t.Parallel()
 	g := newReloadRig(t)
 	g.project()
 	g.now = g.now.Add(time.Second)
@@ -147,6 +150,7 @@ func TestReloadWaitsForStart(t *testing.T) {
 // TestReloadAfterConfigChange: a new peer changes the topology, and the
 // running node must reread it.
 func TestReloadAfterConfigChange(t *testing.T) {
+	t.Parallel()
 	g := newReloadRig(t)
 	g.now = g.now.Add(time.Minute)
 	g.project()
@@ -161,6 +165,7 @@ func TestReloadAfterConfigChange(t *testing.T) {
 // TestReloadAfterRestart: the annotation names the container instance it
 // was recorded for, so a restarted container is checked again.
 func TestReloadAfterRestart(t *testing.T) {
+	t.Parallel()
 	g := newReloadRig(t)
 	g.now = g.now.Add(time.Minute)
 	g.project()
@@ -183,6 +188,7 @@ func TestReloadAfterRestart(t *testing.T) {
 // TestReloadSkipsWithoutCommand: a driver with no reload command, or a pod
 // whose node is not running, is never exec'd into.
 func TestReloadSkipsWithoutCommand(t *testing.T) {
+	t.Parallel()
 	g := newReloadRig(t)
 	g.now = g.now.Add(time.Minute)
 	g.project()
