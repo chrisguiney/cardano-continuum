@@ -28,6 +28,11 @@ func modelsRepo(t *testing.T) string {
 		"models/scripts/run-model.sh":      "#!/bin/sh\n",
 		"models/specs/README.md":           "specs\n",
 		"models/specs/a/A.tla":             "a\n",
+		"models/specs/a/README.md":         "Code map: `internal/foo/bar.go:12` (Bar), package `internal/baz`.\n",
+		"internal/foo/bar.go":              "package foo\n",
+		"internal/foo/barx.go":             "package foo\n",
+		"internal/baz/x.go":                "package baz\n",
+		"internal/other/y.go":              "package other\n",
 		"models/specs/b/B.tla":             "b\n",
 		"models/specs/c/C.tla":             "c\n",
 		"README.md":                        "top\n",
@@ -106,6 +111,11 @@ func TestChangedModels(t *testing.T) {
 		{"tool pin changed", func(t *testing.T, dir string) { write(t, dir, "models/scripts/install-tla.sh", "#!/bin/sh\n") }, []string{"specs/a", "specs/b", "specs/c"}},
 		{"tool wrapper changed", func(t *testing.T, dir string) { write(t, dir, "models/bin/tlc", "#!/bin/sh\n") }, []string{"specs/a", "specs/b", "specs/c"}},
 		{"TLC left its working directory", func(t *testing.T, dir string) { write(t, dir, "models/specs/a/states/x.st", "x\n") }, nil},
+		{"mapped code file edited", func(t *testing.T, dir string) { write(t, dir, "internal/foo/bar.go", "package foo // edited\n") }, []string{"specs/a"}},
+		{"file in a mapped package", func(t *testing.T, dir string) { write(t, dir, "internal/baz/x.go", "package baz // edited\n") }, []string{"specs/a"}},
+		{"new file in a mapped package", func(t *testing.T, dir string) { write(t, dir, "internal/baz/new.go", "package baz\n") }, []string{"specs/a"}},
+		{"file sharing a mapped prefix", func(t *testing.T, dir string) { write(t, dir, "internal/foo/barx.go", "package foo // edited\n") }, nil},
+		{"unmapped code", func(t *testing.T, dir string) { write(t, dir, "internal/other/y.go", "package other // edited\n") }, nil},
 		{"selector edited", func(t *testing.T, dir string) { write(t, dir, "models/scripts/README.md", "notes\n") }, nil},
 	}
 	for _, tc := range cases {

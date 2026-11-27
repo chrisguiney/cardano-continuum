@@ -15,7 +15,7 @@ GOLANGCI_LINT_VERSION := v2.15.0
 CONTROLLER_GEN_VERSION := v0.23.0
 CONTROLLER_GEN := go run sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_GEN_VERSION)
 
-.PHONY: web web-test lab lab-image lab-test profiles-index help build test test-race vet fmt-check lint check check-static check-manifests manifests generate determinism models models-changed models-install harvest vectors scenarios
+.PHONY: web web-test lab lab-image lab-test profiles-index help build test test-race vet fmt-check lint check check-static check-manifests manifests generate determinism models models-changed models-drift models-install harvest vectors scenarios
 
 help: ## Show this list
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-16s %s\n", $$1, $$2}'
@@ -193,6 +193,8 @@ STUBS := ident \
 $(STUBS): ; @echo "$@: not yet implemented"
 
 # Models live in models/. The TLA+ tools install into models/.tools (gitignored).
+# Never run these with make -j: the runner serialises TLC runs on a lock, and
+# TLC_RECORD=1 rewrites each directory's verdicts.tsv from the run.
 models-install: ## Install the pinned Java and TLA+ tools into models/.tools
 	models/scripts/install-tla.sh
 
@@ -202,10 +204,13 @@ models: ## Check every TLA+ model directory under models/specs
 # BASE is the revision models-changed compares the working tree against.
 BASE ?= origin/main
 
-models-changed: ## Check only the TLA+ models changed since BASE (every model when the runner or tools changed)
+models-changed: ## Check only the TLA+ models a change since BASE can affect (its specs, the code they map, or every model when the runner or tools changed)
 	@set -e; cd models; dirs=$$(scripts/changed-models.sh '$(BASE)'); \
 	if [ -z "$$dirs" ]; then echo "no model changed since $(BASE)"; exit 0; fi; \
 	for d in $$dirs; do scripts/run-model.sh "$$d"; done
+
+models-drift: ## List the code each TLA+ model maps that changed since the commit it models
+	@cd models && scripts/drift.sh
 
 # TLA+ harvester. TLA_REPO and TLA_REF name the model repository and the commit
 # to pin; the clone lives in the user cache directory, never in this checkout.
