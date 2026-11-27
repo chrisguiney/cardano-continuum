@@ -67,3 +67,15 @@ type UtxoRec struct {
 	Ref Ref    `cbor:"1,keyasint"`
 	Out []byte `cbor:"2,keyasint"`
 }
+
+// WeightRec is one operator weight override: an intent kind and its weight.
+type WeightRec struct {
+	Kind   string  `cbor:"1,keyasint"`
+	Weight float64 `cbor:"2,keyasint"`
+}
+
+// ImageRec is the node image an upgrade wave moved a pool actor to.
+type ImageRec struct {
+	Pool uint64 `cbor:"1,keyasint"`
+	Ref  string `cbor:"2,keyasint"`
+}

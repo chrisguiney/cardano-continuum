@@ -3,9 +3,7 @@ package engine
 import (
 	"context"
 	"fmt"
-	"maps"
 	"math/rand/v2"
-	"slices"
 
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 
@@ -54,13 +52,7 @@ func (e *Engine) Snapshot() ([]byte, error) {
 	fs := e.fl.Save()
 	s.Dark, s.Down, s.Repairs, s.Stalled = fs.Dark, fs.Down, fs.Repairs, fs.Stalled
 	ss := e.st.Save()
-	s.Paused, s.RateK, s.Waves, s.Adoptions = ss.Paused, ss.RateK, ss.Waves, ss.Adoptions
-	for _, k := range slices.Sorted(maps.Keys(ss.Weights)) {
-		s.Weights = append(s.Weights, weightRec{Kind: string(k), Weight: ss.Weights[k]})
-	}
-	for _, id := range slices.Sorted(mapKeys(ss.Images)) {
-		s.Images = append(s.Images, imageRec{Pool: uint64(id), Ref: ss.Images[id]})
-	}
+	s.Paused, s.RateK, s.Waves, s.Adoptions, s.Weights, s.Images = ss.Paused, ss.RateK, ss.Waves, ss.Adoptions, ss.Weights, ss.Images
 	s.Charges, s.Contested = e.adv.Save()
 	return eventlog.Encode(s)
 }
@@ -87,17 +79,7 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 	if err := e.in.Load(intent.State{N: s.Contracts, At: s.DeployAt, Drawn: s.DeployN}); err != nil {
 		return nil, err
 	}
-	ss := steer.Saved{Paused: s.Paused, RateK: s.RateK, Waves: s.Waves, Adoptions: s.Adoptions, Images: map[population.ActorID]string{}}
-	if len(s.Weights) > 0 {
-		ss.Weights = map[profile.IntentKind]float64{}
-		for _, w := range s.Weights {
-			ss.Weights[profile.IntentKind(w.Kind)] = w.Weight
-		}
-	}
-	for _, r := range s.Images {
-		ss.Images[population.ActorID(r.Pool)] = r.Ref
-	}
-	e.st.Load(ss)
+	e.st.Load(steer.Saved{Paused: s.Paused, RateK: s.RateK, Waves: s.Waves, Adoptions: s.Adoptions, Weights: s.Weights, Images: s.Images})
 	e.fl.Load(floor.Saved{Dark: s.Dark, Down: s.Down, Repairs: s.Repairs, Stalled: s.Stalled})
 	if err := e.co.Load(cfg.Profiles, s.Actors, s.Births); err != nil {
 		return nil, err

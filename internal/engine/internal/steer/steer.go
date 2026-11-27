@@ -254,28 +254,41 @@ func (s *Steer) Pools() []PoolPlan {
 	return out
 }
 
-// Saved is Steer's state in a snapshot.
+// Saved is Steer's section of a snapshot. Weights are ascending by kind
+// and Images by pool; no weights means no override.
 type Saved struct {
 	Paused    bool
 	RateK     uint32
 	Waves     uint64
 	Adoptions []wire.Adoption
-	Weights   map[profile.IntentKind]float64
-	Images    map[population.ActorID]string
+	Weights   []wire.WeightRec
+	Images    []wire.ImageRec
 }
 
 // Save returns the state a snapshot keeps.
 func (s *Steer) Save() Saved {
-	return Saved{Paused: s.paused, RateK: s.rateK, Waves: s.waves, Adoptions: slices.Clone(s.adoptions), Weights: s.weights, Images: s.images}
+	v := Saved{Paused: s.paused, RateK: s.rateK, Waves: s.waves, Adoptions: slices.Clone(s.adoptions)}
+	for _, k := range slices.Sorted(maps.Keys(s.weights)) {
+		v.Weights = append(v.Weights, wire.WeightRec{Kind: string(k), Weight: s.weights[k]})
+	}
+	for _, id := range slices.Sorted(maps.Keys(s.images)) {
+		v.Images = append(v.Images, wire.ImageRec{Pool: uint64(id), Ref: s.images[id]})
+	}
+	return v
 }
 
 // Load restores a Save's state and queues the adoptions not yet done.
 func (s *Steer) Load(v Saved) {
 	s.paused, s.rateK, s.waves, s.adoptions = v.Paused, v.RateK, v.Waves, v.Adoptions
 	if len(v.Weights) > 0 {
-		s.weights = maps.Clone(v.Weights)
+		s.weights = map[profile.IntentKind]float64{}
+		for _, w := range v.Weights {
+			s.weights[profile.IntentKind(w.Kind)] = w.Weight
+		}
 	}
-	maps.Copy(s.images, v.Images)
+	for _, r := range v.Images {
+		s.images[population.ActorID(r.Pool)] = r.Ref
+	}
 	for i, a := range s.adoptions {
 		if !a.Done {
 			s.env.Clock.Adopt(a.At, uint64(i))

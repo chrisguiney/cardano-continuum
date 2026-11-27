@@ -115,12 +115,12 @@ type snapshot struct {
 	Stalled bool     `cbor:"19,keyasint,omitempty"`
 	// Controls and upgrade waves; Images is (pool actor, image) pairs,
 	// ascending.
-	Paused    bool        `cbor:"20,keyasint,omitempty"`
-	RateK     uint32      `cbor:"21,keyasint,omitempty"`
-	Weights   []weightRec `cbor:"22,keyasint,omitempty"`
-	Waves     uint64      `cbor:"23,keyasint,omitempty"`
-	Adoptions []adoption  `cbor:"24,keyasint,omitempty"`
-	Images    []imageRec  `cbor:"25,keyasint,omitempty"`
+	Paused    bool             `cbor:"20,keyasint,omitempty"`
+	RateK     uint32           `cbor:"21,keyasint,omitempty"`
+	Weights   []wire.WeightRec `cbor:"22,keyasint,omitempty"`
+	Waves     uint64           `cbor:"23,keyasint,omitempty"`
+	Adoptions []adoption       `cbor:"24,keyasint,omitempty"`
+	Images    []wire.ImageRec  `cbor:"25,keyasint,omitempty"`
 	// View is the chain view at the confirmed point; the window is replayed
 	// onto it on restore.
 	View wire.ViewRec `cbor:"13,keyasint"`
@@ -238,16 +238,6 @@ func pendingOf(r pendingRec) *wire.Pending {
 
 func samePoint(a, b eventlog.ChainPoint) bool {
 	return a.Slot == b.Slot && bytes.Equal(a.Hash, b.Hash)
-}
-
-type weightRec struct {
-	Kind   string  `cbor:"1,keyasint"`
-	Weight float64 `cbor:"2,keyasint"`
-}
-
-type imageRec struct {
-	Pool uint64 `cbor:"1,keyasint"`
-	Ref  string `cbor:"2,keyasint"`
 }
 
 // wantRec is the verdict an attack's first send calls for

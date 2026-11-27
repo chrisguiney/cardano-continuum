@@ -132,16 +132,6 @@ func (r scenarioRoute) richest(ok func(population.ActorID) bool) (population.Act
 	return best, most > 0
 }
 
-func mapKeys[V any](m map[population.ActorID]V) func(func(population.ActorID) bool) {
-	return func(yield func(population.ActorID) bool) {
-		for k := range m {
-			if !yield(k) {
-				return
-			}
-		}
-	}
-}
-
 // hotKind authorises committee member To's hot key (build.AuthorizeHot),
 // paid by the actor. The member's keys are the run seed's own, as
 // internal/genesis seats them.
