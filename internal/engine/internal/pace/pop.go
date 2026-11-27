@@ -269,7 +269,38 @@ func (pp *Pop) bootstrapping(id population.ActorID, st Subject) bool {
 // Ready reports that a population actor wakes at its fitted rates:
 // registered, and not bootstrapping governance.
 func (pp *Pop) Ready(id population.ActorID, st Subject) bool {
-	return pp.registered(id, st.Boot) && !pp.bootstrapping(id, st)
+	if _, ok := pp.setup(id, st); ok {
+		return false
+	}
+
+	return !pp.bootstrapping(id, st)
+}
+
+// setup is the next step a population actor takes before it wakes at its
+// fitted rates: registering, and for a DRep then registering its stake key
+// and delegating its vote to itself. A DRep's voting power is only the
+// stake delegated to it, and a devnet has too few delegating citizens for a
+// proposal to reach the DRep threshold, so a DRep that skipped this voted
+// with no stake and nothing ratified.
+func (pp *Pop) setup(id population.ActorID, st Subject) (profile.IntentKind, bool) {
+	if !pp.registered(id, st.Boot) {
+		return st.Boot, true
+	}
+
+	if st.Boot != profile.IntentRegisterDRep {
+		return "", false
+	}
+
+	v := pp.env.Chain.View()
+	if !v.StakeRegistered(id) {
+		return profile.IntentRegisterStake, true
+	}
+
+	if !v.VoteDelegated(id) {
+		return profile.IntentDelegateDRep, true
+	}
+
+	return "", false
 }
 
 // Rate is a population actor's wake rate: the boot rate until it is
@@ -286,12 +317,14 @@ func (pp *Pop) Rate(id population.ActorID, st Subject) float64 {
 	return sum * float64(max(pp.env.Knobs.RateK(), 1))
 }
 
-// fire draws which clock woke the actor: the boot intent while it is
-// unregistered, else a clock in proportion to its rate.
+// fire draws which clock woke the actor: its next setup step until it is
+// set up, else a clock in proportion to its rate.
 func (pp *Pop) fire(id population.ActorID, st Subject, r *rand.Rand) Clock {
+	if k, ok := pp.setup(id, st); ok {
+		return Clock{Kind: k}
+	}
+
 	switch {
-	case !pp.registered(id, st.Boot):
-		return Clock{Kind: st.Boot}
 	case len(st.Clocks) == 0, st.Booting && !pp.bootstrapping(id, st):
 		// Registered since this wake was drawn: the next one is drawn at
 		// the clocks' rate, which by memorylessness is the right wait.

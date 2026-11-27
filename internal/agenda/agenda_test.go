@@ -605,6 +605,34 @@ func TestCivicDRepRetires(t *testing.T) {
 	}
 }
 
+// A registered DRep registers its own stake and delegates its vote to
+// itself, so its balance becomes voting power. Without that a devnet's
+// DReps vote with no stake behind them and no proposal ever ratifies.
+func TestCivicDRepDelegatesToItself(t *testing.T) {
+	p := mustFor(t, "civic")
+	drep := actor(profile.DRep, 1)
+	v := ok(fakeView{balance: 1000 * ada})
+	v.drep = true
+	if s := score(p.Score(drep, v), profile.IntentRegisterStake); !(s.Value > 0) {
+		t.Fatalf("registered DRep with no stake key does not register it: %+v", s)
+	}
+
+	v.stake = true
+	v.dreps = []population.ActorID{30, drep.ID}
+	s := score(p.Score(drep, v), profile.IntentDelegateDRep)
+	if !(s.Value > 0) || s.Target != drep.ID {
+		t.Fatalf("registered DRep does not delegate its vote to itself: %+v", s)
+	}
+
+	v.voteDeleg = true
+	if s := score(p.Score(drep, v), profile.IntentDelegateDRep); s.Value != 0 {
+		t.Fatalf("DRep re-delegates a vote already delegated: %+v", s)
+	}
+	if !(score(p.Score(drep, v), profile.IntentRetireDRep).Value > 0) {
+		t.Fatal("delegated DRep can no longer retire")
+	}
+}
+
 // deposits is a world that knows the chain's deposits.
 type deposits struct {
 	world

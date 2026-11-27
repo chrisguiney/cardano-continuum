@@ -95,7 +95,7 @@
         ]
       },
       {
-        "id": 1333,
+        "id": 1335,
         "at": 63049,
         "kind": "IntentChosen",
         "actor": 23,
@@ -119,7 +119,7 @@
         ]
       },
       {
-        "id": 1504,
+        "id": 1499,
         "at": 70572,
         "kind": "IntentChosen",
         "actor": 23,
@@ -143,7 +143,7 @@
         ]
       },
       {
-        "id": 1776,
+        "id": 1744,
         "at": 81728,
         "kind": "IntentChosen",
         "actor": 23,
@@ -167,7 +167,7 @@
         ]
       },
       {
-        "id": 1952,
+        "id": 1916,
         "at": 91018,
         "kind": "IntentChosen",
         "actor": 23,
@@ -191,7 +191,7 @@
         ]
       },
       {
-        "id": 2043,
+        "id": 2004,
         "at": 96257,
         "kind": "IntentChosen",
         "actor": 23,
@@ -215,7 +215,7 @@
         ]
       },
       {
-        "id": 2145,
+        "id": 2103,
         "at": 102463,
         "kind": "IntentChosen",
         "actor": 23,
@@ -239,7 +239,7 @@
         ]
       },
       {
-        "id": 2268,
+        "id": 2217,
         "at": 107730,
         "kind": "IntentChosen",
         "actor": 23,
@@ -263,7 +263,7 @@
         ]
       },
       {
-        "id": 2293,
+        "id": 2247,
         "at": 109600,
         "kind": "IntentChosen",
         "actor": 23,
@@ -512,182 +512,182 @@
       "detail": "idle"
     },
     {
-      "seq": 1333,
+      "seq": 1335,
       "at": 63049,
       "kind": "IntentChosen",
       "detail": "malformed-cbor"
-    },
-    {
-      "seq": 1334,
-      "at": 63049,
-      "kind": "Attack"
-    },
-    {
-      "seq": 1335,
-      "at": 63049,
-      "kind": "Submitted",
-      "detail": "2000000 lovelace to 23",
-      "intent": 30
     },
     {
       "seq": 1336,
       "at": 63049,
-      "kind": "SubmitResult",
-      "detail": "rejected: transaction rejected: DeserialiseFailure",
-      "intent": 30
+      "kind": "Attack"
     },
     {
       "seq": 1337,
       "at": 63049,
-      "kind": "Released",
-      "detail": "transaction rejected: DeserialiseFailure",
-      "intent": 30
+      "kind": "Submitted",
+      "detail": "2000000 lovelace to 23",
+      "intent": 33
     },
     {
-      "seq": 1504,
+      "seq": 1338,
+      "at": 63049,
+      "kind": "SubmitResult",
+      "detail": "rejected: transaction rejected: DeserialiseFailure",
+      "intent": 33
+    },
+    {
+      "seq": 1339,
+      "at": 63049,
+      "kind": "Released",
+      "detail": "transaction rejected: DeserialiseFailure",
+      "intent": 33
+    },
+    {
+      "seq": 1499,
       "at": 70572,
       "kind": "IntentChosen",
       "detail": "malformed-cbor"
     },
     {
-      "seq": 1505,
+      "seq": 1500,
       "at": 70572,
       "kind": "Attack"
     },
     {
-      "seq": 1506,
+      "seq": 1501,
       "at": 70572,
       "kind": "Submitted",
       "detail": "2000000 lovelace to 23",
-      "intent": 36
+      "intent": 37
     },
     {
-      "seq": 1507,
+      "seq": 1502,
       "at": 70572,
       "kind": "SubmitResult",
       "detail": "rejected: transaction rejected: DeserialiseFailure",
-      "intent": 36
+      "intent": 37
     },
     {
-      "seq": 1508,
+      "seq": 1503,
       "at": 70572,
       "kind": "Released",
       "detail": "transaction rejected: DeserialiseFailure",
-      "intent": 36
+      "intent": 37
     },
     {
-      "seq": 1776,
+      "seq": 1744,
       "at": 81728,
       "kind": "IntentChosen",
       "detail": "idle"
     },
     {
-      "seq": 1952,
+      "seq": 1916,
       "at": 91018,
       "kind": "IntentChosen",
       "detail": "idle"
     },
     {
-      "seq": 2043,
+      "seq": 2004,
       "at": 96257,
       "kind": "IntentChosen",
       "detail": "idle"
     },
     {
-      "seq": 2145,
+      "seq": 2103,
       "at": 102463,
       "kind": "IntentChosen",
       "detail": "malformed-cbor"
     },
     {
-      "seq": 2146,
+      "seq": 2104,
       "at": 102463,
       "kind": "Attack"
     },
     {
-      "seq": 2147,
+      "seq": 2105,
       "at": 102463,
       "kind": "Submitted",
       "detail": "2000000 lovelace to 23",
-      "intent": 43
+      "intent": 46
     },
     {
-      "seq": 2148,
+      "seq": 2106,
       "at": 102463,
       "kind": "SubmitResult",
       "detail": "rejected: transaction rejected: InvalidWitnessesUTXOW, FeeTooSmallUTxO",
-      "intent": 43
+      "intent": 46
     },
     {
-      "seq": 2149,
+      "seq": 2107,
       "at": 102463,
       "kind": "Released",
       "detail": "transaction rejected: InvalidWitnessesUTXOW, FeeTooSmallUTxO",
-      "intent": 43
+      "intent": 46
     },
     {
-      "seq": 2268,
+      "seq": 2217,
       "at": 107730,
       "kind": "IntentChosen",
       "detail": "malformed-cbor"
     },
     {
-      "seq": 2269,
+      "seq": 2218,
       "at": 107730,
       "kind": "Attack"
     },
     {
-      "seq": 2270,
+      "seq": 2219,
       "at": 107730,
       "kind": "Submitted",
       "detail": "2000000 lovelace to 23",
-      "intent": 47
+      "intent": 50
     },
     {
-      "seq": 2271,
+      "seq": 2220,
       "at": 107730,
       "kind": "SubmitResult",
       "detail": "rejected: transaction rejected: InvalidWitnessesUTXOW, FeeTooSmallUTxO",
-      "intent": 47
+      "intent": 50
     },
     {
-      "seq": 2272,
+      "seq": 2221,
       "at": 107730,
       "kind": "Released",
       "detail": "transaction rejected: InvalidWitnessesUTXOW, FeeTooSmallUTxO",
-      "intent": 47
+      "intent": 50
     },
     {
-      "seq": 2293,
+      "seq": 2247,
       "at": 109600,
       "kind": "IntentChosen",
       "detail": "malformed-cbor"
     },
     {
-      "seq": 2294,
+      "seq": 2248,
       "at": 109600,
       "kind": "Attack"
     },
     {
-      "seq": 2295,
+      "seq": 2249,
       "at": 109600,
       "kind": "Submitted",
       "detail": "2000000 lovelace to 23",
-      "intent": 48
+      "intent": 51
     },
     {
-      "seq": 2296,
+      "seq": 2250,
       "at": 109600,
       "kind": "SubmitResult",
       "detail": "rejected: transaction rejected: InvalidWitnessesUTXOW, FeeTooSmallUTxO",
-      "intent": 48
+      "intent": 51
     },
     {
-      "seq": 2297,
+      "seq": 2251,
       "at": 109600,
       "kind": "Released",
       "detail": "transaction rejected: InvalidWitnessesUTXOW, FeeTooSmallUTxO",
-      "intent": 48
+      "intent": 51
     }
   ]
 }

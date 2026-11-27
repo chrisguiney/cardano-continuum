@@ -433,3 +433,35 @@ func TestParameterChangeEnactsThenReverts(t *testing.T) {
 		t.Errorf("%d findings, the first %+v", len(fs), fs[0])
 	}
 }
+
+// selfGovYAML is fittedGovYAML with no citizen delegating its vote, so a
+// DRep's voting power can only be its own stake.
+var selfGovYAML = strings.Replace(fittedGovYAML, "rates: {base: {delegate_drep: 0.01}}", "rates: {base: {delegate_drep: 0}}", 1)
+
+// A registered DRep registers its stake key and delegates its vote to
+// itself, so its votes carry its own stake. Before, a DRep woke only on its
+// vote and retire clocks, never delegated, and on a devnet with few
+// delegating citizens voted with no power, so nothing ratified.
+func TestDRepsVoteWithTheirOwnStake(t *testing.T) {
+	t.Parallel()
+	if selfGovYAML == fittedGovYAML {
+		t.Fatal("fixture no longer has the citizens' delegate_drep rate to zero out")
+	}
+
+	cfg := populationConfig(t, 4, populationFile(t, selfGovYAML))
+	slots, err := sched.NewSlots(1000, 600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg.Slots = slots
+	p := cleanRun(t, newWorld(t, cfg), sched.Time(3*3600*1000))
+	g := readGov(t, p.log)
+	if g.votes["drep"] == 0 {
+		t.Fatalf("no DRep voted: %v", g.votes)
+	}
+
+	if g.power["drep"] == 0 {
+		t.Fatalf("DRep votes carry no stake: votes %v, power %v", g.votes, g.power)
+	}
+}

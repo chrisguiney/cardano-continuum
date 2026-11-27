@@ -27,7 +27,7 @@
       "metric": {
         "name": "utxo_growth",
         "value": 58,
-        "control": 8
+        "control": 9
       },
       "attempted": 2,
       "landed": 2,
@@ -42,9 +42,9 @@
           "txs": 1
         },
         {
-          "seq": 1298,
+          "seq": 1300,
           "at": 61092,
-          "intent": 28,
+          "intent": 30,
           "cost": 26423417,
           "txs": 1
         }
@@ -81,9 +81,9 @@
       "rejected": 0,
       "recent": [
         {
-          "seq": 1654,
+          "seq": 1638,
           "at": 77274,
-          "intent": 41,
+          "intent": 43,
           "cost": 175310,
           "value": 5000000,
           "txs": 1
@@ -165,41 +165,41 @@
           "txs": 1
         },
         {
-          "seq": 1334,
+          "seq": 1336,
           "at": 63049,
-          "intent": 30,
+          "intent": 33,
           "mutation": "body-count",
           "cost": 168537,
           "txs": 1
         },
         {
-          "seq": 1505,
+          "seq": 1500,
           "at": 70572,
-          "intent": 36,
+          "intent": 37,
           "mutation": "truncate",
           "cost": 168537,
           "txs": 1
         },
         {
-          "seq": 2146,
+          "seq": 2104,
           "at": 102463,
-          "intent": 43,
+          "intent": 46,
           "mutation": "non-canonical",
           "cost": 168537,
           "txs": 1
         },
         {
-          "seq": 2269,
+          "seq": 2218,
           "at": 107730,
-          "intent": 47,
+          "intent": 50,
           "mutation": "non-canonical",
           "cost": 168537,
           "txs": 1
         },
         {
-          "seq": 2294,
+          "seq": 2248,
           "at": 109600,
-          "intent": 48,
+          "intent": 51,
           "mutation": "non-canonical",
           "cost": 168537,
           "txs": 1
@@ -274,7 +274,7 @@
           "txs": 3
         },
         {
-          "seq": 1458,
+          "seq": 1452,
           "at": 69082,
           "intent": 35,
           "cost": 2168537,
@@ -287,8 +287,8 @@
   "impact": [
     {
       "metric": "honest_intents",
-      "value": 31,
-      "control": 29,
+      "value": 34,
+      "control": 32,
       "delta": 2
     },
     {
@@ -299,9 +299,9 @@
     },
     {
       "metric": "honest_latency_p50_s",
-      "value": 56.569,
-      "control": 56.716,
-      "delta": -0.14699999999999847
+      "value": 57.622,
+      "control": 57.125,
+      "delta": 0.4969999999999999
     },
     {
       "metric": "honest_latency_p99_s",
@@ -311,9 +311,9 @@
     },
     {
       "metric": "honest_retries",
-      "value": 5,
+      "value": 3,
       "control": 2,
-      "delta": 3
+      "delta": 1
     },
     {
       "metric": "honest_value_grabbed_ada",
@@ -324,14 +324,14 @@
     {
       "metric": "utxo_growth",
       "value": 58,
-      "control": 8,
-      "delta": 50
+      "control": 9,
+      "delta": 49
     },
     {
       "metric": "node_rejections",
-      "value": 19,
+      "value": 17,
       "control": 4,
-      "delta": 15
+      "delta": 13
     },
     {
       "metric": "findings",

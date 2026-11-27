@@ -44,6 +44,26 @@ func civicScores(a population.Actor, v View) []Score {
 	return ss
 }
 
+// selfDelegation is a registered DRep's score for putting its own stake
+// behind its votes: register the stake key, then delegate the vote to
+// itself. A DRep's voting power is only the stake delegated to it, and a
+// devnet has too few civic wallets delegating for any proposal to reach the
+// DRep threshold otherwise.
+func selfDelegation(a population.Actor, v View, g Governance, bal purse) Score {
+	if !v.StakeRegistered(a.ID) {
+		return pick(profile.IntentRegisterStake, 1, bal, "DRep stake key not registered")
+	}
+
+	if g.VoteDelegated(a.ID) {
+		return off(profile.IntentDelegateDRep, "vote already delegated")
+	}
+
+	s := pick(profile.IntentDelegateDRep, 1, bal, "delegate vote to itself")
+	s.Target = a.ID
+
+	return s
+}
+
 // drepRetireScore is a registered DRep's standing wish to deregister,
 // against 1 for waiting: DReps stay registered for years.
 const drepRetireScore = 0.001
@@ -59,7 +79,9 @@ func drepScores(a population.Actor, v View, g Governance, bal purse) []Score {
 	ss := []Score{
 		off(profile.IntentRegisterDRep, "DRep already registered"),
 		pick(profile.IntentRetireDRep, drepRetireScore, bal, "leave"),
+		selfDelegation(a, v, g, bal),
 	}
+
 	epoch, open := v.Epoch(), 0
 	for _, p := range g.OpenProposals() {
 		if p.Expires < epoch || g.Voted(a.ID, p.ID) {
