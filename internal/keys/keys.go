@@ -285,6 +285,10 @@ func (s *Store) CommitteeSigners(i uint32) (cold, hot Signer) {
 	return Signer{"committee cold", xprvKey{c}}, Signer{"committee hot", xprvKey{h}}
 }
 
+// drepKey and committeeKeys panic on a derivation error rather than assert
+// with check: a release build skips assertions and would carry on with a
+// zero key. bursa fails only on an out-of-range index, and ids and committee
+// indices are range-checked before they reach here.
 func (s *Store) drepKey(id ActorID) bip32.XPrv {
 	acct, err := bursa.GetAccountKey(s.root, uint32(id))
 	if err != nil {
