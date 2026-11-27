@@ -291,6 +291,29 @@ engine's policy. Each names the config that fails without it.
     stake has to move. An epoch with no block is a fatal incident for the
     run: report it, do not try to recover from it.
 
+## Code map
+
+The guard is pure, in `internal/policy`; the engine's side of it is
+`internal/engine/internal/floor`, whose package comment maps each contract
+rule. In short:
+
+| Model | Code |
+|---|---|
+| `Allowed` | `policy.Guard.Check` (`internal/policy/guard.go`); `TestPolicyAgreesWithModel` (`internal/policy/model_test.go`) compares it with a transliteration over the model's domain |
+| `GoDark`, `Retire`, `Delegate` (guarded) | `floor.Floor.Check`, the one gate for every intent that can lower forging stake (`internal/engine/internal/floor/floor.go`) |
+| `GoLive` | `floor.Floor.SetTier` (never guarded) |
+| `Fail` | `floor.Floor.PodStatus` |
+| `Repair` | `floor.Floor.Recover`, through its repair step |
+| the guard's input (rule 3) | `floor.Floor.State`, from `chain.View.PolicyState` (`internal/chain/view.go`) and the in-flight list `Floor.inflight` |
+| `Block`, `Boundary` (the transition label, `set`, `mark`) | `epochs.next` in `internal/chain/ledger.go` and `View.PolicyState` (`internal/chain/view.go`, helpers in `policy.go`), which key the schedules on whether this epoch's transition ran |
+| recovery (rules 12 to 14) | `policy.Guard.Endangered` and `policy.Guard.Recover`, run by `Floor.Recover` after every block and pod event |
+| census (rule 11) | `internal/population` (`state.go`) and the engine's cohort, `internal/engine/internal/cohort` |
+| rule 10 (TTL inside the epoch) | the guarded kinds of the intent spec (`internal/engine/internal/intent/spec.go`) and `Maker.TTL` (`make.go`) |
+
+Rule 10 has a second user since this model: a governance vote on a
+proposal in its last epoch takes the same epoch-bounded TTL
+(`specs/governance-change`).
+
 ## Go tests the model implies
 
 Each names the config it comes from.
@@ -321,7 +344,7 @@ Each names the config it comes from.
 - `TestRecoveryMoveNeverVetoed`: a move from a dead or dark pool to a
   forging pool scores normally even when the floor is breached (rule 2).
 
-### Engine policy (`internal/policy`, proposed)
+### Engine policy (`internal/policy`)
 
 - `TestScheduleSelection`: table over (epoch, transition run or not): the
   three schedules are set/mark/projection after and mark/deleg/projection
@@ -349,7 +372,7 @@ Each names the config it comes from.
 - `PropGuardMonotone`: for random states, an allowed decision stays allowed
   if any pool goes live or any wallet moves to a forging pool.
 
-### Engine recovery (`internal/engine`)
+### Engine recovery (`internal/engine`, with `internal/engine/internal/floor`)
 
 - `TestRecoveryStartsOnProjectedBreach`: a pod dies after the epoch's last
   block, the current schedule is fine and the next is not: recovery

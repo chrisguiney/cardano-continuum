@@ -319,6 +319,30 @@ opcert issuer. Each names the config that fails without it.
 20. No lifecycle change, rotation or retirement starts while a scenario is on
     or ending.
 
+## Code map
+
+The operator side is implemented; the engine's opcert issuer is not. The
+engine writes a pool's plan (dark or live) through `steer.PoolPlan` and the
+pools feed (`internal/engine/internal/feeds/pools.go`, applied by
+`internal/cli/live/livepools.go`), and the only opcert it makes is
+counter 0 at genesis (`internal/genesis/genesis.go`, `keys.Store.OpCert`).
+Rules 12 to 20 and the engine-issuer tests above are still a contract for
+code that does not exist.
+
+| Model | Code |
+|---|---|
+| the name is the fence (rule 1) | `render.Name` and `render.PodName` (`internal/operator/render/names.go`), one per `PoolID` whatever the driver or digest; replicas 1 in `render.Render` (`render.go`) |
+| `CreateMain` (rule 2: the create is the acquire) | `pool.applier.create` (`internal/operator/pool/apply.go`); `AlreadyExists` is requeued |
+| finalizer from the first moment (rule 3) | `render.Render` puts `render.Finalizer` on the keyed pod template and posts that it did |
+| `CreateDup` (rule 4) | `render.RoleDuplicate` has its own name; `pool.planner.keys` (`internal/operator/pool/plan.go`) refuses a duplicate that names the pool's Secret, or whose Secret is gone |
+| `Release`, `LostRelease` (rules 5 to 7) | `fence.Releasable` (`internal/operator/fence/release.go`) and `fence.Release.Unfence`, a UID- and resourceVersion-preconditioned patch (`fence.go`); the Node is read live (`fence.ReadNode`, `nodes.go`) |
+| `ImageRoll` (rule 9) | `pool.applier.update`, an in-place StatefulSet update; `image.Roll` and `image.NeedsRoll` (`internal/operator/image/select.go`) |
+| `DeleteMain` on a switch (rule 10) | `pool.applier.drop`: foreground deletion, so the create under the same name fails with `AlreadyExists` until the pod object is gone |
+| stale snapshot (rule 11, `ForgingGenerationRaceBug`) | `Pools.newest`, called by `Pools.Reconcile`, skips a spec older than the newest generation seen (`internal/operator/pool/pool.go`) |
+| `Gate`, `Start` (no Secret, no start) | the `keys-gate` init container in `render.Render` (`rogue.go` for the forger image) |
+| `Forge` | the node, or `internal/forger` for a rogue pool, which uses only certificates the engine issued |
+| `Hold`, `BlankSecret`, `CheckPods`, `Issue`, `IssueCrash`, `GoLive`, `Retire`, `ScenarioEnd`, `ScenarioClose`, `EngineCacheCatchUp`, `SeenCatchUp` | not implemented |
+
 ## Go tests the model implies
 
 Each names the config it comes from. The fake kubelet is a test helper that

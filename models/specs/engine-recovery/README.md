@@ -106,7 +106,7 @@ given in states.
 | Config | Variant | Mutation or probe | Expected | TLC reported |
 | --- | --- | --- | --- | --- |
 | `EngineStable` | A | none | all hold | 437,364 distinct, 1,497,315 generated, depth 37 |
-| `EngineUndo` | B | none | all hold | 437,364 distinct, 1,497,315 generated, depth 36 |
+| `EngineUndo` | B | none | all hold | 437,364 distinct, 1,497,315 generated, depth 37 |
 | `EngineStableTwoActors` | A | two actors, len 3, 1 rollback | all hold | 201,498 distinct, depth 25 |
 | `EngineUndoTwoActors` | B | two actors, len 3, 1 rollback | all hold | 201,498 distinct, depth 25 |
 | `EngineStableLive` | A | len 3, 1 rollback, fair | `CatchesUp` holds | 14,205 distinct, depth 25 |
@@ -217,6 +217,22 @@ The pure `Step` side (K-deep confirm, rollback refused below `conf`) is
 - `TestCrashInjectionConverges`: with kills after random store writes and a
   bounded number of crashes, the engine ends up at the mock's tip, flushed
   and checkpointed (`CatchesUp`).
+
+## Code map
+
+The engine is design A. Each model element and where the code holds it:
+
+| Model | Code |
+|---|---|
+| `Step` (one pure handler, live and replay) | `Engine.Handle` in `internal/engine/engine.go` |
+| K-deep confirm (`Stable`) | `window.Window.Confirm` in `internal/engine/internal/window/window.go`, which posts at most K volatile blocks |
+| rollback below `conf` (`NeverHalted`) | `window.Window.Check`, which returns `ErrRollbackBelowConfirmed` |
+| `Fetch`, `Tick` (input logged before its effect) | `eventlog.Session.Feed` and `Session.Tick` in `internal/eventlog/session.go`: append, sync, then `Handle` |
+| `CommitLog` | the log's `Sync`, first step of `recovery.Saver.Save` in `internal/engine/internal/recovery/saver.go` |
+| `CommitCkpt` (`LogBeforeEffect`, `CheckpointConsistent`) | `store.DB.SaveCheckpoint` in `internal/store/store.go`: one transaction, refused by `validate` when the seq is past the log's durable seq (`ErrAheadOfLog`) or the points miss the confirmed point (`ErrPointsShort`) |
+| `Restart` | `recovery.Open` and `recovery.Replay` (`internal/engine/internal/recovery/recovery.go`), then `Runner.intersect` in `internal/engine/runner.go` |
+| intersection as a rollback (`CursorAgrees`) | `eventlog.Session.Intersect`: an answer below the stored tip is logged as `RolledBack` and fed like any rollback |
+| `Crash` | the `Saver.Crash` failpoints (`StageFed`, `StageSynced`, `StageCheckpointed`) |
 
 ## Reading a formula literally
 

@@ -243,6 +243,47 @@ There is no `Release(intent, Dropped)`, no `Confirm` at first sight, and
   view is rebuilt by chain-sync from origin" is `PlannerRestartFromOriginBug`
   unless the planner waits.
 
+## Code map
+
+`internal/plan` implements the contract; its package comment
+(`internal/plan/plan.go`) maps each planner action. In short:
+
+| Model | Code |
+|---|---|
+| `Offer` | `Ledger.Available`, `state.available` (`internal/plan/ledger.go`, `state.go`) |
+| `Build` | `Ledger.Reserve`: `state.reserve` checks rule 3 (`coherent`, `attempts.excludes`), `attempts.add` holds the inputs |
+| `Persist` | `Ledger.commit`, inside `Reserve` before it returns |
+| `Process` | `Ledger.Advance`: `state.forward` (`view.extend`, `state.settle`, `state.reap`) or `state.rollback` (`view.rollback`) |
+| `SubmitFails` | `Ledger.Refused`, `state.refused` |
+| `ObserveDrop` | `Ledger.DropNotice`, which changes no state |
+| `Restart` | `Open` (`decode`); chain-sync resumes at `Ledger.ResumePoint` (`internal/chain/node/follower.go`) |
+| the engine's side | `pay.Pay` in `internal/engine/internal/pay/pay.go` is the only caller of `plan.Ledger` |
+
+Where each invariant is checked. The store invariants are asserted on every
+state the ledger adopts, in debug builds (`-tags debug`), by `checkAdopt`
+in `ledger.go`, which runs `state.consistent` and `state.indexConsistent`:
+
+- in `Ledger.commit`, so after every `Reserve`, `Refused` and every
+  `Advance` that moves the settled point or writes an attempt off;
+- in `Advance` on the volatile path, when only blocks above the settled
+  point moved and nothing is stored.
+
+That is once per model step, the granularity at which TLC checks an
+invariant. Reads (`Available`) trust the owner and actor indexes and the
+spent cache, which `indexConsistent` and `view.cacheConsistent` check at
+the same points. `decode` runs `state.consistent` in every build, so
+`Open` refuses a stored state that breaks the contract (`ErrBlob`).
+
+| Invariant | Asserted by |
+|---|---|
+| `ReservedWhileUnfinished`, release half of `NoLeak` | `attempts.consistent` (`internal/plan/attempts.go`) |
+| `InputsTracked`, doomed half of `NoLeak` | `state.consistent` (`internal/plan/state.go`) |
+| settled point at most K below the tip (`SettledViewIsChain` as the ledger can see it) | `view.consistent` (`internal/plan/view.go`) |
+| `NoSelfConflict` | enforced by `state.reserve`; checked by the property tests (`prop_test.go`, `rig_test.go`) |
+| `IntentAtMostOnce`, `DeadIsDead` | the oracle's `checkPaid` (`internal/oracle/checks.go`), against the chain |
+| `ReservedWhileUnfinished`, `NoLeak` on a run | the oracle's `checkReservations` |
+| `SettledIsFinal` | truth only; on a run the oracle's `checkSettled` reports a settled point that moved back |
+
 ## Go tests this model asks for
 
 The node numbers are taken to be: 16 the chain follower (`internal/chain/node`),
