@@ -1,4 +1,6 @@
-package main
+// Package rerun handles `replay --image`: re-running a live log on the devnet
+// with one implementation's image replaced.
+package rerun
 
 import (
 	"context"
@@ -11,29 +13,30 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/simflags"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/imageset"
-	"github.com/chrisguiney/cardano-continuum/internal/rerun"
+	irerun "github.com/chrisguiney/cardano-continuum/internal/rerun"
 )
 
-// replayDeps are the outside world a live `replay --image` touches.
-type replayDeps struct {
-	open kube.Opener
-	// want returns the header the live re-run would record, from the
+// Deps are the outside world a live `replay --image` touches.
+type Deps struct {
+	Open kube.Opener
+	// Want returns the header the live re-run would record, from the
 	// devnet's genesis and protocol parameters.
-	want func(ctx context.Context, sf simflags.Flags, lf live.Flags) (eventlog.HeaderBody, error)
+	Want func(ctx context.Context, sf simflags.Flags, lf live.Flags) (eventlog.HeaderBody, error)
 }
 
-func realReplayDeps() replayDeps { return replayDeps{open: kube.Open, want: live.Header} }
+// Real is the Deps a command line run uses.
+func Real() Deps { return Deps{Open: kube.Open, Want: live.Header} }
 
-// replayImage handles `replay --image impl=ref LOG`. A fake-chain log has no
-// node build to swap, so it only says so. A live log is re-run on the
-// devnet with the implementation's image replaced, after the log's seed,
-// profile and genesis fingerprints are checked against the devnet's.
-func replayImage(ctx context.Context, assign, logPath string, live bool, sf simflags.Flags, lf live.Flags, out io.Writer, deps replayDeps) error {
+// Image handles `replay --image impl=ref LOG`. A fake-chain log has no node
+// build to swap, so it only says so. A live log is re-run on the devnet with
+// the implementation's image replaced, after the log's seed, profile and
+// genesis fingerprints are checked against the devnet's.
+func Image(ctx context.Context, assign, logPath string, liveLog bool, sf simflags.Flags, lf live.Flags, out io.Writer, deps Deps) error {
 	impl, ref, err := imageset.ParseAssignment(assign)
 	if err != nil {
 		return fmt.Errorf("replay --image: %w", err)
 	}
-	if !live {
+	if !liveLog {
 		_, err := fmt.Fprintf(out, "replay --image %s: a fake-chain log has no node build, so there is nothing to swap; pass --live for a live log\n", assign)
 		return err
 	}
@@ -45,20 +48,20 @@ func replayImage(ctx context.Context, assign, logPath string, live bool, sf simf
 		return err
 	}
 	defer func() { _ = l.Close() }()
-	got, err := rerun.HeaderOf(ctx, l)
+	got, err := irerun.HeaderOf(ctx, l)
 	if err != nil {
 		return err
 	}
-	want, err := deps.want(ctx, sf, lf)
+	want, err := deps.Want(ctx, sf, lf)
 	if err != nil {
 		return err
 	}
-	cl, err := deps.open(lf.Kubeconfig, lf.Namespace)
+	cl, err := deps.Open(lf.Kubeconfig, lf.Namespace)
 	if err != nil {
 		return err
 	}
-	req := rerun.Request{Network: lf.KubeNetwork, Impl: impl, Ref: ref, Seed: sf.Seed}
-	return rerun.Replay(ctx, got, want, req, clusterRunner{cl: cl, out: out})
+	req := irerun.Request{Network: lf.KubeNetwork, Impl: impl, Ref: ref, Seed: sf.Seed}
+	return irerun.Replay(ctx, got, want, req, clusterRunner{cl: cl, out: out})
 }
 
 // clusterRunner sets the network's default image through the operator's
@@ -68,8 +71,8 @@ type clusterRunner struct {
 	out io.Writer
 }
 
-// Rerun implements rerun.Runner.
-func (c clusterRunner) Rerun(ctx context.Context, r rerun.Request) error {
+// Rerun implements irerun.Runner.
+func (c clusterRunner) Rerun(ctx context.Context, r irerun.Request) error {
 	net, err := c.cl.Network(ctx, r.Network)
 	if err != nil {
 		return err

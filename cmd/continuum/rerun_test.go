@@ -9,11 +9,12 @@ import (
 	"testing"
 
 	"github.com/chrisguiney/cardano-continuum/internal/cli/live"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/rerun"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/kube"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/kubetest"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/simflags"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
-	"github.com/chrisguiney/cardano-continuum/internal/rerun"
+	irerun "github.com/chrisguiney/cardano-continuum/internal/rerun"
 )
 
 // fakeRun writes a short fake-chain log and returns its path.
@@ -48,14 +49,14 @@ func TestReplayImageRejectsABadAssignment(t *testing.T) {
 
 // liveDeps returns deps whose want header is the fake log's own, or a
 // different one, and a cluster that records the patches.
-func liveDeps(t *testing.T, log string, same bool) (replayDeps, *kubetest.Fake) {
+func liveDeps(t *testing.T, log string, same bool) (rerun.Deps, *kubetest.Fake) {
 	t.Helper()
 	l, err := eventlog.Open(log)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = l.Close() }()
-	h, err := rerun.HeaderOf(context.Background(), l)
+	h, err := irerun.HeaderOf(context.Background(), l)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,9 +64,9 @@ func liveDeps(t *testing.T, log string, same bool) (replayDeps, *kubetest.Fake) 
 		h.GenesisHash = []byte("other")
 	}
 	fc := kubetest.New()
-	return replayDeps{
-		open: func(string, string) (kube.Client, error) { return fc, nil },
-		want: func(context.Context, simflags.Flags, live.Flags) (eventlog.HeaderBody, error) { return h, nil },
+	return rerun.Deps{
+		Open: func(string, string) (kube.Client, error) { return fc, nil },
+		Want: func(context.Context, simflags.Flags, live.Flags) (eventlog.HeaderBody, error) { return h, nil },
 	}, fc
 }
 
@@ -74,7 +75,7 @@ func TestReplayImageLiveRefusesOnMismatch(t *testing.T) {
 	deps, fc := liveDeps(t, log, false)
 	args := []string{"--image", "dingo=reg/dingo:x", "--live", "--network", "net", "--seed", "7", log}
 	err := cmdReplayWith(context.Background(), args, &bytes.Buffer{}, deps)
-	if !errors.Is(err, rerun.ErrFingerprint) {
+	if !errors.Is(err, irerun.ErrFingerprint) {
 		t.Fatalf("err = %v, want ErrFingerprint", err)
 	}
 	if len(fc.Applied) != 0 {

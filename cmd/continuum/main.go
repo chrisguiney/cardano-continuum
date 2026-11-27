@@ -45,6 +45,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/cli/image"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/live"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/profiles"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/rerun"
 	cliscenario "github.com/chrisguiney/cardano-continuum/internal/cli/scenario"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/serve"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/lines"
@@ -269,10 +270,10 @@ func classCounts(m map[string]int) string {
 }
 
 func cmdReplay(ctx context.Context, args []string, out io.Writer) error {
-	return cmdReplayWith(ctx, args, out, realReplayDeps())
+	return cmdReplayWith(ctx, args, out, rerun.Real())
 }
 
-func cmdReplayWith(ctx context.Context, args []string, out io.Writer, deps replayDeps) error {
+func cmdReplayWith(ctx context.Context, args []string, out io.Writer, deps rerun.Deps) error {
 	fs := flag.NewFlagSet("replay", flag.ContinueOnError)
 	var sf simflags.Flags
 	sf.Register(fs)
@@ -287,7 +288,7 @@ func cmdReplayWith(ctx context.Context, args []string, out io.Writer, deps repla
 		return errors.New("replay: want one log path")
 	}
 	if *image != "" {
-		return replayImage(ctx, *image, fs.Arg(0), *live, sf, lf, out, deps)
+		return rerun.Image(ctx, *image, fs.Arg(0), *live, sf, lf, out, deps)
 	}
 	cfg, err := sf.Config()
 	if err != nil {
