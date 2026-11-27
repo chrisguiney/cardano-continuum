@@ -283,3 +283,105 @@ func TestGovernanceCleanAcrossSeeds(t *testing.T) {
 		})
 	}
 }
+
+// fittedGovYAML is populationYAML with preprod's fitted governance rates
+// (profiles/preprod.yaml) times 200, the --scale the live demo runs at:
+// DReps vote 0.0106 times a day and 5.4% of them vote at all, pools
+// 0.00012 times a day, and the network proposes about a third of an action
+// a day. Per day of wall time they are next to nothing on a devnet whose
+// proposal lives an hour.
+var fittedGovYAML = strings.NewReplacer(
+	"update_rate: 40\n", "update_rate: 0.426758\n      spo_vote_rate: 0.023068\n",
+	"drep: {register_rate: 0, retire_rate: 2, vote_rate: 100, voting_share: 0.5}",
+	"drep: {register_rate: 0, retire_rate: 4.42942, vote_rate: 2.11712, voting_share: 0.0540541}",
+	"chain_count: 400\n    drep", "chain_count: 296\n    drep",
+	"proposal_rate: {info: 30, parameter_change: 30, treasury_withdrawals: 30}",
+	"proposal_rate: {info: 31.1112, parameter_change: 8.88888, treasury_withdrawals: 26.6666}",
+).Replace(populationYAML)
+
+// coverage is, over the proposals a run made and let expire, the share
+// each voter class voted on, among those the class may vote on.
+type coverage struct {
+	proposals int
+	drep, spo float64
+}
+
+func voteCoverage(t testing.TB, r eventlog.Reader, closed func(at sched.Time) bool) coverage {
+	t.Helper()
+	sub := map[uint64]Submitted{}
+	props := map[string]bool{}
+	voted := map[string]map[string]bool{}
+	for _, rec := range logRecords(t, r) {
+		switch rec.Kind {
+		case KindSubmitted:
+			var s Submitted
+			if err := eventlog.Decode(rec.Body, &s); err != nil {
+				t.Fatal(err)
+			}
+			sub[s.Intent] = s
+		case KindConfirmed:
+			var c Confirmed
+			if err := eventlog.Decode(rec.Body, &c); err != nil {
+				t.Fatal(err)
+			}
+			s := sub[c.Intent]
+			switch s.Kind {
+			case "propose":
+				if closed(rec.At) {
+					props[hex.EncodeToString(s.ID[:])+"#0"] = spoEligible[s.Action]
+				}
+			case "vote":
+				if voted[s.Proposal] == nil {
+					voted[s.Proposal] = map[string]bool{}
+				}
+				voted[s.Proposal][s.Voter] = true
+			}
+		}
+	}
+	var c coverage
+	var spoProps int
+	for id, pools := range props {
+		c.proposals++
+		if voted[id]["drep"] {
+			c.drep++
+		}
+		if pools {
+			spoProps++
+			if voted[id]["spo"] {
+				c.spo++
+			}
+		}
+	}
+	if c.proposals > 0 {
+		c.drep /= float64(c.proposals)
+	}
+	if spoProps > 0 {
+		c.spo /= float64(spoProps)
+	}
+	return c
+}
+
+// At the fitted rates, on a devnet whose epochs are minutes long, the DReps
+// and pools still vote on most proposals before they expire: the vote
+// clocks are scaled to the proposal lifetime, and a cut-down DRep
+// population keeps the chain's voters.
+func TestFittedRatesVoteOnMostProposals(t *testing.T) {
+	t.Parallel()
+	cfg := populationConfig(t, 4, populationFile(t, fittedGovYAML))
+	slots, err := sched.NewSlots(1000, 600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Slots = slots
+	until := sched.Time(6 * 3600 * 1000)
+	life := sched.Time(cfg.GovLifetime+1) * slots.EpochStart(1)
+	p := cleanRun(t, newWorld(t, cfg), until)
+	c := voteCoverage(t, p.log, func(at sched.Time) bool { return at+life < until })
+	t.Logf("coverage %+v", c)
+	if c.proposals < 3 {
+		t.Fatalf("%d closed proposals, too few to judge", c.proposals)
+	}
+	if c.drep < 0.8 || c.spo < 0.8 {
+		t.Errorf("DReps voted on %.0f%%, pools on %.0f%% of proposals; want most", 100*c.drep, 100*c.spo)
+	}
+}

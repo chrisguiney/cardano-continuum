@@ -87,7 +87,7 @@ func (pp *Pop) Clocks(a population.Actor, p profile.Profile) (cs []Clock, boot p
 		if k == profile.IntentVote && pop.DRep != nil {
 			// Only Voting of the DReps vote at all, so each voter votes at
 			// the population's rate over that share.
-			if pop.DRep.Voting <= 0 || a.Stream("voter").Float64() >= pop.DRep.Voting {
+			if pop.DRep.Voting <= 0 || a.Stream("voter").Float64() >= voterShare(pop) {
 				continue
 			}
 			c.Rate /= pop.DRep.Voting
@@ -99,6 +99,59 @@ func (pp *Pop) Clocks(a population.Actor, p profile.Profile) (cs []Clock, boot p
 		boot = profile.IntentRegisterDRep
 	}
 	return cs, boot, true
+}
+
+// voterShare is the share of a run's DReps that vote. A run cut down from
+// the chain's head count keeps the chain's voters first: they are the DReps
+// that matter to governance, and at Voting of a dozen DReps a devnet would
+// have no voter at all. So the run's share is the chain's voters over the
+// run's members, capped at all of them; an uncut population keeps the
+// fitted share.
+func voterShare(pop profile.Population) float64 {
+	return min(1, pop.DRep.Voting/pop.Scale())
+}
+
+// votesPerLifetime is how many votes, in expectation, a voter's vote clock
+// gives each open proposal it may vote on over the proposal's lifetime at
+// the least (voteFloor).
+const votesPerLifetime = 3
+
+// voteFloor is the least rate, per second, of the actor's vote clock: the
+// fitted rates are per day of a chain whose proposals stay open a month
+// (six five-day epochs), while a devnet's epochs are minutes long and its
+// proposals close within the hour, so at the fitted rate nobody votes in
+// time. The floor gives each open proposal the actor may vote on and has
+// not, votesPerLifetime wakes over a lifetime, so a voter votes on about
+// 1-e^-3 = 95% of them; the agenda picks which, the nearest expiry first.
+// The next wake is drawn at the rate of the last one, so a voter with
+// nothing to vote on still wakes as if one more proposal were open: otherwise it
+// would sleep at the fitted rate, for days, through every proposal made
+// meanwhile. A rate above the floor, as on a chain with real-length
+// epochs, stays as fitted. Without a known lifetime there is no floor.
+func (pp *Pop) voteFloor(id population.ActorID, st Subject) float64 {
+	life := float64(pp.spec.Slots.EpochStart(pp.spec.GovLifetime)) / 1000
+	if life <= 0 {
+		return 0
+	}
+	g, ok := pp.env.Agenda.Agenda().(agenda.Governance)
+	if !ok {
+		return 0
+	}
+	n := 1
+	for _, p := range g.OpenProposals() {
+		if (p.Pools || st.Boot != profile.IntentRegisterPool) && !g.Voted(id, p.ID) {
+			n++
+		}
+	}
+	return votesPerLifetime * float64(n) / life
+}
+
+// clockRate is a clock's rate now: the vote clock at least its floor.
+func (pp *Pop) clockRate(id population.ActorID, st Subject, c Clock) float64 {
+	if c.Kind != profile.IntentVote {
+		return c.Rate
+	}
+	return max(c.Rate, pp.voteFloor(id, st))
 }
 
 // proposerClocks splits the proposer's total rate over the action types in
@@ -159,8 +212,9 @@ func (pp *Pop) Rate(id population.ActorID, st Subject) float64 {
 	}
 	var sum float64
 	for _, c := range st.Clocks {
-		sum += c.Rate
+		sum += pp.clockRate(id, st, c)
 	}
+
 	return sum * float64(max(pp.env.Knobs.RateK(), 1))
 }
 
@@ -175,16 +229,19 @@ func (pp *Pop) fire(id population.ActorID, st Subject, r *rand.Rand) Clock {
 		// the clocks' rate, which by memorylessness is the right wait.
 		return Clock{Kind: agenda.Idle}
 	}
+	rates := make([]float64, len(st.Clocks))
 	var sum float64
-	for _, c := range st.Clocks {
-		sum += c.Rate
+	for i, c := range st.Clocks {
+		rates[i] = pp.clockRate(id, st, c)
+		sum += rates[i]
 	}
+
 	u := r.Float64() * sum
-	for _, c := range st.Clocks {
-		if u < c.Rate {
+	for i, c := range st.Clocks {
+		if u < rates[i] {
 			return c
 		}
-		u -= c.Rate
+		u -= rates[i]
 	}
 	return st.Clocks[len(st.Clocks)-1]
 }

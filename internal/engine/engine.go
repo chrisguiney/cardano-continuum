@@ -206,7 +206,7 @@ func newEmpty(cfg Config) (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
-	e.pc = pace.New(pace.Spec{Proposer: proposerName, Proposals: cfg.Network.Proposals, Population: e.cfg.population, Slots: cfg.Slots, BlockEvery: cfg.BlockEvery},
+	e.pc = pace.New(pace.Spec{Proposer: proposerName, Proposals: cfg.Network.Proposals, Population: e.cfg.population, Slots: cfg.Slots, BlockEvery: cfg.BlockEvery, GovLifetime: cfg.GovLifetime},
 		pace.Env{Sched: evsched{&e.clk}, Knobs: hooks{e}, Chain: e.win, Flight: hooks{e}, Agenda: hooks{e}})
 	e.co = cohort.New(cohort.Spec{Seed: cfg.Seed, Census: cfg.Seed.Derive(censusStream), Slots: cfg.Slots, Proposer: proposerName,
 		ActorKeys: ks, RootKeys: rootKeys, Pools: gpools, PoolStake: cfg.GenesisPoolStake},

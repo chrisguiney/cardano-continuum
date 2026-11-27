@@ -44,6 +44,10 @@ type Spec struct {
 	// BlockEvery is the fake chain's block interval in slots, zero when
 	// the chain's interval is unknown (a live node).
 	BlockEvery uint64
+	// GovLifetime is govActionLifetime in epochs, zero when unknown: how
+	// long a proposal stays open for votes, which sets the vote clocks'
+	// floor (Pop.voteFloor).
+	GovLifetime uint64
 }
 
 // Env is what the pace shares with the rest of the engine.
