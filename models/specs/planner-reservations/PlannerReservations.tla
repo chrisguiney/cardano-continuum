@@ -1,6 +1,20 @@
 ------------------------ MODULE PlannerReservations ------------------------
 (***************************************************************************)
-(* The planner's reservation store, before any planner code exists.        *)
+(* The planner's reservation store.                                        *)
+(*                                                                         *)
+(* Models cardano-continuum at 72c4fb0; README.md has the code map and     *)
+(* the drift table.                                                        *)
+(*   Offer        internal/plan/ledger.go:112   Ledger.Available           *)
+(*                internal/plan/state.go:38     state.available            *)
+(*   Build        internal/plan/ledger.go:122   Ledger.Reserve             *)
+(*                internal/plan/state.go:98     state.reserve              *)
+(*   Persist      internal/plan/ledger.go:73    Ledger.commit              *)
+(*   Process      internal/plan/ledger.go:134   Ledger.Advance             *)
+(*                internal/plan/state.go:182,197  state.forward, rollback  *)
+(*   SubmitFails  internal/plan/ledger.go:171   Ledger.Refused             *)
+(*   ObserveDrop  internal/plan/ledger.go:193   Ledger.DropNotice          *)
+(*   Restart      internal/plan/ledger.go:60    Open (decode), ResumePoint *)
+(*   Deliver      internal/engine/internal/pay/retry.go:121  Retry.Answer  *)
 (*                                                                         *)
 (* The planner decides which outputs a transaction may spend. It holds a   *)
 (* reservation on every output an unfinished transaction spends, and it    *)
@@ -315,7 +329,8 @@ Offer(i) ==
 \* inputs must not contradict each other (Coherent). Mutation
 \* FreshInputs drops that; ConflictWithLatestOnly asks it of the newest one
 \* only. With RebuildNeedsDrop a second attempt also waits for a drop
-\* notice. The record is on disk at once, except under PersistLate."
+\* notice. The record is on disk at once, except under PersistLate.
+\* Mutation PartialReserve reserves only the first of several inputs."
 \* Literally: "Build of i and ins is defined as: letting free be the set of
 \*   every u in Txs such that tx of u's st equals "unused", and prior be the
 \*   set of every p in Txs such that tx of p's intent equals i and tx of p's
@@ -357,7 +372,9 @@ Build(i, ins) ==
                      [ins |-> ins, intent |-> i, ttl |-> Len(view) + TtlDelta,
                       st |-> IF Mutation = "PersistLate" THEN "volatile"
                              ELSE "live"]]
-        /\ res' = [o \in Outs |-> IF o \in ins THEN i ELSE res[o]]
+        /\ res' = [o \in Outs |->
+                     IF o \in ins /\ (Mutation # "PartialReserve" \/ o = Least(ins))
+                     THEN i ELSE res[o]]
         /\ UNCHANGED <<chain, floor, network, mempool, events, n, view, vfloor, hint>>
 
 \* In English: "Under PersistLate only: the record of a transaction built in
@@ -447,7 +464,7 @@ ObserveDrop(t) ==
 \* now long enough, never down. Then it settles and writes off whatever the
 \* new view decides, and releases what those transactions held. Mutation
 \* SettledPointFollowsTip keeps the settled point K behind the view's tip,
-\* so a rollback moves it back."
+\* so a rollback moves it back; SettleOneShallow puts it K - 1 behind."
 \* Literally: "Process is defined as: events does not equal the empty
 \*   sequence; and letting e be the head of events, and v be, if e's kind
 \*   equals "fwd" then view with e's arg appended, else Prefix of view and e's
@@ -464,7 +481,7 @@ Process ==
            v  == IF e.kind = "fwd" THEN Append(view, e.arg)
                  ELSE Prefix(view, e.arg)
            vf == Max(IF Mutation = "SettledPointFollowsTip" THEN 0 ELSE vfloor,
-                     Len(v) - K)
+                     Len(v) - (IF Mutation = "SettleOneShallow" THEN K - 1 ELSE K))
        IN  /\ view' = v
            /\ vfloor' = vf
            /\ tx' = Reap(Mutation, tx, v, vf)
@@ -589,30 +606,6 @@ MempoolDrop(t) ==
     /\ n' = [n EXCEPT !.drop = @ + 1]
     /\ UNCHANGED <<chain, floor, network, events, tx, res, view, vfloor, hint>>
 
-\* In English: "A step is one planner step or one environment step."
-\* Literally: "Next is defined as: there exists an i in Intents and an ins in
-\*   the set of subsets of Outs such that Build of i and ins; or there exists
-\*   a t in Txs such that Persist of t, or Deliver of t, or SubmitFails of t,
-\*   or ObserveDrop of t, or IncludeTx of t, or MempoolDrop of t; or there
-\*   exists a g in Genesis such that AdvSpend of g; or there exists a d in 1
-\*   through K such that Rollback of d; or Process; or Restart."
-Next ==
-    \/ \E i \in Intents, ins \in SUBSET Outs : Build(i, ins)
-    \/ \E t \in Txs : \/ Persist(t)
-                      \/ Deliver(t)
-                      \/ SubmitFails(t)
-                      \/ ObserveDrop(t)
-                      \/ IncludeTx(t)
-                      \/ MempoolDrop(t)
-    \/ \E g \in Genesis : AdvSpend(g)
-    \/ \E d \in 1..K : Rollback(d)
-    \/ Process
-    \/ Restart
-
-\* Literally: "Spec is defined as: Init holds at the start, and always, every
-\*   step is a Next step or a step that leaves vars unchanged."
-Spec == Init /\ [][Next]_vars
-
 -----------------------------------------------------------------------------
 \* The truth, which the planner cannot see.
 
@@ -636,6 +629,56 @@ CannotLand(t) ==
     \/ floor >= tx[t].ttl /\ t \notin Blocks(Prefix(chain, floor))
     \/ t \notin network /\ tx[t].st \in {"dead", "lost"}
     \/ \E p \in tx[t].ins \cap Txs : CannotLand(p)
+
+\* In English: "The run is over, in the state the model means to end in:
+\* the planner has processed every chain-sync event, and for every
+\* transaction it still counts on, waiting for the node is right. Either
+\* the transaction could still land, or the node holds more of the chain
+\* as immovable than the planner's view can show (vfloor < floor): after a
+\* restart chain-sync replays only the current chain, so a block made
+\* immovable by a longer chain that was since rolled back is settled only
+\* once the chain grows again, which the bounded node may never do. Any
+\* other state with no step, such as a caught-up planner holding a
+\* transaction it could already know can never land, is a stuck planner,
+\* which TLC's deadlock check reports."
+Done ==
+    /\ events = <<>>
+    /\ \A t \in Txs : tx[t].st \in Unfinished => ~CannotLand(t) \/ vfloor < floor
+    /\ UNCHANGED vars
+
+-----------------------------------------------------------------------------
+\* In English: "A step is one planner step or one environment step, or the
+\* end of the run."
+\* Literally: "Next is defined as: there exists an i in Intents and an ins in
+\*   the set of subsets of Outs such that Build of i and ins; or there exists
+\*   a t in Txs such that Persist of t, or Deliver of t, or SubmitFails of t,
+\*   or ObserveDrop of t, or IncludeTx of t, or MempoolDrop of t; or there
+\*   exists a g in Genesis such that AdvSpend of g; or there exists a d in 1
+\*   through K such that Rollback of d; or Process; or Restart; or Done."
+Next ==
+    \/ \E i \in Intents, ins \in SUBSET Outs : Build(i, ins)
+    \/ \E t \in Txs : \/ Persist(t)
+                      \/ Deliver(t)
+                      \/ SubmitFails(t)
+                      \/ ObserveDrop(t)
+                      \/ IncludeTx(t)
+                      \/ MempoolDrop(t)
+    \/ \E g \in Genesis : AdvSpend(g)
+    \/ \E d \in 1..K : Rollback(d)
+    \/ Process
+    \/ Restart
+    \/ Done
+
+\* Literally: "Spec is defined as: Init holds at the start, and always, every
+\*   step is a Next step or a step that leaves vars unchanged."
+Spec == Init /\ [][Next]_vars
+
+\* In English: "The planner keeps processing chain-sync events: the one
+\* step that must make progress for a transaction to finish. Building,
+\* sending and the node need no fairness."
+Fairness == WF_vars(Process)
+
+LiveSpec == Spec /\ Fairness
 
 -----------------------------------------------------------------------------
 \* Invariants: true in every reachable state of the unmutated model.
@@ -761,6 +804,19 @@ NoSelfConflict ==
 IntentAtMostOnce ==
     \A i \in Intents :
         Cardinality({t \in Blocks(chain) \cap Txs : tx[t].intent = i}) <= 1
+
+-----------------------------------------------------------------------------
+\* Liveness, checked under LiveSpec.
+
+\* In English: "Every transaction the planner counts on finishes once the
+\* truth decides it: one that can never land is eventually written off
+\* (no reservation is held for ever), and one in the immovable part of the
+\* chain is eventually settled."
+Finishes ==
+    \A t \in Txs :
+        (tx[t].st \in Unfinished
+         /\ (CannotLand(t) \/ t \in Blocks(Prefix(chain, floor))))
+        ~> tx[t].st \notin Unfinished
 
 -----------------------------------------------------------------------------
 \* Probes: each says "this never happens" about something that should be
