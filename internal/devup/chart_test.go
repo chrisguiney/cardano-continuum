@@ -39,6 +39,7 @@ type chartValues struct {
 }
 
 func TestChartDefaults(t *testing.T) {
+	t.Parallel()
 	raw, err := os.ReadFile("../../charts/continuum/values.yaml")
 	if err != nil {
 		t.Fatal(err)

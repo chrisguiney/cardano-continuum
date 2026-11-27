@@ -3,6 +3,7 @@ package main
 import "testing"
 
 func TestParseWatchNamespace(t *testing.T) {
+	t.Parallel()
 	o, err := parse([]string{"--watch-namespace=lab"})
 	if err != nil {
 		t.Fatal(err)

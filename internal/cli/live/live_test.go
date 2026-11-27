@@ -58,6 +58,7 @@ func TestLiveConfig(t *testing.T) {
 // TestServeRemote: --serve refuses a non-loopback address, which the API's
 // lack of authentication makes an exposure, unless --allow-remote says so.
 func TestServeRemote(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		args []string
 		ok   bool

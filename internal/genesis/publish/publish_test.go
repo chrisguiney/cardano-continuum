@@ -47,6 +47,7 @@ func writeBundle(t *testing.T, pools int) string {
 }
 
 func TestKeyFilesMatchOperator(t *testing.T) {
+	t.Parallel()
 	want := []string{render.KESKey, render.VRFKey, render.OpCert}
 	if !slices.Equal(KeyFiles, want) {
 		t.Fatalf("KeyFiles = %v, want the files the operator mounts %v", KeyFiles, want)
@@ -58,6 +59,7 @@ func TestKeyFilesMatchOperator(t *testing.T) {
 }
 
 func TestLoad(t *testing.T) {
+	t.Parallel()
 	dir := writeBundle(t, 2)
 	o, err := Load(dir, 2, "lab", names)
 	if err != nil {
@@ -88,6 +90,7 @@ func TestLoad(t *testing.T) {
 }
 
 func TestApplyCreatesThenUpdates(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 	cs := fake.NewClientset(&corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "keys-1", Namespace: "lab"}, Data: map[string][]byte{"stale": nil}})
 	o, err := Load(writeBundle(t, 2), 2, "lab", names)

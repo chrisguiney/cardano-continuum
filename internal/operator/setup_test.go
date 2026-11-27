@@ -7,6 +7,7 @@ import (
 )
 
 func TestCacheOptionsNamespace(t *testing.T) {
+	t.Parallel()
 	all, err := CacheOptions("")
 	if err != nil {
 		t.Fatal(err)

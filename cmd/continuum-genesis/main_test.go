@@ -72,6 +72,7 @@ func TestOverrideNeedsAllowFlag(t *testing.T) {
 }
 
 func TestParsePublish(t *testing.T) {
+	t.Parallel()
 	o, err := parse([]string{"-out", "/g"})
 	if err != nil {
 		t.Fatal(err)
