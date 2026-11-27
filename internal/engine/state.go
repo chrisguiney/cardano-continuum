@@ -29,7 +29,7 @@ func blake2b256(b []byte) common.Blake2b256 { return common.Blake2b256Hash(b) }
 // the ledger's blob included.
 func (e *Engine) Snapshot() ([]byte, error) {
 	sv := e.win.Saved()
-	s := snapshot{Version: snapshotVersion, Now: e.clk.Now(), NextIntent: e.nextID, Conf: sv.Conf, Fees: sv.Fees, Foreign: sv.Foreign, RefillAt: e.refillAt, Deposits: e.deposits, Market: e.market, Lost: e.lost,
+	s := snapshot{Version: snapshotVersion, Now: e.clk.Now(), NextIntent: e.nextID, Conf: sv.Conf, Fees: sv.Fees, Foreign: sv.Foreign, RefillAt: e.refillAt, Deposits: e.deposits, Market: e.pc.market, Lost: e.lost,
 		Contracts: e.contracts, DeployAt: e.deployAt, DeployN: e.deployN}
 	for _, id := range e.co.IDs() {
 		a, _ := e.co.Get(id)
@@ -97,7 +97,7 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 	e.nextID, e.deposits = s.NextIntent, s.Deposits
 	// Between inputs the last Tick's time is the clock.
 	e.clk.Restore(s.Now)
-	e.market, e.stalled, e.lost = s.Market, s.Stalled, s.Lost
+	e.pc.market, e.stalled, e.lost = s.Market, s.Stalled, s.Lost
 	e.paused, e.rateK, e.waves, e.adoptions = s.Paused, s.RateK, s.Waves, s.Adoptions
 	e.contracts, e.deployAt, e.deployN = max(s.Contracts, 1), s.DeployAt, s.DeployN
 	for i := uint64(1); i < e.contracts; i++ {
@@ -303,11 +303,11 @@ func (h hooks) Adversary(id population.ActorID) bool { return h.e.isAdversary(id
 func (h hooks) Spent(id population.ActorID) uint64 { return h.e.costs.Total(id) }
 
 func (h hooks) Clocks(a population.Actor, p profile.Profile) ([]clock, profile.IntentKind) {
-	cs, boot, _ := h.e.clocks(a, p)
+	cs, boot, _ := h.e.pc.clocks(a, p)
 	return cs, boot
 }
 
-func (h hooks) Wake(a population.Actor, st *actor, now sched.Time) { h.e.nextAct(a, st, now) }
+func (h hooks) Wake(a population.Actor, st *actor, now sched.Time) { h.e.pc.nextAct(a, st, now) }
 
 // logged is the ledger's Committer inside the pure engine. It writes
 // nothing: every ledger change is a deterministic result of a logged input,

@@ -13,7 +13,7 @@ members internal/agenda world 22
 members internal/chain View 67
 members internal/chain par 23
 members internal/engine Config 44
-members internal/engine Engine 181
+members internal/engine Engine 170
 members internal/engine Runner 37
 members internal/engine pendingRec 32
 members internal/engine snapshot 31
@@ -41,7 +41,7 @@ stray-methods cmd/continuum kubeCluster 1
 stray-methods cmd/continuum simFlags 3
 stray-methods internal/chain View 35
 stray-methods internal/engine Config 6
-stray-methods internal/engine Engine 125
+stray-methods internal/engine Engine 117
 stray-methods internal/engine Runner 2
 stray-methods internal/engine pendingRec 2
-stray-methods internal/engine view 9
+stray-methods internal/engine view 8

@@ -229,7 +229,7 @@ func (e *Engine) strike(ctx context.Context, at sched.Time, id population.ActorI
 		body.Value = p.Amount
 	}
 	e.addPending(&p)
-	e.market.excite(at)
+	e.pc.market.excite(at)
 	e.jr.Emit(at, KindAttack, id, body)
 	for _, b := range s.txs {
 		e.emitSubmitted(at, &p, b, s.inputs)

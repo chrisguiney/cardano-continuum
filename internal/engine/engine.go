@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maps"
 	"math/rand/v2"
 	"slices"
 
@@ -92,7 +91,7 @@ type Engine struct {
 	// deposits is the lovelace the engine's settled certificates and
 	// proposals hold in the ledger's deposit pot.
 	deposits uint64
-	market   market
+	pc       pace
 	// contracts is how many contracts are deployed (contract 0 from
 	// genesis); deployAt is the next deployment, deployN its draw.
 	contracts uint64
@@ -247,6 +246,7 @@ func newEmpty(cfg Config) (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
+	e.pc.e = e
 	e.co = cohort.New(cohort.Spec{Seed: cfg.Seed, Census: cfg.Seed.Derive(censusStream), Slots: cfg.Slots, Proposer: proposerName,
 		ActorKeys: ks, RootKeys: rootKeys, Pools: gpools, PoolStake: cfg.GenesisPoolStake},
 		cohort.Env{Sched: evsched{&e.clk}, Emit: &e.jr, Chain: e.win, Att: hooks{e}, Pace: hooks{e}})
@@ -374,46 +374,11 @@ func (e *Engine) run(ctx context.Context, at sched.Time, ev evclock.Event) error
 	return nil
 }
 
-func (e *Engine) nextAct(a population.Actor, st *actor, now sched.Time) {
-	if st.Boot != "" {
-		e.nextClock(a, st, now)
-		return
-	}
-	rate := st.Rate * a.Traits.RateMult * float64(max(e.rateK, 1))
-	if rate <= 0 || st.Policy == nil {
-		st.ActAt = population.Never
-		return
-	}
-	var mod sched.Modulation
-	if d := st.Prof.Rates.Diurnal; d > 0 {
-		mod = sched.Daily{Amplitude: d}
-	}
-	if h := st.Prof.Rates.Hawkes; h.Alpha > 0 {
-		// The Hawkes process in its branching form: owed follow-ups come
-		// one at a time, each a decay wait after the last act, racing the
-		// base-rate arrivals (immigrants), which Poisson's memorylessness
-		// lets the race redraw. The base rate is cut so the clusters
-		// average rate: mean = mu / (1 - alpha/beta).
-		b := sched.Branching{Ratio: h.Alpha / h.Beta, Beta: h.Beta}
-		r := st.Draw(a, "arrival")
-		st.ActAt, st.FollowUp = sched.NextArrival(r, rate*(1-b.Ratio), mod, now), false
-		if st.Owed > 0 {
-			if at := now + b.Delay(r); at < st.ActAt {
-				st.ActAt, st.FollowUp = at, true
-			}
-		}
-		st.ActH = e.clk.Push(st.ActAt, evclock.Event{Kind: evclock.Act, Actor: a.ID})
-		return
-	}
-	st.ActAt = sched.NextArrival(st.Draw(a, "arrival"), rate, mod, now)
-	st.ActH = e.clk.Push(st.ActAt, evclock.Event{Kind: evclock.Act, Actor: a.ID})
-}
-
 func (e *Engine) act(ctx context.Context, at sched.Time, id population.ActorID) error {
 	a, _ := e.co.Get(id)
 	st := e.co.Rec(id)
 	if e.paused {
-		e.nextAct(a, st, at)
+		e.pc.nextAct(a, st, at)
 		return nil
 	}
 	r := st.Draw(a, "act")
@@ -421,39 +386,17 @@ func (e *Engine) act(ctx context.Context, at sched.Time, id population.ActorID) 
 	var gov build.ActionType
 	switch {
 	case st.Boot != "":
-		d, gov = e.decideClock(a, st, r)
+		d, gov = e.pc.decideClock(a, st, r)
 	case st.FollowUp:
-		// A burst is follow-up activity: a follow-up does something. A
-		// burst of idle wake-ups would leave transactions as spread out
-		// as without it.
-		w := maps.Clone(e.weightsOf(st.Prof))
-		if w == nil {
-			w = map[profile.IntentKind]float64{}
-		}
-		w[agenda.Idle] = 0
-		d = agenda.Decide(a, r, view{e: e}, st.Policy, w)
+		d = agenda.Decide(a, r, view{e: e}, st.Policy, e.pc.followWeights(st.Prof))
 	default:
-		d = agenda.Decide(a, r, view{e: e}, st.Policy, e.weightsOf(st.Prof))
+		d = agenda.Decide(a, r, view{e: e}, st.Policy, e.pc.weightsOf(st.Prof))
 	}
 	e.jr.Emit(at, KindIntentChosen, id, d)
-	if st.FollowUp && d.Intent.Kind == agenda.Idle && st.Waits < maxFollowWaits {
-		// Nothing to do yet, most often because the actor's coins are in
-		// the attempt this follows: the planner offers only settled
-		// outputs, so the change takes K blocks. The follow-up waits a
-		// block at a time instead of being lost, or a burst could never
-		// be more than one transaction.
-		st.Waits++
-		st.ActAt = at + e.blockMs()
-		st.ActH = e.clk.Push(st.ActAt, evclock.Event{Kind: evclock.Act, Actor: a.ID})
+	if e.pc.wait(a, st, at, d) {
 		return nil
 	}
-	st.Waits = 0
-	if st.FollowUp {
-		st.Owed--
-	}
-	if h := st.Prof.Rates.Hawkes; h.Alpha > 0 && d.Intent.Kind != agenda.Idle {
-		st.Owed += uint32(sched.Branching{Ratio: h.Alpha / h.Beta}.Children(r))
-	}
+	e.pc.owe(st, d, r)
 	switch {
 	case d.Intent.Kind == agenda.Idle:
 	case !e.checkFloor(at, d.Intent):
@@ -468,21 +411,8 @@ func (e *Engine) act(ctx context.Context, at sched.Time, id population.ActorID) 
 			return err
 		}
 	}
-	e.nextAct(a, st, at)
+	e.pc.nextAct(a, st, at)
 	return nil
-}
-
-// maxFollowWaits bounds how many blocks a follow-up waits to act.
-const maxFollowWaits = 30
-
-// blockMs is the fake chain's block interval in milliseconds, or 20 slots
-// when the chain's interval is unknown (a live node).
-func (e *Engine) blockMs() sched.Time {
-	n := e.cfg.BlockEvery
-	if n == 0 {
-		n = 20
-	}
-	return max(e.cfg.Slots.SlotStart(n)-e.cfg.Slots.SlotStart(0), 1)
 }
 
 // paymentSize is the amount of a payment from an actor holding bal, never
@@ -694,17 +624,4 @@ func (e *Engine) rollback(ctx context.Context, p eventlog.ChainPoint) error {
 		return fmt.Errorf("engine: view: %w", err)
 	}
 	return e.leftView(ctx, e.clk.Now(), gone)
-}
-
-// weightsOf is a profile's intent weights with the controls' overrides.
-func (e *Engine) weightsOf(p profile.Profile) map[profile.IntentKind]float64 {
-	if len(e.weights) == 0 {
-		return p.Weights
-	}
-	w := maps.Clone(p.Weights)
-	if w == nil {
-		w = map[profile.IntentKind]float64{}
-	}
-	maps.Copy(w, e.weights)
-	return w
 }

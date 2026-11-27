@@ -509,7 +509,7 @@ func (e *Engine) start(ctx context.Context, at sched.Time, p *pendingRec) (strin
 			st.Remember(population.ActorID(p.To))
 		}
 	}
-	e.market.excite(at)
+	e.pc.market.excite(at)
 	e.emitSubmitted(at, p, built, inputs)
 	return "", e.react(ctx, at, p, built.Fee)
 }

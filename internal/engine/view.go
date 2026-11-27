@@ -126,3 +126,6 @@ var (
 	_ agenda.Governance = view{}
 	_ agenda.Market     = view{}
 )
+
+// Burst implements agenda.Market.
+func (v view) Burst() float64 { return v.e.pc.market.burst(v.e.clk.Now()) }

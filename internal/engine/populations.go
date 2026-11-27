@@ -2,14 +2,12 @@ package engine
 
 import (
 	"fmt"
-	"maps"
 	"math"
 	"math/big"
 	"math/rand/v2"
 	"slices"
 	"strconv"
 
-	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	evclock "github.com/chrisguiney/cardano-continuum/internal/engine/internal/clock"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/cohort"
@@ -209,159 +207,6 @@ type clock = cohort.Clock
 // actor is an actor's in-memory record.
 type actor = cohort.Actor
 
-// clocks are a population actor's intent clocks, in kind order, and the
-// intent it registers with; ok is false for an actor of no population.
-func (e *Engine) clocks(a population.Actor, p profile.Profile) (cs []clock, boot profile.IntentKind, ok bool) {
-	if p.Name == proposerName && len(e.cfg.Network.Proposals) > 0 {
-		return proposerClocks(p.Rates.Base[profile.IntentPropose], e.cfg.Network.Proposals), profile.IntentRegisterStake, true
-	}
-	pop, found := e.cfg.population(p.Name)
-	if !found || pop.Count == 0 {
-		return nil, "", false
-	}
-	for _, k := range slices.Sorted(maps.Keys(p.Rates.Base)) {
-		c := clock{Kind: k, Rate: p.Rates.Base[k]}
-		if k == profile.IntentVote && pop.DRep != nil {
-			// Only Voting of the DReps vote at all, so each voter votes at
-			// the population's rate over that share.
-			if pop.DRep.Voting <= 0 || a.Stream("voter").Float64() >= pop.DRep.Voting {
-				continue
-			}
-			c.Rate /= pop.DRep.Voting
-		}
-		cs = append(cs, c)
-	}
-	boot = profile.IntentRegisterPool
-	if pop.DRep != nil {
-		boot = profile.IntentRegisterDRep
-	}
-	return cs, boot, true
-}
-
-// proposerClocks splits the proposer's total rate over the action types in
-// proportion to the fitted rates.
-func proposerClocks(total float64, rates map[string]float64) []clock {
-	var sum float64
-	for _, k := range sortedKeys(rates) {
-		sum += rates[k]
-	}
-	var cs []clock
-	for _, k := range sortedKeys(rates) {
-		if rates[k] > 0 {
-			cs = append(cs, clock{Kind: profile.IntentPropose, Action: build.ActionType(k), Rate: total * rates[k] / sum})
-		}
-	}
-	return cs
-}
-
-// registered reports whether a population actor's registration is on the
-// chain the engine follows.
-func (e *Engine) registered(id population.ActorID, boot profile.IntentKind) bool {
-	if e.win.View() == nil {
-		// Genesis actors spawn before the view exists; none has registered.
-		return false
-	}
-	switch boot {
-	case profile.IntentRegisterPool:
-		return e.win.View().PoolRegistered(id)
-	case profile.IntentRegisterDRep:
-		return e.win.View().DRepRegistered(id)
-	}
-	return e.win.View().StakeRegistered(id)
-}
-
-// bootstrapping reports that the proposer is registered and the chain has
-// no open proposal, none of its own in flight. A fitted proposal rate
-// leaves governance empty for days on a fresh devnet (mainnet always has
-// some open), so the voters would have nothing to vote on: the proposer
-// then wakes at the boot rate and proposes at once, keeping at least one
-// proposal open. Which action type it proposes is drawn from the fitted
-// rates as any of its wakes, from the actor's seeded stream.
-func (e *Engine) bootstrapping(id population.ActorID, st *actor) bool {
-	return st.Prof.Name == proposerName && len(e.cfg.Network.Proposals) > 0 && e.win.View() != nil &&
-		e.registered(id, st.Boot) && len(e.win.View().OpenProposals()) == 0 && !e.inFlight(id, string(profile.IntentPropose))
-}
-
-// ready reports that a population actor wakes at its fitted rates:
-// registered, and not bootstrapping governance.
-func (e *Engine) ready(id population.ActorID, st *actor) bool {
-	return e.registered(id, st.Boot) && !e.bootstrapping(id, st)
-}
-
-// clockRate is a population actor's wake rate: the boot rate until it is
-// ready, then the sum of its clocks.
-func (e *Engine) clockRate(id population.ActorID, st *actor) float64 {
-	if !e.ready(id, st) {
-		return bootRate
-	}
-	var sum float64
-	for _, c := range st.Clocks {
-		sum += c.Rate
-	}
-	return sum * float64(max(e.rateK, 1))
-}
-
-// fire draws which clock woke the actor: the boot intent while it is
-// unregistered, else a clock in proportion to its rate.
-func (e *Engine) fire(id population.ActorID, st *actor, r *rand.Rand) clock {
-	switch {
-	case !e.registered(id, st.Boot):
-		return clock{Kind: st.Boot}
-	case len(st.Clocks) == 0, st.Booting && !e.bootstrapping(id, st):
-		// Registered since this wake was drawn: the next one is drawn at
-		// the clocks' rate, which by memorylessness is the right wait.
-		return clock{Kind: agenda.Idle}
-	}
-	var sum float64
-	for _, c := range st.Clocks {
-		sum += c.Rate
-	}
-	u := r.Float64() * sum
-	for _, c := range st.Clocks {
-		if u < c.Rate {
-			return c
-		}
-		u -= c.Rate
-	}
-	return st.Clocks[len(st.Clocks)-1]
-}
-
-// decideClock is a population actor's decision: the fired clock's intent
-// if its agenda scores it possible now, else idle. The proposer has no
-// agenda for proposing; it proposes whenever its clock fires.
-func (e *Engine) decideClock(a population.Actor, st *actor, r *rand.Rand) (agenda.Decision, build.ActionType) {
-	c := e.fire(a.ID, st, r)
-	if c.Kind == agenda.Idle {
-		return agenda.Decision{Intent: agenda.Intent{Kind: agenda.Idle, Actor: a.ID},
-			Scores: []agenda.Score{{Kind: agenda.Idle, Value: 1, Why: "registered: waking at the fitted rates from now"}}}, ""
-	}
-	if e.inFlight(a.ID, string(c.Kind)) {
-		// A second registration beside one in flight would pay its deposit
-		// twice.
-		return agenda.Decision{Intent: agenda.Intent{Kind: agenda.Idle, Actor: a.ID},
-			Scores: []agenda.Score{{Kind: c.Kind, Why: "already in flight"}}}, ""
-	}
-	if st.Prof.Name == proposerName {
-		why := "network proposes " + string(c.Action)
-		if e.bootstrapping(a.ID, st) {
-			why += ": no proposal open"
-		}
-		if c.Kind == profile.IntentRegisterStake {
-			why = "proposal deposits return to a registered stake account"
-		}
-		s := agenda.Score{Kind: c.Kind, Value: 1, Why: why}
-		return agenda.Decision{Intent: agenda.Intent{Kind: c.Kind, Actor: a.ID}, Scores: []agenda.Score{s}}, c.Action
-	}
-	var mine []agenda.Score
-	for _, s := range st.Policy.Score(a, view{e: e}) {
-		if s.Kind == c.Kind {
-			mine = append(mine, s)
-		}
-	}
-	in, ss := agenda.Choose(a.ID, r, mine, nil)
-	return agenda.Decision{Intent: in, Scores: ss}, c.Action
-}
-
 // poolTerms are the pledge, cost and margin a pool actor registers or
 // updates with: draws from the population's fitted distributions on a
 // stream named by the intent, so a rebuild offers the same terms. A pool
@@ -486,18 +331,4 @@ func (e *Engine) pickContract(r *rand.Rand) uint64 {
 		u -= w
 	}
 	return e.contracts - 1
-}
-
-// nextClock schedules a population actor's next wake. A retired pool or
-// DRep never wakes again.
-func (e *Engine) nextClock(a population.Actor, st *actor, now sched.Time) {
-	st.ActAt = population.Never
-	if a.State == population.Retired || a.State == population.Expired {
-		return
-	}
-	st.Booting = !e.ready(a.ID, st)
-	if at := sched.NextArrival(st.Draw(a, "arrival"), e.clockRate(a.ID, st), nil, now); at != population.Never {
-		st.ActAt = at
-		st.ActH = e.clk.Push(at, evclock.Event{Kind: evclock.Act, Actor: a.ID})
-	}
 }
