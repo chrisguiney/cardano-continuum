@@ -194,6 +194,7 @@ func TestProposeActionTypes(t *testing.T) {
 // accepted before any separate authorisation: the certificate applies
 // before the vote, and the cold and hot keys both witness it.
 func TestCommitteeVoteAuthorisesItsHotKey(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.registerStake()
 	prop, err := h.b.Gov().Propose(ctx, h.alice, Proposal{Spend: h.spend(), Action: ActionInfo})

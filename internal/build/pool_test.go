@@ -119,6 +119,7 @@ func TestPoolRetirement(t *testing.T) {
 // null a nil slice encodes as ("expected list len or indef"), so no
 // population pool ever registered on a live devnet.
 func TestPoolCertEncodesNoRelaysAsList(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	c, err := h.b.Pool().poolCert(h.alice, h.poolReq(9, h.spend()))
 	if err != nil {
