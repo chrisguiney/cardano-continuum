@@ -70,8 +70,7 @@ type nodeSource struct {
 	done   chan struct{}
 	once   sync.Once
 
-	mu sync.Mutex
-	// protects at
+	mu sync.Mutex // protects at
 	at ocommon.Point
 }
 
