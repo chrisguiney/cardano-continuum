@@ -90,18 +90,38 @@ func (pa *Pay) Genesis(cfg plan.Config, utxos []plan.Utxo) error {
 	return err
 }
 
-// Open restores the ledger from its blob and the counters a snapshot kept.
-func (pa *Pay) Open(cfg plan.Config, blob store.Blob, nextID, deposits uint64) error {
-	led, err := plan.Open(cfg, blob)
+// Saved is the bridge's section of a snapshot: the counters, the ledger's
+// blob, and the unfinished intents, ascending by ID.
+type Saved struct {
+	NextID, Deposits uint64
+	Ledger           store.Blob
+	Pending          []*wire.Pending
+}
+
+// Save is the bridge's snapshot section. The intents are the book's own.
+func (pa *Pay) Save() (Saved, error) {
+	blob, err := pa.led.Blob()
+	if err != nil {
+		return Saved{}, err
+	}
+	sv := Saved{NextID: pa.nextID, Deposits: pa.deposits, Ledger: blob}
+	for _, id := range pa.IDs() {
+		sv.Pending = append(sv.Pending, pa.Get(id))
+	}
+	return sv, nil
+}
+
+// Load opens the ledger a Save recorded, with its counters. It leaves
+// sv.Pending to Retry.Load, which the composite calls once the volatile
+// window has been fed to the ledger again.
+func (pa *Pay) Load(cfg plan.Config, sv Saved) error {
+	led, err := plan.Open(cfg, sv.Ledger)
 	if err != nil {
 		return err
 	}
-	pa.led, pa.nextID, pa.deposits = led, nextID, deposits
+	pa.led, pa.nextID, pa.deposits = led, sv.NextID, sv.Deposits
 	return nil
 }
-
-// Counters are the last intent ID handed out and the deposits held.
-func (pa *Pay) Counters() (nextID, deposits uint64) { return pa.nextID, pa.deposits }
 
 // Next is the ID the next intent will get.
 func (pa *Pay) Next() uint64 { return pa.nextID + 1 }

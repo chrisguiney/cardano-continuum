@@ -29,7 +29,7 @@ func TestDeposit(t *testing.T) {
 			if got := pa.Deposit(tt.d); got != tt.want {
 				t.Fatalf("Deposit(%d) = %d, want %d", tt.d, got, tt.want)
 			}
-			if _, held := pa.Counters(); held != tt.wantIn {
+			if held := pa.deposits; held != tt.wantIn {
 				t.Fatalf("deposits %d, want %d", held, tt.wantIn)
 			}
 		})

@@ -21,14 +21,13 @@ func (refusing) Commit(context.Context, store.Blob) error { return errors.New("c
 // the transaction must not be sent).
 func refuseReserves(t *testing.T, e *Engine) {
 	t.Helper()
-	blob, err := e.pay.Blob()
+	sv, err := e.pay.Save()
 	if err != nil {
 		t.Fatal(err)
 	}
 	cfg := e.ledgerConfig()
 	cfg.Store = refusing{}
-	next, deposits := e.pay.Counters()
-	if err = e.pay.Open(cfg, blob, next, deposits); err != nil {
+	if err = e.pay.Load(cfg, sv); err != nil {
 		t.Fatal(err)
 	}
 }

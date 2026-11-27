@@ -223,6 +223,26 @@ func (rt *Retry) Release(ctx context.Context, at sched.Time, dead []plan.TxID, w
 	return nil
 }
 
+// Load puts back the unfinished intents a snapshot recorded, in its order,
+// and wakes each one still backing off at now. Every unfinished attempt the
+// ledger holds must belong to one of them.
+func (rt *Retry) Load(now sched.Time, ps []*wire.Pending) error {
+	for _, p := range ps {
+		rt.pay.Add(p)
+		if p.Awaiting && p.NotBefore > now {
+			rt.Wake(p)
+		}
+	}
+	attempts := 0
+	for p := range rt.pay.All() {
+		attempts += len(p.Txs)
+	}
+	if n := len(rt.pay.Reads().Unfinished()); n != attempts {
+		return fmt.Errorf("engine: snapshot has %d attempts, ledger %d unfinished", attempts, n)
+	}
+	return nil
+}
+
 // Wake schedules a tick at the end of the payment's backoff, so the loop
 // comes back to send it.
 func (rt *Retry) Wake(p *wire.Pending) {

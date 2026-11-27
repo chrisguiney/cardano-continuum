@@ -38,20 +38,19 @@ func (e *Engine) Snapshot() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	nextID, deposits := e.pay.Counters()
-	ct := e.in.Saved()
-	s := snapshot{Version: snapshotVersion, Now: e.clk.Now(), NextIntent: nextID, Conf: wi.Conf, Fees: wi.Fees, Foreign: wi.Foreign, RefillAt: e.fc.At(), Deposits: deposits, Market: e.pc.Market(), Lost: e.jd.Lost(),
-		Contracts: ct.N, DeployAt: ct.At, DeployN: ct.Drawn}
-	s.Actors, s.Births = e.co.Save()
-	s.Window, s.View = wi.Blocks, wi.View
-	for _, id := range e.pay.IDs() {
-		s.Pending = append(s.Pending, recOf(e.pay.Get(id)))
-	}
-	blob, err := e.pay.Blob()
+	ps, err := e.pay.Save()
 	if err != nil {
 		return nil, fmt.Errorf("engine: ledger: %w", err)
 	}
-	s.Ledger = ledgerBlob{Version: blob.Version, Data: blob.Data}
+	ct := e.in.Saved()
+	s := snapshot{Version: snapshotVersion, Now: e.clk.Now(), NextIntent: ps.NextID, Conf: wi.Conf, Fees: wi.Fees, Foreign: wi.Foreign, RefillAt: e.fc.At(), Deposits: ps.Deposits, Market: e.pc.Market(), Lost: e.jd.Lost(),
+		Contracts: ct.N, DeployAt: ct.At, DeployN: ct.Drawn}
+	s.Actors, s.Births = e.co.Save()
+	s.Window, s.View = wi.Blocks, wi.View
+	for _, p := range ps.Pending {
+		s.Pending = append(s.Pending, recOf(p))
+	}
+	s.Ledger = ledgerBlob{Version: ps.Ledger.Version, Data: ps.Ledger.Data}
 	fs := e.fl.Save()
 	s.Dark, s.Down, s.Repairs, s.Stalled = fs.Dark, fs.Down, fs.Repairs, fs.Stalled
 	ss := e.st.Save()
@@ -111,25 +110,19 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 	if err := e.restoreLedger(s); err != nil {
 		return nil, err
 	}
+	ps := make([]*wire.Pending, len(s.Pending))
 	for i := range s.Pending {
-		p := pendingOf(s.Pending[i])
-		e.pay.Add(p)
-		if p.Awaiting && p.NotBefore > e.clk.Now() {
-			e.retry.Wake(p)
-		}
+		ps[i] = pendingOf(s.Pending[i])
 	}
-	attempts := 0
-	for p := range e.pay.All() {
-		attempts += len(p.Txs)
-	}
-	if n := len(e.pay.Reads().Unfinished()); n != attempts {
-		return nil, fmt.Errorf("engine: snapshot has %d attempts, ledger %d unfinished", attempts, n)
+	if err := e.retry.Load(e.clk.Now(), ps); err != nil {
+		return nil, err
 	}
 	return e, nil
 }
 
 func (e *Engine) restoreLedger(s snapshot) error {
-	if err := e.pay.Open(e.ledgerConfig(), store.Blob{Version: s.Ledger.Version, Data: s.Ledger.Data}, s.NextIntent, s.Deposits); err != nil {
+	sv := pay.Saved{NextID: s.NextIntent, Deposits: s.Deposits, Ledger: store.Blob{Version: s.Ledger.Version, Data: s.Ledger.Data}}
+	if err := e.pay.Load(e.ledgerConfig(), sv); err != nil {
 		return fmt.Errorf("engine: snapshot ledger: %w", err)
 	}
 	e.jd.SetLost(s.Lost)
