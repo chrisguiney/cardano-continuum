@@ -5,7 +5,7 @@ dispatch.
 
 | Job | Runs on | Does |
 |---|---|---|
-| `static` | push | `make check-static`: build, vet, gofmt, golangci-lint and the generated-file drift check |
+| `static` | push | `make check-static`: build, vet, gofmt, golangci-lint, the generated-file drift check and the Helm chart lint and render (`make chart-check`) |
 | `test` | push | `make test-race SHARD=...`, one job per shard (`engine-a`, `engine-b`, `engine-internal`, `cli`, `rest`); together they run every test once |
 | `web-test` | push | `make web-test`: typecheck and Vitest for [`web/`](../../web/README.md) (Node 22) |
 

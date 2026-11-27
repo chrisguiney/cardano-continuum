@@ -65,7 +65,7 @@ web: ## Rebuild the web UI into web/dist (needs Node and npm)
 web-test: ## Typecheck and run the web UI's unit tests (needs Node and npm)
 	cd web && npm ci && npm run typecheck && npm test
 
-check-static: build vet fmt-check lint check-manifests ## Everything CI's static job runs
+check-static: build vet fmt-check lint check-manifests chart-check ## Everything CI's static job runs
 
 check: check-static test-race ## Everything CI runs
 
