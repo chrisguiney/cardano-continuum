@@ -48,6 +48,53 @@ const (
 	ScenarioUpgrade = "upgrade"
 )
 
+// ScenarioInfo describes one scenario an inject control may name, for the
+// UI's scenario list.
+type ScenarioInfo struct {
+	// Name is the scenario's name, the part of an inject before any colon.
+	Name string `json:"name"`
+	// Arg describes the argument after the colon; empty when the scenario
+	// takes none.
+	Arg string `json:"arg,omitempty"`
+	// Optional reports that the argument may be left out.
+	Optional bool `json:"optional,omitempty"`
+	// Example is a valid argument, shown as the input's placeholder.
+	Example string `json:"example,omitempty"`
+	// Description says what injecting the scenario does.
+	Description string `json:"description"`
+}
+
+// Catalog lists every scenario inject routes, in display order.
+func Catalog() []ScenarioInfo {
+	return []ScenarioInfo{
+		{
+			Name:        ScenarioPropose,
+			Description: "The richest actor with a registered stake key proposes an info action, a governance poll that changes nothing, so voters have something to vote on.",
+		},
+		{
+			Name:        ScenarioGoDark,
+			Arg:         "pool actor id",
+			Optional:    true,
+			Example:     "3",
+			Description: "Takes a pool offline (its node stops). Without an actor id it is the lowest-numbered live pool. The stake-floor guard refuses it if too little stake would stay online.",
+		},
+		{
+			Name:        ScenarioHotKeys,
+			Description: "The richest actor pays to authorise a hot key for every genesis constitutional committee member, so the committee can vote.",
+		},
+		{
+			Name:        ScenarioSPOProbe,
+			Description: "The richest registered pool votes on an open proposal stake pools may not vote on. The ledger must refuse it (DisallowedVoters); a node that accepts it is a fatal finding.",
+		},
+		{
+			Name:        ScenarioUpgrade,
+			Arg:         "[epochs:]image",
+			Example:     "2:ghcr.io/blinklabs-io/dingo:main",
+			Description: "Starts an upgrade wave: every registered pool switches to the image, adopting along an S-curve over that many epochs (one by default). Eager pools adopt first.",
+		},
+	}
+}
+
 // upgradeSteepness is a wave's logistic half-width in e-folds.
 const upgradeSteepness = 4
 

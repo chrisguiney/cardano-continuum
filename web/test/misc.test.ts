@@ -23,7 +23,10 @@ describe("controls", () => {
     expect(buildControl("pause", {})).toEqual({ ok: true, body: { request_id: expect.any(String), op: "pause" } });
     expect(buildControl("set_k", { k: "8" })).toMatchObject({ ok: true, body: { op: "set_k", k: 8 } });
     expect(buildControl("inject", { scenario: "partition" })).toMatchObject({ ok: true, body: { scenario: "partition" } });
-    expect(buildControl("set_weights", { weights: "send=2, vote=0.5" })).toMatchObject({ ok: true, body: { weights: { send: 2, vote: 0.5 } } });
+    expect(buildControl("inject", { scenario: "go_dark", arg: "3" })).toMatchObject({ ok: true, body: { scenario: "go_dark:3" } });
+    expect(buildControl("inject", { scenario: "upgrade", arg: "2:ghcr.io/blinklabs-io/dingo:main" })).toMatchObject({ ok: true, body: { scenario: "upgrade:2:ghcr.io/blinklabs-io/dingo:main" } });
+    expect(buildControl("inject", { scenario: "go_dark", arg: " " })).toMatchObject({ ok: true, body: { scenario: "go_dark" } });
+    expect(buildControl("set_weights", { weights: { send: "2", vote: "0.5", mint: "" } })).toMatchObject({ ok: true, body: { weights: { send: 2, vote: 0.5 } } });
   });
 
   it("refuses what the server would refuse", () => {
@@ -31,9 +34,12 @@ describe("controls", () => {
     expect(buildControl("set_k", { k: "1001" }).ok).toBe(false);
     expect(buildControl("set_k", { k: "1.5" }).ok).toBe(false);
     expect(buildControl("inject", { scenario: "Bad Name" }).ok).toBe(false);
-    expect(buildControl("set_weights", { weights: "" }).ok).toBe(false);
-    expect(buildControl("set_weights", { weights: "send=-1" }).ok).toBe(false);
-    expect(buildControl("set_weights", { weights: "Send=1" }).ok).toBe(false);
+    expect(buildControl("inject", { scenario: "upgrade", arg: "a b" }).ok).toBe(false);
+    expect(buildControl("set_weights", { weights: {} }).ok).toBe(false);
+    expect(buildControl("set_weights", { weights: { send: "" } }).ok).toBe(false);
+    expect(buildControl("set_weights", { weights: { send: "-1" } }).ok).toBe(false);
+    expect(buildControl("set_weights", { weights: { send: "x" } }).ok).toBe(false);
+    expect(buildControl("set_weights", { weights: { Send: "1" } }).ok).toBe(false);
   });
 
   it("makes request ids the server accepts", () => {

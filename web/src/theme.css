@@ -167,3 +167,10 @@ a.button:hover { border-color: var(--accent); }
 .glossary dd .hash, .glossary dd .mono { overflow-wrap: anywhere; white-space: normal; }
 .usage { display: flex; }
 .usage-name { font-size: .75rem; color: var(--muted); min-width: 4.2em; }
+.controls h2 { font-size: 1rem; margin: 0 0 .6rem; }
+.weights { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: .4rem .8rem; margin-bottom: .6rem; }
+.weights .weight { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.weights .weight input { width: 6rem; }
+table.scenarios { width: 100%; margin-top: .8rem; border-collapse: collapse; }
+table.scenarios caption { text-align: left; font-weight: 600; padding-bottom: .3rem; }
+table.scenarios th, table.scenarios td { text-align: left; vertical-align: top; padding: .35rem .5rem; border-bottom: 1px solid var(--border); }

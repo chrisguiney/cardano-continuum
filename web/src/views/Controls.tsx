@@ -1,6 +1,7 @@
 import { useState } from "preact/hooks";
-import { Blurb, HelpTip, TextField } from "./fields";
+import { Blurb, HelpTip, SelectField, TextField } from "./fields";
 import { FIELD_HELP, VIEW_BLURB } from "../lib/help";
+import { useEnums, type ScenarioInfo } from "../lib/meta";
 import { buildControl, postControl, type ControlBody, type ControlInput, type Op } from "../lib/controls";
 
 interface Pending {
@@ -13,16 +14,52 @@ const describe = (b: ControlBody): string => {
     case "pause": return "Pause the run?";
     case "resume": return "Resume the run?";
     case "set_k": return `Set the amplification factor k to ${b.k}?`;
-    case "set_weights": return `Override intent weights (${Object.entries(b.weights ?? {}).map(([k, v]) => `${k}=${v}`).join(", ")})?`;
+    case "set_weights": return `Override intent weights (${Object.entries(b.weights ?? {}).map(([k, v]) => `${k}=${v}`).join(", ")})? This replaces any earlier override.`;
     case "inject": return `Inject scenario "${b.scenario}"?`;
   }
 };
 
+/** ScenarioTable lists every scenario with its argument and what it does. */
+export function ScenarioTable({ list }: { list: ScenarioInfo[] }) {
+  return (
+    <table class="scenarios">
+      <caption>Scenarios</caption>
+      <thead><tr><th>Name</th><th>Argument</th><th>What it does</th></tr></thead>
+      <tbody>
+        {list.map((s) => (
+          <tr key={s.name}>
+            <td><code>{s.name}</code></td>
+            <td>{s.arg ? <>{s.arg}{s.optional ? " (optional)" : ""}{s.example && <div class="muted">e.g. <code>{s.example}</code></div>}</> : <span class="muted">none</span>}</td>
+            <td>{s.description}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+/** WeightGrid is one number field per intent kind; an empty field keeps the profile's weight. */
+export function WeightGrid({ names, values, onChange }: { names: string[]; values: Record<string, string>; onChange: (name: string, v: string) => void }) {
+  return (
+    <div class="weights">
+      {names.map((name) => (
+        <label key={name} class="weight">
+          <span>{name}</span>
+          <input type="number" min="0" max="1000" step="any" placeholder="profile" value={values[name] ?? ""} onInput={(e) => onChange(name, e.currentTarget.value)} />
+        </label>
+      ))}
+    </div>
+  );
+}
+
 export function Controls() {
-  const [input, setInput] = useState<ControlInput>({ k: "1", weights: "", scenario: "" });
+  const enums = useEnums();
+  const [input, setInput] = useState<ControlInput>({ k: "1", weights: {}, scenario: "", arg: "" });
   const [pending, setPending] = useState<Pending | null>(null);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const scenarios = enums?.scenarios ?? [];
+  const chosen = scenarios.find((s) => s.name === input.scenario);
 
   const ask = (op: Op) => {
     const built = buildControl(op, input);
@@ -49,11 +86,14 @@ export function Controls() {
     }
   };
 
+  const setWeight = (name: string, v: string) => setInput((i) => ({ ...i, weights: { ...i.weights, [name]: v } }));
+
   return (
     <>
       <h1>Controls</h1>
       <Blurb text={VIEW_BLURB.controls!} />
       <section class="card controls">
+        <h2>Run</h2>
         <div class="row">
           <button type="button" aria-describedby="h-pause" onClick={() => ask("pause")}>Pause</button>
           <button type="button" aria-describedby="h-resume" onClick={() => ask("resume")}>Resume</button>
@@ -64,15 +104,46 @@ export function Controls() {
           <TextField id="c-k" help={FIELD_HELP.k!} value={input.k ?? ""} inputMode="numeric" onChange={(v) => setInput({ ...input, k: v })} />
           <button type="button" onClick={() => ask("set_k")}>Set k</button>
         </div>
+      </section>
+
+      <section class="card controls">
+        <h2>
+          {FIELD_HELP.weights!.label} <HelpTip id="h-weights" label={FIELD_HELP.weights!.label} text={FIELD_HELP.weights!.help} />
+        </h2>
+        <WeightGrid names={enums?.weight ?? []} values={input.weights ?? {}} onChange={setWeight} />
+        {!enums && <p class="muted">Loading intents…</p>}
         <div class="row">
-          <TextField id="c-weights" help={FIELD_HELP.weights!} value={input.weights ?? ""} placeholder="send=2, vote=0.5" onChange={(v) => setInput({ ...input, weights: v })} />
           <button type="button" onClick={() => ask("set_weights")}>Set weights</button>
-        </div>
-        <div class="row">
-          <TextField id="c-scenario" help={FIELD_HELP.scenario!} value={input.scenario ?? ""} placeholder="partition" onChange={(v) => setInput({ ...input, scenario: v })} />
-          <button type="button" onClick={() => ask("inject")}>Inject</button>
+          <button type="button" class="ghost" onClick={() => setInput((i) => ({ ...i, weights: {} }))}>Clear form</button>
         </div>
       </section>
+
+      <section class="card controls">
+        <h2>Scenarios</h2>
+        <div class="row">
+          <SelectField
+            id="c-scenario"
+            help={FIELD_HELP.scenario!}
+            value={input.scenario ?? ""}
+            allLabel="Choose a scenario"
+            options={scenarios.map((s) => ({ value: s.name, label: s.name }))}
+            onChange={(v) => setInput({ ...input, scenario: v, arg: "" })}
+          />
+          {chosen?.arg && (
+            <TextField
+              id="c-arg"
+              help={{ label: `Argument: ${chosen.arg}${chosen.optional ? " (optional)" : ""}`, help: chosen.description }}
+              value={input.arg ?? ""}
+              placeholder={chosen.example}
+              onChange={(v) => setInput({ ...input, arg: v })}
+            />
+          )}
+          <button type="button" disabled={!input.scenario} onClick={() => ask("inject")}>Inject</button>
+        </div>
+        {chosen && <p class="muted">{chosen.description}</p>}
+        {scenarios.length > 0 && <ScenarioTable list={scenarios} />}
+      </section>
+
       {pending && (
         <div class="confirm" role="alertdialog" aria-label="Confirm control action">
           <p><strong>{pending.text}</strong></p>

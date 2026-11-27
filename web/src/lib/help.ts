@@ -29,8 +29,8 @@ export const FIELD_HELP: Record<string, FieldHelp> = {
   sort: { label: "Sort by", help: "The column the table is ordered by. Clicking a column heading does the same." },
   dir: { label: "Order", help: "Ascending counts up (a to z, small to large); descending counts down." },
   k: { label: "k (1 to 1000)", help: "Amplification factor: a multiplier on how fast actors act. 1 is the normal rate." },
-  weights: { label: "Weights", help: "Overrides how much actors want each intent, as name=value pairs such as send=2, vote=0.5. A higher value makes that intent more likely; 0 turns it off." },
-  scenario: { label: "Scenario", help: "Name of a scripted event to start now, for example a network partition. It is added to the event log, so the run stays replayable." },
+  weights: { label: "Weights", help: "How much the simulated wallets want each intent, against their profile. Leave a field empty to keep the profile's own weight; 0 turns that intent off, 2 doubles it. Set weights replaces any earlier override as a whole. Pools and DReps act on their own fitted clocks and ignore weights." },
+  scenario: { label: "Scenario", help: "A scripted event to start now, such as taking a pool offline or an upgrade wave. The table below says what each does. It is added to the event log, so the run stays replayable." },
   search: { label: "Search", help: "Find a block by hash, height or slot:N, a transaction by hash, an address (addr_test1...), a pool by its 56-digit id or name, or an actor as actor:N. The matching view opens." },
   theme: { label: "Theme", help: "Switch between the light and dark colour schemes. Your choice is remembered in this browser." },
 };

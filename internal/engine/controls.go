@@ -28,6 +28,13 @@ type control = wire.Control
 // PoolPlan is what the engine wants of one pool actor's ContinuumPool.
 type PoolPlan = steer.PoolPlan
 
+// ScenarioInfo describes one scenario an inject control may name.
+type ScenarioInfo = steer.ScenarioInfo
+
+// Scenarios lists every scenario an inject control may name, in display
+// order.
+func Scenarios() []ScenarioInfo { return steer.Catalog() }
+
 // scenarioRoute is the engine's side of an inject control: the intents and
 // the stake floor the scenarios start.
 type scenarioRoute struct{ e *Engine }

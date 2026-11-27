@@ -105,6 +105,19 @@ func TestFiltersByEnumValue(t *testing.T) {
 	}
 }
 
+// The controls page offers one weight per profile intent and every
+// scenario inject handles, with its description.
+func TestEnumsOfferWeightsAndScenarios(t *testing.T) {
+	e := getEnums(t)
+	if !slices.Equal(e.Weight, strs(profile.IntentKinds())) {
+		t.Errorf("weight = %v, want the profile intents %v", e.Weight, profile.IntentKinds())
+	}
+
+	if len(e.Scenario) == 0 || !slices.EqualFunc(e.Scenario, engine.Scenarios(), func(a, b engine.ScenarioInfo) bool { return a == b }) {
+		t.Errorf("scenarios = %+v, want %+v", e.Scenario, engine.Scenarios())
+	}
+}
+
 // TestEnumsNameExUnitsKinds: the ExUnits attack, its finding and the two
 // ExUnits mistakes are offered.
 func TestEnumsNameExUnitsKinds(t *testing.T) {

@@ -176,3 +176,34 @@ func TestWavePlansOneAdoptionPerPool(t *testing.T) {
 		t.Fatalf("a repeated adoption emitted again: %d decisions", n)
 	}
 }
+
+// Every catalogued scenario is one inject routes, with an argument where
+// the catalogue says one is needed, so the UI cannot offer a scenario the
+// engine answers "unknown scenario".
+func TestCatalogNamesInjectableScenarios(t *testing.T) {
+	t.Parallel()
+	cat := Catalog()
+	if len(cat) == 0 {
+		t.Fatal("empty catalogue")
+	}
+
+	for _, c := range cat {
+		if c.Name == "" || c.Description == "" {
+			t.Errorf("catalogue entry %+v lacks a name or description", c)
+		}
+
+		sc := c.Name
+		if c.Arg != "" {
+			sc += ":" + c.Example
+		}
+
+		s, j, _, _ := newSteer(t)
+		if err := s.Control(context.Background(), 0, wire.Control{Op: "inject", Scenario: sc}); err != nil {
+			t.Fatal(err)
+		}
+
+		if why := controlled(t, j).Why; why == "unknown scenario" {
+			t.Errorf("catalogued scenario %q is unknown to inject", sc)
+		}
+	}
+}

@@ -16,6 +16,19 @@ export interface Enums {
   decision_kind: string[];
   voter_class: string[];
   action_type: string[];
+  /** weight is the intent kinds a set_weights control overrides. */
+  weight: string[];
+  scenarios: ScenarioInfo[];
+}
+
+/** ScenarioInfo is one scenario an inject control may name. */
+export interface ScenarioInfo {
+  name: string;
+  /** arg describes the argument after the colon; absent when there is none. */
+  arg?: string;
+  optional?: boolean;
+  example?: string;
+  description: string;
 }
 
 export interface Option {

@@ -37,6 +37,12 @@ type Enums struct {
 	// MistakeKind is internal/mistake's catalog, the kinds a Submitted
 	// decision's mistakes name.
 	MistakeKind []string `json:"mistake_kind"`
+	// Weight is the intent kinds a set_weights control overrides, one
+	// form field each on the controls page.
+	Weight []string `json:"weight"`
+	// Scenario is every scenario an inject control may name, with its
+	// argument and what it does.
+	Scenario []engine.ScenarioInfo `json:"scenarios"`
 }
 
 func strs[T ~string](xs []T) []string {
@@ -71,6 +77,6 @@ func BuildEnums() Enums {
 		Impl: strs(v1alpha1.Implementations()), Tier: strs(v1alpha1.Tiers()), Phase: strs(v1alpha1.Phases()),
 		Attack: strs(adversary.Names()), DecisionKind: engine.DecisionKinds(),
 		VoterClass: []string{classCommittee, classDRep, classSPO}, ActionType: chain.ActionTypes(),
-		MistakeKind: mistakeKinds(),
+		MistakeKind: mistakeKinds(), Weight: strs(profile.IntentKinds()), Scenario: engine.Scenarios(),
 	}
 }
