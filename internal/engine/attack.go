@@ -33,7 +33,7 @@ func attackSpec(e *Engine) attack.Spec {
 func attackEnv(e *Engine) attack.Env {
 	return attack.Env{
 		Roster: roster{e.co}, Ledger: e.pay, Flight: e.pay, Retry: answers{e.retry}, Judge: rulings{e.jd, e.cfg.Build},
-		Maker: e.in, Spend: ihooks{e}, Journal: &e.jr, Pace: e.pc, Chain: e.win, Clock: &e.clk, View: view{e: e},
+		Maker: e.in, Spend: ihooks{e}, Journal: &e.jr, Pace: e.pc, Chain: e.win, Clock: &e.clk, View: viewOf(e),
 	}
 }
 

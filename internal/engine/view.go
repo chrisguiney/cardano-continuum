@@ -7,19 +7,34 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 )
 
-// This file keeps the engine's chain.View: the delegation, pool, DRep and
-// governance state the agendas and the stake-floor guard read. It is fed
+// view adapts the engine's components to agenda.View and its optional
+// capabilities, and to adversary.View. Decisions read only this, never the
+// live chain, so replay sees the same world. The chain view it reads is fed
 // the same blocks and rollbacks as the planner's ledger, so its settled
-// point is the engine's confirmed point, and its state at that point rides
-// in the snapshot.
+// point is the engine's confirmed point.
+//
+// The agendas find the optional capabilities with type assertions, so each
+// is also asserted below at compile time: a lost method fails the build
+// instead of silently turning an agenda off.
+type view struct {
+	e *Engine
+	govView
+	advView
+}
 
-// view adapts the engine's own chain view to agenda.View and the optional
-// Governance. Decisions read only this, never the live chain, so replay
-// sees the same world.
-type view struct{ e *Engine }
+func viewOf(e *Engine) view { return view{e: e, govView: govView{e}, advView: advView{e}} }
+
+var (
+	_ agenda.View       = view{}
+	_ agenda.Governance = view{}
+	_ agenda.Market     = view{}
+	_ agenda.Floor      = view{}
+	_ agenda.Pods       = view{}
+	_ adversary.View    = view{}
+)
 
 func (v view) Balance(id population.ActorID) profile.Lovelace {
-	return profile.Lovelace(v.e.Spendable(uint64(id)))
+	return profile.Lovelace(v.e.pay.Spendable(uint64(id)))
 }
 func (v view) Pools() []agenda.PoolInfo { return v.e.win.View().Pools() }
 func (v view) Epoch() uint64            { return v.e.cfg.Slots.EpochAt(v.e.clk.Now()) }
@@ -30,35 +45,6 @@ func (v view) DelegatedTo(id population.ActorID) (population.ActorID, bool) {
 	return v.e.win.View().DelegatedTo(id)
 }
 func (v view) PoolRegistered(id population.ActorID) bool { return v.e.win.View().PoolRegistered(id) }
-
-// Budgets implements adversary.Sight: the run's execution limits.
-func (v view) Budgets() adversary.Budgets {
-	return adversary.Budgets{Tx: v.e.cfg.Build.MaxTxExUnits, Block: v.e.cfg.Build.MaxBlockExUnits}
-}
-
-// OpenProposals implements agenda.Governance.
-func (v view) OpenProposals() []agenda.ProposalInfo { return v.e.win.View().OpenProposals() }
-
-// Voted implements agenda.Governance.
-func (v view) Voted(a population.ActorID, p agenda.ProposalID) bool {
-	return v.e.win.View().Voted(a, p)
-}
-
-// DRepRegistered implements agenda.Governance.
-func (v view) DRepRegistered(a population.ActorID) bool { return v.e.win.View().DRepRegistered(a) }
-
-// DReps implements agenda.Governance.
-func (v view) DReps() []population.ActorID { return v.e.win.View().DReps() }
-
-// VoteDelegated implements agenda.Governance.
-func (v view) VoteDelegated(a population.ActorID) bool { return v.e.win.View().VoteDelegated(a) }
-
-var (
-	_ agenda.Governance = view{}
-	_ agenda.Market     = view{}
-	_ agenda.Floor      = view{}
-	_ agenda.Pods       = view{}
-)
 
 // Burst implements agenda.Market.
 func (v view) Burst() float64 { return v.e.pc.Burst(v.e.clk.Now()) }
@@ -78,16 +64,44 @@ func (v view) Dark(pool population.ActorID) bool { return v.e.fl.Dark(pool) }
 // PodRunning implements agenda.Pods.
 func (v view) PodRunning(pool population.ActorID) bool { return v.e.fl.PodRunning(pool) }
 
+// govView is the Conway governance state of the chain view, as
+// agenda.Governance reads it.
+type govView struct{ e *Engine }
+
+// OpenProposals implements agenda.Governance.
+func (v govView) OpenProposals() []agenda.ProposalInfo { return v.e.win.View().OpenProposals() }
+
+// Voted implements agenda.Governance.
+func (v govView) Voted(a population.ActorID, p agenda.ProposalID) bool {
+	return v.e.win.View().Voted(a, p)
+}
+
+// DRepRegistered implements agenda.Governance.
+func (v govView) DRepRegistered(a population.ActorID) bool { return v.e.win.View().DRepRegistered(a) }
+
+// DReps implements agenda.Governance.
+func (v govView) DReps() []population.ActorID { return v.e.win.View().DReps() }
+
+// VoteDelegated implements agenda.Governance.
+func (v govView) VoteDelegated(a population.ActorID) bool { return v.e.win.View().VoteDelegated(a) }
+
+// advView is the adversaries' side of the view: adversary.Sight and the
+// cost ceiling left.
+type advView struct{ e *Engine }
+
+// Budgets implements adversary.Sight: the run's execution limits.
+func (v advView) Budgets() adversary.Budgets {
+	return adversary.Budgets{Tx: v.e.cfg.Build.MaxTxExUnits, Block: v.e.cfg.Build.MaxBlockExUnits}
+}
+
 // Shared implements adversary.Sight.
-func (v view) Shared() []adversary.Locked { return v.e.adv.Shared() }
+func (v advView) Shared() []adversary.Locked { return v.e.adv.Shared() }
 
 // Payees implements adversary.Sight.
-func (v view) Payees() []population.ActorID { return v.e.adv.Payees() }
+func (v advView) Payees() []population.ActorID { return v.e.adv.Payees() }
 
 // Victims implements adversary.Sight.
-func (v view) Victims() []adversary.Coin { return v.e.adv.Victims() }
+func (v advView) Victims() []adversary.Coin { return v.e.adv.Victims() }
 
 // Remaining implements adversary.View.
-func (v view) Remaining(id population.ActorID) uint64 { return v.e.adv.Remaining(id) }
-
-var _ adversary.View = view{}
+func (v advView) Remaining(id population.ActorID) uint64 { return v.e.adv.Remaining(id) }

@@ -235,7 +235,7 @@ func (h hooks) Wake(a population.Actor, st *cohort.Actor, now sched.Time) {
 
 func (h hooks) InFlight(id population.ActorID, kind string) bool { return h.e.pay.Has(id, kind) }
 
-func (h hooks) Agenda() agenda.View { return view(h) }
+func (h hooks) Agenda() agenda.View { return viewOf(h.e) }
 
 func (h hooks) RateK() uint32 { return h.e.st.RateK() }
 

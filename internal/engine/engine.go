@@ -348,9 +348,9 @@ func (e *Engine) act(ctx context.Context, at sched.Time, id population.ActorID) 
 	case st.Boot != "":
 		d, gov = e.pc.Decide(a, subject(st), r)
 	case st.FollowUp:
-		d = agenda.Decide(a, r, view{e: e}, st.Policy, e.pc.FollowWeights(st.Prof))
+		d = agenda.Decide(a, r, viewOf(e), st.Policy, e.pc.FollowWeights(st.Prof))
 	default:
-		d = agenda.Decide(a, r, view{e: e}, st.Policy, e.pc.Weights(st.Prof))
+		d = agenda.Decide(a, r, viewOf(e), st.Policy, e.pc.Weights(st.Prof))
 	}
 	e.jr.Emit(at, KindIntentChosen, id, d)
 	if e.pc.Wait(a, subject(st), at, d) {

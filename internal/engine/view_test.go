@@ -69,18 +69,18 @@ func TestViewFoldsCertificates(t *testing.T) {
 		t.Fatal(err)
 	}
 	feedBlocks(t, e, fc, n)
-	if !(view{e}).StakeRegistered(1) {
+	if !viewOf(e).StakeRegistered(1) {
 		t.Fatal("stake registration not in the view")
 	}
 	r, err := Restore(cfg, snap(t, e))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !(view{r}).StakeRegistered(1) {
+	if !viewOf(r).StakeRegistered(1) {
 		t.Fatal("stake registration lost across a snapshot")
 	}
 	mustHandle(t, r, rollbackInput(t, before))
-	if (view{r}).StakeRegistered(1) {
+	if viewOf(r).StakeRegistered(1) {
 		t.Fatal("stake registration survived the rollback")
 	}
 }
