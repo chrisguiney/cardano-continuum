@@ -124,8 +124,10 @@ done < .tools/images
 make up CONTEXT=docker-desktop IMAGE_REF=tag
 ```
 
-ko builds are reproducible, so the images `make up` rebuilds have the
-digests just imported. Repeat the loop after changing the code; `.tools/images`
+ko builds are reproducible, and `make images` turns off Go's VCS stamping
+(`-buildvcs=false`), so the images `make up` rebuilds have the digests just
+imported and a commit that touches only `web/` leaves the engine digest, and
+the run, alone. Repeat the loop after changing the code; `.tools/images`
 lists all four images, `continuum-ui` included, and an unchanged image
 imports under the tag it already has.
 

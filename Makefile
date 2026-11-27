@@ -119,6 +119,11 @@ CONTINUUM_REGISTRY_INSECURE ?=
 DINGO_SRC ?=
 GOUROBOROS_SRC ?=
 KO_INSECURE := $(if $(filter true,$(CONTINUUM_REGISTRY_INSECURE)),--insecure-registry)
+# Images are built without VCS stamping. Go otherwise records the commit and
+# whether the tree is dirty in every binary, so any commit, a web/-only one
+# included, would move the engine digest, and make up resets a run whenever
+# that digest moves.
+KO_ENV = KO_DOCKER_REPO=$(CONTINUUM_REGISTRY) GOFLAGS='$(strip $(GOFLAGS) -buildvcs=false)'
 REGISTRY_HOST = $(firstword $(subst /, ,$(CONTINUUM_REGISTRY)))
 
 .PHONY: require-registry ko-images image-dingo image-mithril2pq
@@ -126,7 +131,7 @@ require-registry:
 	@test -n "$(CONTINUUM_REGISTRY)" || { echo "CONTINUUM_REGISTRY is not set"; exit 1; }
 
 ko-images: require-registry ## Build and push continuum binaries with ko to CONTINUUM_REGISTRY
-	KO_DOCKER_REPO=$(CONTINUUM_REGISTRY) $(KO) build $(KO_INSECURE) ./cmd/...
+	$(KO_ENV) $(KO) build $(KO_INSECURE) ./cmd/...
 
 # WITH is a space-separated list of module=path|sha overlays (gouroboros,
 # plutigo, ouroboros-mock). MODE is fast (host build layered over upstream
@@ -252,7 +257,7 @@ CHART_IMAGES := ./cmd/continuum ./cmd/continuum-operator ./cmd/continuum-genesis
 
 images: require-registry ## Build the chart's images with ko, push them to CONTINUUM_REGISTRY and record their digests
 	@mkdir -p $(dir $(IMAGES_OUT))
-	KO_DOCKER_REPO=$(CONTINUUM_REGISTRY) $(KO) build --base-import-paths --platform=$(PLATFORM) $(KO_INSECURE) $(CHART_IMAGES) >$(IMAGES_OUT).new
+	$(KO_ENV) $(KO) build --base-import-paths --platform=$(PLATFORM) $(KO_INSECURE) $(CHART_IMAGES) >$(IMAGES_OUT).new
 	@mv $(IMAGES_OUT).new $(IMAGES_OUT) && cat $(IMAGES_OUT)
 
 # make up / make down: install the chart into NAMESPACE of the cluster

@@ -24,7 +24,7 @@ func TestMakeDryRun(t *testing.T) {
 	}
 	up := run("up", "POOLS=5", "DINGO_POOLS=2", "NAMESPACE=lab", "CONTINUUM_REGISTRY=registry.example/c")
 	for _, want := range []string{"CONTEXT=''", "POOLS='5'", "DINGO_POOLS='2'", "NAMESPACE='lab'", "WALLETS='100'", "SCALE='200'",
-		"PROFILES='preprod'", "CONTINUUM_REGISTRY='registry.example/c'", "HELM='go run helm.sh/helm/v4/cmd/helm@", "ko@", "build --base-import-paths", "./cmd/continuum-ui", "hack/up.sh"} {
+		"PROFILES='preprod'", "CONTINUUM_REGISTRY='registry.example/c'", "HELM='go run helm.sh/helm/v4/cmd/helm@", "ko@", "build --base-import-paths", "./cmd/continuum-ui", "-buildvcs=false", "hack/up.sh"} {
 		if !strings.Contains(up, want) {
 			t.Errorf("make -n up lacks %q:\n%s", want, up)
 		}
