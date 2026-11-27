@@ -9,8 +9,10 @@ import (
 // Blob is an opaque, versioned value owned by another component. The store
 // never interprets Data; the owner reads Version to migrate it.
 type Blob struct {
-	Version uint32
-	Data    []byte
+	// Version is the owner's encoding version.
+	Version uint32 `json:"version"`
+	// Data is the owner's encoding.
+	Data []byte `json:"data"`
 }
 
 // Checkpoint is everything recovery loads before replaying the log tail.

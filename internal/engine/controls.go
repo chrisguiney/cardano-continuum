@@ -25,9 +25,6 @@ import (
 // control is a control input as the log carries it.
 type control = wire.Control
 
-// adoption is one queued ImageChange of an upgrade wave.
-type adoption = wire.Adoption
-
 // PoolPlan is what the engine wants of one pool actor's ContinuumPool.
 type PoolPlan = steer.PoolPlan
 

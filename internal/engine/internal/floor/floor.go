@@ -111,8 +111,14 @@ type Env struct {
 
 // Saved is a Floor's state in a snapshot. Every list is ascending.
 type Saved struct {
-	Dark, Down, Repairs []uint64
-	Stalled             bool
+	// Dark is the pool plan: pool actors the engine wants not forging.
+	Dark []uint64 `json:"dark,omitempty"`
+	// Down are the pool actors whose pod is observed not running.
+	Down []uint64 `json:"down,omitempty"`
+	// Repairs are the down pool actors a repair was asked for since.
+	Repairs []uint64 `json:"repairs,omitempty"`
+	// Stalled is set by a stall incident.
+	Stalled bool `json:"stalled,omitzero"`
 }
 
 // pods is the pool plan and the observed pod health.

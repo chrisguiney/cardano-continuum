@@ -79,16 +79,23 @@ type Window struct {
 // confirmed point, and what confirmed blocks paid in fees and to addresses
 // outside the population.
 type Saved struct {
-	Conf          eventlog.ChainPoint
-	Fees, Foreign uint64
+	// Conf is the confirmed point; it only moves forward.
+	Conf eventlog.ChainPoint `json:"conf"`
+	// Fees is the lovelace confirmed blocks paid in fees.
+	Fees uint64 `json:"fees"`
+	// Foreign is the lovelace confirmed blocks paid outside the population.
+	Foreign uint64 `json:"foreign"`
 }
 
 // Image is the window's section of a snapshot: its durable counters, the
 // volatile blocks oldest first, and the view at the confirmed point.
 type Image struct {
+	// Saved are the durable counters, inlined into the section.
 	Saved
-	Blocks []wire.Block
-	View   wire.ViewRec
+	// Blocks are the volatile blocks above Conf, oldest first.
+	Blocks []wire.Block `json:"blocks"`
+	// View is the chain view at Conf.
+	View wire.ViewRec `json:"view"`
 }
 
 // Cut is a rollback the window has checked: the point it unwinds to and how

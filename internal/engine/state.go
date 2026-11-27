@@ -12,10 +12,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/clock"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/cohort"
-	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/floor"
-	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/intent"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/pay"
-	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/steer"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/window"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
@@ -41,62 +38,73 @@ func blake2b256(b []byte) common.Blake2b256 { return common.Blake2b256Hash(b) }
 // reorders a run. The attack accounts load after the cohort, and the
 // pending intents after the window is replayed onto the ledger.
 func Restore(cfg Config, raw []byte) (*Engine, error) {
+	// A CBOR build's snapshot is a CBOR map, never a JSON object.
+	if len(raw) > 0 && raw[0] != '{' {
+		return nil, fmt.Errorf("engine: snapshot: %w", eventlog.ErrOldFormat)
+	}
+
 	var s snapshot
 	if err := eventlog.Decode(raw, &s); err != nil {
 		return nil, fmt.Errorf("engine: decode snapshot: %w", err)
 	}
+
 	if s.Version != snapshotVersion {
 		return nil, fmt.Errorf("engine: snapshot version %d, want %d", s.Version, snapshotVersion)
 	}
+
 	e, err := newEmpty(cfg)
 	if err != nil {
 		return nil, err
 	}
+
 	// Between inputs the last Tick's time is the clock.
 	e.clk.Load(s.Now)
 	e.pc.Load(s.Market)
-	if err := e.in.Load(intent.State{N: s.Contracts, At: s.DeployAt, Drawn: s.DeployN}); err != nil {
+	if err := e.in.Load(s.Contracts); err != nil {
 		return nil, err
 	}
-	e.st.Load(steer.Saved{Paused: s.Paused, RateK: s.RateK, Waves: s.Waves, Adoptions: s.Adoptions, Weights: s.Weights, Images: s.Images})
-	e.fl.Load(floor.Saved{Dark: s.Dark, Down: s.Down, Repairs: s.Repairs, Stalled: s.Stalled})
-	if err := e.co.Load(cfg.Profiles, s.Actors, s.Births); err != nil {
+
+	e.st.Load(s.Steer)
+	e.fl.Load(s.Floor)
+	if err := e.co.Load(cfg.Profiles, s.Cohort.Actors, s.Cohort.Births); err != nil {
 		return nil, err
 	}
+
 	if cfg.Faucet > 0 {
 		e.fc.Load(s.RefillAt)
 	}
 	// After the cohort: arming an adversary sets its ceiling, and the spends
 	// load on top of it.
-	e.adv.Load(s.Charges, s.Contested)
+	e.adv.Load(s.Attack.Charges, s.Attack.Contested)
 	if err := loadLedger(e, s); err != nil {
 		return nil, err
 	}
-	ps := make([]*wire.Pending, len(s.Pending))
-	for i := range s.Pending {
-		ps[i] = pendingOf(s.Pending[i])
-	}
-	if err := e.retry.Load(e.clk.Now(), ps); err != nil {
+
+	if err := e.retry.Load(e.clk.Now(), s.Pay.Pending); err != nil {
 		return nil, err
 	}
 	return e, nil
 }
 
 func loadLedger(e *Engine, s snapshot) error {
-	sv := pay.Saved{NextID: s.NextIntent, Deposits: s.Deposits, Ledger: store.Blob{Version: s.Ledger.Version, Data: s.Ledger.Data}}
-	if err := e.pay.Load(ledgerConfig(e), sv); err != nil {
+	if err := e.pay.Load(ledgerConfig(e), s.Pay); err != nil {
 		return fmt.Errorf("engine: snapshot ledger: %w", err)
 	}
+
 	e.jd.Load(s.Lost)
 	led := e.pay.Reads()
-	if conf, _ := chain.PointFromLog(s.Conf); led.ResumePoint() != conf {
-		return fmt.Errorf("engine: snapshot ledger settled at slot %d, engine confirmed slot %d", led.ResumePoint().Slot, s.Conf.Slot)
+	conf := s.Window.Conf
+	if pt, _ := chain.PointFromLog(conf); led.ResumePoint() != pt {
+		return fmt.Errorf("engine: snapshot ledger settled at slot %d, engine confirmed slot %d", led.ResumePoint().Slot, conf.Slot)
 	}
-	if err := e.win.Load(window.Image{Saved: window.Saved{Conf: s.Conf, Fees: s.Fees, Foreign: s.Foreign}, View: s.View}); err != nil {
+
+	// The window's blocks are fed to the ledger below, not by Load.
+	if err := e.win.Load(window.Image{Saved: s.Window.Saved, View: s.Window.View}); err != nil {
 		return err
 	}
+
 	ctx := context.Background()
-	for _, b := range s.Window {
+	for _, b := range s.Window.Blocks {
 		lb, vb, err := e.win.Blocks(b, e.co)
 		if err != nil {
 			return err

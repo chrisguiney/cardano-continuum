@@ -249,12 +249,18 @@ func (s *Steer) Pools() []PoolPlan {
 // Saved is Steer's section of a snapshot. Weights are ascending by kind
 // and Images by pool; no weights means no override.
 type Saved struct {
-	Paused    bool
-	RateK     uint32
-	Waves     uint64
-	Adoptions []wire.Adoption
-	Weights   []wire.WeightRec
-	Images    []wire.ImageRec
+	// Paused stops the agendas.
+	Paused bool `json:"paused,omitzero"`
+	// RateK multiplies every actor's rate; zero is none.
+	RateK uint32 `json:"rate_k,omitzero"`
+	// Waves counts the upgrade waves started.
+	Waves uint64 `json:"waves,omitzero"`
+	// Adoptions are the waves' queued image changes.
+	Adoptions []wire.Adoption `json:"adoptions,omitempty"`
+	// Weights are the operator's intent weight overrides.
+	Weights []wire.WeightRec `json:"weights,omitempty"`
+	// Images are the node images waves moved pool actors to.
+	Images []wire.ImageRec `json:"images,omitempty"`
 }
 
 // Save returns the state a snapshot keeps.

@@ -2,19 +2,18 @@ package engine
 
 import (
 	"context"
-	"reflect"
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/floor"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
-	"github.com/chrisguiney/cardano-continuum/internal/mistake"
 	"github.com/chrisguiney/cardano-continuum/internal/policy"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
-	"github.com/chrisguiney/cardano-continuum/internal/submit"
 )
 
 // epochSlots is honestConfig's epoch length.
@@ -316,24 +315,16 @@ func TestRecoveryBound(t *testing.T) {
 	}
 }
 
-// TestPendingRecRoundTrip: the snapshot record and the in-memory intent
-// carry the same fields, so a checkpoint restores every one of them.
-func TestPendingRecRoundTrip(t *testing.T) {
-	t.Parallel()
-	ref := Ref{Tx: TxID{7}, Index: 2}
-	r := pendingRec{ID: 1, Actor: 2, Tx: TxID{3}, TTL: 4, Cbor: []byte{5}, Awaiting: true,
-		M: submit.Machine{State: submit.Pending, Attempts: 2, Sent: true}, To: 6, Amount: 7, Txs: []TxID{{3}}, NotBefore: 8,
-		Refill: true, Kind: "k", Action: &ref, Choice: 1, Locked: &ref, Epoch: 9, Register: true, Update: true,
-		Injected: mistake.Of(mistake.DoubleSubmit), Carried: mistake.Of(mistake.DoubleSubmit), Lost: 10,
-		Attack: "a", Want: &wantRec{Classes: []string{"c"}, Accept: true}, Rivals: []Rival{{ID: TxID{4}}}, Jump: true,
-		GovType: "g", Contract: 11, Power: 12, Probe: true}
-	v := reflect.ValueOf(r)
-	for i := range v.NumField() {
-		if v.Field(i).IsZero() {
-			t.Fatalf("fixture leaves %s zero", v.Type().Field(i).Name)
-		}
+// TestRestoreRefusesOldSnapshot: a checkpoint a CBOR build wrote, or one of
+// another snapshot version, is refused with an error naming why, never read.
+func TestRestoreRefusesOldSnapshot(t *testing.T) {
+	cfg := testConfig(t, 3, 2)
+	// A CBOR map whose key 1 is version 7: how a CBOR snapshot starts.
+	if _, err := Restore(cfg, []byte{0xb8, 0x1a, 0x01, 0x07}); !errors.Is(err, eventlog.ErrOldFormat) {
+		t.Fatalf("CBOR snapshot: err = %v, want ErrOldFormat", err)
 	}
-	if got := recOf(pendingOf(r)); !reflect.DeepEqual(got, r) {
-		t.Fatalf("round trip\n got %+v\nwant %+v", got, r)
+	_, err := Restore(cfg, []byte(`{"version":7}`))
+	if err == nil || !strings.Contains(err.Error(), "snapshot version 7") {
+		t.Fatalf("version 7 snapshot: err = %v", err)
 	}
 }

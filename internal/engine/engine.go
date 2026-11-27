@@ -239,24 +239,28 @@ func (e *Engine) Snapshot() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	ps, err := e.pay.Save()
 	if err != nil {
 		return nil, fmt.Errorf("engine: ledger: %w", err)
 	}
-	ct := e.in.Save()
-	s := snapshot{Version: snapshotVersion, Now: e.clk.Now(), NextIntent: ps.NextID, Conf: wi.Conf, Fees: wi.Fees, Foreign: wi.Foreign, RefillAt: e.fc.Save(), Deposits: ps.Deposits, Market: e.pc.Save(), Lost: e.jd.Lost(),
-		Contracts: ct.N, DeployAt: ct.At, DeployN: ct.Drawn}
-	s.Actors, s.Births = e.co.Save()
-	s.Window, s.View = wi.Blocks, wi.View
-	for _, p := range ps.Pending {
-		s.Pending = append(s.Pending, recOf(p))
+
+	actors, births := e.co.Save()
+	charges, contested := e.adv.Save()
+	s := snapshot{
+		Version:   snapshotVersion,
+		Now:       e.clk.Now(),
+		Market:    e.pc.Save(),
+		Contracts: e.in.Save(),
+		Steer:     e.st.Save(),
+		Floor:     e.fl.Save(),
+		Cohort:    cohortRec{Actors: actors, Births: births},
+		RefillAt:  e.fc.Save(),
+		Attack:    attackRec{Charges: charges, Contested: contested},
+		Pay:       ps,
+		Lost:      e.jd.Lost(),
+		Window:    wi,
 	}
-	s.Ledger = ledgerBlob{Version: ps.Ledger.Version, Data: ps.Ledger.Data}
-	fs := e.fl.Save()
-	s.Dark, s.Down, s.Repairs, s.Stalled = fs.Dark, fs.Down, fs.Repairs, fs.Stalled
-	ss := e.st.Save()
-	s.Paused, s.RateK, s.Waves, s.Adoptions, s.Weights, s.Images = ss.Paused, ss.RateK, ss.Waves, ss.Adoptions, ss.Weights, ss.Images
-	s.Charges, s.Contested = e.adv.Save()
 	return eventlog.Encode(s)
 }
 
@@ -308,7 +312,7 @@ func (e *Engine) Handle(ctx context.Context, in eventlog.Record) ([]eventlog.Rec
 				return nil, fmt.Errorf("engine: decode block content: %w", err)
 			}
 		}
-		if err = e.applyBlock(ctx, in.At, blockRec{Point: b.Point, Txs: c.Txs, Number: c.Number}); err == nil {
+		if err = e.applyBlock(ctx, in.At, wire.Block{Point: b.Point, Txs: c.Txs, Number: c.Number}); err == nil {
 			e.jd.Block(b.Point, c.Txs)
 			err = e.jd.Watch(in.At, from, nil, nil)
 		}
@@ -475,7 +479,7 @@ func (e *Engine) submitResult(ctx context.Context, at sched.Time, r SubmitResult
 // applyBlock pushes a block onto the volatile window and the ledger's view.
 // A block with K successors is settled: its fees and foreign outputs count,
 // and the ledger reports the payments it settled or killed.
-func (e *Engine) applyBlock(ctx context.Context, at sched.Time, b blockRec) error {
+func (e *Engine) applyBlock(ctx context.Context, at sched.Time, b wire.Block) error {
 	lb, vb, err := e.win.Blocks(b, e.co)
 	if err != nil {
 		return err

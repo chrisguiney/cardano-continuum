@@ -3,7 +3,9 @@ package engine
 import (
 	"bytes"
 	"context"
+	"encoding/json/jsontext"
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
@@ -163,4 +165,66 @@ func BenchmarkFakeRun1000(b *testing.B) {
 		recs += w.log.LastSeq()
 	}
 	b.ReportMetric(float64(recs)/b.Elapsed().Seconds(), "events/s")
+}
+
+// TestDeterminismSnapshotBytes: two engines built independently from the
+// same log encode the same snapshot bytes, and a restored engine encodes
+// them again. Map order, float formatting or pointer identity leaking into
+// the encoding shows up here as a difference.
+func TestDeterminismSnapshotBytes(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig(t, 14, 6)
+	var snaps [][]byte
+	for range 2 {
+		w := newWorld(t, cfg)
+		w.run(90_000, 15, nil)
+		snaps = append(snaps, w.finalSnapshot())
+	}
+	if !bytes.Equal(snaps[0], snaps[1]) {
+		t.Fatalf("independent builds encode %d and %d bytes, not the same", len(snaps[0]), len(snaps[1]))
+	}
+
+	r, err := Restore(cfg, snaps[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := r.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(again, snaps[0]) {
+		t.Fatal("a restored engine encodes a different snapshot")
+	}
+}
+
+// TestDeterminismSnapshotSections: the snapshot is one section per
+// component, in load order.
+func TestDeterminismSnapshotSections(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t, testConfig(t, 14, 4))
+	w.run(30_000, 0, nil)
+	dec := jsontext.NewDecoder(bytes.NewReader(w.finalSnapshot()))
+	if _, err := dec.ReadToken(); err != nil {
+		t.Fatal(err)
+	}
+	var keys []string
+	for dec.PeekKind() != '}' {
+		k, err := dec.ReadToken()
+		if err != nil {
+			t.Fatal(err)
+		}
+		keys = append(keys, k.String())
+		if err := dec.SkipValue(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := []string{"version", "now", "market", "contracts", "steer", "floor", "cohort", "refill_at", "attack", "pay", "lost", "window"}
+	if !slices.Equal(slices.DeleteFunc(slices.Clone(want), func(k string) bool { return !slices.Contains(keys, k) }), keys) {
+		t.Fatalf("sections %v, want a subsequence of %v", keys, want)
+	}
+	for _, k := range []string{"version", "now", "cohort", "pay", "window"} {
+		if !slices.Contains(keys, k) {
+			t.Fatalf("section %q missing from %v", k, keys)
+		}
+	}
 }

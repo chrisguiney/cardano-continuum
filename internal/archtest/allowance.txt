@@ -7,8 +7,6 @@ files internal/engine 45
 members internal/agenda world 22
 members internal/chain par 23
 members internal/engine Engine 30
-members internal/engine pendingRec 30
-members internal/engine snapshot 31
 members internal/explorer TxView 27
 members internal/fakechain ledgerView 25
 members internal/keys Store 22

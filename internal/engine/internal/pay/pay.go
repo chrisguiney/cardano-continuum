@@ -93,9 +93,14 @@ func (pa *Pay) Genesis(cfg plan.Config, utxos []plan.Utxo) error {
 // Saved is the bridge's section of a snapshot: the counters, the ledger's
 // blob, and the unfinished intents, ascending by ID.
 type Saved struct {
-	NextID, Deposits uint64
-	Ledger           store.Blob
-	Pending          []*wire.Pending
+	// NextID is the last intent ID claimed.
+	NextID uint64 `json:"next_id"`
+	// Deposits is the lovelace the engine's certificates and proposals hold.
+	Deposits uint64 `json:"deposits,omitzero"`
+	// Ledger is the planner ledger's blob.
+	Ledger store.Blob `json:"ledger"`
+	// Pending are the unfinished intents; Load leaves them to Retry.Load.
+	Pending []*wire.Pending `json:"pending,omitempty"`
 }
 
 // Save is the bridge's snapshot section. The intents are the book's own.

@@ -104,10 +104,11 @@ func (ct *Contracts) pick(r *rand.Rand) uint64 {
 // State is the deployment state a snapshot keeps.
 type State struct {
 	// N is how many contracts are deployed, at least one.
-	N uint64
-	// At is the next deployment and Drawn how many times its time was drawn.
-	At    sched.Time
-	Drawn uint64
+	N uint64 `json:"n,omitzero"`
+	// At is the next deployment.
+	At sched.Time `json:"at,omitzero"`
+	// Drawn is how many times the next deployment's time was drawn.
+	Drawn uint64 `json:"drawn,omitzero"`
 }
 
 // Save is the state a snapshot keeps.
