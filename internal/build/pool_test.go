@@ -5,6 +5,8 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/blinklabs-io/gouroboros/cbor"
+
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 )
@@ -108,4 +110,30 @@ func TestPoolRetirement(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.rejects(bad.Tx, fakechain.PoolNotRegistered)
+}
+
+// A pool with no relays encodes them as an empty list. cardano-node's
+// decoder wants a list there and drops the submission connection on the
+// null a nil slice encodes as ("expected list len or indef"), so no
+// population pool ever registered on a live devnet.
+func TestPoolCertEncodesNoRelaysAsList(t *testing.T) {
+	h := newHarness(t)
+	c, err := h.b.Pool().poolCert(h.alice, h.poolReq(9, h.spend()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := cbor.Encode(&c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields []cbor.RawMessage
+	if _, err := cbor.Decode(raw, &fields); err != nil {
+		t.Fatal(err)
+	}
+	if len(fields) != 10 {
+		t.Fatalf("certificate has %d fields, want 10", len(fields))
+	}
+	if relays := fields[8]; len(relays) == 0 || relays[0]>>5 != 4 {
+		t.Fatalf("relays encode as %x, want a CBOR list", []byte(relays))
+	}
 }

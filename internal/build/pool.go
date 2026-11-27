@@ -84,6 +84,13 @@ func (f Pool) poolCert(w keys.Wallet, p PoolRegistration) (common.PoolRegistrati
 		return common.PoolRegistrationCertificate{}, fmt.Errorf("build: pool margin %v outside [0, 1]", p.Margin)
 	}
 	owner := w.StakeKeyHash()
+	// A nil slice encodes as CBOR null, which cardano-node's decoder
+	// refuses where the relay list goes, dropping the connection.
+	relays := p.Relays
+	if relays == nil {
+		relays = []common.PoolRelay{}
+	}
+
 	c := common.PoolRegistrationCertificate{
 		CertType:     uint(common.CertificateTypePoolRegistration),
 		Operator:     common.PoolKeyHash(p.Cold.KeyHash()),
@@ -92,7 +99,7 @@ func (f Pool) poolCert(w keys.Wallet, p PoolRegistration) (common.PoolRegistrati
 		Cost:         p.Cost,
 		Margin:       cbor.Rat{Rat: new(big.Rat).Set(p.Margin)},
 		PoolOwners:   []common.AddrKeyHash{common.AddrKeyHash(owner)},
-		Relays:       p.Relays,
+		Relays:       relays,
 		PoolMetadata: p.Metadata,
 	}
 	if err := c.SetRewardAccountCredential(stakeCred(w), uint(f.b.params.NetworkID)); err != nil {
