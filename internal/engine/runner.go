@@ -207,7 +207,7 @@ func Start(ctx context.Context, cfg Config, d Deps) (*Runner, error) {
 	for _, s := range r.eng.InFlight() {
 		r.resumed[s.Intent] = true
 	}
-	r.log.Info("engine started", "covers", covers, "log_seq", d.Log.LastSeq(), "actors", r.eng.Actors())
+	r.log.Info("engine started", "covers", covers, "log_seq", d.Log.LastSeq(), "actors", r.eng.Summary().Actors)
 	if err := r.effects(ctx); err != nil {
 		return nil, err
 	}
@@ -323,7 +323,7 @@ func (r *Runner) intersect(ctx context.Context) error {
 		return fmt.Errorf("engine: find intersect: %w", err)
 	}
 	r.follow = f
-	wrote, err := r.sess.Intersect(ctx, r.d.Clock.Now(), r.eng.Tip(), at)
+	wrote, err := r.sess.Intersect(ctx, r.d.Clock.Now(), r.eng.Summary().Tip, at)
 	if err != nil {
 		return err
 	}

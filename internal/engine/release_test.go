@@ -132,8 +132,8 @@ func TestTransportErrorKeepsReservation(t *testing.T) {
 	}
 	p := readPayments(t, l)
 	p.paidOnce(t, p.submitted[0].Intent)
-	if e := r.Engine(); e.Supply() != genesisTotal(t, w.cfg) {
-		t.Fatalf("supply %d, genesis %d", e.Supply(), genesisTotal(t, w.cfg))
+	if e := r.Engine(); e.Summary().Supply != genesisTotal(t, w.cfg) {
+		t.Fatalf("supply %d, genesis %d", e.Summary().Supply, genesisTotal(t, w.cfg))
 	}
 }
 
@@ -211,8 +211,8 @@ func TestFirstSendRejectionRefuses(t *testing.T) {
 	if p.confirmed[first.Intent] != 1 {
 		t.Fatalf("intent %d confirmed %d times, want the rebuilt attempt once", first.Intent, p.confirmed[first.Intent])
 	}
-	if e := r.Engine(); e.Supply() != genesisTotal(t, w.cfg) {
-		t.Fatalf("supply %d, genesis %d", e.Supply(), genesisTotal(t, w.cfg))
+	if e := r.Engine(); e.Summary().Supply != genesisTotal(t, w.cfg) {
+		t.Fatalf("supply %d, genesis %d", e.Summary().Supply, genesisTotal(t, w.cfg))
 	}
 }
 
@@ -547,7 +547,7 @@ func TestRolledBackAttemptIsSentAgain(t *testing.T) {
 	if len(e.InFlight()) != 0 {
 		t.Fatal("an accepted payment is still in flight")
 	}
-	before := e.Tip()
+	before := e.Summary().Tip
 	content, err := eventlog.Encode(BlockContent{Txs: []TxDigest{{ID: sub.ID, Inputs: sub.Inputs}}})
 	if err != nil {
 		t.Fatal(err)

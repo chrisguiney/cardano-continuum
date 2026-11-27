@@ -93,7 +93,7 @@ func TestMistakesFakeRun(t *testing.T) {
 	if tally.Lost == 0 {
 		t.Error("no lovelace lost to a wrong address")
 	}
-	if s, g := p.r.Engine().Supply(), genesisTotal(t, cfg); s != g {
+	if s, g := p.r.Engine().Summary().Supply, genesisTotal(t, cfg); s != g {
 		t.Errorf("supply %d, genesis %d", s, g)
 	}
 }

@@ -46,7 +46,7 @@ func TestRestartAfterOfflineRollback(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, testConfig(t, 5, 6))
 	p := cleanRun(t, w, 120_000)
-	oldTip := p.r.Engine().Tip()
+	oldTip := p.r.Engine().Summary().Tip
 	p.stop(t)
 
 	if err := w.chain.Inject(fakechain.Rollback{Depth: 2}); err != nil {
@@ -65,10 +65,10 @@ func TestRestartAfterOfflineRollback(t *testing.T) {
 	defer p.stop(t)
 	e := p.r.Engine()
 	tip := w.chain.Tip()
-	if e.Tip().Slot != tip.Slot || !bytes.Equal(e.Tip().Hash, tip.Hash) {
-		t.Fatalf("engine tip %d, chain tip %d", e.Tip().Slot, tip.Slot)
+	if e.Summary().Tip.Slot != tip.Slot || !bytes.Equal(e.Summary().Tip.Hash, tip.Hash) {
+		t.Fatalf("engine tip %d, chain tip %d", e.Summary().Tip.Slot, tip.Slot)
 	}
-	if samePoint(e.Tip(), oldTip) {
+	if samePoint(e.Summary().Tip, oldTip) {
 		t.Fatal("the chain did not move past the old tip")
 	}
 	if want, got := derive(t, w.cfg, w.chain), e.Balances(); !sameBalances(want, got) {
@@ -112,7 +112,7 @@ func TestIntersectionHandledAsRollback(t *testing.T) {
 	if rb.To.Slot != want.Slot || !bytes.Equal(rb.To.Hash, want.Hash) {
 		t.Fatalf("RolledBack to slot %d, want the intersection %d", rb.To.Slot, want.Slot)
 	}
-	if tip := p.r.Engine().Tip(); tip.Slot != want.Slot {
+	if tip := p.r.Engine().Summary().Tip; tip.Slot != want.Slot {
 		t.Fatalf("engine tip %d before the next block, want %d", tip.Slot, want.Slot)
 	}
 }
@@ -214,7 +214,7 @@ func TestCrashInjectionConverges(t *testing.T) {
 			t.Fatal(err)
 		}
 		tip := w.chain.Tip()
-		if e := p.r.Engine().Tip(); e.Slot != tip.Slot || !bytes.Equal(e.Hash, tip.Hash) {
+		if e := p.r.Engine().Summary().Tip; e.Slot != tip.Slot || !bytes.Equal(e.Hash, tip.Hash) {
 			t.Fatalf("seed %d: engine tip %d, chain tip %d", seed, e.Slot, tip.Slot)
 		}
 		cp, err := p.db.LoadCheckpoint(context.Background())

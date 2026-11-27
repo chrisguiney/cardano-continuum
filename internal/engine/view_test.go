@@ -61,7 +61,7 @@ func TestViewFoldsCertificates(t *testing.T) {
 		t.Fatal(err)
 	}
 	n := feedBlocks(t, e, fc, 0)
-	before := e.Tip()
+	before := e.Summary().Tip
 	if err := fc.Submit(context.Background(), fakechain.EraConway, got.Tx); err != nil {
 		t.Fatal(err)
 	}

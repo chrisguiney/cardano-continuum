@@ -315,6 +315,27 @@ func (e *Engine) Now() sched.Time { return e.clk.Now() }
 // NextEvent is when the engine next wants a Tick.
 func (e *Engine) NextEvent() (sched.Time, bool) { return e.clk.Peek() }
 
+// Summary is the engine's state at a glance, for progress reports.
+type Summary struct {
+	// Supply is everything the settled state accounts for: owned outputs,
+	// fees, outputs to addresses outside the population (locked script
+	// outputs among them) and the deposits the engine's certificates and
+	// proposals hold. It equals the genesis total while value is conserved.
+	Supply uint64
+	// Tip is the last block the engine applied.
+	Tip eventlog.ChainPoint
+	// Pending is the number of payments not yet confirmed or released.
+	Pending int
+	// Actors is the number of actors ever spawned.
+	Actors int
+}
+
+// Summary is the engine's state at a glance.
+func (e *Engine) Summary() Summary {
+	sv := e.win.Saved()
+	return Summary{Supply: e.pay.Supply() + sv.Fees + sv.Foreign, Tip: e.win.Tip(), Pending: e.pay.Len(), Actors: e.co.Pop().Len()}
+}
+
 // Confirmed is the K-deep point durable state comes from.
 func (e *Engine) Confirmed() eventlog.ChainPoint { return e.win.Confirmed() }
 
@@ -322,9 +343,6 @@ func (e *Engine) Confirmed() eventlog.ChainPoint { return e.win.Confirmed() }
 // point and every volatile block above it, so FindIntersect never has to fall
 // back below the confirmed point.
 func (e *Engine) Points() []eventlog.ChainPoint { return e.win.Points() }
-
-// Tip is the last block the engine applied.
-func (e *Engine) Tip() eventlog.ChainPoint { return e.win.Tip() }
 
 // Spendable is the lovelace the ledger would offer the actor's next
 // payment: its settled outputs that are neither reserved nor spent in a
@@ -342,29 +360,14 @@ func (e *Engine) Balances() map[uint64]uint64 {
 // Lost is the lovelace settled payments sent to addresses nobody holds.
 func (e *Engine) Lost() uint64 { return e.jd.Lost() }
 
-// Supply is everything the settled state accounts for: owned outputs, fees,
-// outputs to addresses outside the population (locked script outputs among
-// them) and the deposits the engine's certificates and proposals hold. It
-// equals the genesis total while value is conserved.
-func (e *Engine) Supply() uint64 {
-	sv := e.win.Saved()
-	return e.pay.Supply() + sv.Fees + sv.Foreign
-}
-
 // Reservations is the ledger's blob, for store.Checkpoint.Reservations. The
 // snapshot carries the same bytes.
 func (e *Engine) Reservations() (store.Blob, error) { return e.pay.Blob() }
-
-// Actors is the number of actors ever spawned.
-func (e *Engine) Actors() int { return e.co.Pop().Len() }
 
 // IntentOf is the intent an unfinished attempt belongs to.
 func (e *Engine) IntentOf(tx TxID) (uint64, bool) {
 	return e.pay.Of(tx)
 }
-
-// Pending is the number of payments not yet confirmed or released.
-func (e *Engine) Pending() int { return e.pay.Len() }
 
 // Submission is a payment waiting for the node's answer; see
 // pay.Submission.

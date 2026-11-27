@@ -410,7 +410,7 @@ func summarize(out io.Writer, cfg engine.Config, r *engine.Runner, chain *fakech
 	for _, f := range funds {
 		genesis += f.Lovelace
 	}
-	e := r.Engine()
+	e := r.Engine().Summary()
 	recs := mem.LastSeq()
 	w := &writer{out: out}
 	// The chain also holds the genesis pools' owners' stake, which no
@@ -423,11 +423,11 @@ func summarize(out io.Writer, cfg engine.Config, r *engine.Runner, chain *fakech
 	for _, o := range owners {
 		onChain += o.Lovelace
 	}
-	conserved := e.Supply() == genesis && chain.UnspentLovelace()+chain.Fees()+chain.Deposits() == onChain
+	conserved := e.Supply == genesis && chain.UnspentLovelace()+chain.Fees()+chain.Deposits() == onChain
 	w.printf("epochs %d, actors %d (genesis %d), blocks %d, records %d\n",
-		epochs, e.Actors(), len(funds), len(chain.Blocks()), recs)
+		epochs, e.Actors, len(funds), len(chain.Blocks()), recs)
 	w.printf("payments: submitted %d, confirmed %d, released %d, skipped %d, pending %d\n",
-		kinds[engine.KindSubmitted], kinds[engine.KindConfirmed], kinds[engine.KindReleased], kinds[engine.KindSkipped], e.Pending())
+		kinds[engine.KindSubmitted], kinds[engine.KindConfirmed], kinds[engine.KindReleased], kinds[engine.KindSkipped], e.Pending)
 	w.printf("value conserved: %t (genesis %d lovelace, fees %d)\n", conserved, genesis, chain.Fees())
 	t, err := engine.AuditLog(context.Background(), mem)
 	if err != nil {

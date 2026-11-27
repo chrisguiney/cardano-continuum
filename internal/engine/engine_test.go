@@ -100,8 +100,8 @@ func TestActorsChangeOnlyAtDepthK(t *testing.T) {
 	if !samePoint(e.Confirmed(), point(1)) {
 		t.Fatalf("confirmed = %v, want block 1", e.Confirmed())
 	}
-	if e.Supply() != genesisTotal(t, cfg) {
-		t.Fatalf("supply %d, genesis %d", e.Supply(), genesisTotal(t, cfg))
+	if e.Summary().Supply != genesisTotal(t, cfg) {
+		t.Fatalf("supply %d, genesis %d", e.Summary().Supply, genesisTotal(t, cfg))
 	}
 }
 
@@ -133,8 +133,8 @@ func TestRollbackBelowConfirmedIsError(t *testing.T) {
 		t.Fatalf("rollback to an unknown point: err = %v", err)
 	}
 	mustHandle(t, e, rollbackInput(t, point(2)))
-	if !samePoint(e.Tip(), point(2)) {
-		t.Fatalf("rollback to the confirmed point: tip %v", e.Tip())
+	if !samePoint(e.Summary().Tip, point(2)) {
+		t.Fatalf("rollback to the confirmed point: tip %v", e.Summary().Tip)
 	}
 }
 

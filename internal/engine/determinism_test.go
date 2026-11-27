@@ -130,8 +130,8 @@ func TestDeterminismValueConserved(t *testing.T) {
 	defer p.stop(t)
 	e := p.r.Engine()
 	total := genesisTotal(t, cfg)
-	if e.Supply() != total {
-		t.Fatalf("engine accounts for %d of %d lovelace", e.Supply(), total)
+	if e.Summary().Supply != total {
+		t.Fatalf("engine accounts for %d of %d lovelace", e.Summary().Supply, total)
 	}
 	if got := w.chain.UnspentLovelace() + w.chain.Fees(); got != total {
 		t.Fatalf("chain holds %d of %d lovelace", got, total)

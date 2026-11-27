@@ -63,8 +63,8 @@ func TestFaucetFundsPopulation(t *testing.T) {
 		t.Fatal(err)
 	}
 	e := p.r.Engine()
-	if total := genesisTotal(t, cfg); e.Supply() != total || w.chain.UnspentLovelace()+w.chain.Fees() != total {
-		t.Fatalf("supply %d, chain %d, genesis %d", e.Supply(), w.chain.UnspentLovelace()+w.chain.Fees(), total)
+	if total := genesisTotal(t, cfg); e.Summary().Supply != total || w.chain.UnspentLovelace()+w.chain.Fees() != total {
+		t.Fatalf("supply %d, chain %d, genesis %d", e.Summary().Supply, w.chain.UnspentLovelace()+w.chain.Fees(), total)
 	}
 	if want := derive(t, cfg, w.chain); !sameBalances(want, e.Balances()) {
 		t.Fatalf("engine balances %v, Derive(chain) %v", e.Balances(), want)

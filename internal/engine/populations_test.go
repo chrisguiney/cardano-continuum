@@ -156,7 +156,7 @@ func TestPopulationsAct(t *testing.T) {
 		}
 	}
 	e := p.r.Engine()
-	if s, g := e.Supply(), genesisTotal(t, cfg); s != g {
+	if s, g := e.Summary().Supply, genesisTotal(t, cfg); s != g {
 		t.Errorf("supply %d, genesis %d", s, g)
 	}
 	if n := e.Contracts(); n < 2 {
