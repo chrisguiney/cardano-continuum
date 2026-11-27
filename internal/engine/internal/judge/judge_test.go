@@ -94,7 +94,7 @@ func TestLost(t *testing.T) {
 	if j.Lost() != 7 {
 		t.Fatalf("lost %d", j.Lost())
 	}
-	j.SetLost(1)
+	j.Load(1)
 	if j.Lost() != 1 {
 		t.Fatalf("lost %d after restore", j.Lost())
 	}

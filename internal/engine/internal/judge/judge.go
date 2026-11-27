@@ -142,8 +142,8 @@ func (j *Judge) AddLost(n uint64) { j.lost += n }
 // Lost is the lovelace settled payments sent to addresses nobody holds.
 func (j *Judge) Lost() uint64 { return j.lost }
 
-// SetLost restores the count from a snapshot.
-func (j *Judge) SetLost(n uint64) { j.lost = n }
+// Load restores the count from a snapshot; Lost is what one records.
+func (j *Judge) Load(n uint64) { j.lost = n }
 
 // Answer compares the node's answers to the current attempt with the
 // verdict set its mistakes call for. "Inputs spent" is expected once the

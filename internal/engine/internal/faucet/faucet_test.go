@@ -131,7 +131,7 @@ func TestRefillTopsUpOnlyWalletsUnderHalf(t *testing.T) {
 	if len(r.j.got) != 1 || r.j.got[0].kind != wire.KindRefill || r.b.next != 1 || !r.b.pending[1].Refill {
 		t.Fatalf("round not started: %+v, next %d", r.j.got, r.b.next)
 	}
-	if want := r.f.At(); len(r.c.at) != 1 || r.c.at[0] != want || want != 9000 {
+	if want := r.f.Save(); len(r.c.at) != 1 || r.c.at[0] != want || want != 9000 {
 		t.Fatalf("next round %d, queued %v", want, r.c.at)
 	}
 }
@@ -180,12 +180,12 @@ func TestResult(t *testing.T) {
 	}
 }
 
-func TestStartAndResume(t *testing.T) {
+func TestStartAndLoad(t *testing.T) {
 	t.Parallel()
 	r := newRig(t, 1)
 	r.f.Start()
-	r.f.Resume(5000)
-	if r.f.At() != 5000 || !slices.Equal(r.c.at, []sched.Time{0, 5000}) {
-		t.Fatalf("at %d queued %v", r.f.At(), r.c.at)
+	r.f.Load(5000)
+	if r.f.Save() != 5000 || !slices.Equal(r.c.at, []sched.Time{0, 5000}) {
+		t.Fatalf("at %d queued %v", r.f.Save(), r.c.at)
 	}
 }

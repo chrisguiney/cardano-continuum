@@ -128,11 +128,11 @@ type Faucet struct {
 	at sched.Time
 }
 
-// New returns a faucet that does nothing until Start or Resume.
+// New returns a faucet that does nothing until Start or Load.
 func New(sp Spec, env Env) *Faucet { return &Faucet{spec: sp, env: env} }
 
-// At is the next round's time.
-func (f *Faucet) At() sched.Time { return f.at }
+// Save is the next round's time, the faucet's snapshot section.
+func (f *Faucet) Save() sched.Time { return f.at }
 
 // Start queues the first round at time zero.
 func (f *Faucet) Start() {
@@ -140,8 +140,8 @@ func (f *Faucet) Start() {
 	f.env.Clock.Refill(0)
 }
 
-// Resume queues the round a snapshot saved.
-func (f *Faucet) Resume(at sched.Time) {
+// Load queues the round a snapshot saved.
+func (f *Faucet) Load(at sched.Time) {
 	f.at = at
 	f.env.Clock.Refill(at)
 }

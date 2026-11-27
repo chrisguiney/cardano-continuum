@@ -34,9 +34,9 @@ func TestBurstIsOneAtBaseline(t *testing.T) {
 func TestMarketRoundTrips(t *testing.T) {
 	pc := newTest(nil)
 	pc.Excite(500)
-	m := pc.Market()
+	m := pc.Save()
 	other := newTest(nil)
-	other.SetMarket(m)
+	other.Load(m)
 	if other.Burst(2000) != pc.Burst(2000) {
 		t.Fatal("restored market differs")
 	}

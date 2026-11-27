@@ -110,8 +110,8 @@ type State struct {
 	Drawn uint64
 }
 
-// Saved is the state a snapshot keeps.
-func (ct *Contracts) Saved() State { return State{N: ct.n, At: ct.at, Drawn: ct.drawn} }
+// Save is the state a snapshot keeps.
+func (ct *Contracts) Save() State { return State{N: ct.n, At: ct.at, Drawn: ct.drawn} }
 
 // Load restores the state of a snapshot: it books the deployed contracts'
 // addresses again and schedules the next deployment.

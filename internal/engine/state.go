@@ -40,8 +40,8 @@ func (e *Engine) Snapshot() ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("engine: ledger: %w", err)
 	}
-	ct := e.in.Saved()
-	s := snapshot{Version: snapshotVersion, Now: e.clk.Now(), NextIntent: ps.NextID, Conf: wi.Conf, Fees: wi.Fees, Foreign: wi.Foreign, RefillAt: e.fc.At(), Deposits: ps.Deposits, Market: e.pc.Market(), Lost: e.jd.Lost(),
+	ct := e.in.Save()
+	s := snapshot{Version: snapshotVersion, Now: e.clk.Now(), NextIntent: ps.NextID, Conf: wi.Conf, Fees: wi.Fees, Foreign: wi.Foreign, RefillAt: e.fc.Save(), Deposits: ps.Deposits, Market: e.pc.Save(), Lost: e.jd.Lost(),
 		Contracts: ct.N, DeployAt: ct.At, DeployN: ct.Drawn}
 	s.Actors, s.Births = e.co.Save()
 	s.Window, s.View = wi.Blocks, wi.View
@@ -57,10 +57,18 @@ func (e *Engine) Snapshot() ([]byte, error) {
 	return eventlog.Encode(s)
 }
 
-// Restore rebuilds an engine from a Snapshot. The census, queue and indexes
-// are derived again: actors are respawned from the same root seed, which
-// reproduces their traits, and walked to their recorded state. The ledger
-// stores only its settled part, so the window is fed to it again.
+// Restore rebuilds an engine from a Snapshot: each component loads its
+// section. The census, queue and indexes are derived again: actors are
+// respawned from the same root seed, which reproduces their traits, and
+// walked to their recorded state. The ledger stores only its settled part,
+// so the window is fed to it again.
+//
+// The load order is load-bearing. Loads that queue events (steer's
+// adoptions, the cohort's hazards, acts and births, the faucet's round, the
+// retry wakes) push them in this order, and the queue hands out events at
+// one time in push order before sorting the batch, so moving a load
+// reorders a run. The attack accounts load after the cohort, and the
+// pending intents after the window is replayed onto the ledger.
 func Restore(cfg Config, raw []byte) (*Engine, error) {
 	var s snapshot
 	if err := eventlog.Decode(raw, &s); err != nil {
@@ -74,8 +82,8 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 		return nil, err
 	}
 	// Between inputs the last Tick's time is the clock.
-	e.clk.Restore(s.Now)
-	e.pc.SetMarket(s.Market)
+	e.clk.Load(s.Now)
+	e.pc.Load(s.Market)
 	if err := e.in.Load(intent.State{N: s.Contracts, At: s.DeployAt, Drawn: s.DeployN}); err != nil {
 		return nil, err
 	}
@@ -85,9 +93,10 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 		return nil, err
 	}
 	if cfg.Faucet > 0 {
-		e.fc.Resume(s.RefillAt)
+		e.fc.Load(s.RefillAt)
 	}
-	// After restoreActor: the actors' ceilings are set, the spends restored.
+	// After the cohort: arming an adversary sets its ceiling, and the spends
+	// load on top of it.
 	e.adv.Load(s.Charges, s.Contested)
 	if err := e.restoreLedger(s); err != nil {
 		return nil, err
@@ -107,7 +116,7 @@ func (e *Engine) restoreLedger(s snapshot) error {
 	if err := e.pay.Load(e.ledgerConfig(), sv); err != nil {
 		return fmt.Errorf("engine: snapshot ledger: %w", err)
 	}
-	e.jd.SetLost(s.Lost)
+	e.jd.Load(s.Lost)
 	led := e.pay.Reads()
 	if conf, _ := chain.PointFromLog(s.Conf); led.ResumePoint() != conf {
 		return fmt.Errorf("engine: snapshot ledger settled at slot %d, engine confirmed slot %d", led.ResumePoint().Slot, s.Conf.Slot)

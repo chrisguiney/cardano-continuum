@@ -74,7 +74,7 @@ func TestContractsStartWithTheGenesisOne(t *testing.T) {
 	if got := in.pick(rand.New(rand.NewPCG(1, 2))); got != 0 {
 		t.Fatalf("pick with one contract = %d, want 0", got)
 	}
-	if s := in.Saved(); s.N != 1 || s.At != population.Never || s.Drawn != 0 {
+	if s := in.Save(); s.N != 1 || s.At != population.Never || s.Drawn != 0 {
 		t.Fatalf("Saved = %+v", s)
 	}
 	if err := in.Load(State{At: population.Never}); err != nil || in.Count() != 1 {

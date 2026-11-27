@@ -72,8 +72,9 @@ func (c *Clock) Now() sched.Time { return c.now }
 // TickTo is the time of the Tick being handled.
 func (c *Clock) TickTo() sched.Time { return c.tickTo }
 
-// Restore sets the clock to t between inputs, as a snapshot restore does.
-func (c *Clock) Restore(t sched.Time) { c.now, c.tickTo = t, t }
+// Load sets the clock to t between inputs, as a snapshot restore does;
+// Now is the time a snapshot records.
+func (c *Clock) Load(t sched.Time) { c.now, c.tickTo = t, t }
 
 // Open starts a Tick to t. It refuses a time before the clock's.
 func (c *Clock) Open(t sched.Time) error {

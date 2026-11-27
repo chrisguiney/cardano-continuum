@@ -71,11 +71,11 @@ func New(spec Spec, env Env) *Pace {
 	return &Pace{Pop: newPop(spec, env), spec: spec, env: env}
 }
 
-// Market is the market signal's state.
-func (pc *Pace) Market() Market { return pc.market }
+// Save is the market signal's state, the pacing's snapshot section.
+func (pc *Pace) Save() Market { return pc.market }
 
-// SetMarket restores the market signal's state.
-func (pc *Pace) SetMarket(m Market) { pc.market = m }
+// Load restores the market signal's state.
+func (pc *Pace) Load(m Market) { pc.market = m }
 
 // Excite records a submission at at.
 func (pc *Pace) Excite(at sched.Time) { pc.market.excite(at) }

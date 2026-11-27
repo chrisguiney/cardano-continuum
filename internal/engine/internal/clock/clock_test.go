@@ -33,7 +33,7 @@ func TestNextSortsSameTimeEvents(t *testing.T) {
 
 func TestOpenRefusesBackwards(t *testing.T) {
 	var c Clock
-	c.Restore(10)
+	c.Load(10)
 	if err := c.Open(9); !errors.Is(err, ErrBackwards) {
 		t.Fatalf("Open(9) = %v, want ErrBackwards", err)
 	}
