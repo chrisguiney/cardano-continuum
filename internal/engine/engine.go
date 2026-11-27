@@ -11,6 +11,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/clock"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/cohort"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/floor"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/intent"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/journal"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/judge"
@@ -83,7 +84,7 @@ type Engine struct {
 	pc    *pace.Pace
 	in    *intent.Intent
 
-	fl *stakeFloor
+	fl *floor.Floor
 
 	// Controls: paused stops the agendas; rateK multiplies every actor's
 	// rate (zero is 1); weights override the profiles' intent weights.
@@ -196,8 +197,8 @@ func newEmpty(cfg Config) (*Engine, error) {
 	}
 	e.retry = pay.NewRetry(pay.Spec{Policy: cfg.retry(), Diagnoser: diag}, e.pay,
 		pay.Env{Actors: hooks{e}, Builder: hooks{e}, Journal: &e.jr, Sched: evsched{&e.clk}, Chain: e.win})
-	if e.fl, err = newFloor(floorSpec{Guard: cfg.floor(), Slots: cfg.Slots, SimulatedPods: cfg.SimulatedPods},
-		floorEnv{floorStake: floorHooks{e}, floorBook: e.pay, floorCensus: floorHooks{e}, floorJournal: &e.jr, floorClock: &e.clk}); err != nil {
+	if e.fl, err = floor.New(floor.Spec{Guard: cfg.floor(), Slots: cfg.Slots, SimulatedPods: cfg.SimulatedPods},
+		floor.Env{Stake: floorHooks{e}, Book: e.pay, Census: floorHooks{e}, Journal: &e.jr, Clock: &e.clk}); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrConfig, err)
 	}
 	var genesis uint64

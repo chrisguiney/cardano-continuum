@@ -14,6 +14,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/clock"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/cohort"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/floor"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/intent"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/pay"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/window"
@@ -116,7 +117,7 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 			e.clk.Push(a.At, clock.Event{Kind: clock.Adopt, Intent: uint64(i)})
 		}
 	}
-	e.fl.Load(floorSaved{Dark: s.Dark, Down: s.Down, Repairs: s.Repairs, Stalled: s.Stalled})
+	e.fl.Load(floor.Saved{Dark: s.Dark, Down: s.Down, Repairs: s.Repairs, Stalled: s.Stalled})
 	for _, r := range s.Actors {
 		if err := e.restoreActor(r); err != nil {
 			return nil, err
@@ -516,15 +517,5 @@ func idList(ids []population.ActorID) []uint64 {
 	for i, id := range ids {
 		out[i] = uint64(id)
 	}
-	return out
-}
-
-// idSet is a set of actors, ascending.
-func idSet(m map[population.ActorID]bool) []uint64 {
-	out := make([]uint64, 0, len(m))
-	for id := range m {
-		out = append(out, uint64(id))
-	}
-	slices.Sort(out)
 	return out
 }

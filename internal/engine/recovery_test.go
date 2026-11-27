@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/chrisguiney/cardano-continuum/internal/build"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/floor"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
 	"github.com/chrisguiney/cardano-continuum/internal/mistake"
@@ -170,7 +171,7 @@ func TestRecoveryIntentsInOneEpoch(t *testing.T) {
 	}
 	stakeOnto(t, e, fc, epochSlots+4*cfg.BlockEvery)
 	at := cfg.Slots.SlotStart(epochSlots + 4*cfg.BlockEvery + 1)
-	e.fl.Load(floorSaved{Dark: []uint64{1}})
+	e.fl.Load(floor.Saved{Dark: []uint64{1}})
 	r := readRecovery(t,
 		mustHandle(t, e, podInput(t, 2, false, at)),
 		mustHandle(t, e, podInput(t, 3, false, at+1000)))
