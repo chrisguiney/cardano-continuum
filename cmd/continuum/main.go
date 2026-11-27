@@ -37,6 +37,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/chrisguiney/cardano-continuum/internal/cli/attack"
 	clibisect "github.com/chrisguiney/cardano-continuum/internal/cli/bisect"
 	clibuild "github.com/chrisguiney/cardano-continuum/internal/cli/build"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/export"
@@ -78,7 +79,7 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 	case "replay":
 		return cmdReplay(ctx, args[1:], out)
 	case "compare":
-		return cmdCompare(ctx, args[1:], out)
+		return attack.Run(ctx, args[1:], out)
 	case "export":
 		return export.Run(ctx, args[1:], out)
 	case "image":
@@ -241,7 +242,7 @@ func summarize(out io.Writer, cfg engine.Config, r *engine.Runner, chain *fakech
 		return err
 	}
 	w.Printf("%s", gov.line())
-	if err := summarizeAttacks(context.Background(), w, mem); err != nil {
+	if err := attack.Summarize(context.Background(), w, mem); err != nil {
 		return err
 	}
 	w.Printf("elapsed %s, %.0f events/s\n", elapsed.Round(time.Millisecond), float64(recs)/elapsed.Seconds())

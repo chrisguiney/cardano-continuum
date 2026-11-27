@@ -1,8 +1,7 @@
-package main
+package attack
 
 import (
 	"context"
-
 	"errors"
 	"fmt"
 	"io"
@@ -15,8 +14,8 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 )
 
-// summarizeAttacks prints what a run's adversaries did, when it had any.
-func summarizeAttacks(ctx context.Context, w *lines.Writer, l eventlog.Reader) error {
+// Summarize prints what a run's adversaries did, when it had any.
+func Summarize(ctx context.Context, w *lines.Writer, l eventlog.Reader) error {
 	m, err := engine.Measure(ctx, l)
 	if err != nil {
 		return err
@@ -30,9 +29,9 @@ func summarizeAttacks(ctx context.Context, w *lines.Writer, l eventlog.Reader) e
 	return nil
 }
 
-// cmdCompare prints the impact table of an attack run's log against a
+// Run prints the impact table of an attack run's log against a
 // control run's: same seed and flags, adversaries off and on.
-func cmdCompare(ctx context.Context, args []string, out io.Writer) error {
+func Run(ctx context.Context, args []string, out io.Writer) error {
 	if len(args) != 2 {
 		return errors.New("usage: continuum compare <control-log> <attack-log>")
 	}
