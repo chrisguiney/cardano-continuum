@@ -44,6 +44,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
+	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/submit"
 )
 
@@ -280,4 +282,14 @@ func Kinds() []Kind {
 		ValueNotConserved, PaidTwice, ReservationLeaked, ReservationDouble, Unreserved,
 		SettledBack, ViewMismatch, Frozen, DeepFork, FloorBreached, RogueAdopted, BlockOverBudget,
 	}
+}
+
+// Record returns f as a log record at simulated time at. The body is f in
+// the log's canonical CBOR, so equal findings give equal bytes.
+func (f Finding) Record(at sched.Time) (eventlog.Record, error) {
+	b, err := eventlog.Encode(f)
+	if err != nil {
+		return eventlog.Record{}, fmt.Errorf("oracle: encode finding %s: %w", f.ID, err)
+	}
+	return eventlog.Record{At: at, Class: eventlog.Decision, Kind: KindFinding, Body: b}, nil
 }
