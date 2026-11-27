@@ -16,7 +16,6 @@ members internal/operator/fakekube Cluster 21
 members internal/plan rig 33
 members internal/policy model 25
 members internal/scenario txSpec 29
-members internal/store Identity 30
 nesting internal/engine/internal/wire DigestOf 4
 nesting internal/fakechain errAs 4
 nesting internal/fakechain validate 4

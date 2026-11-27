@@ -147,23 +147,39 @@ func (n *Idents) kindOf(id population.ActorID, p profile.Profile) string {
 func (n *Idents) staticIdentity(id population.ActorID, st *Actor) store.Identity {
 	w := st.Wallet
 	pk, sk := w.PaymentKeyHash(), w.StakeKeyHash()
-	out := store.Identity{
-		Kind: n.kindOf(id, st.Prof), Agenda: string(st.Prof.Agenda),
-		PaymentAddr: w.Address().String(), StakeAddr: w.StakeAddress().String(),
-		PaymentKeyHash: hex.EncodeToString(pk[:]), StakeKeyHash: hex.EncodeToString(sk[:]),
-	}
+
+	var drep, poolID string
 	if st.Prof.Kind == profile.DRep {
 		d := n.r.Ring.DRep(id)
-		out.DRepID = bech32Of("drep", d[:])
+		drep = bech32Of("drep", d[:])
 	}
 	if pool, ok := n.r.Ring.PoolOf(id); ok {
-		out.PoolID = bech32Of("pool", pool[:])
+		poolID = bech32Of("pool", pool[:])
 	}
+
+	var adv store.Adversary
 	if ad := st.Prof.Adversary; ad != nil {
-		out.CostCeiling, out.Metric = uint64(ad.CostCeiling), ad.SuccessMetric
-		out.Budget, out.Attacks = uint64(st.Prof.Budget), slices.Clone(ad.Attacks)
+		adv = store.Adversary{
+			CostCeiling: uint64(ad.CostCeiling),
+			Metric:      ad.SuccessMetric,
+			Budget:      uint64(st.Prof.Budget),
+			Attacks:     slices.Clone(ad.Attacks),
+		}
 	}
-	return out
+
+	return store.Identity{
+		Kind:   n.kindOf(id, st.Prof),
+		Agenda: string(st.Prof.Agenda),
+		Keys: store.Keys{
+			PaymentAddr:    w.Address().String(),
+			StakeAddr:      w.StakeAddress().String(),
+			PaymentKeyHash: hex.EncodeToString(pk[:]),
+			StakeKeyHash:   hex.EncodeToString(sk[:]),
+			DRepID:         drep,
+			PoolID:         poolID,
+		},
+		Adversary: adv,
+	}
 }
 
 // Identity is the actor's identity now.
@@ -171,39 +187,71 @@ func (n *Idents) Identity(a population.Actor, st *Actor, hs map[population.Actor
 	if !st.IdentOK {
 		st.Ident, st.IdentOK = n.staticIdentity(a.ID, st), true
 	}
-	out := st.Ident
-	out.Competence, out.Care = a.Competence, a.Traits.Care
-	out.Patience, out.LearningRate = a.Traits.Patience, a.Traits.LearningRate
-	out.Frustration = a.Frustration
+	static := st.Ident
+
+	var hazard float64
 	if a.Kind == profile.Wallet {
-		out.Hazard = population.DormancyOnsetRate(st.Prof.Hazards.OnsetRate(), a.Frustration)
+		hazard = population.DormancyOnsetRate(st.Prof.Hazards.OnsetRate(), a.Frustration)
 	}
+
+	var hold store.Holdings
 	if h := hs[a.ID]; h != nil {
-		out.Settled, out.UTxOs, out.Reserved = h.Settled, h.UTxOs, h.Reserved
-		out.InFlight, out.Unconfirmed = h.InFlight, h.Unconfirmed
-		out.Tokens = tokenList(h)
+		hold = store.Holdings{
+			Settled:     h.Settled,
+			UTxOs:       h.UTxOs,
+			Reserved:    h.Reserved,
+			InFlight:    h.InFlight,
+			Unconfirmed: h.Unconfirmed,
+			Tokens:      tokenList(h),
+		}
 	}
+
+	adv := static.Adversary
 	if n.att.Adversary(a.ID) {
-		out.CostSpent = n.att.Spent(a.ID)
+		adv.CostSpent = n.att.Spent(a.ID)
 	}
-	n.delegationOf(&out, a.ID)
-	return out
+
+	return store.Identity{
+		Kind:   static.Kind,
+		Agenda: static.Agenda,
+		Keys:   static.Keys,
+		Traits: store.Traits{
+			Competence:   a.Competence,
+			Care:         a.Traits.Care,
+			Patience:     a.Traits.Patience,
+			LearningRate: a.Traits.LearningRate,
+			Frustration:  a.Frustration,
+			Hazard:       hazard,
+		},
+		Holdings:   hold,
+		Delegation: n.delegationOf(a.ID),
+		Adversary:  adv,
+	}
 }
 
-func (n *Idents) delegationOf(out *store.Identity, id population.ActorID) {
+func (n *Idents) delegationOf(id population.ActorID) store.Delegation {
 	s, ok := n.chain.View().StakeOf(id)
 	if !ok {
-		return
+		return store.Delegation{}
 	}
-	out.StakeRegistered = s.Registered
+
+	var pool, drep string
+	var actor uint64
 	if s.Delegated {
-		out.DelegatedPool = bech32Of("pool", s.Pool[:])
+		pool = bech32Of("pool", s.Pool[:])
 		if pa, ok := n.chain.View().PoolActor(s.Pool); ok {
-			out.DelegatedActor = uint64(pa)
+			actor = uint64(pa)
 		}
 	}
 	if s.Votes {
-		out.DelegatedDRep = drepText(s.DRep)
+		drep = drepText(s.DRep)
+	}
+
+	return store.Delegation{
+		StakeRegistered: s.Registered,
+		DelegatedPool:   pool,
+		DelegatedActor:  actor,
+		DelegatedDRep:   drep,
 	}
 }
 

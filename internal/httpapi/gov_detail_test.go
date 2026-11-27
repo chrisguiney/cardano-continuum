@@ -126,8 +126,8 @@ func voteBody(t *testing.T, action engine.TxID, kind uint8, hash byte, vote uint
 func newGovRig(t *testing.T) *govRig {
 	t.Helper()
 	slots := testSlots(t)
-	owner := store.Identity{Kind: "wallet", Agenda: "network", StakeAddr: rewardAddr(t, 0x51).String()}
-	payee := store.Identity{Kind: "wallet", Agenda: "hodl", StakeAddr: rewardAddr(t, 0x61).String()}
+	owner := store.Identity{Kind: "wallet", Agenda: "network", Keys: store.Keys{StakeAddr: rewardAddr(t, 0x51).String()}}
+	payee := store.Identity{Kind: "wallet", Agenda: "hodl", Keys: store.Keys{StakeAddr: rewardAddr(t, 0x61).String()}}
 	names := fakeNames{rows: []store.ActorRow{identRow(t, 5, "network-5", "active", owner), identRow(t, 6, "hodl-6", "active", payee)}}
 	cur := &conway.ConwayProtocolParameters{
 		MaxTxSize: 16384, KeyDeposit: 2_000_000, A0: &cbor.Rat{Rat: big.NewRat(3, 10)},

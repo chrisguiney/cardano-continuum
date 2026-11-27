@@ -35,14 +35,26 @@ func richSource(t *testing.T) *LogSource {
 		t.Fatal(err)
 	}
 	a1 := store.Identity{
-		Kind: "wallet", Agenda: "hodl", PaymentAddr: "addr_test1qz" + strings.Repeat("x", 80), StakeAddr: "stake_test1uz" + strings.Repeat("y", 40),
-		PaymentKeyHash: strings.Repeat("ab", 28), StakeKeyHash: strings.Repeat("cd", 28),
-		Competence: 0.9, Care: 0.5, Patience: 2, LearningRate: 0.1, Frustration: 0.3, Hazard: 0.002,
-		Settled: 50_000_000, UTxOs: 3, Reserved: 5_000_000, InFlight: 1, Unconfirmed: 5_000_000,
-		Tokens:          []store.Token{{Policy: strings.Repeat("11", 28), Name: "6162", NameText: "ab", Quantity: 7}},
-		StakeRegistered: true, DelegatedPool: "pool1abc", DelegatedDRep: "always_abstain",
+		Kind:   "wallet",
+		Agenda: "hodl",
+		Keys: store.Keys{
+			PaymentAddr: "addr_test1qz" + strings.Repeat("x", 80), StakeAddr: "stake_test1uz" + strings.Repeat("y", 40),
+			PaymentKeyHash: strings.Repeat("ab", 28), StakeKeyHash: strings.Repeat("cd", 28),
+		},
+		Traits: store.Traits{Competence: 0.9, Care: 0.5, Patience: 2, LearningRate: 0.1, Frustration: 0.3, Hazard: 0.002},
+		Holdings: store.Holdings{
+			Settled: 50_000_000, UTxOs: 3, Reserved: 5_000_000, InFlight: 1, Unconfirmed: 5_000_000,
+			Tokens: []store.Token{{Policy: strings.Repeat("11", 28), Name: "6162", NameText: "ab", Quantity: 7}},
+		},
+		Delegation: store.Delegation{StakeRegistered: true, DelegatedPool: "pool1abc", DelegatedDRep: "always_abstain"},
 	}
-	a2 := store.Identity{Kind: "adversary", Agenda: "profit", PaymentAddr: "addr_test1qq" + strings.Repeat("z", 80), Settled: 9_000_000, CostSpent: 3, CostCeiling: 10, Metric: "stolen"}
+	a2 := store.Identity{
+		Kind:      "adversary",
+		Agenda:    "profit",
+		Keys:      store.Keys{PaymentAddr: "addr_test1qq" + strings.Repeat("z", 80)},
+		Holdings:  store.Holdings{Settled: 9_000_000},
+		Adversary: store.Adversary{CostSpent: 3, CostCeiling: 10, Metric: "stolen"},
+	}
 	names := fakeNames{rows: []store.ActorRow{identRow(t, 1, "hodl-1", "active", a1), identRow(t, 2, "adv-2", "active", a2)}}
 	return NewLogSource(LogSourceConfig{Projection: p, Hub: h, Names: names, Now: time.Now})
 }

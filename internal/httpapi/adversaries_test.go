@@ -38,7 +38,11 @@ func advSource(t *testing.T, control *adversary.Metrics) *LogSource {
 	if err != nil {
 		t.Fatal(err)
 	}
-	in := store.Identity{Kind: "adversary", Agenda: "profit", CostCeiling: 10_000_000, Budget: 100_000_000, Metric: "fatal_findings", Attacks: []string{"malformed-cbor"}}
+	in := store.Identity{
+		Kind:      "adversary",
+		Agenda:    "profit",
+		Adversary: store.Adversary{CostCeiling: 10_000_000, Budget: 100_000_000, Metric: "fatal_findings", Attacks: []string{"malformed-cbor"}},
+	}
 	s, _ := in.Encode()
 	names := fakeNames{rows: []store.ActorRow{{ID: 2, Name: "adversary-malformed-cbor-2", Role: "active", Profile: "adversary-malformed-cbor", Identity: s}}}
 	return NewLogSource(LogSourceConfig{Projection: p, Hub: h, Names: names, Slots: &slots, Control: control})

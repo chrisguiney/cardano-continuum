@@ -16,53 +16,97 @@ type Token struct {
 // Identity is what the engine publishes about one actor in its row: public
 // keys, addresses, traits and the engine's own view of its holdings and
 // delegation as of the checkpoint that wrote it. It never holds key
-// material; every field is derivable from public data.
+// material; every field is derivable from public data. The groups are
+// embedded, so the row's JSON is one flat object.
 type Identity struct {
-	Kind   string `json:"kind"`
+	// Kind is the actor kind the UI names (wallet, pool, adversary, ...).
+	Kind string `json:"kind"`
+	// Agenda is the profile's agenda.
 	Agenda string `json:"agenda"`
+	// Keys are the actor's addresses and key hashes.
+	Keys
+	// Traits are the actor's traits and state at the checkpoint.
+	Traits
+	// Holdings are the planner ledger's view of the actor's funds.
+	Holdings
+	// Delegation is the actor's stake registration and delegations.
+	Delegation
+	// Adversary is an adversary profile's accounting; zero otherwise.
+	Adversary
+}
 
-	PaymentAddr    string `json:"payment_addr,omitempty"`
-	StakeAddr      string `json:"stake_addr,omitempty"`
+// Keys are an actor's public addresses and identifiers, bech32 or hex.
+type Keys struct {
+	// PaymentAddr is the wallet's payment address.
+	PaymentAddr string `json:"payment_addr,omitempty"`
+	// StakeAddr is the wallet's reward address.
+	StakeAddr string `json:"stake_addr,omitempty"`
+	// PaymentKeyHash is the payment key hash, hex.
 	PaymentKeyHash string `json:"payment_key_hash,omitempty"`
-	StakeKeyHash   string `json:"stake_key_hash,omitempty"`
-	DRepID         string `json:"drep_id,omitempty"`
-	PoolID         string `json:"pool_id,omitempty"`
+	// StakeKeyHash is the stake key hash, hex.
+	StakeKeyHash string `json:"stake_key_hash,omitempty"`
+	// DRepID is a DRep actor's DRep ID.
+	DRepID string `json:"drep_id,omitempty"`
+	// PoolID is a pool actor's pool ID.
+	PoolID string `json:"pool_id,omitempty"`
+}
 
-	Competence   float64 `json:"competence"`
-	Care         float64 `json:"care"`
-	Patience     float64 `json:"patience"`
+// Traits are an actor's traits and its state at the checkpoint.
+type Traits struct {
+	// Competence is the actor's competence trait.
+	Competence float64 `json:"competence"`
+	// Care is the actor's care trait.
+	Care float64 `json:"care"`
+	// Patience is the actor's patience trait.
+	Patience float64 `json:"patience"`
+	// LearningRate is the actor's learning-rate trait.
 	LearningRate float64 `json:"learning_rate"`
-
-	// Frustration and Hazard are the actor's state at the checkpoint;
-	// Hazard is the per-second dormancy onset rate.
+	// Frustration is the actor's frustration at the checkpoint.
 	Frustration float64 `json:"frustration"`
-	Hazard      float64 `json:"hazard"`
+	// Hazard is the per-second dormancy onset rate at the checkpoint.
+	Hazard float64 `json:"hazard"`
+}
 
-	// Settled is the planner ledger's lovelace for the actor at the settled
-	// point, in UTxOs outputs, of which Reserved is held by unfinished
-	// payments. InFlight counts those payments and Unconfirmed the
-	// lovelace they pay.
-	Settled     uint64 `json:"settled"`
-	UTxOs       int    `json:"utxos"`
-	Reserved    uint64 `json:"reserved"`
-	InFlight    int    `json:"in_flight"`
+// Holdings are the planner ledger's view of an actor's funds.
+type Holdings struct {
+	// Settled is the actor's lovelace at the settled point.
+	Settled uint64 `json:"settled"`
+	// UTxOs is how many outputs Settled is in.
+	UTxOs int `json:"utxos"`
+	// Reserved is the part of Settled unfinished payments hold.
+	Reserved uint64 `json:"reserved"`
+	// InFlight counts the unfinished payments.
+	InFlight int `json:"in_flight"`
+	// Unconfirmed is the lovelace those payments pay.
 	Unconfirmed uint64 `json:"unconfirmed"`
 	// Tokens are the native assets at the chain tip, which may include
 	// blocks not yet settled.
 	Tokens []Token `json:"tokens,omitempty"`
+}
 
-	StakeRegistered bool   `json:"stake_registered"`
-	DelegatedPool   string `json:"delegated_pool,omitempty"`
-	DelegatedActor  uint64 `json:"delegated_actor,omitempty"`
-	DelegatedDRep   string `json:"delegated_drep,omitempty"`
+// Delegation is an actor's stake registration and delegations.
+type Delegation struct {
+	// StakeRegistered reports the stake key registered.
+	StakeRegistered bool `json:"stake_registered"`
+	// DelegatedPool is the pool the stake is delegated to, bech32.
+	DelegatedPool string `json:"delegated_pool,omitempty"`
+	// DelegatedActor is the actor operating DelegatedPool, if any.
+	DelegatedActor uint64 `json:"delegated_actor,omitempty"`
+	// DelegatedDRep is the DRep the stake's votes are delegated to.
+	DelegatedDRep string `json:"delegated_drep,omitempty"`
+}
 
-	// Adversary accounting: lovelace spent across epochs against the
-	// per-epoch ceiling, and the profile's success metric.
-	CostSpent   uint64 `json:"cost_spent,omitempty"`
+// Adversary is an adversary's accounting and profile.
+type Adversary struct {
+	// CostSpent is the lovelace spent across epochs.
+	CostSpent uint64 `json:"cost_spent,omitempty"`
+	// CostCeiling is the per-epoch spending ceiling.
 	CostCeiling uint64 `json:"cost_ceiling,omitempty"`
-	Metric      string `json:"success_metric,omitempty"`
-	// Budget and Attacks describe an adversary profile.
-	Budget  uint64   `json:"budget,omitempty"`
+	// Metric is the profile's success metric.
+	Metric string `json:"success_metric,omitempty"`
+	// Budget is the profile's budget.
+	Budget uint64 `json:"budget,omitempty"`
+	// Attacks are the profile's attacks.
 	Attacks []string `json:"attacks,omitempty"`
 }
 
