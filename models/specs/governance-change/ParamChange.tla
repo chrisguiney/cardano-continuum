@@ -50,7 +50,7 @@
 (* HOW TO READ THE SYMBOLS: see the "Reading a formula literally" table   *)
 (* in models/specs/engine-recovery/README.md.                              *)
 (***************************************************************************)
-EXTENDS Integers, Sequences, FiniteSets
+EXTENDS Integers, Sequences, FiniteSets, TLC
 
 CONSTANTS
     Voters,     \* DReps (and committee seats): who votes on a change
@@ -118,7 +118,9 @@ TypeOK ==
 -----------------------------------------------------------------------------
 \* Helpers.
 
-\* In English: "The voting power of the voters in S now."
+\* In English: "The voting power of the voters in S now." The CHOOSE only
+\* picks the next voter to add to a sum, so its value does not depend on
+\* which voter it picks; that keeps SYMMETRY VoterSym sound.
 RECURSIVE Power(_)
 Power(S) == IF S = {} THEN 0
             ELSE LET v == CHOOSE x \in S : TRUE IN w[v] + Power(S \ {v})
@@ -307,6 +309,12 @@ LiveSpec ==
     /\ WF_vars(Tick)
     /\ WF_vars(Propose)
     /\ WF_vars(\E t \in pend : Land(t))
+
+\* In English: "The voters are interchangeable: they are model values,
+\* nothing names, orders or compares them, and the one CHOOSE over them
+\* (Power) is order-independent. For the safety configs only: TLC's
+\* liveness check is unsound under symmetry."
+VoterSym == Permutations(Voters)
 
 -----------------------------------------------------------------------------
 \* Invariants.

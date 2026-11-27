@@ -115,14 +115,19 @@ voters ever pass anything.
 ## Configs and state counts
 
 All configs: three voters, `MaxEpoch = 4`, `Life = 1`, `MaxProps = 3` and
-power that never moves, unless noted. TLC 2.19, `-workers auto`.
+power that never moves, unless noted. TLC 2.19, `-workers auto`. Every
+safety config uses `SYMMETRY VoterSym`: the voters are model values that
+nothing names, orders or compares, and the one `CHOOSE` over them (`Power`)
+is a sum whose value does not depend on the order. With it every Bug config
+fails on the same property as without, and the passing configs shrink about
+fivefold. The liveness configs run without symmetry.
 
 | Config | Changes | Expected | TLC reported |
 |---|---|---|---|
-| `Param` | none | all hold | 1,146,033 distinct, depth 29 |
-| `ParamLife2` | `Life = 2`, `MaxEpoch = 5` | all hold | 2,945,786 distinct, depth 30 |
-| `ParamPowerMoves` | weights 1 or 2, one move | all hold | 4,819,182 distinct, depth 30 |
-| `ParamNoFlightGuardFixed` | `ParamNoFlightGuardBug`'s bounds, the guard in place | all hold | 89,993 distinct |
+| `Param` | none | all hold | 211,213 distinct (1,146,033 without symmetry), depth 29 |
+| `ParamLife2` | `Life = 2`, `MaxEpoch = 5` | all hold | 544,255 distinct (2,945,786 without symmetry), depth 30 |
+| `ParamPowerMoves` | weights 1 or 2, one move | all hold | 846,303 distinct (4,819,182 without symmetry), depth 30 |
+| `ParamNoFlightGuardFixed` | `ParamNoFlightGuardBug`'s bounds, the guard in place | all hold | 18,857 distinct (89,993 without symmetry) |
 | `ParamLive` | fair (`LiveSpec`), `MaxEpoch = 3`, `MaxProps = 2` | `Settles`, `ProposerMoves` hold | 43,095 distinct |
 | `ParamNoExpireLiveBug` | the ledger never expires a change (`NoExpire`); `ParamLive`'s bounds | `Settles` | violated |
 | `ParamWaitEnactedLiveBug` | the proposer waits for every earlier change to be enacted (`WaitEnacted`); `ParamLive`'s bounds | `ProposerMoves` | violated |
