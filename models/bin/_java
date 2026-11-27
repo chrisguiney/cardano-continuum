@@ -1,13 +1,39 @@
 #!/usr/bin/env bash
-# Shared by the other bin/ wrappers: runs a class from tla2tools.jar using the
-# Java that `make models-install` downloaded, falling back to the java on PATH.
+# Shared by the other bin/ wrappers: runs a class from tla2tools.jar with the
+# Java that `make models-install` downloaded into .tools/jdk, falling back to
+# the java on PATH (there is no pinned JDK for every platform).
+#
+# The heap is capped at TLC_HEAP (default 6g): an uncapped JVM takes a quarter
+# of RAM, and two of them beside a test suite exhaust a workstation.
+# TLC_REQUIRE_PINNED_JAVA=1 refuses the fallback, so a run that must use the
+# pinned JDK (CI) cannot silently use another one.
+#
+# `_java --check` runs nothing: it exits 2 with one message when the
+# toolchain is missing, and otherwise prints which Java and jar a run uses.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 JAR="${TLA2TOOLS_JAR:-$ROOT/.tools/tla2tools.jar}"
 JAVA="$ROOT/.tools/jdk/bin/java"
-[[ -x "$JAVA" ]] || JAVA="$(command -v java || true)"
+KIND="pinned"
+if [[ ! -x "$JAVA" ]]; then
+  JAVA="$(command -v java || true)"
+  KIND="system java: no pinned JDK in models/.tools/jdk"
+fi
+
 if [[ ! -f "$JAR" || -z "$JAVA" ]]; then
   echo "TLA+ is not installed yet. Run: make models-install" >&2
-  exit 1
+  exit 2
 fi
-exec "$JAVA" -XX:+UseParallelGC -cp "$JAR" "$@"
+
+if [[ "$KIND" != pinned && "${TLC_REQUIRE_PINNED_JAVA:-}" == 1 ]]; then
+  echo "refusing $JAVA: TLC_REQUIRE_PINNED_JAVA=1 and no pinned JDK in models/.tools/jdk. Run: make models-install" >&2
+  exit 2
+fi
+
+if [[ "${1:-}" == --check ]]; then
+  version="$("$JAVA" -XshowSettings:properties -version 2>&1 | sed -n 's/^ *java\.runtime\.version = //p')"
+  echo "toolchain: java ${version:-unknown} ($JAVA, $KIND), $(basename "$JAR"), heap ${TLC_HEAP:-6g}"
+  exit 0
+fi
+
+exec "$JAVA" "-Xmx${TLC_HEAP:-6g}" -XX:+UseParallelGC -cp "$JAR" "$@"

@@ -79,11 +79,12 @@ system_java_major() {
 
 mkdir -p "$TOOLS"
 
+# The pinned JDK wins wherever one exists for this platform, so every run of
+# a model uses the same Java; the system Java is the fallback elsewhere, and
+# bin/_java says which one a run used.
 SYS_JAVA="$(system_java_major)"
 if [[ -x "$TOOLS/jdk/bin/java" ]]; then
-  say "Java already installed in .tools/jdk (delete it to use your system Java instead)"
-elif [[ -n "$SYS_JAVA" ]] && (( SYS_JAVA >= 11 )); then
-  say "Using your system Java $SYS_JAVA ($(command -v java)); skipping the Java download"
+  say "Java already installed in .tools/jdk"
 elif [[ -n "$JDK_URL" ]]; then
   say "Downloading Java (Temurin $JDK_VERSION, about 200 MB)"
   fetch "$JDK_URL" "$JDK_SHA256" "$TOOLS/jdk.tar.gz"
@@ -91,8 +92,8 @@ elif [[ -n "$JDK_URL" ]]; then
   mkdir -p "$TOOLS/jdk"
   tar -xzf "$TOOLS/jdk.tar.gz" -C "$TOOLS/jdk" --strip-components=1
   rm -f "$TOOLS/jdk.tar.gz"
-elif command -v java >/dev/null 2>&1; then
-  say "No pinned Java for $(uname -s)-$(uname -m); using the java on your PATH"
+elif [[ -n "$SYS_JAVA" ]] && (( SYS_JAVA >= 11 )); then
+  say "No pinned Java for $(uname -s)-$(uname -m); using your system Java $SYS_JAVA ($(command -v java))"
 else
   die "No pinned Java for $(uname -s)-$(uname -m). Install Java 11+ (macOS: 'brew install --cask temurin') and re-run."
 fi
