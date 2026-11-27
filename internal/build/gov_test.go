@@ -1,8 +1,10 @@
 package build
 
 import (
+	"math/big"
 	"testing"
 
+	"github.com/blinklabs-io/gouroboros/cbor"
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 	"github.com/blinklabs-io/gouroboros/ledger/conway"
 
@@ -150,9 +152,13 @@ func TestProposeActionTypes(t *testing.T) {
 	h := newHarness(t)
 	h.registerStake()
 	deposits := uint64(h.pp.KeyDeposit)
-	for _, a := range []ActionType{ActionInfo, ActionParameterChange, ActionTreasuryWithdrawals, ActionNoConfidence, ActionNewConstitution} {
+	a0 := &cbor.Rat{Rat: big.NewRat(1, 4)}
+	for _, a := range []ActionType{ActionInfo, ActionParameterChange, ActionTreasuryWithdrawals, ActionNoConfidence, ActionNewConstitution, ActionUpdateCommittee} {
 		sp := h.spend()
 		prop := Proposal{Spend: sp, Action: a}
+		if a == ActionParameterChange {
+			prop.Change = &ParamChange{Update: conway.ConwayProtocolParameterUpdate{A0: a0}}
+		}
 		got, err := h.b.Gov().Propose(ctx, h.alice, prop)
 		if err != nil {
 			t.Fatalf("%s: %v", a, err)
@@ -175,6 +181,32 @@ func TestProposeActionTypes(t *testing.T) {
 	if _, err := h.b.Gov().Propose(ctx, h.alice, Proposal{Spend: h.spend(), Action: "no_such_action"}); err == nil {
 		t.Fatal("an unknown action type built")
 	}
+	if _, err := h.b.Gov().Propose(ctx, h.alice, Proposal{Spend: h.spend(), Action: ActionParameterChange}); err == nil {
+		t.Fatal("a parameter change with no update built")
+	}
+}
+
+// A committee vote that carries its seat's hot-key authorisation is
+// accepted before any separate authorisation: the certificate applies
+// before the vote, and the cold and hot keys both witness it.
+func TestCommitteeVoteAuthorisesItsHotKey(t *testing.T) {
+	h := newHarness(t)
+	h.registerStake()
+	prop, err := h.b.Gov().Propose(ctx, h.alice, Proposal{Spend: h.spend(), Action: ActionInfo})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.commit(prop)
+	cold, hot := h.store.CommitteeSigners(0)
+	sp := h.spend()
+	vote := Vote{Spend: sp, Voter: hot, Role: RoleCommittee, Cold: &cold, Action: common.GovActionId{TransactionId: prop.ID}, Choice: common.GovVoteYes}
+	got, err := h.b.Gov().Vote(ctx, h.alice, vote)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.check(got, sp.Inputs, want{signers: []keys.Credential{h.alice.PaymentKeyHash(), cold.KeyHash(), hot.KeyHash()}},
+		func() (Built, error) { return h.b.Gov().Vote(ctx, h.alice, vote) })
+	h.commit(got)
 }
 
 func actionTypeOf(a common.GovAction) (ActionType, bool) {
@@ -189,6 +221,8 @@ func actionTypeOf(a common.GovAction) (ActionType, bool) {
 		return ActionNoConfidence, true
 	case *common.NewConstitutionGovAction:
 		return ActionNewConstitution, true
+	case *common.UpdateCommitteeGovAction:
+		return ActionUpdateCommittee, true
 	}
 	return "", false
 }

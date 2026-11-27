@@ -65,6 +65,15 @@ type Deposits interface {
 	Deposit(kind profile.IntentKind) (lovelace profile.Lovelace, ok bool)
 }
 
+// Committee is the constitutional committee's seats as the network
+// proposer, which votes for them, sees them.
+type Committee interface {
+	// Seats is the number of committee seats.
+	Seats() int
+	// CommitteeVoted reports that seat has a vote on p.
+	CommitteeVoted(seat int, p ProposalID) bool
+}
+
 // Market is a signal of how busy the chain is.
 type Market interface {
 	// Burst is the recent transaction rate over its long-run baseline: 1 is

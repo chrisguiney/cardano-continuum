@@ -10,6 +10,7 @@ import (
 	"github.com/blinklabs-io/gouroboros/cbor"
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 	"github.com/blinklabs-io/plutigo/data"
+	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
@@ -17,6 +18,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
+	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/submit"
 )
 
@@ -54,6 +56,9 @@ type kind struct {
 	// guarded kinds can lower forging stake: their TTL ends inside the
 	// current epoch (stake-floor rule 10).
 	guarded bool
+	// closing, when set, reports an attempt that must land in the epoch
+	// it is built in, which guards it as guarded does.
+	closing func(c *core, at sched.Time, p *wire.Pending) bool
 	// script kinds run a Plutus script, so their TTL stays inside the
 	// stability window (Config.Horizon).
 	script bool
@@ -109,12 +114,10 @@ var specs = map[string]kind{
 		build: func(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, p *wire.Pending) (build.Built, error) {
 			return c.spec.Builder.Gov().RegisterDRep(ctx, w, build.DRepRegistration{Spend: sp, DRep: c.env.Ring.DRepSigner(population.ActorID(p.Actor))})
 		}},
-	string(profile.IntentVote): {need: none, headroom: FeeHeadroom, deposit: noDeposit, build: buildVote},
+	string(profile.IntentVote):   {need: none, headroom: FeeHeadroom, closing: lastEpoch, deposit: noDeposit, build: buildVote},
+	string(agenda.CommitteeVote): {need: none, headroom: FeeHeadroom, closing: lastEpoch, deposit: noDeposit, build: buildCommitteeVote},
 	string(profile.IntentPropose): {need: func(c *core, _ *wire.Pending) uint64 { return c.spec.Build.GovActionDeposit }, headroom: FeeHeadroom,
-		deposit: func(c *core, _ *wire.Pending) int64 { return int64(c.spec.Build.GovActionDeposit) },
-		build: func(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, p *wire.Pending) (build.Built, error) {
-			return c.spec.Builder.Gov().Propose(ctx, w, build.Proposal{Spend: sp, Action: build.ActionType(p.GovType)})
-		}},
+		deposit: func(c *core, _ *wire.Pending) int64 { return int64(c.spec.Build.GovActionDeposit) }, build: buildPropose},
 	string(profile.IntentRetireDRep): {need: none, headroom: FeeHeadroom,
 		again:   []submit.Class{submit.Class(fakechain.DRepNotRegistered)},
 		deposit: func(c *core, _ *wire.Pending) int64 { return -int64(c.spec.Build.DRepDeposit) },
@@ -142,6 +145,21 @@ var specs = map[string]kind{
 			}
 			return c.spec.Builder.Pool().RetirePool(ctx, w, build.PoolRetirement{Spend: sp, Cold: cold, Epoch: p.Epoch, CurrentEpoch: p.Epoch - 1})
 		}},
+}
+
+// lastEpoch reports a vote on a proposal in its last epoch: one landing
+// after the boundary is refused (VotingOnExpiredGovAction).
+func lastEpoch(c *core, at sched.Time, p *wire.Pending) bool {
+	if p.Action == nil {
+		return false
+	}
+	id := agenda.ProposalID(chain.GovID{Tx: chain.TxID(p.Action.Tx), Index: p.Action.Index}.String())
+	for _, o := range c.env.Chain.View().OpenProposals() {
+		if o.ID == id {
+			return o.Expires <= c.spec.Slots.EpochAt(at)
+		}
+	}
+	return true
 }
 
 func registerNeed(c *core, p *wire.Pending) uint64 {
@@ -174,6 +192,31 @@ func buildVote(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, p *w
 		v.Voter, v.Role = cold, build.RolePool
 	}
 	return c.spec.Builder.Gov().Vote(ctx, w, v)
+}
+
+// buildCommitteeVote casts seat p.To's vote with its hot key, authorising
+// the key in the same transaction (build.Vote.Cold).
+func buildCommitteeVote(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, p *wire.Pending) (build.Built, error) {
+	act := common.GovActionId{TransactionId: common.Blake2b256(p.Action.Tx), GovActionIdx: p.Action.Index}
+	cold, hot := c.env.Ring.Committee(uint32(p.To))
+	return c.spec.Builder.Gov().Vote(ctx, w, build.Vote{Spend: sp, Voter: hot, Role: build.RoleCommittee, Cold: &cold, Action: act, Choice: p.Choice})
+}
+
+// buildPropose submits the proposal; a parameter change is the one the
+// plan gives (planParams), or none while one is open.
+func buildPropose(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, p *wire.Pending) (build.Built, error) {
+	prop := build.Proposal{Spend: sp, Action: build.ActionType(p.GovType)}
+	if prop.Action == build.ActionParameterChange {
+		pc, ok := planParams(paramLinks(c.env.Chain.View()))
+		if !ok {
+			return build.Built{}, errParamOpen
+		}
+		prop.Change = &build.ParamChange{Update: pc.update}
+		if pc.prev != nil {
+			prop.Change.Prev = &common.GovActionId{TransactionId: common.Blake2b256(pc.prev.Tx), GovActionIdx: pc.prev.Index}
+		}
+	}
+	return c.spec.Builder.Gov().Propose(ctx, w, prop)
 }
 
 func buildMint(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, p *wire.Pending) (build.Built, error) {

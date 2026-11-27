@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
@@ -28,7 +29,7 @@ func countGov(ctx context.Context, r eventlog.Reader) (govCounts, error) {
 			if err := eventlog.Decode(rec.Body, &s); err != nil {
 				return err
 			}
-			if s.Kind == string(profile.IntentPropose) || s.Kind == string(profile.IntentVote) || s.Kind == string(profile.IntentDelegateDRep) {
+			if s.Kind == string(profile.IntentPropose) || s.Kind == string(profile.IntentVote) || s.Kind == string(agenda.CommitteeVote) || s.Kind == string(profile.IntentDelegateDRep) {
 				sub[s.Intent] = s
 			}
 		case engine.KindConfirmed:
@@ -44,7 +45,7 @@ func countGov(ctx context.Context, r eventlog.Reader) (govCounts, error) {
 			switch profile.IntentKind(s.Kind) {
 			case profile.IntentPropose:
 				g.proposals[cmpOr(s.Action, "info")]++
-			case profile.IntentVote:
+			case profile.IntentVote, agenda.CommitteeVote:
 				g.votes[s.Voter]++
 			case profile.IntentDelegateDRep:
 				g.delegations++

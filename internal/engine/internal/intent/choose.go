@@ -81,6 +81,12 @@ func (ch *Chooser) Prepare(at sched.Time, a population.Actor, in agenda.Intent, 
 		voter, class := Voter(ch.env.Ring, a.ID)
 		p.Action, p.Choice = &ref, voteChoice(r, class, ref, ch.actionType(in.Proposal))
 		p.Power = ch.env.Chain.View().VotingPower(voter)
+	case agenda.CommitteeVote:
+		ref, err := ParseProposal(in.Proposal)
+		if err != nil {
+			return nil, err.Error()
+		}
+		p.Action, p.Choice = &ref, voteChoice(r, voterCommittee, ref, ch.actionType(in.Proposal))
 	case profile.IntentMint:
 		p.Amount = mintQuantity
 	case profile.IntentBurn:
@@ -239,6 +245,13 @@ var (
 // revert), which a devnet must be able to enact.
 var alwaysFavoured = map[string]bool{"parameter_change": true}
 
+// neverFavoured are the action types every voter contests, so they never
+// enact. A no-confidence motion would remove the committee and with it
+// every later ratification; a new constitution or a committee update would
+// move a purpose root the proposer does not track, and its next proposal
+// of that purpose would name a stale predecessor and be refused.
+var neverFavoured = map[string]bool{"no_confidence": true, "new_constitution": true, "update_committee": true}
+
 // voteChoice is an honest voter's choice on proposal id of type typ. The
 // side comes from the proposal's hash, which is uniform, so every voter
 // sees the same one; a class with a larger favoured share favours every
@@ -246,7 +259,7 @@ var alwaysFavoured = map[string]bool{"parameter_change": true}
 func voteChoice(r *rand.Rand, class string, id wire.Ref, typ string) uint8 {
 	side := float64(binary.BigEndian.Uint32(id.Tx[:4])) / (1 << 32)
 	m := contestedMix
-	if alwaysFavoured[typ] || side < favoured[class] {
+	if !neverFavoured[typ] && (alwaysFavoured[typ] || side < favoured[class]) {
 		m = favouredMix
 	}
 	switch x := r.Float64(); {

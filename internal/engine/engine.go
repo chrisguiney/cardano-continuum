@@ -206,7 +206,7 @@ func newEmpty(cfg Config) (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
-	e.pc = pace.New(pace.Spec{Proposer: proposerName, Proposals: cfg.Network.Proposals, Population: e.cfg.population, Slots: cfg.Slots, BlockEvery: cfg.BlockEvery, GovLifetime: cfg.GovLifetime},
+	e.pc = pace.New(pace.Spec{Proposer: proposerName, Proposals: cfg.Network.Proposals, Population: e.cfg.population, Slots: cfg.Slots, BlockEvery: cfg.BlockEvery, GovLifetime: cfg.GovLifetime, Committee: cfg.Committee},
 		pace.Env{Sched: evsched{&e.clk}, Knobs: hooks{e}, Chain: e.win, Flight: hooks{e}, Agenda: hooks{e}})
 	e.co = cohort.New(cohort.Spec{Seed: cfg.Seed, Census: cfg.Seed.Derive(censusStream), Slots: cfg.Slots, Proposer: proposerName,
 		ActorKeys: ks, RootKeys: rootKeys, Pools: gpools, PoolStake: cfg.GenesisPoolStake},
@@ -219,6 +219,7 @@ func newEmpty(cfg Config) (*Engine, error) {
 	if err := e.co.Ring.Gen.Book(); err != nil {
 		return nil, err
 	}
+	e.co.Ring.SeatCommittee(e.win.Book(), cfg.Committee)
 	for _, n := range cfg.Profiles.Names() {
 		p, _ := cfg.Profiles.Get(n)
 		if p.Hazards.Birth > 0 {

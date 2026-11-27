@@ -22,10 +22,14 @@ import (
 // Intents that are not profile intent kinds: they have no rate, only a
 // score. GoDark and GoLive are the operator's pool lifecycle steps, taken by
 // the engine rather than by a transaction.
+//
+// CommitteeVote is a constitutional committee seat's vote, which the
+// network proposer casts for the seat; the intent's Target is the seat.
 const (
-	Idle   profile.IntentKind = "idle"
-	GoDark profile.IntentKind = "go_dark"
-	GoLive profile.IntentKind = "go_live"
+	Idle          profile.IntentKind = "idle"
+	GoDark        profile.IntentKind = "go_dark"
+	GoLive        profile.IntentKind = "go_live"
+	CommitteeVote profile.IntentKind = "committee_vote"
 )
 
 // ErrUnknown is returned by For for a name with no agenda.

@@ -48,6 +48,9 @@ type Spec struct {
 	// long a proposal stays open for votes, which sets the vote clocks'
 	// floor (Pop.voteFloor).
 	GovLifetime uint64
+	// Committee is the number of constitutional committee seats the
+	// proposer votes for; zero gives it no committee clock.
+	Committee int
 }
 
 // Env is what the pace shares with the rest of the engine.

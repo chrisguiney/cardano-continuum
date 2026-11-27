@@ -1,6 +1,8 @@
 package pace
 
 import (
+	"cmp"
+	"fmt"
 	"maps"
 	"math/rand/v2"
 	"slices"
@@ -76,7 +78,13 @@ func newPop(spec Spec, env Env) *Pop { return &Pop{spec: spec, env: env} }
 // intent it registers with; ok is false for an actor of no population.
 func (pp *Pop) Clocks(a population.Actor, p profile.Profile) (cs []Clock, boot profile.IntentKind, ok bool) {
 	if p.Name == pp.spec.Proposer && len(pp.spec.Proposals) > 0 {
-		return proposerClocks(p.Rates.Base[profile.IntentPropose], pp.spec.Proposals), profile.IntentRegisterStake, true
+		cs := proposerClocks(p.Rates.Base[profile.IntentPropose], pp.spec.Proposals)
+		if pp.spec.Committee > 0 {
+			// The committee has no fitted rate: its clock runs at the
+			// vote floor alone.
+			cs = append(cs, Clock{Kind: agenda.CommitteeVote})
+		}
+		return cs, profile.IntentRegisterStake, true
 	}
 	pop, found := pp.spec.Population(p.Name)
 	if !found || pop.Count == 0 {
@@ -146,12 +154,72 @@ func (pp *Pop) voteFloor(id population.ActorID, st Subject) float64 {
 	return votesPerLifetime * float64(n) / life
 }
 
-// clockRate is a clock's rate now: the vote clock at least its floor.
-func (pp *Pop) clockRate(id population.ActorID, st Subject, c Clock) float64 {
-	if c.Kind != profile.IntentVote {
-		return c.Rate
+// committeeFloor is voteFloor for the committee clock: votesPerLifetime
+// wakes per seat and open proposal the committee may vote on that the seat
+// has not voted on, plus one.
+func (pp *Pop) committeeFloor() float64 {
+	life := float64(pp.spec.Slots.EpochStart(pp.spec.GovLifetime)) / 1000
+	if life <= 0 {
+		return 0
 	}
-	return max(c.Rate, pp.voteFloor(id, st))
+	return votesPerLifetime * float64(len(pp.committeeDue())+1) / life
+}
+
+// seatVote is a committee seat's due vote.
+type seatVote struct {
+	seat     int
+	proposal agenda.ProposalInfo
+}
+
+// committeeDue lists the votes the committee owes, nearest expiry first
+// (then by proposal and seat): every seat on every open proposal the
+// committee may vote on, less those cast.
+func (pp *Pop) committeeDue() []seatVote {
+	v := pp.env.Agenda.Agenda()
+	g, ok := v.(agenda.Governance)
+	c, cok := v.(agenda.Committee)
+	if !ok || !cok {
+		return nil
+	}
+	open := g.OpenProposals()
+	slices.SortStableFunc(open, func(a, b agenda.ProposalInfo) int { return cmp.Compare(a.Expires, b.Expires) })
+	var due []seatVote
+	for _, p := range open {
+		if _, _, cc := chain.MayVote(p.Type, p.Pools); !cc {
+			continue
+		}
+		for seat := range c.Seats() {
+			if !c.CommitteeVoted(seat, p.ID) {
+				due = append(due, seatVote{seat: seat, proposal: p})
+			}
+		}
+	}
+	return due
+}
+
+// clockRate is a clock's rate now: a vote clock at least its floor.
+func (pp *Pop) clockRate(id population.ActorID, st Subject, c Clock) float64 {
+	switch c.Kind {
+	case profile.IntentVote:
+		return max(c.Rate, pp.voteFloor(id, st))
+	case agenda.CommitteeVote:
+		return max(c.Rate, pp.committeeFloor())
+	}
+	return c.Rate
+}
+
+// committeeVote is the proposer's committee decision: the seat's vote due
+// soonest, or idle when none is.
+func (pp *Pop) committeeVote(id population.ActorID) agenda.Decision {
+	due := pp.committeeDue()
+	if len(due) == 0 {
+		return agenda.Decision{Intent: agenda.Intent{Kind: agenda.Idle, Actor: id},
+			Scores: []agenda.Score{{Kind: agenda.CommitteeVote, Why: "no committee vote due"}}}
+	}
+	d := due[0]
+	s := agenda.Score{Kind: agenda.CommitteeVote, Value: 1, Target: population.ActorID(d.seat), Proposal: d.proposal.ID,
+		Why: fmt.Sprintf("seat %d on %s proposal %s, expires epoch %d", d.seat, d.proposal.Type, d.proposal.ID, d.proposal.Expires)}
+	return agenda.Decision{Intent: agenda.Intent{Kind: s.Kind, Actor: id, Target: s.Target, Proposal: s.Proposal}, Scores: []agenda.Score{s}}
 }
 
 // proposerClocks splits the proposer's total rate over the action types in
@@ -260,6 +328,9 @@ func (pp *Pop) Decide(a population.Actor, st Subject, r *rand.Rand) (agenda.Deci
 		// twice.
 		return agenda.Decision{Intent: agenda.Intent{Kind: agenda.Idle, Actor: a.ID},
 			Scores: []agenda.Score{{Kind: c.Kind, Why: "already in flight"}}}, ""
+	}
+	if c.Kind == agenda.CommitteeVote {
+		return pp.committeeVote(a.ID), ""
 	}
 	if st.Prof.Name == pp.spec.Proposer {
 		why := "network proposes " + string(c.Action)

@@ -7,6 +7,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 
+	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/plan"
@@ -31,8 +32,11 @@ func (m *Maker) Submitted(at sched.Time, p *wire.Pending, built build.Built, inp
 		Intent: p.ID, ID: wire.TxID(built.ID), To: p.To, Amount: p.Amount, Fee: built.Fee, TTL: p.TTL, Inputs: inputs, Tx: built.Tx, Kind: p.Kind,
 		Mistakes: p.Carried, Attack: attack, Action: p.GovType, Contract: p.Contract,
 	}
-	if p.Kind == string(profile.IntentVote) && p.Action != nil {
+	if (p.Kind == string(profile.IntentVote) || p.Kind == string(agenda.CommitteeVote)) && p.Action != nil {
 		_, s.Voter = Voter(m.env.Ring, population.ActorID(p.Actor))
+		if p.Kind == string(agenda.CommitteeVote) {
+			s.Voter = voterCommittee
+		}
 		s.Proposal = chain.GovID{Tx: chain.TxID(p.Action.Tx), Index: p.Action.Index}.String()
 		s.Choice, s.Power = choiceNames[p.Choice], p.Power
 	}
@@ -50,7 +54,8 @@ func (m *Maker) Attempt(ctx context.Context, at sched.Time, p *wire.Pending) (bu
 	if coins == nil {
 		return build.Built{}, nil, 0, fmt.Sprintf("spendable %d below %d", wire.SumCoins(avail), need), nil
 	}
-	ttl := m.TTL(at, sp.guarded, sp.script)
+	guarded := sp.guarded || sp.closing != nil && sp.closing(&m.core, at, p)
+	ttl := m.TTL(at, guarded, sp.script)
 	if ttl == 0 {
 		return build.Built{}, nil, 0, "too close to the epoch boundary", nil
 	}

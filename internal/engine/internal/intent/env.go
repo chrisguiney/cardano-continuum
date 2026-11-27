@@ -45,6 +45,8 @@ type Ring interface {
 	PoolSigner(id population.ActorID) (keys.Signer, error)
 	DRep(id population.ActorID) keys.Credential
 	DRepSigner(id population.ActorID) keys.Signer
+	// Committee is committee seat i's cold and hot signers.
+	Committee(i uint32) (cold, hot keys.Signer)
 }
 
 // Chain is the window the intent reads the ledger from.

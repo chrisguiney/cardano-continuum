@@ -56,7 +56,7 @@ func readGov(t testing.TB, r eventlog.Reader) govLog {
 			switch s.Kind {
 			case "propose":
 				actionOf[hex.EncodeToString(s.ID[:])+"#0"] = s.Action
-			case "vote":
+			case "vote", "committee_vote":
 				g.votes[s.Voter]++
 				g.types[s.Voter] = append(g.types[s.Voter], actionOf[s.Proposal])
 				g.power[s.Voter] = max(g.power[s.Voter], s.Power)
@@ -383,5 +383,53 @@ func TestFittedRatesVoteOnMostProposals(t *testing.T) {
 	}
 	if c.drep < 0.8 || c.spo < 0.8 {
 		t.Errorf("DReps voted on %.0f%%, pools on %.0f%% of proposals; want most", 100*c.drep, 100*c.spo)
+	}
+}
+
+// paramSample is the fake chain's poolPledgeInfluence at one epoch.
+type paramSample struct {
+	epoch uint64
+	a0    string
+}
+
+// The network proposer changes a parameter, the DReps, pools and committee
+// vote it through, the fake chain enacts it, and a later proposal naming
+// the change as its predecessor reverts it: the chain's poolPledgeInfluence
+// goes 3/10, 1/4, 3/10. A clean run files no finding.
+func TestParameterChangeEnactsThenReverts(t *testing.T) {
+	t.Parallel()
+	cfg := populationConfig(t, 4, populationFile(t, govYAML))
+	slots, err := sched.NewSlots(1000, 600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Slots, cfg.Committee = slots, 3
+	w := newWorld(t, cfg)
+	p, err := w.start(nil, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var seen []paramSample
+	for ep := uint64(1); ep <= 30; ep++ {
+		if err := p.r.Run(context.Background(), slots.EpochStart(ep)+1000); err != nil {
+			t.Fatal(err)
+		}
+		a0 := w.chain.Params().A0.String()
+		if len(seen) == 0 || seen[len(seen)-1].a0 != a0 {
+			seen = append(seen, paramSample{ep, a0})
+		}
+	}
+	t.Logf("a0 by epoch %v; votes %v", seen, readGov(t, p.log).votes)
+	for _, rec := range logRecords(t, p.log) {
+		var s Submitted
+		if rec.Kind == KindSubmitted && eventlog.Decode(rec.Body, &s) == nil && s.Action == "parameter_change" {
+			t.Logf("parameter change %x#0 submitted in epoch %d", s.ID[:4], slots.EpochAt(rec.At))
+		}
+	}
+	if len(seen) < 3 || seen[0].a0 != "3/10" || seen[1].a0 != "1/4" || seen[2].a0 != "3/10" {
+		t.Fatalf("a0 went %v, want 3/10, 1/4, 3/10", seen)
+	}
+	if fs := findings(t, p.log); len(fs) > 0 {
+		t.Errorf("%d findings, the first %+v", len(fs), fs[0])
 	}
 }

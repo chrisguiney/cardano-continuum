@@ -87,6 +87,15 @@ func (k *Keyring) DRepSigner(id population.ActorID) keys.Signer {
 	return k.actors.DRepSigner(keys.ActorID(id))
 }
 
+// SeatCommittee names committee seats 0..n-1 in the view's book by their
+// hot keys, so the view tracks their votes.
+func (k *Keyring) SeatCommittee(book *chain.Book, n int) {
+	for i := range n {
+		_, hot := k.Committee(uint32(i))
+		book.AddCommittee(common.Blake2b224(hot.KeyHash()), i)
+	}
+}
+
 // Committee is committee member i's cold and hot signers, from the root
 // keystore as internal/genesis seats them.
 func (k *Keyring) Committee(i uint32) (cold, hot keys.Signer) { return k.root.CommitteeSigners(i) }

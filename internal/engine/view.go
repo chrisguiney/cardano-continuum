@@ -31,6 +31,7 @@ var (
 	_ agenda.Floor      = view{}
 	_ agenda.Pods       = view{}
 	_ agenda.Deposits   = view{}
+	_ agenda.Committee  = view{}
 	_ adversary.View    = view{}
 )
 
@@ -102,6 +103,14 @@ func (v govView) DReps() []population.ActorID { return v.e.win.View().DReps() }
 
 // VoteDelegated implements agenda.Governance.
 func (v govView) VoteDelegated(a population.ActorID) bool { return v.e.win.View().VoteDelegated(a) }
+
+// Seats implements agenda.Committee: the genesis committee's seats.
+func (v govView) Seats() int { return v.e.cfg.Committee }
+
+// CommitteeVoted implements agenda.Committee.
+func (v govView) CommitteeVoted(seat int, p agenda.ProposalID) bool {
+	return v.e.win.View().CommitteeVoted(seat, p)
+}
 
 // advView is the adversaries' side of the view: adversary.Sight and the
 // cost ceiling left.

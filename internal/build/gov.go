@@ -3,8 +3,10 @@ package build
 import (
 	"context"
 	"fmt"
+	"math/big"
 
 	"github.com/Salvionied/apollo/v2"
+	"github.com/blinklabs-io/gouroboros/cbor"
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 	"github.com/blinklabs-io/gouroboros/ledger/conway"
 
@@ -35,11 +37,22 @@ const (
 // the DRep key, the committee hot key or the pool cold key, by Role.
 type Vote struct {
 	Spend
-	Voter  keys.Signer
-	Role   Role
+	// Voter signs for the voter.
+	Voter keys.Signer
+	// Role is the voter class.
+	Role Role
+	// Action is the governance action voted on.
 	Action common.GovActionId
+	// Choice is the vote.
 	Choice uint8
+	// Anchor is the vote's rationale, nil for none.
 	Anchor *common.GovAnchor
+	// Cold, for a committee vote, is the seat's cold key: the transaction
+	// then also authorises Voter as the seat's hot key. The ledger applies
+	// certificates before votes, so the vote counts, and re-authorising
+	// the same key changes nothing, so a voter that does not track whether
+	// it authorised can always send it.
+	Cold *keys.Signer
 }
 
 // Proposal submits a governance action of type Action (info when
@@ -47,8 +60,22 @@ type Vote struct {
 // wallet's reward account. That account must be registered.
 type Proposal struct {
 	Spend
+	// Action is the action type.
 	Action ActionType
+	// Anchor is the proposal's rationale.
 	Anchor common.GovAnchor
+	// Change is what a parameter change proposes; it is required for one.
+	Change *ParamChange
+}
+
+// ParamChange is a parameter change's update and the parameter change it
+// follows: the last enacted one or a live proposal, nil while none was
+// ever enacted.
+type ParamChange struct {
+	// Update holds the parameters the change sets.
+	Update conway.ConwayProtocolParameterUpdate
+	// Prev is the predecessor.
+	Prev *common.GovActionId
 }
 
 // ActionType is a Conway governance action type, by the names profile
@@ -56,16 +83,17 @@ type Proposal struct {
 type ActionType string
 
 // The action types Propose builds. A hard fork needs a protocol version
-// the devnet can move to and a committee update a membership plan, so
-// neither is built; the rest name no previous action, which is right while
-// no action of their purpose was ever enacted, and the fake chain enacts
-// none.
+// the devnet can move to, so it is not built. A parameter change names the
+// predecessor its ParamChange gives; the rest name none, which is right
+// while no action of their purpose was ever enacted: honest voters never
+// favour them (intent.neverFavoured), so none is.
 const (
 	ActionInfo                ActionType = "info"
 	ActionParameterChange     ActionType = "parameter_change"
 	ActionTreasuryWithdrawals ActionType = "treasury_withdrawals"
 	ActionNoConfidence        ActionType = "no_confidence"
 	ActionNewConstitution     ActionType = "new_constitution"
+	ActionUpdateCommittee     ActionType = "update_committee"
 )
 
 // treasuryAsk is what a treasury withdrawal proposal asks for. The
@@ -144,20 +172,30 @@ func (f Gov) Vote(ctx context.Context, w keys.Wallet, v Vote) (Built, error) {
 		return Built{}, fmt.Errorf("build: unknown vote %d", v.Choice)
 	}
 	voter := common.Voter{Type: t, Hash: v.Voter.KeyHash()}
+	signers := []keys.Signer{v.Voter}
+	var certs []common.Certificate
+	if v.Cold != nil && v.Role == RoleCommittee {
+		signers = append(signers, *v.Cold)
+		certs = append(certs, &common.AuthCommitteeHotCertificate{
+			CertType:       uint(common.CertificateTypeAuthCommitteeHot),
+			ColdCredential: keyCred(v.Cold.KeyHash()), HotCredential: keyCred(v.Voter.KeyHash()),
+		})
+	}
+
 	return f.b.finish(ctx, w, spec{
-		sp: v.Spend, signers: []keys.Signer{v.Voter},
+		sp: v.Spend, signers: signers, certs: certs,
 		add: func(a *apollo.Apollo) (*apollo.Apollo, error) {
 			return a.AddVote(voter, v.Action, common.VotingProcedure{Vote: v.Choice, Anchor: v.Anchor}), nil
 		},
 	})
 }
 
-// Propose submits a governance action. A parameter change re-states the
-// current maximum transaction size, so enacting it would change nothing;
-// a treasury withdrawal pays the wallet's own reward account. Neither
-// names a guardrail policy: the devnet constitution has none.
+// Propose submits a governance action. A treasury withdrawal pays the
+// wallet's own reward account; a committee update keeps every member and
+// re-states the genesis quorum. Neither it nor a parameter change names a
+// guardrail policy: the devnet constitution has none.
 func (f Gov) Propose(ctx context.Context, w keys.Wallet, p Proposal) (Built, error) {
-	act, err := f.govAction(w, p.Action)
+	act, err := f.govAction(w, p.Action, p.Change)
 	if err != nil {
 		return Built{}, err
 	}
@@ -173,7 +211,7 @@ func (f Gov) Propose(ctx context.Context, w keys.Wallet, p Proposal) (Built, err
 	})
 }
 
-func (f Gov) govAction(w keys.Wallet, t ActionType) (conway.ConwayGovAction, error) {
+func (f Gov) govAction(w keys.Wallet, t ActionType, c *ParamChange) (conway.ConwayGovAction, error) {
 	switch t {
 	case "", ActionInfo:
 		info, err := common.NewInfoGovAction()
@@ -182,9 +220,15 @@ func (f Gov) govAction(w keys.Wallet, t ActionType) (conway.ConwayGovAction, err
 		}
 		return conway.ConwayGovAction{Type: uint(common.GovActionTypeInfo), Action: info}, nil
 	case ActionParameterChange:
-		size := uint(f.b.params.MaxTxSize)
+		if c == nil {
+			return conway.ConwayGovAction{}, fmt.Errorf("build: a parameter change needs its update")
+		}
 		return conway.ConwayGovAction{Type: uint(common.GovActionTypeParameterChange), Action: &conway.ConwayParameterChangeGovAction{
-			Type: uint(common.GovActionTypeParameterChange), ParamUpdate: conway.ConwayProtocolParameterUpdate{MaxTxSize: &size},
+			Type: uint(common.GovActionTypeParameterChange), ActionId: c.Prev, ParamUpdate: c.Update,
+		}}, nil
+	case ActionUpdateCommittee:
+		return conway.ConwayGovAction{Type: uint(common.GovActionTypeUpdateCommittee), Action: &common.UpdateCommitteeGovAction{
+			Type: uint(common.GovActionTypeUpdateCommittee), CredEpochs: map[*common.Credential]uint64{}, Quorum: cbor.Rat{Rat: big.NewRat(2, 3)},
 		}}, nil
 	case ActionTreasuryWithdrawals:
 		to := w.StakeAddress()
