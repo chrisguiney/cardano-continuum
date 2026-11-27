@@ -57,6 +57,7 @@ func newEpoch(s *certState, ep uint64, first bool, stake map[common.Blake2b224]u
 		e.set, e.mark = e.mark, distribution(s, stake)
 		e.label = ep
 		reap(s, ep)
+		ratify(s, ep, stake)
 	}
 }
 

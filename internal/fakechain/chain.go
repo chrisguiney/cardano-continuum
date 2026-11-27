@@ -117,6 +117,9 @@ func ParamsFor(s genesis.Spec) (conway.ConwayProtocolParameters, error) {
 	pp.CostModels = cms
 	pp.MaxTxExUnits = exUnits(s.TxExUnits)
 	pp.MaxBlockExUnits = exUnits(s.BlockExUnits)
+	// The genesis committee's minimum size is its seat count, so the
+	// committee can ratify once every seat has a hot key.
+	pp.MinCommitteeSize = uint(s.Committee)
 	return pp, nil
 }
 
@@ -196,7 +199,7 @@ func New(cfg Config) (*Chain, error) {
 		capBytes:  cfg.MempoolBytes,
 		nextBlock: cfg.BlockEvery,
 		utxo:      utxoSet{},
-		certs:     newCertState(cfg.Committee),
+		certs:     newCertState(cfg.Committee, *cfg.Params),
 	}
 	w.certs.stake(cfg.Staking)
 	if w.capBytes == 0 {

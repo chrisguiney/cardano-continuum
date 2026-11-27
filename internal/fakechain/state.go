@@ -47,9 +47,10 @@ type seat struct {
 // (ledger/common/block_state.go, applyCertificate and applyLevel), applied
 // permanently.
 //
-// At an epoch boundary (epoch.go) the snapshots rotate and retiring pools
-// retire. Proposals are never ratified, enacted or expired, and no rewards
-// accrue, so every reward balance is zero.
+// At an epoch boundary (epoch.go) the snapshots rotate, retiring pools
+// retire and parameter changes with the votes are enacted (ratify.go).
+// Proposals are never expired, and no rewards accrue, so every reward
+// balance is zero.
 type certState struct {
 	accounts  map[credKey]*account
 	pools     map[common.PoolKeyHash]*pool
@@ -58,6 +59,7 @@ type certState struct {
 	proposals map[common.GovActionId]proposal
 	votes     map[voteKey]uint8
 	epoch     epochState
+	enact     enactment
 }
 
 type voteKey struct {
@@ -69,10 +71,15 @@ type voteKey struct {
 type proposal struct {
 	state   common.GovActionState
 	deposit uint64
+	// expires is the last epoch the proposal can be voted on.
+	expires uint64
+	// enacted is set when ratify applied the proposal.
+	enacted bool
 }
 
-func newCertState(seats []CommitteeSeat) *certState {
+func newCertState(seats []CommitteeSeat, pp conway.ConwayProtocolParameters) *certState {
 	s := &certState{
+		enact:     enactment{params: pp},
 		accounts:  map[credKey]*account{},
 		pools:     map[common.PoolKeyHash]*pool{},
 		dreps:     map[credKey]common.DRepRegistration{},
@@ -108,6 +115,7 @@ func (s *certState) clone() *certState {
 		proposals: maps.Clone(s.proposals),
 		votes:     maps.Clone(s.votes),
 		epoch:     s.epoch.clone(),
+		enact:     s.enact,
 	}
 	for k, a := range s.accounts {
 		c := *a
@@ -151,6 +159,8 @@ type effects struct {
 	// expiry is the last slot a proposal made at the given slot can be voted
 	// on.
 	expiry func(slot uint64) uint64
+	// epochOf is the epoch of a slot.
+	epochOf func(slot uint64) uint64
 }
 
 // apply folds an accepted, phase-2-valid tx into s. Validation has already
@@ -165,6 +175,7 @@ func (s *certState) apply(tx common.Transaction, slot uint64, r effects) {
 		s.proposals[id] = proposal{
 			state:   common.GovActionState{ActionId: id, ActionType: t, ExpirySlot: r.expiry(slot), Action: p.GovAction()},
 			deposit: p.Deposit(),
+			expires: r.epochOf(r.expiry(slot)),
 		}
 	}
 	for voter, acts := range tx.VotingProcedures() {

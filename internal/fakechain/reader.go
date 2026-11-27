@@ -133,6 +133,14 @@ func (rd reader) Deposits() uint64 {
 	return rd.w.certs.deposits()
 }
 
+// Params returns the protocol parameters with every enacted parameter
+// change applied, as a node's current-parameters query answers.
+func (rd reader) Params() conway.ConwayProtocolParameters {
+	rd.w.mu.Lock()
+	defer rd.w.mu.Unlock()
+	return rd.w.certs.enact.params
+}
+
 // StakeRegistered reports whether cred is a confirmed registered stake
 // credential.
 func (rd reader) StakeRegistered(cred common.Credential) bool {

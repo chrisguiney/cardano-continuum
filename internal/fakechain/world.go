@@ -72,7 +72,11 @@ func loadGenesis(w *world, gs []GenesisOutput) error {
 // newLedgerView adapts the fake to the common.LedgerState the gouroboros
 // rules read: UTxO lookup, network id and slot arithmetic here, delegation
 // and governance state in ledgerView.
+//
+// The purpose roots are the last enacted parameter change of the cert state
+// being checked; the fake enacts no other purpose.
 func newLedgerView(w *world) *ledgerView {
+	lv := &ledgerView{}
 	g := w.cfg.Slots
 	start := time.Unix(0, 0).UTC()
 	ls := mockledger.NewLedgerStateBuilder().
@@ -91,9 +95,12 @@ func newLedgerView(w *world) *ledgerView {
 			return g.SlotAt(sched.Time(t.Sub(start).Milliseconds())), nil
 		}).
 		WithConstitutionValue(&common.Constitution{}).
-		WithGovPurposeRootsValue(&common.GovPurposeRoots{}).
+		WithGovPurposeRoots(func() (*common.GovPurposeRoots, error) {
+			return &common.GovPurposeRoots{PParamUpdate: lv.certs.enact.root}, nil
+		}).
 		Build()
-	return &ledgerView{MockLedgerState: ls}
+	lv.MockLedgerState = ls
+	return lv
 }
 
 // effectsOf returns what certState.apply needs. A proposal can be voted on up
@@ -101,7 +108,11 @@ func newLedgerView(w *world) *ledgerView {
 // in.
 func effectsOf(w *world) effects {
 	g, life := w.cfg.Slots, uint64(w.pp.GovActionValidityPeriod)
-	return effects{pp: w.pp, expiry: func(slot uint64) uint64 {
-		return g.SlotAt(g.EpochStart(g.EpochOfSlot(slot)+life+1)) - 1
-	}}
+	return effects{
+		pp: w.pp,
+		expiry: func(slot uint64) uint64 {
+			return g.SlotAt(g.EpochStart(g.EpochOfSlot(slot)+life+1)) - 1
+		},
+		epochOf: g.EpochOfSlot,
+	}
 }
