@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/steer"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
@@ -150,7 +151,7 @@ func TestHonestIntentsLand(t *testing.T) {
 	w := newWorld(t, cfg)
 	at := cfg.Slots.EpochStart(1)
 	w.controls = &scriptControls{clock: w.clock, at: []sched.Time{at, at}, cs: []control{
-		{RequestID: "p", Op: "inject", Scenario: scenarioPropose}, {RequestID: "h", Op: "inject", Scenario: scenarioHotKeys},
+		{RequestID: "p", Op: "inject", Scenario: steer.ScenarioPropose}, {RequestID: "h", Op: "inject", Scenario: steer.ScenarioHotKeys},
 	}}
 	p := cleanRun(t, w, cfg.Slots.EpochStart(3))
 	got := settledKinds(t, p.log)

@@ -17,6 +17,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/floor"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/intent"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/pay"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/steer"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/window"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
@@ -99,7 +100,7 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 	if err := e.in.Load(intent.State{N: s.Contracts, At: s.DeployAt, Drawn: s.DeployN}); err != nil {
 		return nil, err
 	}
-	ss := steerSaved{Paused: s.Paused, RateK: s.RateK, Waves: s.Waves, Adoptions: s.Adoptions, Images: map[population.ActorID]string{}}
+	ss := steer.Saved{Paused: s.Paused, RateK: s.RateK, Waves: s.Waves, Adoptions: s.Adoptions, Images: map[population.ActorID]string{}}
 	if len(s.Weights) > 0 {
 		ss.Weights = map[profile.IntentKind]float64{}
 		for _, w := range s.Weights {

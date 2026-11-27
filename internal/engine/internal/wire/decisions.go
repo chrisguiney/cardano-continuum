@@ -1,6 +1,9 @@
 package wire
 
-import "github.com/chrisguiney/cardano-continuum/internal/mistake"
+import (
+	"github.com/chrisguiney/cardano-continuum/internal/mistake"
+	"github.com/chrisguiney/cardano-continuum/internal/sched"
+)
 
 // Deployed is the body of a Deployed decision: contract Contract
 // (build.Contract) is open for locks. Address names its script.
@@ -149,4 +152,12 @@ type Confirmed struct {
 	Intent uint64 `cbor:"1,keyasint"`
 	ID     TxID   `cbor:"2,keyasint"`
 	Lost   uint64 `cbor:"3,keyasint,omitempty"`
+}
+
+// Adoption is one queued ImageChange of an upgrade wave.
+type Adoption struct {
+	At   sched.Time `cbor:"1,keyasint"`
+	Pool string     `cbor:"2,keyasint"`
+	Ref  string     `cbor:"3,keyasint"`
+	Done bool       `cbor:"4,keyasint,omitempty"`
 }

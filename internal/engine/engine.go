@@ -17,6 +17,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/judge"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/pace"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/pay"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/steer"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/window"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
@@ -86,7 +87,7 @@ type Engine struct {
 	fl *floor.Floor
 
 	// st is the operator's controls and the upgrade waves.
-	st *steering
+	st *steer.Steer
 
 	// jd is the oracle bridge: mistakes, verdicts, findings and monitors.
 	jd *judge.Judge
@@ -211,8 +212,8 @@ func newEmpty(cfg Config) (*Engine, error) {
 	e.jd = judge.New(judgeSpec(e, genesis), judgeEnv(e))
 	e.in = intent.New(intentSpec(e), intentEnv(e))
 	e.adv = attack.New(attackSpec(e), attackEnv(e))
-	e.st = newSteering(steerSpec{Seed: cfg.Seed, Slots: cfg.Slots},
-		steerEnv{Scenarios: scenarioRoute{e}, Pools: steerRing{e}, Clock: evsched{&e.clk}, Journal: &e.jr})
+	e.st = steer.New(steer.Spec{Seed: cfg.Seed, Slots: cfg.Slots},
+		steer.Env{Scenarios: scenarioRoute{e}, Roster: steerRing{e}, Clock: evsched{&e.clk}, Journal: &e.jr})
 	if err := e.co.Ring.Gen.Book(); err != nil {
 		return nil, err
 	}

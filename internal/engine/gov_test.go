@@ -10,6 +10,7 @@ import (
 
 	"github.com/blinklabs-io/gouroboros/ledger/conway"
 
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/steer"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
@@ -128,7 +129,7 @@ func probeWorld(t *testing.T, wrap func(*FakeNode) Node) *world {
 	w.wrap = wrap
 	at := sched.Time(3 * 3600 * 1000)
 	w.controls = &scriptControls{clock: w.clock, at: []sched.Time{at}, cs: []control{
-		{RequestID: "probe", Op: "inject", Scenario: scenarioSPOProbe},
+		{RequestID: "probe", Op: "inject", Scenario: steer.ScenarioSPOProbe},
 	}}
 	w.run(4*3600*1000, 0, nil)
 	return w
