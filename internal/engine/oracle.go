@@ -112,15 +112,6 @@ func (e *Engine) mistakeCtx(p *pendingRec, w keys.Wallet) mistake.Ctx {
 // would also make the node report the redeemers' pointers wrong.
 var staleInput = shelley.ShelleyTransactionInput{TxId: common.Blake2b256(bytes.Repeat([]byte{0xff}, 32))}
 
-// diagnoser is who reads a rejection: with mistakes on, the actor at its
-// competence; otherwise the configured one.
-func (e *Engine) diagnoser(a population.Actor) submit.Diagnoser {
-	if e.cfg.Mistakes && e.cfg.Diagnoser == nil {
-		return mistake.Diagnoser{Competence: a.Competence}
-	}
-	return e.diag
-}
-
 // judge compares the node's answers to the current attempt with the
 // verdict set its mistakes call for. "Inputs spent" is expected once the
 // attempt was sent, or an earlier unfinished attempt it conflicts with may
@@ -203,7 +194,7 @@ func answerOutcome(a Answer) submit.Outcome {
 func (e *Engine) watch(at sched.Time, from eventlog.ChainPoint, views []oracle.ViewCheck, tips []oracle.Branch) error {
 	before, _ := chain.PointFromLog(from)
 	conf, _ := chain.PointFromLog(e.win.Confirmed())
-	res := oracle.ReservationsOf(e.led)
+	res := oracle.ReservationsOf(e.pay.Reads())
 	s := oracle.Snapshot{
 		Seq: e.jr.Seq(), Run: e.cfg.Run,
 		Value:        &oracle.Value{Genesis: e.genesis, Utxo: e.Supply(), At: conf},

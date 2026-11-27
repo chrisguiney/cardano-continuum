@@ -303,7 +303,7 @@ func (e *Engine) prepare(at sched.Time, a population.Actor, in agenda.Intent, r 
 			return nil, "stake key registered or being registered"
 		}
 	case profile.IntentRegisterDRep:
-		if e.win.View().DRepRegistered(a.ID) || e.inFlight(a.ID, string(profile.IntentRegisterDRep)) {
+		if e.win.View().DRepRegistered(a.ID) || e.pay.Has(a.ID, string(profile.IntentRegisterDRep)) {
 			return nil, "DRep registered or being registered"
 		}
 	case profile.IntentDelegate:
@@ -342,7 +342,7 @@ func (e *Engine) prepare(at sched.Time, a population.Actor, in agenda.Intent, r 
 			return nil, "pool not registered"
 		}
 	case profile.IntentRetireDRep:
-		if !e.win.View().DRepRegistered(a.ID) || e.inFlight(a.ID, string(profile.IntentRetireDRep)) {
+		if !e.win.View().DRepRegistered(a.ID) || e.pay.Has(a.ID, string(profile.IntentRetireDRep)) {
 			return nil, "DRep not registered or retiring"
 		}
 	case profile.IntentScriptCall:
@@ -365,18 +365,8 @@ func (e *Engine) prepare(at sched.Time, a population.Actor, in agenda.Intent, r 
 // registering reports whether an unfinished intent of the actor registers
 // its stake key.
 func (e *Engine) registering(id population.ActorID) bool {
-	for _, q := range e.pending {
+	for q := range e.pay.All() {
 		if q.Actor == uint64(id) && (q.Kind == string(profile.IntentRegisterStake) || q.Kind == string(profile.IntentDelegate) && q.Register) {
-			return true
-		}
-	}
-	return false
-}
-
-// inFlight reports whether an unfinished intent of the actor has kind.
-func (e *Engine) inFlight(id population.ActorID, kind string) bool {
-	for _, q := range e.pending {
-		if q.Actor == uint64(id) && q.Kind == kind {
 			return true
 		}
 	}
@@ -426,7 +416,7 @@ func (e *Engine) payee(a population.Actor, targets []population.ActorID, r *rand
 // by usage (pickContract).
 func (e *Engine) prepareScript(id population.ActorID, p *pendingRec, r *rand.Rand) {
 	busy := map[Ref]bool{}
-	for _, q := range e.pending {
+	for q := range e.pay.All() {
 		// An honest actor knows its own unlocks, not an adversary's.
 		if q.Locked != nil && q.Attack == "" {
 			busy[*q.Locked] = true
@@ -489,21 +479,21 @@ func parseProposal(id agenda.ProposalID) (Ref, error) {
 // start builds and reserves the first attempt of p and starts its retry
 // machine. It returns why the intent was skipped, if it was.
 func (e *Engine) start(ctx context.Context, at sched.Time, p *pendingRec) (string, error) {
-	id := e.nextID + 1
+	id := e.pay.Next()
 	p.ID = id
 	built, inputs, ttl, why, err := e.attemptOf(ctx, at, p)
 	if why != "" || err != nil {
 		return why, err
 	}
-	if err := e.led.Reserve(ctx, plan.IntentID(id), attempt(population.ActorID(p.Actor), TxID(built.ID), inputs, ttl)); err != nil {
+	if err := e.pay.Reserve(ctx, id, population.ActorID(p.Actor), TxID(built.ID), inputs, ttl); err != nil {
 		return "reserve: " + err.Error(), nil
 	}
-	e.nextID = id
+	e.pay.Claim(id)
 	p.Tx, p.TTL, p.Cbor, p.Awaiting, p.Txs = TxID(built.ID), ttl, built.Tx, true, []TxID{TxID(built.ID)}
-	if err := e.begin(p); err != nil {
+	if err := e.retry.Begin(p); err != nil {
 		return "", err
 	}
-	e.addPending(p)
+	e.pay.Add(p)
 	if p.Kind == "" && !p.Refill {
 		if st := e.co.Rec(population.ActorID(p.Actor)); st != nil {
 			st.Remember(population.ActorID(p.To))
@@ -536,7 +526,7 @@ func (e *Engine) emitSubmitted(at sched.Time, p *pendingRec, built build.Built, 
 func (e *Engine) attemptOf(ctx context.Context, at sched.Time, p *pendingRec) (build.Built, []Ref, uint64, string, error) {
 	sp := specs[p.kindOf()]
 	a := population.ActorID(p.Actor)
-	avail := e.coins(a, plan.IntentID(p.ID))
+	avail := e.pay.Coins(a, plan.IntentID(p.ID))
 	need := sp.need(e, p) + sp.headroom
 	coins := e.sel.Select(avail, need)
 	if coins == nil {
@@ -564,7 +554,7 @@ func (e *Engine) attemptOf(ctx context.Context, at sched.Time, p *pendingRec) (b
 	built, err := attempt()
 	// A rebuild at the slot of the attempt it replaces, on the same inputs,
 	// is the same transaction; a later TTL makes it a new one.
-	for _, ok := e.byTx[TxID(built.ID)]; err == nil && ok; _, ok = e.byTx[TxID(built.ID)] {
+	for _, ok := e.pay.Of(TxID(built.ID)); err == nil && ok; _, ok = e.pay.Of(TxID(built.ID)) {
 		ttl++
 		built, err = attempt()
 	}
@@ -604,4 +594,17 @@ func (e *Engine) ttl(at sched.Time, guarded, script bool) uint64 {
 		return 0
 	}
 	return ttl
+}
+
+// settle accounts for a settled attempt of intent p: the deposit it paid
+// or refunded, a locked output it freed, and the lifecycle edge it causes.
+func (e *Engine) settle(at sched.Time, p *pendingRec, tx TxID) error {
+	if out := e.pay.Deposit(specs[p.kindOf()].deposit(e, p)); out > 0 {
+		e.win.Reclaim(out)
+	}
+	if p.Kind == unlockKind {
+		// The lock's script output counted as foreign when it settled.
+		e.win.Reclaim(p.Amount)
+	}
+	return e.co.Life.Settled(at, population.ActorID(p.Actor), profile.IntentKind(p.Kind), tx)
 }

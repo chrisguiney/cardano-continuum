@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
-	"github.com/chrisguiney/cardano-continuum/internal/plan"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/store"
 )
@@ -22,13 +21,14 @@ func (refusing) Commit(context.Context, store.Blob) error { return errors.New("c
 // the transaction must not be sent).
 func refuseReserves(t *testing.T, e *Engine) {
 	t.Helper()
-	blob, err := e.led.Blob()
+	blob, err := e.pay.Blob()
 	if err != nil {
 		t.Fatal(err)
 	}
 	cfg := e.ledgerConfig()
 	cfg.Store = refusing{}
-	if e.led, err = plan.Open(cfg, blob); err != nil {
+	next, deposits := e.pay.Counters()
+	if err = e.pay.Open(cfg, blob, next, deposits); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -58,8 +58,8 @@ func TestFirstBuildNeedsReserve(t *testing.T) {
 			t.Fatalf("at %d: %d payments submitted although Reserve refuses", at, n)
 		}
 	}
-	if len(e.pending) != 0 || len(e.InFlight()) != 0 {
-		t.Fatalf("%d pending, %d in flight, want none", len(e.pending), len(e.InFlight()))
+	if e.pay.Len() != 0 || len(e.InFlight()) != 0 {
+		t.Fatalf("%d pending, %d in flight, want none", e.pay.Len(), len(e.InFlight()))
 	}
 }
 

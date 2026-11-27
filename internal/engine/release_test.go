@@ -557,7 +557,7 @@ func TestRolledBackAttemptIsSentAgain(t *testing.T) {
 		t.Fatal(err)
 	}
 	mustHandle(t, e, eventlog.Record{Class: eventlog.Input, Kind: eventlog.KindBlockApplied, Body: body})
-	if got := e.pending[sub.Intent].M.State; got != submit.Confirmed {
+	if got := e.pay.Get(sub.Intent).M.State; got != submit.Confirmed {
 		t.Fatalf("machine %v after the block, want Confirmed", got)
 	}
 	out := mustHandle(t, e, rollbackInput(t, before))
@@ -565,7 +565,7 @@ func TestRolledBackAttemptIsSentAgain(t *testing.T) {
 		t.Fatal("the rollback released or rebuilt the payment")
 	}
 	// The resend waits out its backoff first.
-	mustHandle(t, e, tickInput(max(e.pending[sub.Intent].NotBefore, e.Now())))
+	mustHandle(t, e, tickInput(max(e.pay.Get(sub.Intent).NotBefore, e.Now())))
 	inf := e.InFlight()
 	if len(inf) != 1 || inf[0].ID != sub.ID || !bytes.Equal(inf[0].Tx, sub.Tx) {
 		t.Fatalf("in flight %+v, want the same bytes again", inf)

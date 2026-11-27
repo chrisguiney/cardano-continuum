@@ -16,7 +16,6 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
-	"github.com/chrisguiney/cardano-continuum/internal/mistake"
 	"github.com/chrisguiney/cardano-continuum/internal/plan"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
@@ -30,7 +29,8 @@ func blake2b256(b []byte) common.Blake2b256 { return common.Blake2b256Hash(b) }
 // the ledger's blob included.
 func (e *Engine) Snapshot() ([]byte, error) {
 	sv := e.win.Saved()
-	s := snapshot{Version: snapshotVersion, Now: e.clk.Now(), NextIntent: e.nextID, Conf: sv.Conf, Fees: sv.Fees, Foreign: sv.Foreign, RefillAt: e.refillAt, Deposits: e.deposits, Market: e.pc.Market(), Lost: e.lost,
+	nextID, deposits := e.pay.Counters()
+	s := snapshot{Version: snapshotVersion, Now: e.clk.Now(), NextIntent: nextID, Conf: sv.Conf, Fees: sv.Fees, Foreign: sv.Foreign, RefillAt: e.refillAt, Deposits: deposits, Market: e.pc.Market(), Lost: e.lost,
 		Contracts: e.contracts, DeployAt: e.deployAt, DeployN: e.deployN}
 	for _, id := range e.co.IDs() {
 		a, _ := e.co.Get(id)
@@ -46,10 +46,10 @@ func (e *Engine) Snapshot() ([]byte, error) {
 		s.Births = append(s.Births, birthRec{Profile: name, At: at, N: n})
 	}
 	s.Window = e.win.Volatile()
-	for _, id := range e.pendingIDs() {
-		s.Pending = append(s.Pending, *e.pending[id])
+	for _, id := range e.pay.IDs() {
+		s.Pending = append(s.Pending, *e.pay.Get(id))
 	}
-	blob, err := e.led.Blob()
+	blob, err := e.pay.Blob()
 	if err != nil {
 		return nil, fmt.Errorf("engine: ledger: %w", err)
 	}
@@ -70,15 +70,6 @@ func (e *Engine) Snapshot() ([]byte, error) {
 	return eventlog.Encode(s)
 }
 
-func (e *Engine) pendingIDs() []uint64 {
-	ids := make([]uint64, 0, len(e.pending))
-	for id := range e.pending {
-		ids = append(ids, id)
-	}
-	slices.Sort(ids)
-	return ids
-}
-
 // Restore rebuilds an engine from a Snapshot. The census, queue and indexes
 // are derived again: actors are respawned from the same root seed, which
 // reproduces their traits, and walked to their recorded state. The ledger
@@ -95,7 +86,6 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
-	e.nextID, e.deposits = s.NextIntent, s.Deposits
 	// Between inputs the last Tick's time is the clock.
 	e.clk.Restore(s.Now)
 	e.pc.SetMarket(s.Market)
@@ -157,27 +147,26 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 	}
 	for i := range s.Pending {
 		p := &s.Pending[i]
-		e.addPending(p)
+		e.pay.Add(p)
 		if p.Awaiting && p.NotBefore > e.clk.Now() {
-			e.wake(p)
+			e.retry.Wake(p)
 		}
 	}
 	attempts := 0
-	for _, p := range e.pending {
+	for p := range e.pay.All() {
 		attempts += len(p.Txs)
 	}
-	if n := len(e.led.Unfinished()); n != attempts {
+	if n := len(e.pay.Reads().Unfinished()); n != attempts {
 		return nil, fmt.Errorf("engine: snapshot has %d attempts, ledger %d unfinished", attempts, n)
 	}
 	return e, nil
 }
 
 func (e *Engine) restoreLedger(s snapshot) error {
-	led, err := plan.Open(e.ledgerConfig(), store.Blob{Version: s.Ledger.Version, Data: s.Ledger.Data})
-	if err != nil {
+	if err := e.pay.Open(e.ledgerConfig(), store.Blob{Version: s.Ledger.Version, Data: s.Ledger.Data}, s.NextIntent, s.Deposits); err != nil {
 		return fmt.Errorf("engine: snapshot ledger: %w", err)
 	}
-	e.led = led
+	led := e.pay.Reads()
 	if conf, _ := chain.PointFromLog(s.Conf); led.ResumePoint() != conf {
 		return fmt.Errorf("engine: snapshot ledger settled at slot %d, engine confirmed slot %d", led.ResumePoint().Slot, s.Conf.Slot)
 	}
@@ -197,7 +186,7 @@ func (e *Engine) restoreLedger(s snapshot) error {
 		// Fewer than K+1 blocks above the settled point settle nothing, and
 		// death is judged at the settled point, so replaying the window
 		// finishes no payment.
-		res, err := led.Advance(ctx, chain.Event{Kind: chain.Forward, Block: lb, Point: lb.Point})
+		res, err := e.pay.Advance(ctx, chain.Event{Kind: chain.Forward, Block: lb, Point: lb.Point})
 		if err != nil {
 			return fmt.Errorf("engine: snapshot window: %w", err)
 		}
@@ -316,7 +305,7 @@ func (h hooks) Wake(a population.Actor, st *cohort.Actor, now sched.Time) {
 	h.e.pc.Next(a, subject(st), now)
 }
 
-func (h hooks) InFlight(id population.ActorID, kind string) bool { return h.e.inFlight(id, kind) }
+func (h hooks) InFlight(id population.ActorID, kind string) bool { return h.e.pay.Has(id, kind) }
 
 func (h hooks) Agenda() agenda.View { return view(h) }
 
@@ -357,17 +346,13 @@ func (e *Engine) Tip() eventlog.ChainPoint { return e.win.Tip() }
 // payment: its settled outputs that are neither reserved nor spent in a
 // block above the settled point.
 func (e *Engine) Spendable(id uint64) uint64 {
-	return sumCoins(e.coins(population.ActorID(id), plan.IntentID(e.nextID+1)))
+	return e.pay.Spendable(id)
 }
 
 // Balances returns each actor's settled lovelace, reserved or not, by
 // actor ID.
 func (e *Engine) Balances() map[uint64]uint64 {
-	out := map[uint64]uint64{}
-	for _, u := range e.led.Settled() {
-		out[uint64(u.Owner)] += u.Lovelace
-	}
-	return out
+	return e.pay.Balances()
 }
 
 // Lost is the lovelace settled payments sent to addresses nobody holds.
@@ -378,29 +363,24 @@ func (e *Engine) Lost() uint64 { return e.lost }
 // them) and the deposits the engine's certificates and proposals hold. It
 // equals the genesis total while value is conserved.
 func (e *Engine) Supply() uint64 {
-	var sum uint64
-	for _, u := range e.led.Settled() {
-		sum += u.Lovelace
-	}
 	sv := e.win.Saved()
-	return sum + sv.Fees + sv.Foreign + e.deposits
+	return e.pay.Supply() + sv.Fees + sv.Foreign
 }
 
 // Reservations is the ledger's blob, for store.Checkpoint.Reservations. The
 // snapshot carries the same bytes.
-func (e *Engine) Reservations() (store.Blob, error) { return e.led.Blob() }
+func (e *Engine) Reservations() (store.Blob, error) { return e.pay.Blob() }
 
 // Actors is the number of actors ever spawned.
 func (e *Engine) Actors() int { return e.co.Pop().Len() }
 
 // IntentOf is the intent an unfinished attempt belongs to.
 func (e *Engine) IntentOf(tx TxID) (uint64, bool) {
-	id, ok := e.byTx[tx]
-	return id, ok
+	return e.pay.Of(tx)
 }
 
 // Pending is the number of payments not yet confirmed or released.
-func (e *Engine) Pending() int { return len(e.pending) }
+func (e *Engine) Pending() int { return e.pay.Len() }
 
 // Submission is a payment waiting for the node's answer. Twice asks for the
 // bytes to be sent a second time (a DoubleSubmit mistake).
@@ -419,17 +399,7 @@ type Submission struct {
 // ahead of all of them. It is the loop's effect queue: derived from state,
 // so a restart resumes exactly the submissions a crash interrupted.
 func (e *Engine) InFlight() []Submission {
-	out := make([]Submission, 0, len(e.awaiting))
-	for _, jump := range []bool{true, false} {
-		for _, id := range e.awaiting {
-			p := e.pending[id]
-			if p.NotBefore > e.clk.Now() || p.Jump != jump {
-				continue
-			}
-			out = append(out, Submission{Intent: id, Actor: p.Actor, ID: p.Tx, Tx: p.Cbor, Twice: p.Carried.Has(mistake.DoubleSubmit), Rivals: p.Rivals})
-		}
-	}
-	return out
+	return e.pay.InFlight(e.clk.Now())
 }
 
 // ActorKinds returns every role an actor row can report: the profile kinds
@@ -465,15 +435,15 @@ func (e *Engine) holdings() map[population.ActorID]*cohort.Holding {
 		}
 		return h
 	}
-	for _, u := range e.led.Settled() {
+	for _, u := range e.pay.Reads().Settled() {
 		h := of(u.Owner)
 		h.Settled += u.Lovelace
 		h.UTxOs++
-		if _, held := e.led.Holder(u.Ref); held {
+		if _, held := e.pay.Reads().Holder(u.Ref); held {
 			h.Reserved += u.Lovelace
 		}
 	}
-	for _, p := range e.pending {
+	for p := range e.pay.All() {
 		if p.Refill {
 			continue
 		}
@@ -505,4 +475,33 @@ func idSet(m map[population.ActorID]bool) []uint64 {
 	}
 	slices.Sort(out)
 	return out
+}
+
+// learn raises the actor's competence toward 1 at its learning rate: a
+// fix it made worked.
+func (e *Engine) learn(id population.ActorID) error {
+	a, ok := e.co.Get(id)
+	if !ok {
+		return nil
+	}
+	return e.co.Pop().SetCompetence(id, a.Competence+a.Traits.LearningRate*(1-a.Competence))
+}
+
+// frustrate raises the actor's frustration, and with it the dormancy
+// hazard, which is drawn again from now.
+func (e *Engine) frustrate(at sched.Time, id population.ActorID) error {
+	a, ok := e.co.Get(id)
+	if !ok {
+		return nil
+	}
+	if err := e.co.Pop().SetFrustration(id, a.Frustration+frustration); err != nil {
+		return err
+	}
+	st := e.co.Rec(id)
+	if st.HazardAt != population.Never {
+		e.clk.Cancel(st.HazardH)
+	}
+	a, _ = e.co.Get(id)
+	e.co.Life.NextHazard(a, st, at)
+	return nil
 }

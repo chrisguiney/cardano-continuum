@@ -195,7 +195,7 @@ type shot struct {
 // reserves and logs it. against is the honest intent a front-run outbids.
 // It returns why the step was not made, if it was not.
 func (e *Engine) strike(ctx context.Context, at sched.Time, id population.ActorID, step adversary.Step, against uint64) (string, error) {
-	intent := e.nextID + 1
+	intent := e.pay.Next()
 	s, why, err := e.build(ctx, at, id, intent, step)
 	if why != "" || err != nil {
 		return why, err
@@ -205,14 +205,14 @@ func (e *Engine) strike(ctx context.Context, at sched.Time, id population.ActorI
 		return fmt.Sprintf("cost ceiling: step costs %d, %d left this epoch", s.cost, left), nil
 	}
 	for _, b := range s.txs {
-		if err := e.led.Reserve(ctx, plan.IntentID(intent), attempt(id, TxID(b.ID), s.inputs, s.ttl)); err != nil {
+		if err := e.pay.Reserve(ctx, intent, id, TxID(b.ID), s.inputs, s.ttl); err != nil {
 			return "reserve: " + err.Error(), nil
 		}
 	}
 	if err := e.costs.Charge(id, epoch, s.cost); err != nil {
 		return "", fmt.Errorf("engine: charge attack %d: %w", intent, err)
 	}
-	e.nextID = intent
+	e.pay.Claim(intent)
 	p := s.rec
 	p.ID, p.Actor, p.Attack, p.Want = intent, uint64(id), string(step.Attack), wantOf(s.want)
 	p.Tx, p.TTL, p.Cbor, p.Awaiting, p.Jump = TxID(s.txs[0].ID), s.ttl, s.txs[0].Tx, true, against != 0
@@ -228,7 +228,7 @@ func (e *Engine) strike(ctx context.Context, at sched.Time, id population.ActorI
 		e.contested[*p.Locked] = true
 		body.Value = p.Amount
 	}
-	e.addPending(&p)
+	e.pay.Add(&p)
 	e.pc.Excite(at)
 	e.jr.Emit(at, KindAttack, id, body)
 	for _, b := range s.txs {
@@ -267,7 +267,7 @@ func (e *Engine) build(ctx context.Context, at sched.Time, id population.ActorID
 
 // fund selects the adversary's inputs for need lovelace.
 func (e *Engine) fund(id population.ActorID, intent uint64, need uint64) ([]Coin, string) {
-	avail := e.coins(id, plan.IntentID(intent))
+	avail := e.pay.Coins(id, plan.IntentID(intent))
 	coins := e.sel.Select(avail, need)
 	if coins == nil {
 		return nil, fmt.Sprintf("spendable %d below %d", sumCoins(avail), need)
@@ -494,7 +494,7 @@ func (e *Engine) attackResult(ctx context.Context, at sched.Time, p *pendingRec,
 	}
 	var dead []plan.TxID
 	refuse := func(tx TxID) error {
-		d, err := e.led.Refused(ctx, plan.TxID(tx))
+		d, err := e.pay.Refused(ctx, plan.TxID(tx))
 		dead = append(dead, d...)
 		return err
 	}
@@ -512,8 +512,8 @@ func (e *Engine) attackResult(ctx context.Context, at sched.Time, p *pendingRec,
 		}
 	}
 	p.Awaiting, p.Cbor, p.Rivals = false, nil, nil
-	e.stopAwaiting(p.ID)
-	return e.release(ctx, at, dead, reasonOf(r))
+	e.pay.Unawait(p.ID)
+	return e.retry.Release(ctx, at, dead, reasonOf(r))
 }
 
 // judgeAttack holds every answer to the verdict the step called for. A
@@ -550,7 +550,7 @@ func (e *Engine) judgeAttack(at sched.Time, p *pendingRec, r SubmitResult, out s
 func (v view) Shared() []adversary.Locked {
 	e := v.e
 	busy, taken := map[Ref]bool{}, map[Ref]bool{}
-	for _, q := range e.pending {
+	for q := range e.pay.All() {
 		if q.Locked == nil {
 			continue
 		}
@@ -609,11 +609,11 @@ func (v view) Payees() []population.ActorID {
 // outputs no intent holds, by Ref.
 func (v view) Victims() []adversary.Coin {
 	var out []adversary.Coin
-	for _, u := range v.e.led.Settled() {
+	for _, u := range v.e.pay.Reads().Settled() {
 		if v.e.isAdversary(u.Owner) || u.Owner == faucetActor {
 			continue
 		}
-		if _, held := v.e.led.Holder(u.Ref); held {
+		if _, held := v.e.pay.Reads().Holder(u.Ref); held {
 			continue
 		}
 		out = append(out, adversary.Coin{Ref: adversary.Ref{Tx: u.Ref.Tx, Index: u.Ref.Index}, Owner: u.Owner, Lovelace: u.Lovelace})

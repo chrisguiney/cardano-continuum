@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
-	"slices"
 
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
@@ -71,8 +70,6 @@ type Engine struct {
 	cfg     Config
 	builder *build.Builder
 	sel     Selector
-	retry   submit.Policy
-	diag    submit.Diagnoser
 	// faucet is set only when cfg.Faucet is positive.
 	faucet   keys.Wallet
 	refillAt sched.Time
@@ -84,15 +81,9 @@ type Engine struct {
 	// win folds the same blocks as led.
 	win *window.Window
 
-	led      *plan.Ledger
-	pending  map[uint64]*pendingRec
-	byTx     map[TxID]uint64
-	awaiting []uint64 // ascending intent IDs without a node answer
-	nextID   uint64
-	// deposits is the lovelace the engine's settled certificates and
-	// proposals hold in the ledger's deposit pot.
-	deposits uint64
-	pc       *pace.Pace
+	pay   *pay
+	retry *retry
+	pc    *pace.Pace
 	// contracts is how many contracts are deployed (contract 0 from
 	// genesis); deployAt is the next deployment, deployN its draw.
 	contracts uint64
@@ -170,7 +161,7 @@ func New(cfg Config) (*Engine, error) {
 		// Shelley genesis and the fake chain.
 		genesis = append(genesis, plan.Utxo{Ref: plan.Ref{Tx: blake2b256(addr)}, Owner: owners[i], Lovelace: f.Lovelace})
 	}
-	if e.led, err = plan.New(e.ledgerConfig(), genesis); err != nil {
+	if err = e.pay.Genesis(e.ledgerConfig(), genesis); err != nil {
 		return nil, fmt.Errorf("engine: ledger: %w", err)
 	}
 	var gs chain.State
@@ -218,13 +209,13 @@ func newEmpty(cfg Config) (*Engine, error) {
 	}
 	e := &Engine{
 		cfg: cfg, builder: build.New(cfg.Build), sel: sel,
-		retry: cfg.retry(), diag: diag,
-		pending: map[uint64]*pendingRec{}, byTx: map[TxID]uint64{},
+		pay:  &pay{book: newBook()},
 		win:  window.New(chain.Config{K: cfg.K, Slots: cfg.Slots, NOpt: cfg.NOpt, GovLifetime: cfg.GovLifetime}),
 		dark: map[population.ActorID]bool{}, down: map[population.ActorID]bool{}, repairs: map[population.ActorID]bool{},
 		images: map[population.ActorID]string{}, contracts: 1, deployAt: population.Never,
 		advs: map[population.ActorID]adversary.Policy{}, costs: adversary.NewLedger(), contested: map[Ref]bool{},
 	}
+	e.retry = &retry{e: e, pol: cfg.retry(), diag: diag, pay: e.pay}
 	if e.guard, err = policy.New(cfg.floor()); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrConfig, err)
 	}
@@ -435,52 +426,18 @@ func paymentSize(a *profile.Amount, bal, floor uint64, r *rand.Rand) uint64 {
 	return max(uint64(min(a.Sample(r), ceiling)), floor)
 }
 
-func attempt(a population.ActorID, tx TxID, inputs []Ref, ttl uint64) plan.Attempt {
-	ins := make([]plan.Ref, len(inputs))
-	for i, r := range inputs {
-		ins[i] = plan.Ref{Tx: plan.TxID(r.Tx), Index: r.Index}
-	}
-	return plan.Attempt{Tx: plan.TxID(tx), Actor: a, Inputs: ins, TTL: ttl}
-}
-
-func (e *Engine) addPending(p *pendingRec) {
-	e.pending[p.ID] = p
-	for _, tx := range p.Txs {
-		e.byTx[tx] = p.ID
-	}
-	if p.Awaiting {
-		e.awaiting = append(e.awaiting, p.ID)
-	}
-}
-
-func (e *Engine) dropPending(id uint64) {
-	if p, ok := e.pending[id]; ok {
-		for _, tx := range p.Txs {
-			delete(e.byTx, tx)
-		}
-		delete(e.pending, id)
-	}
-	e.stopAwaiting(id)
-}
-
-func (e *Engine) stopAwaiting(id uint64) {
-	if i, ok := slices.BinarySearch(e.awaiting, id); ok {
-		e.awaiting = slices.Delete(e.awaiting, i, i+1)
-	}
-}
-
 // submitResult feeds the node's answer to the payment's retry machine.
 // Whether a rejection writes the attempt off is the machine's call, from the
 // answer alone: a rejection of a resend (which the attempt's own arrival can
 // cause) proves nothing unless it names a rule that reads the transaction
 // only (RetryRebuildOnOwnSpendBug in models/specs/submit-retry).
 func (e *Engine) submitResult(ctx context.Context, at sched.Time, r SubmitResult) error {
-	p, ok := e.pending[r.Intent]
-	if !ok || (!p.Awaiting && r.Verdict != VerdictDropped) {
+	p := e.pay.Get(r.Intent)
+	if p == nil || (!p.Awaiting && r.Verdict != VerdictDropped) {
 		return nil
 	}
 	if r.Verdict == VerdictDropped {
-		return e.dropped(ctx, at, r)
+		return e.retry.Dropped(ctx, at, r)
 	}
 	if p.Attack != "" {
 		return e.attackResult(ctx, at, p, r)
@@ -506,58 +463,7 @@ func (e *Engine) submitResult(ctx context.Context, at sched.Time, r SubmitResult
 	if err := e.judge(at, p, r, out); err != nil {
 		return err
 	}
-	return e.apply(ctx, at, p, submit.Answered{Out: out}, reasonOf(r))
-}
-
-// release handles attempts the ledger wrote off. The current attempt of a
-// live machine is Dead to it, and it builds again unless its patience is
-// spent; a payment whose last unfinished attempt is dead and whose machine
-// is done with it is released and forgotten. An empty why names the cause
-// per payment: expiry or conflict.
-func (e *Engine) release(ctx context.Context, at sched.Time, dead []plan.TxID, why string) error {
-	for _, tx := range dead {
-		id, ok := e.byTx[TxID(tx)]
-		if !ok {
-			continue
-		}
-		p := e.pending[id]
-		e.forgetTx(TxID(tx))
-		if err := e.dead(ctx, at, p, TxID(tx)); err != nil {
-			return err
-		}
-		if e.pending[id] != p || len(p.Txs) > 0 || (!p.oneShot() && p.M.State != submit.GaveUp) {
-			continue
-		}
-		w := why
-		if w == "" {
-			w = "conflict"
-			if p.TTL <= e.win.Confirmed().Slot {
-				w = "expired"
-			}
-		}
-		e.dropPending(id)
-		e.jr.End(id, TxID(tx), true)
-		e.jr.Emit(at, KindReleased, population.ActorID(p.Actor), Released{Intent: id, Why: w})
-	}
-	return nil
-}
-
-// coins lists what the ledger offers actor a for intent id, sorted by Ref.
-func (e *Engine) coins(a population.ActorID, id plan.IntentID) []Coin {
-	us := e.led.Available(a, id, plan.Opts{})
-	out := make([]Coin, len(us))
-	for i, u := range us {
-		out[i] = Coin{Ref: Ref{Tx: TxID(u.Ref.Tx), Index: u.Ref.Index}, Lovelace: u.Lovelace}
-	}
-	return out
-}
-
-func sumCoins(cs []Coin) uint64 {
-	var sum uint64
-	for _, c := range cs {
-		sum += c.Lovelace
-	}
-	return sum
+	return e.retry.Answer(ctx, at, p, out, reasonOf(r))
 }
 
 // applyBlock pushes a block onto the volatile window and the ledger's view.
@@ -568,7 +474,7 @@ func (e *Engine) applyBlock(ctx context.Context, at sched.Time, b blockRec) erro
 	if err != nil {
 		return err
 	}
-	res, err := e.led.Advance(ctx, chain.Event{Kind: chain.Forward, Block: lb, Point: lb.Point})
+	res, err := e.pay.Advance(ctx, chain.Event{Kind: chain.Forward, Block: lb, Point: lb.Point})
 	if err != nil {
 		return fmt.Errorf("engine: ledger: %w", err)
 	}
@@ -576,7 +482,7 @@ func (e *Engine) applyBlock(ctx context.Context, at sched.Time, b blockRec) erro
 	if err := e.win.Push(b, vb); err != nil {
 		return fmt.Errorf("engine: view: %w", err)
 	}
-	if err := e.inBlock(ctx, at, b); err != nil {
+	if err := e.retry.InBlock(ctx, at, b); err != nil {
 		return err
 	}
 	was := e.cfg.Slots.EpochOfSlot(e.win.Confirmed().Slot)
@@ -587,23 +493,21 @@ func (e *Engine) applyBlock(ctx context.Context, at sched.Time, b blockRec) erro
 		}
 	}
 	for _, tx := range res.Settled {
-		if id, ok := e.byTx[TxID(tx)]; ok {
-			p := e.pending[id]
-			if err := e.observe(ctx, at, p, submit.Settled{Tx: tx}); err != nil {
-				return err
-			}
-			e.dropPending(id)
-			// Every attempt carries a WrongAddress mistake (it has no
-			// fix), so the current one's loss is the settled one's.
-			e.lost += p.Lost
-			e.jr.End(id, TxID(tx), false)
-			e.jr.Emit(at, KindConfirmed, population.ActorID(p.Actor), Confirmed{Intent: id, ID: TxID(tx), Lost: p.Lost})
-			if err := e.settle(at, p, TxID(tx)); err != nil {
-				return err
-			}
+		p, err := e.retry.Settle(ctx, at, tx)
+		if err != nil {
+			return err
+		}
+		if p == nil {
+			continue
+		}
+		// Every attempt carries a WrongAddress mistake (it has no fix), so
+		// the current one's loss is the settled one's.
+		e.lost += p.Lost
+		if err := e.settle(at, p, TxID(tx)); err != nil {
+			return err
 		}
 	}
-	if err := e.release(ctx, at, res.Dead, ""); err != nil {
+	if err := e.retry.Release(ctx, at, res.Dead, ""); err != nil {
 		return err
 	}
 	return e.recover(ctx, at)
@@ -618,12 +522,12 @@ func (e *Engine) rollback(ctx context.Context, p eventlog.ChainPoint) error {
 	if err != nil {
 		return err
 	}
-	if _, err := e.led.Advance(ctx, chain.Event{Kind: chain.Backward, Point: c.To()}); err != nil {
+	if _, err := e.pay.Advance(ctx, chain.Event{Kind: chain.Backward, Point: c.To()}); err != nil {
 		return fmt.Errorf("engine: ledger: %w", err)
 	}
 	gone, err := e.win.Rollback(c)
 	if err != nil {
 		return fmt.Errorf("engine: view: %w", err)
 	}
-	return e.leftView(ctx, e.clk.Now(), gone)
+	return e.retry.LeftView(ctx, e.clk.Now(), gone)
 }

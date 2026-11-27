@@ -54,8 +54,8 @@ func (e *Engine) floorState(at sched.Time) policy.State {
 // re-registration.
 func (e *Engine) inflight() []policy.Intent {
 	var out []policy.Intent
-	for _, id := range e.pendingIDs() {
-		p := e.pending[id]
+	for _, id := range e.pay.IDs() {
+		p := e.pay.Get(id)
 		a := population.ActorID(p.Actor)
 		switch profile.IntentKind(p.Kind) {
 		case profile.IntentDelegate:

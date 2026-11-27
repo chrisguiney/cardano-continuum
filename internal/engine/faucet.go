@@ -46,8 +46,8 @@ func (e *Engine) refill(ctx context.Context, at sched.Time) error {
 	for _, o := range outs {
 		total += o.Amount
 	}
-	id := e.nextID + 1
-	coins := e.sel.Select(e.coins(faucetActor, plan.IntentID(id)), total+feeHeadroom)
+	id := e.pay.Next()
+	coins := e.sel.Select(e.pay.Coins(faucetActor, plan.IntentID(id)), total+feeHeadroom)
 	if coins == nil {
 		skip(fmt.Sprintf("faucet cannot cover %d", total+feeHeadroom))
 		return nil
@@ -66,12 +66,12 @@ func (e *Engine) refill(ctx context.Context, at sched.Time) error {
 		skip("build: " + err.Error())
 		return nil
 	}
-	if err := e.led.Reserve(ctx, plan.IntentID(id), attempt(faucetActor, TxID(built.ID), inputs, ttl)); err != nil {
+	if err := e.pay.Reserve(ctx, id, faucetActor, TxID(built.ID), inputs, ttl); err != nil {
 		skip("reserve: " + err.Error())
 		return nil
 	}
-	e.nextID = id
-	e.addPending(&pendingRec{ID: id, Actor: uint64(faucetActor), Tx: TxID(built.ID), TTL: ttl, Cbor: built.Tx,
+	e.pay.Claim(id)
+	e.pay.Add(&pendingRec{ID: id, Actor: uint64(faucetActor), Tx: TxID(built.ID), TTL: ttl, Cbor: built.Tx,
 		Awaiting: true, Txs: []TxID{TxID(built.ID)}, Refill: true})
 	e.jr.Emit(at, KindRefill, faucetActor, Refill{
 		Intent: id, ID: TxID(built.ID), To: to, Amounts: amounts, Fee: built.Fee, TTL: ttl, Inputs: inputs, Tx: built.Tx,
@@ -81,7 +81,7 @@ func (e *Engine) refill(ctx context.Context, at sched.Time) error {
 
 // refilling reports whether a refill is unfinished.
 func (e *Engine) refilling() bool {
-	for _, p := range e.pending {
+	for p := range e.pay.All() {
 		if p.Refill {
 			return true
 		}
@@ -105,7 +105,7 @@ func (e *Engine) needy() ([]build.Output, []uint64, []uint64) {
 		}
 		st := e.co.Rec(id)
 		budget := uint64(st.Prof.Budget)
-		held := sumUtxos(e.led.Available(id, plan.IntentID(e.nextID+1), plan.Opts{Chain: true}))
+		held := sumUtxos(e.pay.Reads().Available(id, plan.IntentID(e.pay.Next()), plan.Opts{Chain: true}))
 		if held >= budget/2 {
 			continue
 		}
@@ -134,15 +134,15 @@ func (e *Engine) refillResult(ctx context.Context, at sched.Time, p *pendingRec,
 		if r.Resend {
 			break
 		}
-		dead, err := e.led.Refused(ctx, plan.TxID(p.Tx))
+		dead, err := e.pay.Refused(ctx, plan.TxID(p.Tx))
 		if err != nil {
 			return fmt.Errorf("engine: refuse refill %d: %w", p.ID, err)
 		}
-		return e.release(ctx, at, dead, reasonOf(r))
+		return e.retry.Release(ctx, at, dead, reasonOf(r))
 	default:
 		return fmt.Errorf("%w: intent %d", ErrUnknownVerdict, r.Intent)
 	}
 	p.Awaiting, p.Cbor = false, nil
-	e.stopAwaiting(p.ID)
+	e.pay.Unawait(p.ID)
 	return nil
 }
