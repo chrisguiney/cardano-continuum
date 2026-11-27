@@ -249,6 +249,51 @@ func (v *View) VotingPower(x Voter) uint64 {
 	return 0
 }
 
+// Tally is the votes on one governance action as the view sees them: the
+// lovelace delegated to the registered DReps that voted yes, and to all of
+// them less those that abstained (a DRep that has not voted counts as no,
+// as in Ratify.hs dRepAcceptedRatio); and the committee seats the book
+// names, by vote.
+type Tally struct {
+	// DRepYes and DRepTotal are the DReps' yes and counted voting power.
+	DRepYes, DRepTotal uint64
+	// CommitteeYes, CommitteeNo and CommitteeAbstain count the seats by
+	// vote; CommitteeSeats is every seat the book names.
+	CommitteeYes, CommitteeNo, CommitteeAbstain, CommitteeSeats int
+}
+
+// CountVotes tallies the votes on id with the voting power v sees now.
+// Only the run's own actors' stake counts, which is all of a devnet's
+// DRep-delegated stake.
+func CountVotes(v *View, id GovID) Tally {
+	var t Tally
+	for _, d := range sortedKeys(v.dreps) {
+		x := Voter{Kind: common.VoterTypeDRepKeyHash, Hash: d}
+		c, voted := v.votes[voteKey{id, x}]
+		if voted && c == common.GovVoteAbstain {
+			continue
+		}
+		n := v.VotingPower(x)
+		t.DRepTotal += n
+		if voted && c == common.GovVoteYes {
+			t.DRepYes += n
+		}
+	}
+
+	t.CommitteeSeats = v.cfg.Book.Seats()
+	for i := range t.CommitteeSeats {
+		switch c, ok := v.votes[voteKey{id, Voter{Kind: common.VoterTypeConstitutionalCommitteeHotKeyHash, Hash: v.cfg.Book.seats[i]}}]; {
+		case ok && c == common.GovVoteYes:
+			t.CommitteeYes++
+		case ok && c == common.GovVoteNo:
+			t.CommitteeNo++
+		case ok:
+			t.CommitteeAbstain++
+		}
+	}
+	return t
+}
+
 // PolicyState builds the stake-floor guard's input (internal/policy,
 // models/specs/stake-floor) from the view.
 //

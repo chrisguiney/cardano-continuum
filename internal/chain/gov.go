@@ -175,8 +175,8 @@ func (g gov) clone() gov {
 }
 
 // applyGov folds a transaction's proposals, then its votes. Every proposal
-// is tracked; a vote only when the book names its voter (a DRep or a pool
-// operator) and the proposal is tracked. Proposals are never ratified,
+// is tracked; a vote only when the book names its voter (a DRep, a pool
+// operator or a committee seat) and the proposal is tracked. Proposals are never ratified,
 // enacted or removed by the view: they stop being open when their last
 // epoch passes. It reports whether anything was tracked.
 func (g *gov) applyGov(tx Tx, expires uint64, u *undo) bool {
@@ -197,7 +197,8 @@ func (g *gov) applyGov(tx Tx, expires uint64, u *undo) bool {
 	return seen
 }
 
-// named reports whether the book has the voter's credential.
+// named reports whether the book has the voter's credential: a DRep, a
+// pool or a committee hot key.
 func (g *gov) named(x Voter) bool {
 	switch x.Kind {
 	case common.VoterTypeDRepKeyHash, common.VoterTypeDRepScriptHash:
@@ -206,6 +207,23 @@ func (g *gov) named(x Voter) bool {
 	case common.VoterTypeStakingPoolKeyHash:
 		_, ok := g.book.pools[x.Hash]
 		return ok
+	case common.VoterTypeConstitutionalCommitteeHotKeyHash:
+		_, ok := g.book.committee[x.Hash]
+		return ok
+	}
+	return false
+}
+
+// CommitteeVoted reports that committee seat i has a vote on p.
+func (g *gov) CommitteeVoted(i int, p agenda.ProposalID) bool {
+	hot, ok := g.book.seats[i]
+	if !ok {
+		return false
+	}
+	for k := range g.votes {
+		if k.voter.Kind == common.VoterTypeConstitutionalCommitteeHotKeyHash && k.voter.Hash == hot && agenda.ProposalID(k.action.String()) == p {
+			return true
+		}
 	}
 	return false
 }
@@ -242,6 +260,20 @@ func (g *gov) govState() ([]ProposalState, []VoteState) {
 		return a.Voter.compare(b.Voter)
 	})
 	return ps, vs
+}
+
+// Proposals lists the tracked governance actions of type typ, open or not,
+// by last voting epoch, then ID: the order they were proposed in.
+func (g *gov) Proposals(typ string) []ProposalState {
+	ps, _ := g.govState()
+	var out []ProposalState
+	for _, p := range ps {
+		if p.Type == typ {
+			out = append(out, p)
+		}
+	}
+	slices.SortStableFunc(out, func(a, b ProposalState) int { return cmp.Compare(a.Expires, b.Expires) })
+	return out
 }
 
 // open lists the tracked governance actions whose last epoch is not

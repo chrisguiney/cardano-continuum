@@ -118,3 +118,25 @@ func TestMayVote(t *testing.T) {
 		}
 	}
 }
+
+// The view tracks a committee member's vote by the hot key the book names,
+// and drops one from a hot key it does not know.
+func TestCommitteeVotesTracked(t *testing.T) {
+	v, chain := delegated(t, 10)
+	v.cfg.GovLifetime = 2
+	v.cfg.Book.AddCommittee(hash224(50), 0)
+	info := GovID{Tx: txid(70)}
+	cc := func(b byte) Voter {
+		return Voter{Kind: common.VoterTypeConstitutionalCommitteeHotKeyHash, Hash: hash224(b)}
+	}
+	b2 := nextAt(&chain[0], 101, 2, Tx{Hash: txid(70), Proposals: []Proposal{{ID: info, Type: "info", Pools: true, Deposit: 100}},
+		Votes: []Vote{{Voter: cc(50), Action: info, Choice: common.GovVoteYes}, {Voter: cc(51), Action: info, Choice: common.GovVoteNo}}})
+	mustApply(t, v, b2)
+	p := agenda.ProposalID(info.String())
+	if !v.CommitteeVoted(0, p) || v.CommitteeVoted(1, p) {
+		t.Fatalf("committee votes on %s: member 0 %t, member 1 %t; want only member 0", p, v.CommitteeVoted(0, p), v.CommitteeVoted(1, p))
+	}
+	if tl := CountVotes(v, info); tl.CommitteeYes != 1 || tl.CommitteeNo != 0 {
+		t.Errorf("tally %+v: want one committee yes", tl)
+	}
+}

@@ -23,18 +23,24 @@ type Book struct {
 	stakeOf map[population.ActorID]common.Blake2b224
 	poolOf  map[population.ActorID]common.Blake2b224
 	drepOf  map[population.ActorID]common.Blake2b224
+	// committee maps a constitutional committee member's hot key hash to
+	// its seat, and seats the reverse.
+	committee map[common.Blake2b224]int
+	seats     map[int]common.Blake2b224
 }
 
 // NewBook returns an empty book.
 func NewBook() *Book {
 	return &Book{
-		pay:     map[string]population.ActorID{},
-		stake:   map[common.Blake2b224]population.ActorID{},
-		pools:   map[common.Blake2b224]population.ActorID{},
-		dreps:   map[common.Blake2b224]population.ActorID{},
-		stakeOf: map[population.ActorID]common.Blake2b224{},
-		poolOf:  map[population.ActorID]common.Blake2b224{},
-		drepOf:  map[population.ActorID]common.Blake2b224{},
+		pay:       map[string]population.ActorID{},
+		stake:     map[common.Blake2b224]population.ActorID{},
+		pools:     map[common.Blake2b224]population.ActorID{},
+		dreps:     map[common.Blake2b224]population.ActorID{},
+		stakeOf:   map[population.ActorID]common.Blake2b224{},
+		poolOf:    map[population.ActorID]common.Blake2b224{},
+		drepOf:    map[population.ActorID]common.Blake2b224{},
+		committee: map[common.Blake2b224]int{},
+		seats:     map[int]common.Blake2b224{},
 	}
 }
 
@@ -66,6 +72,16 @@ func (b *Book) AddDRep(cred common.Blake2b224, id population.ActorID) {
 	b.dreps[cred] = id
 	b.drepOf[id] = cred
 }
+
+// AddCommittee records committee seat i's hot key hash, so the view tracks
+// the seat's votes.
+func (b *Book) AddCommittee(hot common.Blake2b224, i int) {
+	b.committee[hot] = i
+	b.seats[i] = hot
+}
+
+// Seats is how many committee seats the book names.
+func (b *Book) Seats() int { return len(b.seats) }
 
 func (b *Book) owner(a common.Address) (population.ActorID, bool) {
 	k, err := addrKey(a)
