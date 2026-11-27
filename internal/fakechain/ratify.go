@@ -46,8 +46,8 @@ func (t tally) meets(th *big.Rat) bool {
 // fake ratifies and enacts at the same boundary, where the ledger enacts
 // one epoch after ratifying, every DRep counts as active, and stake is the
 // UTxO lovelace per credential in stake. Other action types are never
-// enacted. Enacted proposals stay in the proposal map, so a later proposal
-// can still name one as its predecessor.
+// enacted. An enacted proposal stays in the proposal map until the next
+// boundary (prune), and the root names it after that.
 func ratify(s *certState, ep uint64, stake map[common.Blake2b224]uint64) {
 	ids := make([]common.GovActionId, 0, len(s.proposals))
 	for id := range s.proposals {
@@ -67,7 +67,7 @@ func ratify(s *certState, ep uint64, stake map[common.Blake2b224]uint64) {
 		if err := s.enact.params.ApplyUpdate(&upd); err != nil {
 			continue
 		}
-		p.enacted = true
+		p.enacted, p.enactedAt = true, ep
 		s.proposals[id] = p
 		root := id
 		s.enact.root = &root

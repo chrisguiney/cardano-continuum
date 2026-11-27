@@ -48,8 +48,9 @@ type seat struct {
 // permanently.
 //
 // At an epoch boundary (epoch.go) the snapshots rotate, retiring pools
-// retire and parameter changes with the votes are enacted (ratify.go).
-// Proposals are never expired, and no rewards accrue, so every reward
+// retire, parameter changes enacted at the boundary before are removed and
+// parameter changes with the votes are enacted (ratify.go). Expired
+// proposals are never removed, and no rewards accrue, so every reward
 // balance is zero.
 type certState struct {
 	accounts  map[credKey]*account
@@ -75,6 +76,9 @@ type proposal struct {
 	expires uint64
 	// enacted is set when ratify applied the proposal.
 	enacted bool
+	// enactedAt is the epoch whose boundary enacted it; the boundary after
+	// removes it (prune).
+	enactedAt uint64
 }
 
 func newCertState(seats []CommitteeSeat, pp conway.ConwayProtocolParameters) *certState {

@@ -120,3 +120,37 @@ func TestParameterChangeEnactsThenReverts(t *testing.T) {
 		t.Fatal("a change without the DRep's vote enacted")
 	}
 }
+
+// An enacted parameter change stays one more epoch, as the ledger enacts
+// one epoch after it ratifies and the fake ratifies and enacts at once,
+// and is then removed: a vote on it is refused with GovActionsDoNotExist
+// (ParamRealVoteOnEnactedBug in models/specs/governance-change). Its root
+// still accepts a revert naming it.
+func TestEnactedChangeRemovedAtNextBoundary(t *testing.T) {
+	g := newGovWorld()
+	newEpoch(g.s, 0, true, g.stake)
+	change := g.propose(1, nil, big.NewRat(1, 4), true, 2)
+	voter := &common.Voter{Type: common.VoterTypeDRepKeyHash, Hash: h(20)}
+	vote := conway.ConwayTransaction{Body: conway.ConwayTransactionBody{TxVotingProcedures: common.VotingProcedures{
+		voter: {&change: {Vote: common.GovVoteYes}},
+	}}}
+	lv := &ledgerView{certs: g.s}
+
+	newEpoch(g.s, 1, false, g.stake)
+	if !g.s.proposals[change].enacted {
+		t.Fatal("epoch 1: change not enacted")
+	}
+
+	if err := conway.UtxoValidateUnknownGovActionIds(vote, 0, lv, nil); err != nil {
+		t.Fatalf("epoch 1: vote on the change refused: %v", err)
+	}
+
+	newEpoch(g.s, 2, false, g.stake)
+	if err := conway.UtxoValidateUnknownGovActionIds(vote, 0, lv, nil); err == nil {
+		t.Fatal("epoch 2: vote on the enacted change accepted")
+	}
+
+	if !sameAction(g.s.enact.root, &change) {
+		t.Fatalf("epoch 2: root %v, want the change", g.s.enact.root)
+	}
+}

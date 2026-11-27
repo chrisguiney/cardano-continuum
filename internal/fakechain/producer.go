@@ -35,10 +35,14 @@ func (p producer) step() error {
 // produce assembles, applies and records the block at w.slot.
 func (p producer) produce() error {
 	w := p.w
-	txs := p.assemble()
 	u := undo{certs: w.certs.clone()}
 	r := effectsOf(w)
+	// The epoch transition runs before the block's transactions are
+	// chosen, so they are validated against the state after it, as the
+	// ledger's TICK precedes the block body: a vote in the first block of
+	// an epoch on a change the transition removed is refused.
 	newEpoch(w.certs, w.cfg.Slots.EpochOfSlot(w.slot), len(w.blocks) == 0, w.utxo.stakeByCred())
+	txs := p.assemble()
 	for _, tx := range txs {
 		w.utxo.applyTx(tx, &u)
 		w.certs.apply(tx, w.slot, r)

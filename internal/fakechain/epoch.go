@@ -24,9 +24,10 @@ type epochState struct {
 	frozen    bool
 	mark, set []Share
 	retired   map[common.PoolKeyHash]bool
-	// refunded is the pool deposits returned at retirement. The ledger pays
-	// them to the pool's reward account, which this fake never lets anyone
-	// withdraw from, so they stay out of circulation and count as deposits.
+	// refunded is the pool deposits returned at retirement and the
+	// proposal deposits returned at removal. The ledger pays them to a
+	// reward account, which this fake never lets anyone withdraw from, so
+	// they stay out of circulation and count as deposits.
 	refunded uint64
 }
 
@@ -57,6 +58,7 @@ func newEpoch(s *certState, ep uint64, first bool, stake map[common.Blake2b224]u
 		e.set, e.mark = e.mark, distribution(s, stake)
 		e.label = ep
 		reap(s, ep)
+		prune(s, ep)
 		ratify(s, ep, stake)
 	}
 }
@@ -86,6 +88,28 @@ func reap(s *certState, ep uint64) {
 		for _, a := range s.accounts {
 			if a.pool != nil && *a.pool == id {
 				a.pool = nil
+			}
+		}
+	}
+}
+
+// prune removes, at the boundary into epoch ep, the parameter changes
+// enacted at an earlier boundary, with their votes, and returns their
+// deposits as reap does a pool's. The ledger ratifies from the snapshot
+// taken at one boundary and enacts and removes at the next (Conway EPOCH
+// rule, proposalsApplyEnactment); the fake enacts at the first, so it
+// removes at the second, and a vote landing in between is accepted on
+// both. The root stays: a revert naming it is still acceptable.
+func prune(s *certState, ep uint64) {
+	for id, p := range s.proposals {
+		if !p.enacted || p.enactedAt >= ep {
+			continue
+		}
+		s.epoch.refunded += p.deposit
+		delete(s.proposals, id)
+		for k := range s.votes {
+			if k.action == id {
+				delete(s.votes, k)
 			}
 		}
 	}
