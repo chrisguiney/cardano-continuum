@@ -41,6 +41,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/cli/scenario"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/serve"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/sim"
+	"github.com/chrisguiney/cardano-continuum/web"
 )
 
 func main() {
@@ -79,7 +80,7 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 	case "bisect":
 		return bisect.Run(ctx, args[1:], out)
 	case "serve":
-		return serve.Run(ctx, args[1:], out)
+		return serve.Run(ctx, args[1:], out, web.Handler())
 	case "harvest":
 		return harvest.Run(ctx, args[1:], out)
 	case "vectors":

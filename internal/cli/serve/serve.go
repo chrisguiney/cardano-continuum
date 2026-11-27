@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
@@ -21,21 +22,21 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/httpapi/view"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/store"
-	"github.com/chrisguiney/cardano-continuum/web"
 )
 
 const serveUsage = "usage: continuum serve --log EVENTS.LOG [--store DB] [--addr HOST:PORT] [--controls] [--control LOG] [--explorer-blocks N] [--network N [--namespace NS] [--kubeconfig PATH]]"
 
-// Run serves the web UI and its API over an event log. It reads the log
-// without ever repairing it, so it can follow a run that is still writing;
-// --controls makes it the log's writer, which is only safe on a log no
-// engine is appending to.
-func Run(ctx context.Context, args []string, out io.Writer) error {
-	return RunWith(ctx, args, out, kube.Open)
+// Run serves the API over an event log, and ui beside it when ui is not
+// nil: continuum serve passes nil, continuum-ui serve the web UI. It reads
+// the log without ever repairing it, so it can follow a run that is still
+// writing; --controls makes it the log's writer, which is only safe on a
+// log no engine is appending to.
+func Run(ctx context.Context, args []string, out io.Writer, ui http.Handler) error {
+	return RunWith(ctx, args, out, kube.Open, ui)
 }
 
 // RunWith is Run over a cluster opener, so a test supplies a fake cluster.
-func RunWith(ctx context.Context, args []string, out io.Writer, open kube.Opener) error {
+func RunWith(ctx context.Context, args []string, out io.Writer, open kube.Opener, ui http.Handler) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	logPath := fs.String("log", "", "event log to serve (required)")
 	control := fs.String("control", "", "control run log (same seed, no adversaries), for the Adversaries page's deltas")
@@ -94,7 +95,15 @@ func RunWith(ctx context.Context, args []string, out io.Writer, open kube.Opener
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	ex := serving.NewExplorer(slots, 0, *keep, cfg.Names, cfg.Kube, cfg.Tips, nil, log)
 	cfg.Projection.Observe(ex.Apply)
-	return serve(ctx, serveParams{log: *logPath, addr: *addr, controls: *controls, cfg: cfg, hub: hub, explorer: ex}, out)
+	return serve(ctx, serveParams{
+		log:      *logPath,
+		addr:     *addr,
+		controls: *controls,
+		cfg:      cfg,
+		hub:      hub,
+		explorer: ex,
+		ui:       ui,
+	}, out)
 }
 
 type serveParams struct {
@@ -103,6 +112,8 @@ type serveParams struct {
 	cfg       view.LogSourceConfig
 	hub       *stream.Hub
 	explorer  *httpapi.Explorer
+	// ui serves the paths outside the API; nil leaves them 404.
+	ui http.Handler
 }
 
 func serve(ctx context.Context, p serveParams, out io.Writer) error {
@@ -114,7 +125,7 @@ func serve(ctx context.Context, p serveParams, out io.Writer) error {
 	if _, err := tail.Poll(ctx); err != nil {
 		return err
 	}
-	hcfg := httpapi.Config{Source: view.NewLogSource(p.cfg), Explorer: p.explorer, UI: web.Handler(), Logger: slog.New(slog.NewTextHandler(os.Stderr, nil))}
+	hcfg := httpapi.Config{Source: view.NewLogSource(p.cfg), Explorer: p.explorer, UI: p.ui, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil))}
 	if p.controls {
 		fl, err := eventlog.Open(p.log)
 		if err != nil {

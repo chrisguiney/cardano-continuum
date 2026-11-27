@@ -31,12 +31,15 @@ const (
 
 // Control bounds.
 const (
-	maxK         = 1000
-	maxWeight    = 1000.0
-	maxWeights   = 64
-	maxControls  = 1 << 16
-	maxBodyBytes = 64 << 10
+	maxK        = 1000
+	maxWeight   = 1000.0
+	maxWeights  = 64
+	maxControls = 1 << 16
 )
+
+// MaxBodyBytes bounds a request body; a proxy in front of the API refuses
+// a larger one before forwarding it.
+const MaxBodyBytes = 64 << 10
 
 var (
 	reRequestID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)

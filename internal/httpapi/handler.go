@@ -259,7 +259,7 @@ func (a *api) control(w http.ResponseWriter, r *http.Request) {
 		a.json(w, http.StatusNotImplemented, map[string]string{"error": "controls are not enabled"})
 		return
 	}
-	c, err := ParseControl(http.MaxBytesReader(w, r.Body, maxBodyBytes))
+	c, err := ParseControl(http.MaxBytesReader(w, r.Body, MaxBodyBytes))
 	if err != nil {
 		a.fail(w, err)
 		return

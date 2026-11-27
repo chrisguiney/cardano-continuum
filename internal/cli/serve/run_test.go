@@ -10,6 +10,7 @@ import (
 	"go.uber.org/goleak"
 
 	"github.com/chrisguiney/cardano-continuum/internal/cli/sim"
+	"github.com/chrisguiney/cardano-continuum/web"
 )
 
 func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
@@ -23,7 +24,7 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 	case "replay":
 		return sim.Replay(ctx, args[1:], out)
 	case "serve":
-		return Run(ctx, args[1:], out)
+		return Run(ctx, args[1:], out, web.Handler())
 	}
 	return fmt.Errorf("unknown command %q", args[0])
 }
