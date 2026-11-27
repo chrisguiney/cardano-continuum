@@ -9,6 +9,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/simflags"
 	"github.com/chrisguiney/cardano-continuum/internal/rng"
 )
 
@@ -32,7 +33,7 @@ func TestLiveConfig(t *testing.T) {
 		EpochLength: 500, SecurityParam: 5, SlotLength: time.Second}
 	var seed rng.Seed
 	seed[0] = 7
-	sf := simFlags{wallets: 20, ttl: 120, scale: 1}
+	sf := simflags.Flags{Population: simflags.Population{Wallets: 20, Scale: 1}, Chain: simflags.Chain{TTL: 120}}
 	lf := liveFlags{faucet: 1_000_000, refillEvery: 20}
 	bp := nodeParams{build: build.Params{MinFeeA: 44, MinFeeB: 155381, CoinsPerUtxoByte: 4310, MaxTxSize: 16384}, nOpt: 3, govLifetime: 6}
 	cfg, err := liveConfig(sf, lf, g, bp, seed)

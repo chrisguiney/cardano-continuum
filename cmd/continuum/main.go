@@ -23,7 +23,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -34,13 +33,10 @@ import (
 	"os/signal"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
-	"github.com/chrisguiney/cardano-continuum/internal/adversary"
-	"github.com/chrisguiney/cardano-continuum/internal/build"
 	clibisect "github.com/chrisguiney/cardano-continuum/internal/cli/bisect"
 	clibuild "github.com/chrisguiney/cardano-continuum/internal/cli/build"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/export"
@@ -50,20 +46,13 @@ import (
 	cliscenario "github.com/chrisguiney/cardano-continuum/internal/cli/scenario"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/serve"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/lines"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/simflags"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
-	"github.com/chrisguiney/cardano-continuum/internal/genesis"
-	"github.com/chrisguiney/cardano-continuum/internal/oracle"
-	"github.com/chrisguiney/cardano-continuum/internal/policy"
-	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/store"
 )
-
-// version goes into the log header; a log replays only under the binary
-// version that wrote it.
-const version = "m1"
 
 func main() {
 	// Kubernetes stops a pod with SIGTERM; the run then flushes and
@@ -112,207 +101,10 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 	return fmt.Errorf("%w: unknown command %q", errUsage, args[0])
 }
 
-// simFlags are the flags that fix a run's configuration; run and replay
-// share them.
-type simFlags struct {
-	seed       uint64
-	wallets    int
-	profiles   string
-	scale      float64
-	slotMs     int64
-	epochSlots uint64
-	k          uint64
-	blockEvery uint64
-	ttl        uint64
-	pools      int
-	floor      uint64
-	mistakes   string
-	attacks    string
-}
-
-func (s *simFlags) register(fs *flag.FlagSet) {
-	fs.Uint64Var(&s.seed, "seed", 1, "root seed of the run")
-	fs.IntVar(&s.wallets, "wallets", 100, "wallets at genesis, spread evenly over the profiles")
-	fs.StringVar(&s.profiles, "profiles", "", "shipped profile set (m1, m3, preview, preprod) or a profile file (default: m1)")
-	fs.Float64Var(&s.scale, "scale", 1, "multiply every profile's base rates by this factor")
-	fs.Int64Var(&s.slotMs, "slot-ms", 1000, "slot length in milliseconds")
-	fs.Uint64Var(&s.epochSlots, "epoch-slots", 600, "slots per epoch")
-	fs.Uint64Var(&s.k, "k", 5, "security parameter: blocks until a block is durable")
-	fs.Uint64Var(&s.blockEvery, "block-every", 10, "slots between fake-chain blocks")
-	fs.Uint64Var(&s.ttl, "ttl", 120, "slots a payment stays valid")
-	fs.Uint64Var(&s.floor, "floor", 50, "stake floor: the percentage of each schedule's stake forging pools must hold, one pool's loss included")
-	fs.StringVar(&s.mistakes, "mistakes", "", "honest mistakes: on or off (default: on when a profile's competence can fall below 1)")
-	fs.StringVar(&s.attacks, "attack", "", "tier-1 attacks, comma-separated, one adversary actor each: "+joinNames(adversary.Names())+" (devnet only)")
-	fs.IntVar(&s.pools, "pools", 0, "pool operators at genesis, spread over the pool profiles; on a live run the first --genesis-pools operate the genesis pools")
-}
-
-func (s *simFlags) config() (engine.Config, error) {
-	fitted, cohorts, file, err := s.population()
-	if err != nil {
-		return engine.Config{}, err
-	}
-	reg, err := s.scaled(fitted)
-	if err != nil {
-		return engine.Config{}, err
-	}
-	slots, err := sched.NewSlots(sched.Time(s.slotMs), s.epochSlots)
-	if err != nil {
-		return engine.Config{}, err
-	}
-	mistakes, err := s.mistakesOn(fitted)
-	if err != nil {
-		return engine.Config{}, err
-	}
-	pp, err := s.chainParams()
-	if err != nil {
-		return engine.Config{}, err
-	}
-	bp := build.ParamsFromConway(&pp, 0)
-	// The fake chain's slot 0 is the Unix epoch.
-	bp.SystemStart, bp.SlotLength = time.UnixMilli(0).UTC(), time.Duration(s.slotMs)*time.Millisecond
-	cfg := engine.Config{
-		Seed: engine.SeedFromInt(s.seed), Profiles: reg, Fitted: fitted, Scale: s.scale, Cohorts: cohorts, Slots: slots,
-		K: s.k, BlockEvery: s.blockEvery, TTL: s.ttl, BinaryVersion: version, Build: bp, ChainParams: &pp,
-		NOpt: uint64(pp.NOpt), GovLifetime: pp.GovActionValidityPeriod, SimulatedPods: true,
-		Floor: policy.Config{Floor: s.floor, Margin: 1},
-		// The fake chain's genesis registers a pool for every operator and
-		// seats internal/genesis's committee, as a devnet's does.
-		GenesisPools: s.pools, GenesisPoolStake: genesis.Default().PoolStake, Committee: genesis.Default().Committee,
-		Mistakes: mistakes, Run: s.run(mistakes),
-	}
-	if err := engine.Populate(&cfg, file); err != nil {
-		return engine.Config{}, err
-	}
-	// A fitted file's pools are genesis pools of the fake chain, as a
-	// devnet's pools are: the stake floor needs stake on forging pools
-	// from the first epoch, which pools registering from nothing cannot
-	// give it.
-	for _, p := range file.Populations {
-		if p.Kind == profile.Pool {
-			cfg.GenesisPools += p.Count
-		}
-	}
-	return cfg, nil
-}
-
-// mistakesOn resolves --mistakes. Unset, mistakes are on when some
-// profile's competence is a Beta with B > 0, which falls below 1; an actor
-// of competence 1 never errs anyway.
-func (s *simFlags) mistakesOn(reg *profile.Registry) (bool, error) {
-	switch s.mistakes {
-	case "on":
-		return true, nil
-	case "off":
-		return false, nil
-	case "":
-		// An adversary's competence says nothing about honest mistakes.
-		for _, n := range reg.Names() {
-			if p, _ := reg.Get(n); p.Traits.Competence.B > 0 && p.Adversary == nil {
-				return true, nil
-			}
-		}
-		return false, nil
-	}
-	return false, fmt.Errorf("--mistakes %q: want on or off", s.mistakes)
-}
-
-// run names the run in findings' replay commands: the log as run --out
-// writes it, and every flag that fixes the configuration, so the command
-// replays it from the run's directory. It is built from the parsed values,
-// so run and replay give the same one however the flags were spelled.
-func (s *simFlags) run(mistakes bool) oracle.Run {
-	onOff := map[bool]string{true: "on", false: "off"}
-	flags := []string{
-		"--wallets=" + strconv.Itoa(s.wallets), "--profiles=" + s.profiles,
-		"--scale=" + strconv.FormatFloat(s.scale, 'g', -1, 64), "--slot-ms=" + strconv.FormatInt(s.slotMs, 10),
-		"--epoch-slots=" + strconv.FormatUint(s.epochSlots, 10), "--k=" + strconv.FormatUint(s.k, 10),
-		"--block-every=" + strconv.FormatUint(s.blockEvery, 10), "--ttl=" + strconv.FormatUint(s.ttl, 10),
-		"--floor=" + strconv.FormatUint(s.floor, 10), "--pools=" + strconv.Itoa(s.pools), "--mistakes=" + onOff[mistakes],
-	}
-	if s.attacks != "" {
-		flags = append(flags, "--attack="+s.attacks)
-	}
-	return oracle.Run{Seed: s.seed, Log: "events.log", Flags: flags}
-}
-
-// scaled applies --scale to the population's base rates.
-func (s *simFlags) scaled(reg *profile.Registry) (*profile.Registry, error) {
-	if s.scale == 1 {
-		return reg, nil
-	}
-	return reg.Scale(s.scale)
-}
-
-// spread divides n actors evenly over the profiles names.
-func spread(names []string, n int) []engine.Cohort {
-	var out []engine.Cohort
-	if len(names) == 0 {
-		return nil
-	}
-	for i, name := range names {
-		c := n / len(names)
-		if i < n%len(names) {
-			c++
-		}
-		out = append(out, engine.Cohort{Profile: name, Count: c})
-	}
-	return out
-}
-
-// population reads the profile set, spreads the pools evenly over it and the
-// wallets by profile weight.
-func (s *simFlags) population() (*profile.Registry, []engine.Cohort, profile.File, error) {
-	raw, name, err := resolveProfiles(s.profiles)
-	if err != nil {
-		return nil, nil, profile.File{}, err
-	}
-	file, err := profile.ParseFile(bytes.NewReader(raw))
-	if err != nil {
-		return nil, nil, profile.File{}, fmt.Errorf("%s: %w", name, err)
-	}
-	reg, err := profile.NewRegistry(file.Profiles)
-	if err != nil {
-		return nil, nil, profile.File{}, err
-	}
-	if s.wallets < 0 {
-		return nil, nil, profile.File{}, fmt.Errorf("--wallets %d", s.wallets)
-	}
-	if s.pools < 0 {
-		return nil, nil, profile.File{}, fmt.Errorf("--pools %d", s.pools)
-	}
-	// Pool profiles take the --pools actors and come first, so the first
-	// pool actors are the genesis pools' operators; every other profile
-	// shares the --wallets.
-	var pools, others []string
-	for _, n := range reg.Names() {
-		if p, _ := reg.Get(n); p.Kind == profile.Pool {
-			pools = append(pools, n)
-		} else {
-			others = append(others, n)
-		}
-	}
-	if s.pools > 0 && len(pools) == 0 {
-		return nil, nil, profile.File{}, fmt.Errorf("--pools %d: the profile set has no pool profile", s.pools)
-	}
-	cohorts := spread(pools, s.pools)
-	wallets, err := cohortsOf(reg, others, s.wallets)
-	if err != nil {
-		return nil, nil, profile.File{}, err
-	}
-	ps, cohorts, err := s.withAdversaries(file.Profiles, append(cohorts, wallets...))
-	if err != nil {
-		return nil, nil, profile.File{}, err
-	}
-	if reg, err = profile.NewRegistry(ps); err != nil {
-		return nil, nil, profile.File{}, err
-	}
-	return reg, cohorts, file, nil
-}
-
 func cmdRun(ctx context.Context, args []string, out io.Writer) error {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
-	var sf simFlags
-	sf.register(fs)
+	var sf simflags.Flags
+	sf.Register(fs)
 	fake := fs.Bool("fake", false, "run against the in-process fake chain")
 	epochs := fs.Uint64("epochs", 2, "epochs to simulate (a live run: 0 runs until stopped)")
 	dir := fs.String("out", "", "directory for events.log (must not hold one)")
@@ -330,11 +122,11 @@ func cmdRun(ctx context.Context, args []string, out io.Writer) error {
 	if *dir == "" {
 		return errors.New("run: --out is required")
 	}
-	cfg, err := sf.config()
+	cfg, err := sf.Config()
 	if err != nil {
 		return err
 	}
-	if err := clearFake(&cfg); err != nil {
+	if err := simflags.ClearFake(&cfg); err != nil {
 		return err
 	}
 	path := filepath.Join(*dir, "events.log")
@@ -480,8 +272,8 @@ func cmdReplay(ctx context.Context, args []string, out io.Writer) error {
 
 func cmdReplayWith(ctx context.Context, args []string, out io.Writer, deps replayDeps) error {
 	fs := flag.NewFlagSet("replay", flag.ContinueOnError)
-	var sf simFlags
-	sf.register(fs)
+	var sf simflags.Flags
+	sf.Register(fs)
 	var lf liveFlags
 	lf.register(fs)
 	image := fs.String("image", "", "replay against a node build: <impl>=<ref>; needs --live to re-run a live log")
@@ -495,11 +287,11 @@ func cmdReplayWith(ctx context.Context, args []string, out io.Writer, deps repla
 	if *image != "" {
 		return replayImage(ctx, *image, fs.Arg(0), *live, sf, lf, out, deps)
 	}
-	cfg, err := sf.config()
+	cfg, err := sf.Config()
 	if err != nil {
 		return err
 	}
-	if err := clearFake(&cfg); err != nil {
+	if err := simflags.ClearFake(&cfg); err != nil {
 		return err
 	}
 	hdr, err := cfg.Header()

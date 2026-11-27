@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/simflags"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
@@ -74,8 +75,12 @@ func (lf liarFollower) Next() (engine.ChainEvent, bool, error) {
 // gives a fatal finding, which `continuum serve` lists at /api/findings.
 func TestServeShowsFatalFinding(t *testing.T) {
 	ctx := context.Background()
-	sf := simFlags{seed: 9, wallets: 8, profiles: "", scale: 1, slotMs: 1000, epochSlots: 60, k: 5, blockEvery: 10, ttl: 120, floor: 50}
-	cfg, err := sf.config()
+	sf := simflags.Flags{
+		Run:        simflags.Run{Seed: 9},
+		Population: simflags.Population{Wallets: 8, Scale: 1},
+		Chain:      simflags.Chain{SlotMs: 1000, EpochSlots: 60, K: 5, BlockEvery: 10, TTL: 120, Floor: 50},
+	}
+	cfg, err := sf.Config()
 	if err != nil {
 		t.Fatal(err)
 	}

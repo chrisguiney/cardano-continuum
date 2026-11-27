@@ -23,6 +23,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/kube"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/serving"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/simflags"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/genesis"
@@ -77,13 +78,13 @@ func (l *liveFlags) register(fs *flag.FlagSet) {
 // the flags, the slot shape and k from the node's genesis, the builder from
 // the node's protocol parameters, and the run seed, so the faucet is the one
 // internal/genesis funded.
-func liveConfig(sf simFlags, lf liveFlags, g chain.Genesis, np nodeParams, seed rng.Seed) (engine.Config, error) {
+func liveConfig(sf simflags.Flags, lf liveFlags, g chain.Genesis, np nodeParams, seed rng.Seed) (engine.Config, error) {
 	bp := np.build
-	fitted, cohorts, file, err := sf.population()
+	fitted, cohorts, file, err := sf.Load()
 	if err != nil {
 		return engine.Config{}, err
 	}
-	reg, err := sf.scaled(fitted)
+	reg, err := sf.Scaled(fitted)
 	if err != nil {
 		return engine.Config{}, err
 	}
@@ -97,23 +98,23 @@ func liveConfig(sf simFlags, lf liveFlags, g chain.Genesis, np nodeParams, seed 
 	bp.SystemStart, bp.SlotLength = g.Start, g.SlotLength
 	// The guard needs every genesis pool's stake, so a run with operators
 	// operates all of them; one without has no pools to guard.
-	mistakes, err := sf.mistakesOn(fitted)
+	mistakes, err := sf.MistakesOn(fitted)
 	if err != nil {
 		return engine.Config{}, err
 	}
 	gpools := 0
-	if sf.pools > 0 {
-		if sf.pools < lf.gpools {
-			return engine.Config{}, fmt.Errorf("--pools %d cannot operate the %d genesis pools", sf.pools, lf.gpools)
+	if sf.Pools > 0 {
+		if sf.Pools < lf.gpools {
+			return engine.Config{}, fmt.Errorf("--pools %d cannot operate the %d genesis pools", sf.Pools, lf.gpools)
 		}
 		gpools = lf.gpools
 	}
 	cfg := engine.Config{
-		Seed: seed, Profiles: reg, Fitted: fitted, Scale: sf.scale, Cohorts: cohorts, Slots: slots, K: g.SecurityParam, TTL: sf.ttl,
-		Build: bp, BinaryVersion: version, Faucet: lf.faucet, RefillEvery: lf.refillEvery,
+		Seed: seed, Profiles: reg, Fitted: fitted, Scale: sf.Scale, Cohorts: cohorts, Slots: slots, K: g.SecurityParam, TTL: sf.TTL,
+		Build: bp, BinaryVersion: simflags.Version, Faucet: lf.faucet, RefillEvery: lf.refillEvery,
 		NOpt: np.nOpt, GovLifetime: np.govLifetime, GenesisPoolStake: lf.poolStake, GenesisPools: gpools,
-		Floor: policy.Config{Floor: sf.floor, Margin: 1}, Committee: genesis.Default().Committee,
-		Mistakes: mistakes, Horizon: g.StabilityWindow(), Run: sf.run(mistakes),
+		Floor: policy.Config{Floor: sf.Floor, Margin: 1}, Committee: genesis.Default().Committee,
+		Mistakes: mistakes, Horizon: g.StabilityWindow(), Run: sf.Oracle(mistakes),
 	}
 	// A live devnet's genesis pools are its own; a fitted file's pools
 	// register themselves.
@@ -125,7 +126,7 @@ func liveConfig(sf simFlags, lf liveFlags, g chain.Genesis, np nodeParams, seed 
 
 // runLive runs the engine against a live node until epochs end (0: until
 // stopped).
-func runLive(ctx context.Context, sf simFlags, lf liveFlags, epochs uint64) error {
+func runLive(ctx context.Context, sf simflags.Flags, lf liveFlags, epochs uint64) error {
 	if lf.state == "" || lf.genesis == "" {
 		return errors.New("run: a live run needs --state and --genesis")
 	}
@@ -163,7 +164,7 @@ func (lr *liveRun) close() {
 // openLive connects to the node, opens the run's state, and starts the
 // engine. The returned context ends when ctx does or the live API fails;
 // on error everything opened so far is released.
-func openLive(ctx context.Context, sf simFlags, lf liveFlags, log *slog.Logger) (context.Context, *liveRun, error) {
+func openLive(ctx context.Context, sf simflags.Flags, lf liveFlags, log *slog.Logger) (context.Context, *liveRun, error) {
 	lr := &liveRun{log: log}
 	ctx, err := lr.open(ctx, sf, lf)
 	if err != nil {
@@ -173,7 +174,7 @@ func openLive(ctx context.Context, sf simFlags, lf liveFlags, log *slog.Logger) 
 	return ctx, lr, nil
 }
 
-func (lr *liveRun) open(ctx context.Context, sf simFlags, lf liveFlags) (context.Context, error) {
+func (lr *liveRun) open(ctx context.Context, sf simflags.Flags, lf liveFlags) (context.Context, error) {
 	seed, err := readSeed(os.Getenv(seedEnv))
 	if err != nil {
 		return nil, err

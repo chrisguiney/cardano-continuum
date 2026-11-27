@@ -5,7 +5,6 @@
 # stray-methods (methods outside the type's file), files (> 25 per package, tests counted).
 files internal/chain 27
 files internal/engine 45
-members cmd/continuum simFlags 22
 members internal/agenda world 22
 members internal/chain View 67
 members internal/chain par 23
@@ -31,6 +30,5 @@ nesting internal/operator/image parseBuild 4
 nesting internal/profile parseDist 4
 nesting internal/scenario CodecTable 4
 nesting internal/scenario SampleVectors 4
-stray-methods cmd/continuum simFlags 3
 stray-methods internal/chain View 35
 stray-methods internal/engine Config 3

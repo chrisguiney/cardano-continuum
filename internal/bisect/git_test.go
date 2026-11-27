@@ -7,9 +7,10 @@ import (
 
 	"context"
 	"errors"
-	"github.com/chrisguiney/cardano-continuum/internal/devbuild"
 	"reflect"
 	"testing"
+
+	"github.com/chrisguiney/cardano-continuum/internal/devbuild"
 )
 
 type fakeGit struct {

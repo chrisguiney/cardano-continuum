@@ -9,6 +9,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/kube"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/simflags"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/imageset"
 	"github.com/chrisguiney/cardano-continuum/internal/rerun"
@@ -19,13 +20,13 @@ type replayDeps struct {
 	open kube.Opener
 	// want returns the header the live re-run would record, from the
 	// devnet's genesis and protocol parameters.
-	want func(ctx context.Context, sf simFlags, lf liveFlags) (eventlog.HeaderBody, error)
+	want func(ctx context.Context, sf simflags.Flags, lf liveFlags) (eventlog.HeaderBody, error)
 }
 
 func realReplayDeps() replayDeps { return replayDeps{open: kube.Open, want: liveWant} }
 
 // liveWant derives the header a live run on the node at lf.node would write.
-func liveWant(ctx context.Context, sf simFlags, lf liveFlags) (eventlog.HeaderBody, error) {
+func liveWant(ctx context.Context, sf simflags.Flags, lf liveFlags) (eventlog.HeaderBody, error) {
 	if lf.node == "" || lf.genesis == "" {
 		return eventlog.HeaderBody{}, errors.New("replay --live needs --node and --genesis to fingerprint the devnet")
 	}
@@ -53,7 +54,7 @@ func liveWant(ctx context.Context, sf simFlags, lf liveFlags) (eventlog.HeaderBo
 // node build to swap, so it only says so. A live log is re-run on the
 // devnet with the implementation's image replaced, after the log's seed,
 // profile and genesis fingerprints are checked against the devnet's.
-func replayImage(ctx context.Context, assign, logPath string, live bool, sf simFlags, lf liveFlags, out io.Writer, deps replayDeps) error {
+func replayImage(ctx context.Context, assign, logPath string, live bool, sf simflags.Flags, lf liveFlags, out io.Writer, deps replayDeps) error {
 	impl, ref, err := imageset.ParseAssignment(assign)
 	if err != nil {
 		return fmt.Errorf("replay --image: %w", err)
@@ -82,7 +83,7 @@ func replayImage(ctx context.Context, assign, logPath string, live bool, sf simF
 	if err != nil {
 		return err
 	}
-	req := rerun.Request{Network: lf.kubeNetwork, Impl: impl, Ref: ref, Seed: sf.seed}
+	req := rerun.Request{Network: lf.kubeNetwork, Impl: impl, Ref: ref, Seed: sf.Seed}
 	return rerun.Replay(ctx, got, want, req, clusterRunner{cl: cl, out: out})
 }
 

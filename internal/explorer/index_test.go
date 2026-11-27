@@ -3,8 +3,9 @@ package explorer
 import (
 	"encoding/json"
 	"errors"
-	"github.com/blinklabs-io/gouroboros/cbor"
 	"testing"
+
+	"github.com/blinklabs-io/gouroboros/cbor"
 
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 	"github.com/blinklabs-io/gouroboros/ledger/conway"

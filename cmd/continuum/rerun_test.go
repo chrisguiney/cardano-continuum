@@ -10,6 +10,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/kube"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/kubetest"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/simflags"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/rerun"
 )
@@ -63,7 +64,7 @@ func liveDeps(t *testing.T, log string, same bool) (replayDeps, *kubetest.Fake) 
 	fc := kubetest.New()
 	return replayDeps{
 		open: func(string, string) (kube.Client, error) { return fc, nil },
-		want: func(context.Context, simFlags, liveFlags) (eventlog.HeaderBody, error) { return h, nil },
+		want: func(context.Context, simflags.Flags, liveFlags) (eventlog.HeaderBody, error) { return h, nil },
 	}, fc
 }
 
