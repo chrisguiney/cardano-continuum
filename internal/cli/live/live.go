@@ -23,6 +23,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/chain/node"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/internal/kube"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/internal/serving"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/internal/simflags"
@@ -186,8 +187,8 @@ func (lr *liveRun) open(ctx context.Context, sf simflags.Flags, lf Flags) (conte
 	if err != nil {
 		return nil, err
 	}
-	node := chain.Node{Network: lf.Network, Address: lf.Node, Magic: want.Magic, Log: lr.log}
-	q := chain.NewQuerier(node)
+	n := node.Node{Network: lf.Network, Address: lf.Node, Magic: want.Magic, Log: lr.log}
+	q := node.NewQuerier(n)
 	cleared, err := guard(ctx, lr.log, q, want)
 	if err != nil {
 		return nil, err
@@ -209,7 +210,7 @@ func (lr *liveRun) open(ctx context.Context, sf simflags.Flags, lf Flags) (conte
 			return nil, err
 		}
 	}
-	return lr.start(ctx, lf, node, q, want, db)
+	return lr.start(ctx, lf, n, q, want, db)
 }
 
 // openState opens the run's event log and store under dir.
@@ -232,12 +233,12 @@ func (lr *liveRun) openState(ctx context.Context, dir string) (*store.DB, error)
 }
 
 // start connects the node, wires the engine's dependencies and starts it.
-func (lr *liveRun) start(ctx context.Context, lf Flags, node chain.Node, q *chain.Querier, want chain.Genesis, db *store.DB) (context.Context, error) {
+func (lr *liveRun) start(ctx context.Context, lf Flags, n node.Node, q *node.Querier, want chain.Genesis, db *store.DB) (context.Context, error) {
 	dial := func(ctx context.Context) (net.Conn, error) {
 		var d net.Dialer
 		return d.DialContext(ctx, lf.Network, lf.Node)
 	}
-	live := engine.NewLive(node, submit.NewLocal(dial, want.Magic), lr.cfg.K, lr.log)
+	live := engine.NewLive(n, submit.NewLocal(dial, want.Magic), lr.cfg.K, lr.log)
 	live.Start(ctx)
 	lr.later(func() {
 		c, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
@@ -285,7 +286,7 @@ const viewEvery = sched.Time(time.Minute / time.Millisecond)
 // liveViewer answers the view monitor from the node's local-state-query at
 // the engine's settled point.
 type liveViewer struct {
-	q    *chain.Querier
+	q    *node.Querier
 	node oracle.Node
 }
 
@@ -339,7 +340,7 @@ func report(ctx context.Context, log *slog.Logger, cfg engine.Config, r *engine.
 // guard waits for the node to answer, then refuses a public network or a
 // node on another genesis than the file the run was deployed with. The
 // clearance it returns is what lets the run's adversaries attack.
-func guard(ctx context.Context, log *slog.Logger, q *chain.Querier, want chain.Genesis) (adversary.Clearance, error) {
+func guard(ctx context.Context, log *slog.Logger, q *node.Querier, want chain.Genesis) (adversary.Clearance, error) {
 	for {
 		got, err := q.Genesis(ctx)
 		if err == nil {
@@ -364,7 +365,7 @@ type nodeParams struct {
 	nOpt, govLifetime uint64
 }
 
-func queryParams(ctx context.Context, q *chain.Querier) (nodeParams, error) {
+func queryParams(ctx context.Context, q *node.Querier) (nodeParams, error) {
 	pp, err := q.Params(ctx)
 	if err != nil {
 		return nodeParams{}, err
@@ -379,7 +380,7 @@ func queryParams(ctx context.Context, q *chain.Querier) (nodeParams, error) {
 // checkFaucet refuses a fresh run whose faucet does not hold its genesis
 // output on the node: a wrong seed or faucet amount would otherwise show up
 // only as every refill rejected.
-func checkFaucet(ctx context.Context, q *chain.Querier, cfg engine.Config) error {
+func checkFaucet(ctx context.Context, q *node.Querier, cfg engine.Config) error {
 	funds, err := cfg.Genesis()
 	if err != nil {
 		return err

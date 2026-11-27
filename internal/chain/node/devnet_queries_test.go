@@ -1,6 +1,6 @@
 //go:build devnet
 
-package chain
+package node
 
 import (
 	"context"

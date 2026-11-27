@@ -1,4 +1,4 @@
-package chain
+package node
 
 import (
 	"reflect"
@@ -6,6 +6,8 @@ import (
 
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 	"github.com/blinklabs-io/gouroboros/protocol/localstatequery"
+
+	"github.com/chrisguiney/cardano-continuum/internal/chain"
 )
 
 func TestStakeSnapshotsFrom(t *testing.T) {
@@ -60,14 +62,14 @@ func TestGovFrom(t *testing.T) {
 		t.Fatalf("proposals %+v", got.Proposals)
 	}
 	p := got.Proposals[0]
-	if p.ID != (GovID{Tx: txid(5), Index: 2}) || p.ExpiresAfter != 9 ||
+	if p.ID != (chain.GovID{Tx: txid(5), Index: 2}) || p.ExpiresAfter != 9 ||
 		p.DRepVotes[hash224(8)] != common.GovVoteYes || p.SPOVotes[hash224(9)] != common.GovVoteNo {
 		t.Errorf("proposal %+v", p)
 	}
 	if d := got.DReps[hash224(8)]; d.Expiry != 12 || !reflect.DeepEqual(d.Delegators, []common.Blake2b224{hash224(1)}) {
 		t.Errorf("drep %+v", d)
 	}
-	if v := got.VoteDelegations[hash224(1)]; v != (DRep{Kind: common.DrepTypeAddrKeyHash, Cred: hash224(8)}) {
+	if v := got.VoteDelegations[hash224(1)]; v != (chain.DRep{Kind: common.DrepTypeAddrKeyHash, Cred: hash224(8)}) {
 		t.Errorf("vote delegation %+v", v)
 	}
 }

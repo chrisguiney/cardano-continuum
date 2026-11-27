@@ -379,7 +379,7 @@ func (v *View) remove(r Ref) {
 
 func (v *View) sorted() []common.Utxo {
 	refs := slices.Collect(maps.Keys(v.utxo))
-	slices.SortFunc(refs, Ref.compare)
+	slices.SortFunc(refs, Ref.Compare)
 	var out []common.Utxo
 	for _, r := range refs {
 		out = append(out, v.utxo[r])

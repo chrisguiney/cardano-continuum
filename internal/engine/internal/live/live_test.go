@@ -16,6 +16,7 @@ import (
 	"github.com/blinklabs-io/gouroboros/ledger/shelley"
 
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/chain/node"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
@@ -59,7 +60,7 @@ type scriptDialer struct {
 	offers [][]chain.Point
 }
 
-func (d *scriptDialer) Dial(context.Context) (chain.Source, error) {
+func (d *scriptDialer) Dial(context.Context) (node.Source, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if len(d.srcs) == 0 {
@@ -192,7 +193,7 @@ func TestLiveNoIntersection(t *testing.T) {
 	d := &noIntersect{}
 	l := New(d, &recTarget{}, 5, nil)
 	l.Start(context.Background())
-	if _, _, err := l.Intersect([]eventlog.ChainPoint{livePoint(3, 1).Log()}); !errors.Is(err, chain.ErrNoIntersect) {
+	if _, _, err := l.Intersect([]eventlog.ChainPoint{livePoint(3, 1).Log()}); !errors.Is(err, node.ErrNoIntersect) {
 		t.Fatalf("intersect = %v, want ErrNoIntersect", err)
 	}
 	ctx, done := context.WithTimeout(context.Background(), 5*time.Second)
@@ -204,9 +205,9 @@ func TestLiveNoIntersection(t *testing.T) {
 
 type noIntersect struct{}
 
-func (noIntersect) Dial(context.Context) (chain.Source, error) { return noIntersect{}, nil }
+func (noIntersect) Dial(context.Context) (node.Source, error) { return noIntersect{}, nil }
 func (noIntersect) Intersect(context.Context, []chain.Point) (chain.Point, error) {
-	return chain.Point{}, chain.ErrNoIntersect
+	return chain.Point{}, node.ErrNoIntersect
 }
 func (noIntersect) Next(context.Context) (chain.Event, error) {
 	return chain.Event{}, errors.New("unused")

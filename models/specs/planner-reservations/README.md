@@ -245,7 +245,7 @@ There is no `Release(intent, Dropped)`, no `Confirm` at first sight, and
 
 ## Go tests this model asks for
 
-The node numbers are taken to be: 16 the chain follower (`internal/chain`),
+The node numbers are taken to be: 16 the chain follower (`internal/chain/node`),
 17 the planner (`internal/plan`), 23 the submitter (`internal/submit`).
 
 ### Chain follower (16)

@@ -72,7 +72,8 @@ func RefOf(in common.TransactionInput) Ref {
 	return Ref{Tx: in.Id(), Index: in.Index()}
 }
 
-func (r Ref) compare(o Ref) int {
+// Compare orders references by transaction hash, then output index.
+func (r Ref) Compare(o Ref) int {
 	if c := bytes.Compare(r.Tx[:], o.Tx[:]); c != 0 {
 		return c
 	}
@@ -154,7 +155,7 @@ func votesOf(vps common.VotingProcedures) []Vote {
 		}
 	}
 	slices.SortFunc(out, func(a, b Vote) int {
-		if c := a.Action.compare(b.Action); c != 0 {
+		if c := a.Action.Compare(b.Action); c != 0 {
 			return c
 		}
 		return a.Voter.compare(b.Voter)

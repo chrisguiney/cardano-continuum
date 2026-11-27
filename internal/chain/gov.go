@@ -26,7 +26,8 @@ func (g GovID) String() string {
 	return hex.EncodeToString(g.Tx[:]) + "#" + strconv.FormatUint(uint64(g.Index), 10)
 }
 
-func (g GovID) compare(o GovID) int {
+// Compare orders actions by transaction hash, then index.
+func (g GovID) Compare(o GovID) int {
 	if c := bytes.Compare(g.Tx[:], o.Tx[:]); c != 0 {
 		return c
 	}
@@ -211,13 +212,13 @@ func (v *View) govState() ([]ProposalState, []VoteState) {
 	for id, p := range v.props {
 		ps = append(ps, ProposalState{ID: id, Expires: p.expires, Type: p.typ, Pools: p.pools, Deposit: p.deposit})
 	}
-	slices.SortFunc(ps, func(a, b ProposalState) int { return a.ID.compare(b.ID) })
+	slices.SortFunc(ps, func(a, b ProposalState) int { return a.ID.Compare(b.ID) })
 	var vs []VoteState
 	for k, c := range v.votes {
 		vs = append(vs, VoteState{k.action, k.voter, c})
 	}
 	slices.SortFunc(vs, func(a, b VoteState) int {
-		if c := a.Action.compare(b.Action); c != 0 {
+		if c := a.Action.Compare(b.Action); c != 0 {
 			return c
 		}
 		return a.Voter.compare(b.Voter)

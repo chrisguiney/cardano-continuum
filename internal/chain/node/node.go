@@ -1,4 +1,4 @@
-package chain
+package node
 
 import (
 	"context"
@@ -12,6 +12,8 @@ import (
 	"github.com/blinklabs-io/gouroboros/ledger"
 	"github.com/blinklabs-io/gouroboros/protocol/chainsync"
 	ocommon "github.com/blinklabs-io/gouroboros/protocol/common"
+
+	"github.com/chrisguiney/cardano-continuum/internal/chain"
 )
 
 // Node dials a cardano-node's node-to-client socket. Network is "unix" for
@@ -26,7 +28,7 @@ type Node struct {
 // Dial implements Dialer: one connection running chain-sync with full
 // blocks, as node-to-client chain-sync serves them.
 func (n Node) Dial(ctx context.Context) (Source, error) {
-	s := &nodeSource{events: make(chan Event), done: make(chan struct{})}
+	s := &nodeSource{events: make(chan chain.Event), done: make(chan struct{})}
 	cfg := chainsync.NewConfig(
 		chainsync.WithRollForwardFunc(s.forward),
 		chainsync.WithRollBackwardFunc(s.backward),
@@ -66,7 +68,7 @@ func (n Node) connect(ctx context.Context, opts ...ouroboros.ConnectionOptionFun
 // than the engine applies blocks.
 type nodeSource struct {
 	conn   *ouroboros.Connection
-	events chan Event
+	events chan chain.Event
 	done   chan struct{}
 	once   sync.Once
 
@@ -74,7 +76,7 @@ type nodeSource struct {
 	at ocommon.Point
 }
 
-func (s *nodeSource) Intersect(ctx context.Context, points []Point) (Point, error) {
+func (s *nodeSource) Intersect(ctx context.Context, points []chain.Point) (chain.Point, error) {
 	wire := make([]ocommon.Point, len(points))
 	for i, p := range points {
 		wire[i] = p.Wire()
@@ -84,27 +86,27 @@ func (s *nodeSource) Intersect(ctx context.Context, points []Point) (Point, erro
 	select {
 	case err := <-res:
 		if errors.Is(err, chainsync.ErrIntersectNotFound) {
-			return Point{}, ErrNoIntersect
+			return chain.Point{}, ErrNoIntersect
 		}
 		if err != nil {
-			return Point{}, fmt.Errorf("chain: find intersect: %w", err)
+			return chain.Point{}, fmt.Errorf("chain: find intersect: %w", err)
 		}
 	case <-ctx.Done():
 		// Closing the connection fails Sync, so the goroutine exits.
 		// Arguments evaluate left to right: close, then wait.
-		return Point{}, errors.Join(ctx.Err(), s.Close(), <-res)
+		return chain.Point{}, errors.Join(ctx.Err(), s.Close(), <-res)
 	}
 	s.mu.Lock()
 	at := s.at
 	s.mu.Unlock()
-	p, ok := PointFromWire(at)
+	p, ok := chain.PointFromWire(at)
 	if !ok {
-		return Point{}, fmt.Errorf("chain: node answered intersect with a malformed point at slot %d", at.Slot)
+		return chain.Point{}, fmt.Errorf("chain: node answered intersect with a malformed point at slot %d", at.Slot)
 	}
 	return p, nil
 }
 
-func (s *nodeSource) Next(ctx context.Context) (Event, error) {
+func (s *nodeSource) Next(ctx context.Context) (chain.Event, error) {
 	select {
 	case ev := <-s.events:
 		return ev, nil
@@ -112,9 +114,9 @@ func (s *nodeSource) Next(ctx context.Context) (Event, error) {
 		if !ok {
 			err = errors.New("connection closed")
 		}
-		return Event{}, fmt.Errorf("chain: chain-sync: %w", err)
+		return chain.Event{}, fmt.Errorf("chain: chain-sync: %w", err)
 	case <-ctx.Done():
-		return Event{}, ctx.Err()
+		return chain.Event{}, ctx.Err()
 	}
 }
 
@@ -139,19 +141,19 @@ func (s *nodeSource) forward(_ chainsync.CallbackContext, _ uint, data any, tip 
 	if !ok {
 		return fmt.Errorf("chain: node-to-client roll forward carried %T, not a block", data)
 	}
-	blk := BlockFrom(b)
-	return s.deliver(Event{Kind: Forward, Block: blk, Point: blk.Point, Tip: tipPoint(tip)})
+	blk := chain.BlockFrom(b)
+	return s.deliver(chain.Event{Kind: chain.Forward, Block: blk, Point: blk.Point, Tip: tipPoint(tip)})
 }
 
 func (s *nodeSource) backward(_ chainsync.CallbackContext, p ocommon.Point, tip chainsync.Tip) error {
-	pt, ok := PointFromWire(p)
+	pt, ok := chain.PointFromWire(p)
 	if !ok {
 		return fmt.Errorf("chain: node rolled back to a malformed point at slot %d", p.Slot)
 	}
-	return s.deliver(Event{Kind: Backward, Point: pt, Tip: tipPoint(tip)})
+	return s.deliver(chain.Event{Kind: chain.Backward, Point: pt, Tip: tipPoint(tip)})
 }
 
-func (s *nodeSource) deliver(ev Event) error {
+func (s *nodeSource) deliver(ev chain.Event) error {
 	select {
 	case s.events <- ev:
 		return nil
@@ -160,7 +162,7 @@ func (s *nodeSource) deliver(ev Event) error {
 	}
 }
 
-func tipPoint(t chainsync.Tip) Point {
-	p, _ := PointFromWire(t.Point)
+func tipPoint(t chainsync.Tip) chain.Point {
+	p, _ := chain.PointFromWire(t.Point)
 	return p
 }

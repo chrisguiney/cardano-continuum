@@ -1,4 +1,4 @@
-package chain
+package node
 
 import (
 	"context"
@@ -14,6 +14,7 @@ import (
 	"github.com/blinklabs-io/gouroboros/ledger/conway"
 	ocommon "github.com/blinklabs-io/gouroboros/protocol/common"
 
+	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
@@ -66,36 +67,36 @@ type fakeSource struct {
 	f    *fakechain.Follower
 	left int // events before the connection drops; 0 means never
 	echo bool
-	at   Point
+	at   chain.Point
 }
 
-func (s *fakeSource) Intersect(_ context.Context, points []Point) (Point, error) {
+func (s *fakeSource) Intersect(_ context.Context, points []chain.Point) (chain.Point, error) {
 	wire := make([]ocommon.Point, len(points))
 	for i, p := range points {
 		wire[i] = p.Wire()
 	}
 	f, at, err := s.d.chain.FollowFrom(wire, 0)
 	if errors.Is(err, fakechain.ErrNoIntersect) {
-		return Point{}, ErrNoIntersect
+		return chain.Point{}, ErrNoIntersect
 	}
 	if err != nil {
-		return Point{}, err
+		return chain.Point{}, err
 	}
 	s.f = f
-	s.at, _ = PointFromWire(at)
+	s.at, _ = chain.PointFromWire(at)
 	return s.at, nil
 }
 
-func (s *fakeSource) Next(ctx context.Context) (Event, error) {
+func (s *fakeSource) Next(ctx context.Context) (chain.Event, error) {
 	if s.left == 1 {
-		return Event{}, errClosed
+		return chain.Event{}, errClosed
 	}
 	if s.left > 1 {
 		s.left--
 	}
 	if s.echo {
 		s.echo = false
-		return Event{Kind: Backward, Point: s.at}, nil
+		return chain.Event{Kind: chain.Backward, Point: s.at}, nil
 	}
 	for {
 		ev, ok := s.f.Next()
@@ -105,24 +106,24 @@ func (s *fakeSource) Next(ctx context.Context) (Event, error) {
 		fn := s.d.nextIdle()
 		if fn == nil {
 			<-ctx.Done()
-			return Event{}, ctx.Err()
+			return chain.Event{}, ctx.Err()
 		}
 		fn()
 	}
 }
 
-func (s *fakeSource) convert(ev fakechain.Event) (Event, error) {
-	tip, _ := PointFromWire(ev.Tip)
+func (s *fakeSource) convert(ev fakechain.Event) (chain.Event, error) {
+	tip, _ := chain.PointFromWire(ev.Tip)
 	if ev.Kind == fakechain.RollBackward {
-		p, _ := PointFromWire(ev.Point)
-		return Event{Kind: Backward, Point: p, Tip: tip}, nil
+		p, _ := chain.PointFromWire(ev.Point)
+		return chain.Event{Kind: chain.Backward, Point: p, Tip: tip}, nil
 	}
 	lb, err := ledger.NewBlockFromCbor(ledger.BlockTypeConway, ev.Block.Cbor)
 	if err != nil {
-		return Event{}, err
+		return chain.Event{}, err
 	}
-	b := BlockFrom(lb)
-	return Event{Kind: Forward, Block: b, Point: b.Point, Tip: tip}, nil
+	b := chain.BlockFrom(lb)
+	return chain.Event{Kind: chain.Forward, Block: b, Point: b.Point, Tip: tip}, nil
 }
 
 func (s *fakeSource) Close() error { return nil }
@@ -154,8 +155,8 @@ func newWorld(t *testing.T) *world {
 	return w
 }
 
-func (w *world) book() *Book {
-	b := NewBook()
+func (w *world) book() *chain.Book {
+	b := chain.NewBook()
 	for id, wl := range map[population.ActorID]keys.Wallet{1: w.alice, 2: w.bob} {
 		if err := b.AddAddress(wl.Address(), id); err != nil {
 			w.t.Fatal(err)
@@ -172,8 +173,8 @@ func (w *world) genesis() []common.Utxo {
 	return []common.Utxo{utxo(common.Blake2b256Hash(b), 0, w.alice.Address(), 100_000_000)}
 }
 
-func (w *world) view(s State) *View {
-	v, err := New(Config{K: 3, Slots: testSlots(w.t), Book: w.book()}, s)
+func (w *world) view(s chain.State) *chain.View {
+	v, err := chain.New(chain.Config{K: 3, Slots: testSlots(w.t), Book: w.book()}, s)
 	if err != nil {
 		w.t.Fatal(err)
 	}
@@ -200,7 +201,7 @@ func (w *world) rollback(depth uint64) func() {
 func (w *world) payBob() func() {
 	return func() {
 		g := w.genesis()[0]
-		in := RefOf(g.Id)
+		in := chain.RefOf(g.Id)
 		bobAddr, err := w.bob.Address().Bytes()
 		if err != nil {
 			w.t.Fatal(err)
@@ -238,15 +239,15 @@ func (w *world) payBob() func() {
 
 // follow runs a follower until it has delivered n events, then stops it
 // and returns the events and Run's error.
-func follow(t *testing.T, d Dialer, start []Point, n int) ([]Event, error) {
+func follow(t *testing.T, d Dialer, start []chain.Point, n int) ([]chain.Event, error) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	out := make(chan Event)
+	out := make(chan chain.Event)
 	f := NewFollower(d, FollowerConfig{K: 3, Start: start, Backoff: func(int) time.Duration { return 0 }}, out, nil)
 	done := make(chan error, 1)
 	go func() { done <- f.Run(ctx) }()
-	var got []Event
+	var got []chain.Event
 	for len(got) < n {
 		select {
 		case ev := <-out:
@@ -263,14 +264,14 @@ func follow(t *testing.T, d Dialer, start []Point, n int) ([]Event, error) {
 
 // drive feeds events to v the way the engine does: an intersection answer
 // is a rollback.
-func drive(t *testing.T, v *View, evs []Event) {
+func drive(t *testing.T, v *chain.View, evs []chain.Event) {
 	t.Helper()
 	for _, ev := range evs {
 		var err error
 		switch ev.Kind {
-		case Forward:
+		case chain.Forward:
 			_, err = v.Apply(ev.Block)
-		case Backward, Intersected:
+		case chain.Backward, chain.Intersected:
 			_, err = v.Rollback(ev.Point)
 		}
 		if err != nil {
@@ -288,8 +289,8 @@ func TestFollowerDeliversInOrder(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("Run = %v, want context.Canceled", err)
 	}
-	want := []EventKind{Intersected, Forward, Forward, Forward, Backward, Forward, Forward}
-	var kinds []EventKind
+	want := []chain.EventKind{chain.Intersected, chain.Forward, chain.Forward, chain.Forward, chain.Backward, chain.Forward, chain.Forward}
+	var kinds []chain.EventKind
 	for _, ev := range got {
 		kinds = append(kinds, ev.Kind)
 	}
@@ -299,9 +300,9 @@ func TestFollowerDeliversInOrder(t *testing.T) {
 	if !got[0].Point.IsOrigin() || got[4].Point != got[2].Point {
 		t.Errorf("intersect at %v, rollback to %v (want origin, block 2)", got[0].Point, got[4].Point)
 	}
-	v := w.view(State{})
+	v := w.view(chain.State{})
 	drive(t, v, got)
-	if tip, _ := PointFromWire(w.chain.Tip()); v.Tip() != tip {
+	if tip, _ := chain.PointFromWire(w.chain.Tip()); v.Tip() != tip {
 		t.Errorf("view tip %v, chain tip %v", v.Tip(), tip)
 	}
 }
@@ -311,10 +312,10 @@ func TestFollowerFeedsView(t *testing.T) {
 	d := &fakeDialer{t: t, chain: w.chain}
 	d.idle = []func(){w.payBob(), w.advance(1)}
 	got, _ := follow(t, d, nil, 2)
-	v := w.view(State{Utxos: w.genesis()})
+	v := w.view(chain.State{Utxos: w.genesis()})
 	drive(t, v, got)
 	if gotB, want := v.UtxosAt(w.bob.Address()), w.chain.UtxosAt(w.bob.Address()); len(want) != 1 ||
-		len(gotB) != 1 || RefOf(gotB[0].Id) != RefOf(want[0].Id) {
+		len(gotB) != 1 || chain.RefOf(gotB[0].Id) != chain.RefOf(want[0].Id) {
 		t.Errorf("view has %v at bob, chain has %v", gotB, want)
 	}
 	if len(v.UtxosAt(w.alice.Address())) != 0 {
@@ -334,10 +335,10 @@ func TestFollowerReconnects(t *testing.T) {
 	if d.dials != 2 {
 		t.Errorf("dialled %d times, want 2", d.dials)
 	}
-	seen := map[Point]bool{}
+	seen := map[chain.Point]bool{}
 	var forwards int
 	for _, ev := range got {
-		if ev.Kind != Forward {
+		if ev.Kind != chain.Forward {
 			continue
 		}
 		if seen[ev.Point] {
@@ -350,15 +351,15 @@ func TestFollowerReconnects(t *testing.T) {
 		t.Errorf("delivered %d blocks, want 5", forwards)
 	}
 	for _, ev := range got {
-		if ev.Kind == Backward {
+		if ev.Kind == chain.Backward {
 			t.Errorf("the node's rollback to the intersection was passed on (slot %d)", ev.Point.Slot)
 		}
 	}
 	// The reconnect intersects at the last block delivered, which is the
 	// view's tip, so the engine's rollback to it is a no-op.
-	v := w.view(State{})
+	v := w.view(chain.State{})
 	drive(t, v, got)
-	if tip, _ := PointFromWire(w.chain.Tip()); v.Tip() != tip {
+	if tip, _ := chain.PointFromWire(w.chain.Tip()); v.Tip() != tip {
 		t.Errorf("view tip %v, chain tip %v", v.Tip(), tip)
 	}
 }
@@ -368,7 +369,7 @@ func TestResumeFromSettledPoint(t *testing.T) {
 	d := &fakeDialer{t: t, chain: w.chain}
 	d.idle = []func(){w.payBob(), w.advance(6)}
 	first, _ := follow(t, d, nil, 7)
-	live := w.view(State{Utxos: w.genesis()})
+	live := w.view(chain.State{Utxos: w.genesis()})
 	drive(t, live, first)
 	base := live.Base()
 	if base.At.IsOrigin() {
@@ -381,22 +382,22 @@ func TestResumeFromSettledPoint(t *testing.T) {
 	w.rollback(2)()
 	w.advance(3)()
 	d2 := &fakeDialer{t: t, chain: w.chain}
-	second, _ := follow(t, d2, []Point{base.At}, 1+4)
-	if second[0].Kind != Intersected || second[0].Point != base.At {
-		t.Fatalf("first event %v at %v, want Intersected at the settled point %v", second[0].Kind, second[0].Point, base.At)
+	second, _ := follow(t, d2, []chain.Point{base.At}, 1+4)
+	if second[0].Kind != chain.Intersected || second[0].Point != base.At {
+		t.Fatalf("first event %v at %v, want chain.Intersected at the settled point %v", second[0].Kind, second[0].Point, base.At)
 	}
 	restarted := w.view(base)
 	drive(t, restarted, second)
 
-	var chainBlocks []Block
+	var chainBlocks []chain.Block
 	for _, b := range w.chain.Blocks() {
 		lb, err := ledger.NewBlockFromCbor(ledger.BlockTypeConway, b.Cbor)
 		if err != nil {
 			t.Fatal(err)
 		}
-		chainBlocks = append(chainBlocks, BlockFrom(lb))
+		chainBlocks = append(chainBlocks, chain.BlockFrom(lb))
 	}
-	fresh := w.view(State{Utxos: w.genesis()})
+	fresh := w.view(chain.State{Utxos: w.genesis()})
 	for _, b := range chainBlocks {
 		mustApply(t, fresh, b)
 	}
@@ -413,11 +414,11 @@ func TestRestartAfterOfflineRollback(t *testing.T) {
 	d := &fakeDialer{t: t, chain: w.chain}
 	d.idle = []func(){w.advance(6)}
 	first, _ := follow(t, d, nil, 7)
-	live := w.view(State{})
+	live := w.view(chain.State{})
 	drive(t, live, first)
 
 	// Stored points reach from the tip down to the settled point.
-	var stored []Point
+	var stored []chain.Point
 	for _, ev := range first[1:] {
 		if heightOfPoint(first, ev.Point) >= heightOfPoint(first, live.Settled()) {
 			stored = append(stored, ev.Point)
@@ -426,16 +427,16 @@ func TestRestartAfterOfflineRollback(t *testing.T) {
 	w.rollback(2)()
 	w.advance(1)()
 	second, _ := follow(t, &fakeDialer{t: t, chain: w.chain}, stored, 2)
-	if second[0].Kind != Intersected || second[0].Point != first[4].Point {
+	if second[0].Kind != chain.Intersected || second[0].Point != first[4].Point {
 		t.Fatalf("intersected at %v, want block 4 (below the stored tip)", second[0].Point)
 	}
 	drive(t, live, second)
-	if tip, _ := PointFromWire(w.chain.Tip()); live.Tip() != tip {
+	if tip, _ := chain.PointFromWire(w.chain.Tip()); live.Tip() != tip {
 		t.Errorf("view tip %v, chain tip %v", live.Tip(), tip)
 	}
 }
 
-func heightOfPoint(evs []Event, p Point) int {
+func heightOfPoint(evs []chain.Event, p chain.Point) int {
 	for i, ev := range evs {
 		if ev.Point == p {
 			return i
@@ -447,7 +448,7 @@ func heightOfPoint(evs []Event, p Point) int {
 func TestFollowerNoIntersectIsFatal(t *testing.T) {
 	w := newWorld(t)
 	d := &fakeDialer{t: t, chain: w.chain}
-	_, err := follow(t, d, []Point{{Slot: 9, Hash: txid(9)}}, 1)
+	_, err := follow(t, d, []chain.Point{{Slot: 9, Hash: txid(9)}}, 1)
 	if !errors.Is(err, ErrNoIntersect) {
 		t.Fatalf("Run = %v, want ErrNoIntersect", err)
 	}

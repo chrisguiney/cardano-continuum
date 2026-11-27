@@ -1,6 +1,6 @@
 //go:build devnet
 
-package chain
+package node
 
 import (
 	"context"
@@ -16,6 +16,7 @@ import (
 
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 
+	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/genesis"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/rng"
@@ -66,7 +67,7 @@ func TestDevnetFollow(t *testing.T) {
 	q := waitUp(ctx, t, node)
 	checkQuerier(ctx, t, q, s)
 
-	book := NewBook()
+	book := chain.NewBook()
 	if err := book.AddAddress(b.Faucet, faucetActor); err != nil {
 		t.Fatal(err)
 	}
@@ -77,11 +78,11 @@ func TestDevnetFollow(t *testing.T) {
 	// Shelley genesis funds sit at (Blake2b-256 of the address bytes, 0).
 	gen := utxo(common.Blake2b256Hash(fb), 0, b.Faucet, s.FaucetLovelace)
 	slots := testSlotsOf(t, s)
-	v, err := New(Config{K: uint64(s.SecurityParam), Slots: slots, Book: book}, State{Utxos: []common.Utxo{gen}})
+	v, err := chain.New(chain.Config{K: uint64(s.SecurityParam), Slots: slots, Book: book}, chain.State{Utxos: []common.Utxo{gen}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	stats := followUntil(ctx, t, node, v, func(v *View) bool { return v.Epoch() >= 1 && !v.Settled().IsOrigin() })
+	stats := followUntil(ctx, t, node, v, uint64(s.SecurityParam), func(v *chain.View) bool { return v.Epoch() >= 1 && !v.Settled().IsOrigin() })
 	t.Logf("followed %d blocks, %d rollbacks, %d settled; tip slot %d, settled slot %d, epoch %d",
 		stats.forward, stats.backward, stats.settled, v.Tip().Slot, v.Settled().Slot, v.Epoch())
 	if uint64(v.Balance(faucetActor)) != s.FaucetLovelace {
@@ -96,7 +97,7 @@ func TestDevnetFollow(t *testing.T) {
 		t.Fatalf("node has %d faucet outputs, view %d", len(got), len(mine))
 	}
 	for i := range got {
-		if RefOf(got[i].Id) != RefOf(mine[i].Id) || got[i].Output.Amount().Cmp(mine[i].Output.Amount()) != 0 {
+		if chain.RefOf(got[i].Id) != chain.RefOf(mine[i].Id) || got[i].Output.Amount().Cmp(mine[i].Output.Amount()) != 0 {
 			t.Errorf("faucet output %d: node %v, view %v", i, got[i], mine[i])
 		}
 	}
@@ -108,11 +109,11 @@ func checkQuerier(ctx context.Context, t *testing.T, q *Querier, s genesis.Spec)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Genesis{
+	want := chain.Genesis{
 		Magic: s.Magic, Start: s.SystemStart, EpochLength: uint64(s.EpochLength),
 		SecurityParam: uint64(s.SecurityParam), SlotLength: s.SlotLength,
 	}
-	if err := Guard(want, g); err != nil {
+	if err := chain.Guard(want, g); err != nil {
 		t.Error(err)
 	}
 	pp, err := q.Params(ctx)
@@ -127,11 +128,11 @@ func checkQuerier(ctx context.Context, t *testing.T, q *Querier, s genesis.Spec)
 
 type followStats struct{ forward, backward, settled int }
 
-func followUntil(ctx context.Context, t *testing.T, n Node, v *View, done func(*View) bool) followStats {
+func followUntil(ctx context.Context, t *testing.T, n Node, v *chain.View, k uint64, done func(*chain.View) bool) followStats {
 	t.Helper()
 	ctx, cancel := context.WithCancel(ctx)
-	out := make(chan Event)
-	f := NewFollower(n, FollowerConfig{K: v.cfg.K}, out, nil)
+	out := make(chan chain.Event)
+	f := NewFollower(n, FollowerConfig{K: k}, out, nil)
 	errc := make(chan error, 1)
 	go func() { errc <- f.Run(ctx) }()
 	defer func() {
@@ -142,7 +143,7 @@ func followUntil(ctx context.Context, t *testing.T, n Node, v *View, done func(*
 	}()
 	var st followStats
 	for !done(v) {
-		var ev Event
+		var ev chain.Event
 		select {
 		case ev = <-out:
 		case err := <-errc:
@@ -156,13 +157,13 @@ func followUntil(ctx context.Context, t *testing.T, n Node, v *View, done func(*
 			t.Fatalf("%v at slot %d: %v", ev.Kind, ev.Point.Slot, err)
 		}
 		switch ev.Kind {
-		case Forward:
+		case chain.Forward:
 			st.forward++
-		case Backward:
+		case chain.Backward:
 			st.backward++
 		}
 		for _, e := range eff {
-			if e.Kind == Settled {
+			if e.Kind == chain.Settled {
 				st.settled++
 			}
 		}
@@ -170,8 +171,8 @@ func followUntil(ctx context.Context, t *testing.T, n Node, v *View, done func(*
 	return st
 }
 
-func apply(v *View, ev Event) ([]Effect, error) {
-	if ev.Kind == Forward {
+func apply(v *chain.View, ev chain.Event) ([]chain.Effect, error) {
+	if ev.Kind == chain.Forward {
 		return v.Apply(ev.Block)
 	}
 	return v.Rollback(ev.Point)

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/blinklabs-io/gouroboros/cbor"
+	"github.com/blinklabs-io/gouroboros/ledger"
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 	"github.com/blinklabs-io/gouroboros/ledger/conway"
 
@@ -300,13 +301,12 @@ func (p *par) step() {
 // drain applies every event the follower has.
 func (p *par) drain() {
 	p.t.Helper()
-	conv := &fakeSource{}
 	for {
 		fe, ok := p.fol.Next()
 		if !ok {
 			return
 		}
-		ev, err := conv.convert(fe)
+		ev, err := eventOf(fe)
 		if err != nil {
 			p.t.Fatal(err)
 		}
@@ -514,4 +514,19 @@ func (p *par) tally(seen map[string]int) {
 		seen["dereg drep"]++
 	}
 	p.rolled, p.dereg = false, false
+}
+
+// eventOf converts a fake chain-sync message the way the node client does.
+func eventOf(ev fakechain.Event) (Event, error) {
+	tip, _ := PointFromWire(ev.Tip)
+	if ev.Kind == fakechain.RollBackward {
+		p, _ := PointFromWire(ev.Point)
+		return Event{Kind: Backward, Point: p, Tip: tip}, nil
+	}
+	lb, err := ledger.NewBlockFromCbor(ledger.BlockTypeConway, ev.Block.Cbor)
+	if err != nil {
+		return Event{}, err
+	}
+	b := BlockFrom(lb)
+	return Event{Kind: Forward, Block: b, Point: b.Point, Tip: tip}, nil
 }

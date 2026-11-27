@@ -1,10 +1,13 @@
-package chain
+package node
 
 import (
+	"bytes"
 	"slices"
 
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 	"github.com/blinklabs-io/gouroboros/protocol/localstatequery"
+
+	"github.com/chrisguiney/cardano-continuum/internal/chain"
 )
 
 // What gouroboros v0.220.1's local-state-query offers for the engine's
@@ -47,7 +50,7 @@ type PoolRegs struct {
 // NodeProposal is an open governance action as the node reports it, with
 // the votes cast on it by credential hash.
 type NodeProposal struct {
-	ID                       GovID
+	ID                       chain.GovID
 	ProposedIn, ExpiresAfter uint64
 	DRepVotes, SPOVotes      map[common.Blake2b224]uint8
 	CommitteeVotes           map[common.Blake2b224]uint8
@@ -72,7 +75,7 @@ type Member struct {
 type Gov struct {
 	Proposals       []NodeProposal
 	DReps           map[common.Blake2b224]DRepInfo
-	VoteDelegations map[common.Blake2b224]DRep
+	VoteDelegations map[common.Blake2b224]chain.DRep
 }
 
 // Delegation is a credential's pool and reward balance.
@@ -113,18 +116,18 @@ func govFrom(
 ) Gov {
 	out := Gov{
 		DReps:           map[common.Blake2b224]DRepInfo{},
-		VoteDelegations: map[common.Blake2b224]DRep{},
+		VoteDelegations: map[common.Blake2b224]chain.DRep{},
 	}
 	for _, p := range props {
 		out.Proposals = append(out.Proposals, NodeProposal{
-			ID:         GovID{Tx: p.Id.TransactionId, Index: p.Id.GovActionIdx},
+			ID:         chain.GovID{Tx: p.Id.TransactionId, Index: p.Id.GovActionIdx},
 			ProposedIn: p.ProposedIn, ExpiresAfter: p.ExpiresAfter,
 			DRepVotes:      credVotes(p.DRepVotes),
 			SPOVotes:       hashVotes(p.SPOVotes),
 			CommitteeVotes: credVotes(p.CommitteeVotes),
 		})
 	}
-	slices.SortFunc(out.Proposals, func(a, b NodeProposal) int { return a.ID.compare(b.ID) })
+	slices.SortFunc(out.Proposals, func(a, b NodeProposal) int { return a.ID.Compare(b.ID) })
 	for c, d := range dreps {
 		info := DRepInfo{Expiry: d.Expiry}
 		for _, x := range d.Delegators {
@@ -134,7 +137,7 @@ func govFrom(
 		out.DReps[c.Bytes] = info
 	}
 	for c, d := range votes {
-		x := DRep{Kind: d.Type}
+		x := chain.DRep{Kind: d.Type}
 		copy(x.Cred[:], d.Credential)
 		out.VoteDelegations[c.Bytes] = x
 	}
@@ -189,3 +192,5 @@ func delegationsFrom(r *localstatequery.FilteredDelegationsAndRewardAccountsResu
 	}
 	return out
 }
+
+func compareHash(a, b common.Blake2b224) int { return bytes.Compare(a[:], b[:]) }

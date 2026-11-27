@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/chain/node"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/submit"
@@ -29,7 +30,7 @@ const conwayEra = 6
 // It has the Start/Close shape: the follower goroutine Intersect starts runs
 // under Start's context and Close joins it.
 type Node struct {
-	dial    chain.Dialer
+	dial    node.Dialer
 	target  submit.Target
 	k       uint64
 	log     *slog.Logger
@@ -46,7 +47,7 @@ type Node struct {
 // New returns a Node following d and submitting to t. k is the
 // security parameter, which bounds the points the follower keeps. A nil log
 // discards.
-func New(d chain.Dialer, t submit.Target, k uint64, log *slog.Logger) *Node {
+func New(d node.Dialer, t submit.Target, k uint64, log *slog.Logger) *Node {
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
@@ -104,7 +105,7 @@ func (l *Node) Intersect(points []eventlog.ChainPoint) (wire.Follower, eventlog.
 	l.stop = stop
 	events := make(chan chain.Event)
 	errc := make(chan error, 1)
-	f := chain.NewFollower(l.dial, chain.FollowerConfig{K: l.k, Start: start, Backoff: l.backoff}, events, l.log)
+	f := node.NewFollower(l.dial, node.FollowerConfig{K: l.k, Start: start, Backoff: l.backoff}, events, l.log)
 	l.wg.Go(func() { errc <- f.Run(ctx) })
 	select {
 	case ev := <-events:

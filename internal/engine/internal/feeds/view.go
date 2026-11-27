@@ -18,7 +18,7 @@ import (
 
 // Viewer asks a node for the UTxOs paying addrs in the ledger state at
 // point at (local-state-query acquired at that point). A live run's is a
-// chain.Querier; tests script one.
+// node.Querier; tests script one.
 type Viewer interface {
 	View(ctx context.Context, at chain.Point, addrs []common.Address) (Answer, error)
 }

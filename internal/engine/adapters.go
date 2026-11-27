@@ -3,7 +3,7 @@ package engine
 import (
 	"log/slog"
 
-	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/chain/node"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/fakenode"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/live"
 	"github.com/chrisguiney/cardano-continuum/internal/submit"
@@ -18,6 +18,6 @@ type (
 )
 
 // NewLive returns a Live following d and submitting to t; see live.New.
-func NewLive(d chain.Dialer, t submit.Target, k uint64, log *slog.Logger) *Live {
+func NewLive(d node.Dialer, t submit.Target, k uint64, log *slog.Logger) *Live {
 	return live.New(d, t, k, log)
 }

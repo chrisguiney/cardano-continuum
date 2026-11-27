@@ -5,7 +5,7 @@ import (
 	"errors"
 	"os"
 
-	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/chain/node"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/internal/simflags"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 )
@@ -23,7 +23,7 @@ func Header(ctx context.Context, sf simflags.Flags, lf Flags) (eventlog.HeaderBo
 	if err != nil {
 		return eventlog.HeaderBody{}, err
 	}
-	q := chain.NewQuerier(chain.Node{Network: lf.Network, Address: lf.Node, Magic: g.Magic})
+	q := node.NewQuerier(node.Node{Network: lf.Network, Address: lf.Node, Magic: g.Magic})
 	np, err := queryParams(ctx, q)
 	if err != nil {
 		return eventlog.HeaderBody{}, err

@@ -1,4 +1,4 @@
-package chain
+package node
 
 import (
 	"context"
@@ -7,8 +7,9 @@ import (
 	"io"
 	"log/slog"
 	"slices"
-	"strconv"
 	"time"
+
+	"github.com/chrisguiney/cardano-continuum/internal/chain"
 )
 
 // ErrNoIntersect: the node has none of the offered points. The follower
@@ -17,49 +18,14 @@ import (
 // (PlannerRestartFromOriginBug in models/specs/planner-reservations).
 var ErrNoIntersect = errors.New("chain: no intersection with the node's chain")
 
-// EventKind is a chain-sync instruction to the engine.
-type EventKind uint8
-
-// Event kinds.
-const (
-	// Forward: apply Block.
-	Forward EventKind = iota + 1
-	// Backward: roll back to Point.
-	Backward
-	// Intersected: the answer to FindIntersect after a (re)connect. The
-	// engine logs it as a rollback to Point when it is below its tip
-	// (eventlog.Session.Intersect) and rolls the view back to it.
-	Intersected
-)
-
-func (k EventKind) String() string {
-	switch k {
-	case Forward:
-		return "Forward"
-	case Backward:
-		return "Backward"
-	case Intersected:
-		return "Intersected"
-	}
-	return "EventKind(" + strconv.Itoa(int(k)) + ")"
-}
-
-// Event is one chain-sync message. Tip is the node's tip when it was sent.
-type Event struct {
-	Kind  EventKind
-	Block Block
-	Point Point
-	Tip   Point
-}
-
 // Source is one chain-sync connection.
 type Source interface {
 	// Intersect finds the first of points (newest first) on the node's
 	// chain, positions the stream after it and returns it, or
 	// ErrNoIntersect.
-	Intersect(ctx context.Context, points []Point) (Point, error)
+	Intersect(ctx context.Context, points []chain.Point) (chain.Point, error)
 	// Next blocks until the next roll forward or backward.
-	Next(ctx context.Context) (Event, error)
+	Next(ctx context.Context) (chain.Event, error)
 	Close() error
 }
 
@@ -74,7 +40,7 @@ type FollowerConfig struct {
 	K uint64
 	// Start are the stored intersection points, oldest first, reaching down
 	// to the settled point. Empty means a fresh start from the origin.
-	Start []Point
+	Start []chain.Point
 	// Backoff is the wait before reconnect attempt n (from 0). Nil means
 	// doubling from one second up to thirty.
 	Backoff func(attempt int) time.Duration
@@ -86,17 +52,17 @@ type FollowerConfig struct {
 // events to the engine, which logs each one first.
 type Follower struct {
 	dial    Dialer
-	out     chan<- Event
+	out     chan<- chain.Event
 	log     *slog.Logger
 	backoff func(int) time.Duration
 	keep    int
 	// points are the blocks delivered, oldest first, at most keep long.
 	// Only Run's goroutine touches them.
-	points []Point
+	points []chain.Point
 }
 
 // NewFollower returns a follower; Run starts it. A nil log discards.
-func NewFollower(d Dialer, cfg FollowerConfig, out chan<- Event, log *slog.Logger) *Follower {
+func NewFollower(d Dialer, cfg FollowerConfig, out chan<- chain.Event, log *slog.Logger) *Follower {
 	if log == nil {
 		log = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
@@ -154,7 +120,7 @@ func (f *Follower) session(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("chain: intersect: %w", err)
 	}
 	f.rollTo(at)
-	if err := f.send(ctx, Event{Kind: Intersected, Point: at}); err != nil {
+	if err := f.send(ctx, chain.Event{Kind: chain.Intersected, Point: at}); err != nil {
 		return false, err
 	}
 	for progressed := false; ; progressed = true {
@@ -174,15 +140,15 @@ func (f *Follower) session(ctx context.Context) (bool, error) {
 // track updates the points for ev and reports whether ev is news. A node
 // answers the first request after an intersection with a rollback to the
 // intersection itself; that, and any rollback to the current tip, is not.
-func (f *Follower) track(ev Event) bool {
+func (f *Follower) track(ev chain.Event) bool {
 	switch ev.Kind {
-	case Forward:
+	case chain.Forward:
 		f.points = append(f.points, ev.Block.Point)
 		if len(f.points) > f.keep {
 			f.points = slices.Delete(f.points, 0, len(f.points)-f.keep)
 		}
 		return true
-	case Backward:
+	case chain.Backward:
 		if len(f.points) > 0 && f.points[len(f.points)-1] == ev.Point {
 			return false
 		}
@@ -197,7 +163,7 @@ func (f *Follower) track(ev Event) bool {
 
 // rollTo drops the points above p. A p the follower does not hold becomes
 // its only point; the view decides whether the rollback is legal.
-func (f *Follower) rollTo(p Point) {
+func (f *Follower) rollTo(p chain.Point) {
 	if i := slices.Index(f.points, p); i >= 0 {
 		f.points = f.points[:i+1]
 		return
@@ -206,20 +172,20 @@ func (f *Follower) rollTo(p Point) {
 		f.points = nil
 		return
 	}
-	f.points = []Point{p}
+	f.points = []chain.Point{p}
 }
 
 // offer returns the points newest first; the origin only on a fresh start.
-func (f *Follower) offer() []Point {
+func (f *Follower) offer() []chain.Point {
 	if len(f.points) == 0 {
-		return []Point{{}}
+		return []chain.Point{{}}
 	}
 	out := slices.Clone(f.points)
 	slices.Reverse(out)
 	return out
 }
 
-func (f *Follower) send(ctx context.Context, ev Event) error {
+func (f *Follower) send(ctx context.Context, ev chain.Event) error {
 	select {
 	case f.out <- ev:
 		return nil
