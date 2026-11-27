@@ -37,6 +37,7 @@ func pool(name, id string, phase v1alpha1.PoolPhase) v1alpha1.ContinuumPool {
 // TestLivePoolsPatchesThePlan: only genesis pools whose spec differs from
 // the plan are patched, by poolId; and pod health changes are reported once.
 func TestLivePoolsPatchesThePlan(t *testing.T) {
+	t.Parallel()
 	f := &fakePools{patches: map[string]map[string]any{}, pools: []v1alpha1.ContinuumPool{
 		pool("p0", "continuum-pool-0", v1alpha1.PhaseSyncing), pool("p1", "continuum-pool-1", v1alpha1.PhaseSyncing),
 	}}
@@ -67,6 +68,7 @@ func TestLivePoolsPatchesThePlan(t *testing.T) {
 // TestControlQueueIsIdempotent: a request id is queued once and the loop
 // drains each control once.
 func TestControlQueueIsIdempotent(t *testing.T) {
+	t.Parallel()
 	q := newControlQueue()
 	c := httpapi.Control{RequestID: "r", Op: httpapi.OpPause}
 	for i, dup := range []bool{false, true} {
@@ -91,6 +93,7 @@ func TestControlQueueIsIdempotent(t *testing.T) {
 // TestFeedLogNumbersRecords: records appended through the live API's log
 // reach its feed with the seqs the log gave them.
 func TestFeedLogNumbersRecords(t *testing.T) {
+	t.Parallel()
 	mem := &eventlog.MemLog{}
 	s, err := newLiveServer(context.Background(), mem, nil, testSlots(t), 0, nil, poolView{}, nil)
 	if err != nil {
@@ -120,6 +123,7 @@ func testSlots(t *testing.T) sched.Slots {
 // TestLiveServeFailureEndsTheRun: a live API that cannot serve cancels the
 // run's context and reports its error, instead of logging it and carrying on.
 func TestLiveServeFailureEndsTheRun(t *testing.T) {
+	t.Parallel()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)

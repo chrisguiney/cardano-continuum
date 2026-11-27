@@ -13,6 +13,7 @@ import (
 )
 
 func TestResolveProfilesNames(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"m1", "preview", "preprod", "mainnet"} {
 		raw, label, err := ResolveProfiles(name)
 		if err != nil {
@@ -28,6 +29,7 @@ func TestResolveProfilesNames(t *testing.T) {
 }
 
 func TestResolveProfilesPath(t *testing.T) {
+	t.Parallel()
 	p := filepath.Join(t.TempDir(), "mine.yaml")
 	if err := os.WriteFile(p, profiles.M1, 0o600); err != nil {
 		t.Fatal(err)
@@ -44,6 +46,7 @@ func TestResolveProfilesPath(t *testing.T) {
 // --scale multiplies base rates and changes the run's fingerprint, but not
 // the profile hash, which names the fitted file and selects its target.
 func TestScaleFlag(t *testing.T) {
+	t.Parallel()
 	cfg := func(args ...string) (hash, genesis []byte, rate float64) {
 		t.Helper()
 		var sf Flags
@@ -87,6 +90,7 @@ func TestScaleFlag(t *testing.T) {
 
 // Wallets split by profile weight, largest remainder first.
 func TestWeightedCohorts(t *testing.T) {
+	t.Parallel()
 	doc := func(w ...string) *profile.Registry {
 		y := "version: 1\nprofiles:\n"
 		for i, x := range w {

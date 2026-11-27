@@ -14,6 +14,7 @@ import (
 // node's genesis, its builder parameters from the node, and its keys from
 // the run seed internal/genesis used, with the faucet funding the wallets.
 func TestLiveConfig(t *testing.T) {
+	t.Parallel()
 	g := chain.Genesis{Magic: 42, Start: time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC),
 		EpochLength: 500, SecurityParam: 5, SlotLength: time.Second}
 	var seed rng.Seed

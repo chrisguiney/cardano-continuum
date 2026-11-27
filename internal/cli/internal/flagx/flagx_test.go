@@ -3,6 +3,7 @@ package flagx
 import "testing"
 
 func TestRepoOf(t *testing.T) {
+	t.Parallel()
 	for in, want := range map[string]string{
 		"localhost:5001/continuum/dingo:dev-d1": "localhost:5001/continuum/dingo",
 		"localhost:5001/continuum/dingo":        "localhost:5001/continuum/dingo",

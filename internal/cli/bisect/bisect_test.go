@@ -12,6 +12,7 @@ import (
 )
 
 func TestParseBisect(t *testing.T) {
+	t.Parallel()
 	got, err := parseBisect([]string{"--dep", "gouroboros", "v1..main", "--seed", "9", "--check", "sh -c true", "--repo", "/g", "--dingo", "/d"})
 	if err != nil {
 		t.Fatal(err)
@@ -23,6 +24,7 @@ func TestParseBisect(t *testing.T) {
 }
 
 func TestParseBisectKindCheck(t *testing.T) {
+	t.Parallel()
 	got, err := parseBisect([]string{"--dep", "dingo", "a..b", "--check", "wrong_class", "--repo", "/d"})
 	if err != nil || got.kind != "wrong_class" || got.argv != nil {
 		t.Fatalf("got %+v, %v", got, err)
@@ -30,6 +32,7 @@ func TestParseBisectKindCheck(t *testing.T) {
 }
 
 func TestParseBisectRefusals(t *testing.T) {
+	t.Parallel()
 	for name, args := range map[string][]string{
 		"no dep":              {"a..b", "--check", "true", "--repo", "/r"},
 		"unknown dep":         {"--dep", "zlib", "a..b", "--check", "true", "--repo", "/r"},
@@ -70,6 +73,7 @@ func (c threshold) Check(_ context.Context, _, commit string) (ibisect.Verdict, 
 }
 
 func TestRunBisectReportsTheFirstBadCommit(t *testing.T) {
+	t.Parallel()
 	a := bisectArgs{dep: "gouroboros", good: "g", bad: "b", repo: "/r"}
 	git := listGit{"c1\nc2\nc3\nc4\nc5\n"}
 	var out bytes.Buffer
@@ -83,6 +87,7 @@ func TestRunBisectReportsTheFirstBadCommit(t *testing.T) {
 }
 
 func TestRunBisectNamesAnAmbiguousRange(t *testing.T) {
+	t.Parallel()
 	a := bisectArgs{dep: "gouroboros", good: "g", bad: "b", repo: "/r"}
 	git := listGit{"c1\nc2\nc3\nc4\n"}
 	var out bytes.Buffer
@@ -96,6 +101,7 @@ func TestRunBisectNamesAnAmbiguousRange(t *testing.T) {
 }
 
 func TestDevBuilderRequestsRepro(t *testing.T) {
+	t.Parallel()
 	d := devBuilder{dep: "dingo", repo: "/d"}
 	if r := d.request("abc"); r.Mode != devbuild.Repro || r.Dingo != "/d" || r.Ref != "abc" || len(r.With) != 0 {
 		t.Fatalf("dingo request %+v", r)

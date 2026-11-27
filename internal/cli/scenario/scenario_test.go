@@ -18,6 +18,7 @@ func scenarioCmd(t *testing.T, args ...string) (string, error) {
 // TestScenarioRunLibrary runs the committed library on the fake chain and
 // checks the summary's totals: two known disagreements, the rest passing.
 func TestScenarioRunLibrary(t *testing.T) {
+	t.Parallel()
 	out, err := scenarioCmd(t, "run", "-v", "--lib", "../../../scenarios", "../../../scenarios")
 	if err != nil {
 		t.Fatal(err)
@@ -39,6 +40,7 @@ func TestScenarioRunLibrary(t *testing.T) {
 
 // TestScenarioRunDeterministic: the same seed gives the same report.
 func TestScenarioRunDeterministic(t *testing.T) {
+	t.Parallel()
 	a, err := scenarioCmd(t, "run", "--lib", "../../../scenarios", "--seed", "9", "ledger-utxo", "codec")
 	if err != nil {
 		t.Fatal(err)
@@ -50,6 +52,7 @@ func TestScenarioRunDeterministic(t *testing.T) {
 }
 
 func TestScenarioRunByID(t *testing.T) {
+	t.Parallel()
 	out, err := scenarioCmd(t, "run", "--lib", "../../../scenarios", "ledger-utxo/UtxoGoIntervalInclusiveBug/0")
 	if err != nil || !strings.Contains(out, "total") {
 		t.Fatalf("out %q err %v", out, err)
@@ -57,6 +60,7 @@ func TestScenarioRunByID(t *testing.T) {
 }
 
 func TestScenarioErrors(t *testing.T) {
+	t.Parallel()
 	if _, err := scenarioCmd(t, "run", "--target", "live", "../../../scenarios"); !errors.Is(err, errNoLive) {
 		t.Errorf("live target: %v", err)
 	}

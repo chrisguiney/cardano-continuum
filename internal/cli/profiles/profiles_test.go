@@ -18,6 +18,7 @@ import (
 func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
 
 func TestProfileIndexIsCurrent(t *testing.T) {
+	t.Parallel()
 	var out bytes.Buffer
 	if err := Run(context.Background(), []string{"index"}, &out); err != nil {
 		t.Fatal(err)

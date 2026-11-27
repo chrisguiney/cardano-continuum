@@ -24,6 +24,7 @@ func runImage(t *testing.T, f *kubetest.Fake, args ...string) (string, error) {
 }
 
 func TestImageSetPatchesSelectedPools(t *testing.T) {
+	t.Parallel()
 	f := kubetest.New()
 	// Flags may follow the positional argument, as in the usage line.
 	if _, err := runImage(t, f, "dingo=dingo:dev", "--network", "demo", "--pools", "40%"); err != nil {
@@ -42,6 +43,7 @@ func TestImageSetPatchesSelectedPools(t *testing.T) {
 }
 
 func TestImageSetNetworkDefault(t *testing.T) {
+	t.Parallel()
 	f := kubetest.New()
 	if _, err := runImage(t, f, "--network", "demo", "dingo=dingo:dev"); err != nil {
 		t.Fatal(err)
@@ -51,6 +53,7 @@ func TestImageSetNetworkDefault(t *testing.T) {
 	}
 }
 
+// Not parallel: rewrites its golden file under -update.
 func TestImageSetDryRunGolden(t *testing.T) {
 	f := kubetest.New()
 	var all bytes.Buffer
@@ -85,6 +88,7 @@ func TestImageSetDryRunGolden(t *testing.T) {
 }
 
 func TestImageSetUsageErrors(t *testing.T) {
+	t.Parallel()
 	for _, args := range [][]string{
 		{},
 		{"dingo=x"},

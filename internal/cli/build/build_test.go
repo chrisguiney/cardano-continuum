@@ -8,6 +8,7 @@ import (
 )
 
 func TestParseOverlays(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	got, err := parseOverlays(
 		[]string{"gouroboros=" + dir, "plutigo=abcdef1"},

@@ -19,6 +19,7 @@ func workloadPool(name, workload string, impl v1alpha1.Implementation, phase v1a
 
 // Only pools with a running pod are followed, at the pod's own DNS name.
 func TestPodTargets(t *testing.T) {
+	t.Parallel()
 	ps := []v1alpha1.ContinuumPool{
 		workloadPool("p0", "pool-aa", v1alpha1.CardanoNode, v1alpha1.PhaseSyncing, v1alpha1.TierForging, false),
 		workloadPool("p1", "pool-bb", v1alpha1.Dingo, v1alpha1.PhasePending, v1alpha1.TierForging, false),
@@ -37,6 +38,7 @@ func TestPodTargets(t *testing.T) {
 
 // Each followed pool becomes a branch carrying its implementation and build.
 func TestBranchesCarryBuild(t *testing.T) {
+	t.Parallel()
 	ps := []v1alpha1.ContinuumPool{workloadPool("p3", "pool-aa", v1alpha1.Dingo, v1alpha1.PhaseSyncing, v1alpha1.TierForging, false)}
 	m := chain.Mark{Height: 4}
 	m.Slot = 40
