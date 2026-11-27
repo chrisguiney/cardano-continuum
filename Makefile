@@ -184,7 +184,7 @@ test-envtest: $(SETUP_ENVTEST) ## Run the operator tests against envtest's API s
 
 # Stubs for targets that need components landing in later steps. Each prints
 # "not yet implemented" and exits 0 so that the target names stay reserved.
-STUBS := images ident \
+STUBS := ident \
 	fuzz-smoke bisect tools
 .PHONY: $(STUBS)
 $(STUBS): ; @echo "$@: not yet implemented"
@@ -235,18 +235,31 @@ e2e: kind-up ## Run the kind e2e suite (about an hour; go test -short skips the 
 	CONTINUUM_KO="$(KO)" CONTINUUM_DINGO_SRC="$(DINGO_SRC)" CONTINUUM_GOUROBOROS_SRC="$(GOUROBOROS_SRC)" \
 	CONTINUUM_OVERLAY_MODE="$(MODE)" go test -tags e2e -count=1 -timeout $(E2E_TIMEOUT) -v ./test/e2e/...
 
-# make up / make down: the whole system on one developer machine. The
-# defaults target Docker Desktop's Kubernetes and its plain-HTTP registry on
-# localhost:5005. See docs/single-machine.md for sizing.
-CONTEXT ?= docker-desktop
+# make images builds the images the chart runs and pushes them to
+# CONTINUUM_REGISTRY, which the cluster must be able to pull from. The digest
+# references land in IMAGES_OUT for make up. PLATFORM is the cluster nodes'
+# platform: set it when they differ from this machine.
+PLATFORM ?= linux/$(shell go env GOARCH)
+IMAGES_OUT ?= $(CURDIR)/.tools/images
+CHART_IMAGES := ./cmd/continuum ./cmd/continuum-operator ./cmd/continuum-genesis
+
+images: require-registry ## Build the chart's images with ko, push them to CONTINUUM_REGISTRY and record their digests
+	@mkdir -p $(dir $(IMAGES_OUT))
+	KO_DOCKER_REPO=$(CONTINUUM_REGISTRY) $(KO) build --base-import-paths --platform=$(PLATFORM) $(KO_INSECURE) $(CHART_IMAGES) >$(IMAGES_OUT).new
+	@mv $(IMAGES_OUT).new $(IMAGES_OUT) && cat $(IMAGES_OUT)
+
+# make up / make down: install the chart into NAMESPACE of the cluster
+# CONTEXT names, and remove it. CONTEXT empty is kubectl's current context;
+# it is never switched. See docs/single-machine.md for sizing.
+CONTEXT ?=
 NAMESPACE ?= continuum
+RELEASE ?= continuum
 PROFILES ?= preprod
 POOLS ?= 3
 DINGO_POOLS ?= 1
 WALLETS ?= 100
 SCALE ?= 200
 SEED ?= 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-UP_REGISTRY ?= localhost:5005/continuum
 UI_PORT ?= 8088
 UI_ADDRESS ?= 127.0.0.1
 ENGINE_POOLS ?= 0
@@ -256,16 +269,18 @@ ATTACKS ?=
 # KEEP_RUN=1 makes `make up` refuse, rather than reset, a deploy whose
 # engine cannot resume its run.
 KEEP_RUN ?=
-UP_ENV = CONTEXT='$(CONTEXT)' NAMESPACE='$(NAMESPACE)' PROFILES='$(PROFILES)' POOLS='$(POOLS)' \
-	DINGO_POOLS='$(DINGO_POOLS)' WALLETS='$(WALLETS)' SCALE='$(SCALE)' SEED='$(SEED)' UI_PORT='$(UI_PORT)' UI_ADDRESS='$(UI_ADDRESS)' ENGINE_POOLS='$(ENGINE_POOLS)' ATTACKS='$(ATTACKS)' KEEP_RUN='$(KEEP_RUN)' \
-	CONTINUUM_REGISTRY='$(or $(CONTINUUM_REGISTRY),$(UP_REGISTRY))' \
-	CONTINUUM_REGISTRY_INSECURE='$(or $(CONTINUUM_REGISTRY_INSECURE),true)' KO='$(KO)'
+# VALUES is an extra chart values file, applied after the variables above.
+VALUES ?=
+UP_ENV = CONTEXT='$(CONTEXT)' NAMESPACE='$(NAMESPACE)' RELEASE='$(RELEASE)' PROFILES='$(PROFILES)' POOLS='$(POOLS)' \
+	DINGO_POOLS='$(DINGO_POOLS)' WALLETS='$(WALLETS)' SCALE='$(SCALE)' SEED='$(SEED)' UI_PORT='$(UI_PORT)' UI_ADDRESS='$(UI_ADDRESS)' \
+	ENGINE_POOLS='$(ENGINE_POOLS)' ATTACKS='$(ATTACKS)' KEEP_RUN='$(KEEP_RUN)' VALUES='$(VALUES)' \
+	CONTINUUM_REGISTRY='$(CONTINUUM_REGISTRY)' IMAGES='$(IMAGES_OUT)' HELM='$(HELM)'
 
-.PHONY: up down
-up: ## Deploy operator, genesis, pools and the engine UI to CONTEXT (POOLS, DINGO_POOLS, WALLETS, SCALE, PROFILES, SEED, ATTACKS)
+.PHONY: images up down
+up: images ## Build and push the images, then install the chart into CONTEXT/NAMESPACE (POOLS, DINGO_POOLS, WALLETS, SCALE, PROFILES, SEED, ATTACKS)
 	$(UP_ENV) hack/up.sh
 
-down: ## Delete the pools, the engine and the namespace (the operator stays until the pools are gone)
+down: ## Delete the pools, uninstall the chart and delete NAMESPACE
 	$(UP_ENV) hack/down.sh
 
 # continuum-lab: calibration notebooks. The image layers scipy and pytest over

@@ -1,38 +1,49 @@
 #!/usr/bin/env bash
-# Deploy the whole system onto a developer's Kubernetes: operator, genesis,
-# a ContinuumNetwork with POOLS cardano-node pools and DINGO_POOLS dingo
-# pools, and the engine serving the live UI. Idempotent: every step skips
-# work already done, so a second run only repairs what is missing. To change
-# the pool count, the seed or ATTACKS, run `make down` first: the genesis
-# fixes them.
+# Install or upgrade the continuum Helm chart (charts/continuum) into
+# NAMESPACE of the cluster CONTEXT names: operator, genesis, a
+# ContinuumNetwork with POOLS cardano-node pools and DINGO_POOLS dingo pools,
+# and the engine serving the live UI. Then wait, bounded, for the pools to
+# share one chain and the engine to be Ready, and keep a port-forward to the
+# UI running. Any Kubernetes distribution works; nothing here starts or
+# configures a cluster.
 #
-# ATTACKS selects the engine's tier-1 adversaries, one actor each with the
-# built-in budget and per-epoch cost ceiling: empty (the default) is every
-# attack a stock genesis supports (dust-flood, utxo-contention,
-# malformed-cbor, front-run, double-spend), "none" runs none, and a
+# CONTEXT empty means kubectl's current context. It is read once and passed
+# to every kubectl and helm call, so the current context is never changed
+# and a switch while this runs does not redirect it.
+#
+# IMAGES is the file `make images` wrote: one digest reference per line,
+# CONTINUUM_REGISTRY/<name>@sha256:..., for continuum, continuum-operator
+# and continuum-genesis. The chart gets the registry and the digests.
+#
+# ATTACKS selects the engine's tier-1 adversaries: empty (the default) is
+# every attack a stock genesis supports, "none" runs none, and a
 # comma-separated list runs those. exunits-block-gap is opt-in: naming it
 # also renders the genesis with per-transaction ExUnits above the per-block
 # ones (devup attacks prints the overrides).
 #
 # An engine resumes its event log only under the binary, seed, profiles and
-# attacks that wrote it. up.sh records them on the engine StatefulSet
-# (annotation continuum.blinklabs.io/run, see devup run); when an existing
-# deploy differs, it logs why ("engine binary changed: a run can't be
-# resumed by a different binary; resetting the network") and runs
-# hack/down.sh first, so the chain and the engine store start fresh. With
-# KEEP_RUN=1 it refuses instead.
+# attacks that wrote it, and the genesis fixes the pool counts and the
+# genesis overrides. This script computes the run identity (devup run) and
+# passes it as engine.runIdentity, which the chart records as the engine
+# StatefulSet's continuum.blinklabs.io/run annotation. When the deployed
+# annotation or the deployed release's pool values differ, it logs why
+# ("engine binary changed: a run can't be resumed by a different binary;
+# resetting the network") and runs hack/down.sh first, so the chain and the
+# engine store start fresh. With KEEP_RUN=1 it refuses instead.
 #
-# Every wait is bounded and nothing reads stdin. kubectl always names
-# $CONTEXT, so the current context is never changed.
+# Every wait is bounded and nothing reads stdin. Written for bash 3.2, so an
+# empty array is expanded as ${a[@]+"${a[@]}"} under set -u.
 #
-# Environment (the Makefile passes these): CONTEXT, NAMESPACE, PROFILES,
-# POOLS, DINGO_POOLS, WALLETS, SCALE, SEED (64 hex), ATTACKS, KEEP_RUN, CONTINUUM_REGISTRY,
-# CONTINUUM_REGISTRY_INSECURE, KO, MIN_MEM_GIB, UI_PORT, UI_ADDRESS.
+# Environment (the Makefile passes these): CONTEXT, NAMESPACE, RELEASE,
+# PROFILES, POOLS, DINGO_POOLS, WALLETS, SCALE, SEED (64 hex), ATTACKS,
+# ENGINE_POOLS, KEEP_RUN, CONTINUUM_REGISTRY, IMAGES, HELM, VALUES (an extra
+# values file), MIN_MEM_GIB, UI_PORT, UI_ADDRESS.
 set -euo pipefail
 exec </dev/null
 
-CONTEXT=${CONTEXT:-docker-desktop}
+CONTEXT=${CONTEXT:-}
 NAMESPACE=${NAMESPACE:-continuum}
+RELEASE=${RELEASE:-continuum}
 PROFILES=${PROFILES:-preprod}
 POOLS=${POOLS:-3}
 DINGO_POOLS=${DINGO_POOLS:-1}
@@ -42,9 +53,10 @@ SCALE=${SCALE:-200}
 SEED=${SEED:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
 ATTACKS=${ATTACKS:-}
 KEEP_RUN=${KEEP_RUN:-}
-REGISTRY=${CONTINUUM_REGISTRY:-localhost:5005/continuum}
-INSECURE=${CONTINUUM_REGISTRY_INSECURE:-true}
-KO=${KO:-go run github.com/google/ko@v0.19.1}
+REGISTRY=${CONTINUUM_REGISTRY:?set CONTINUUM_REGISTRY to the registry make images pushed to}
+IMAGES=${IMAGES:?set IMAGES to the file make images wrote}
+HELM=${HELM:-helm}
+VALUES=${VALUES:-}
 MIN_MEM_GIB=${MIN_MEM_GIB:-48}
 UI_PORT=${UI_PORT:-8088}
 UI_ADDRESS=${UI_ADDRESS:-127.0.0.1}
@@ -52,22 +64,17 @@ UI_ADDRESS=${UI_ADDRESS:-127.0.0.1}
 # preprod and preview profiles have no pool profile, so it must stay 0 there.
 ENGINE_POOLS=${ENGINE_POOLS:-0}
 K=${K_BIN:-kubectl}
-NODE_CONTAINER=${NODE_CONTAINER:-desktop-control-plane}
 root=$(cd "$(dirname "$0")/.." && pwd)
+chart=$root/charts/continuum
 state=${CONTINUUM_STATE_DIR:-${HOME}/.cache/continuum/$NAMESPACE}
 total=$((POOLS + DINGO_POOLS))
-# k and the Go helper; TOTAL pools are genesis pools 0..TOTAL-1.
 k() { "$K" --context "$CONTEXT" "$@"; }
+# HELM may be a command with arguments (go run ...), so it is split on purpose.
+# shellcheck disable=SC2086
+helm_() { $HELM --kube-context "$CONTEXT" "$@"; }
 devup() { (cd "$root" && go run ./hack/devup "$@"); }
 log() { printf '%s up: %s\n' "$(date +%H:%M:%S)" "$*" >&2; }
 die() { log "ERROR: $*"; exit 1; }
-
-# bounded SECONDS CMD...: run CMD, killing it when the time is up (macOS has no timeout).
-bounded() {
-  local secs=$1
-  shift
-  perl -e 'alarm shift; exec @ARGV or die "exec: $!"' "$secs" "$@"
-}
 
 # retry N SECONDS DESCRIPTION CMD...: run CMD up to N times, SECONDS apart.
 retry() {
@@ -82,189 +89,119 @@ retry() {
 }
 
 preflight() {
-  k config view >/dev/null 2>&1 || die "kubectl cannot read its configuration"
-  "$K" config get-contexts -o name | grep -qx "$CONTEXT" || die "no kubectl context named $CONTEXT"
+  if [ -z "$CONTEXT" ]; then
+    CONTEXT=$("$K" config current-context 2>/dev/null) || die "kubectl has no current context: set CONTEXT"
+  fi
+  "$K" config get-contexts -o name | grep -qxF "$CONTEXT" || die "no kubectl context named $CONTEXT"
   k version >/dev/null 2>&1 || die "context $CONTEXT does not answer"
+  log "context $CONTEXT, namespace $NAMESPACE, release $RELEASE"
   local node
   node=$(k get nodes -o jsonpath='{.items[0].status.allocatable.memory}')
   devup mem "$node" "$MIN_MEM_GIB" || die "cannot read the node's memory"
-  local host=${REGISTRY%%/*}
-  curl -fsS -m 5 "http://$host/v2/" >/dev/null || die "registry $host is not reachable"
-  [ "$total" -ge 1 ] || die "need at least one pool"
-  devup render -pools "$POOLS" -dingo "$DINGO_POOLS" >/dev/null || die "pool plan refused"
+  [ "$POOLS" -ge 1 ] || die "POOLS must be at least 1: the engine follows pool 0, a cardano-node pool"
   [[ $SCALE =~ ^[0-9]+([.][0-9]+)?$ && $SCALE =~ [1-9] ]] || die "SCALE must be a positive number"
   [[ $SEED =~ ^[0-9a-f]{64}$ ]] || die "SEED must be 64 lowercase hex characters"
+  [ -s "$IMAGES" ] || die "$IMAGES is empty: run make images"
   resolve_attacks
 }
 
 # resolve_attacks sets ENGINE_ATTACKS, the engine's --attack value, and
-# GENESIS_ARGS, the continuum-genesis arguments those attacks need, one
-# per line.
+# OVERRIDES and ALLOW_INCONSISTENT, the genesis values those attacks need.
 resolve_attacks() {
-  local plan
+  local plan arg
   plan=$(devup attacks "$ATTACKS") || die "ATTACKS=$ATTACKS refused"
   ENGINE_ATTACKS=$(printf '%s\n' "$plan" | sed -n 1p)
-  GENESIS_ARGS=$(printf '%s\n' "$plan" | sed -n '2,$p')
-  log "attacks: ${ENGINE_ATTACKS:-none}${GENESIS_ARGS:+ (genesis: ${GENESIS_ARGS//$'\n'/ })}"
+  OVERRIDES=()
+  ALLOW_INCONSISTENT=false
+  while IFS= read -r arg; do
+    case $arg in
+      -override=*) OVERRIDES+=("${arg#-override=}") ;;
+      -allow-inconsistent-exunits) ALLOW_INCONSISTENT=true ;;
+      "") ;;
+      *) die "devup attacks printed an unknown genesis argument $arg" ;;
+    esac
+  done < <(printf '%s\n' "$plan" | sed -n '2,$p')
+  log "attacks: ${ENGINE_ATTACKS:-none}${OVERRIDES[*]+ (genesis overrides: ${OVERRIDES[*]})}"
 }
 
-# load_node SRC NAME: make the node's containerd hold the dev-registry image
-# SRC (a digest reference) as NAME. Docker Desktop's node routes every pull
-# through a mirror that cannot reach a registry on the host, so the image is
-# pulled by the host's Docker and imported by `ctr`, as `kind load` does.
-# Pods then name the image by NAME, a tag unique to the digest, with the
-# default IfNotPresent policy: containerd would not match a digest reference
-# to an import.
-load_node() {
-  local src=$1 name=$2 tmp
-  if docker exec "$NODE_CONTAINER" ctr -n k8s.io images ls -q 2>/dev/null | grep -qxF "$name"; then return; fi
-  tmp=$(mktemp)
-  docker pull -q "$src" >/dev/null && docker tag "$src" "$name" && docker save "$name" -o "$tmp" &&
-    docker exec -i "$NODE_CONTAINER" ctr -n k8s.io images import - <"$tmp" >/dev/null || { rm -f "$tmp"; die "cannot load $src into $NODE_CONTAINER"; }
-  rm -f "$tmp"
-  docker exec "$NODE_CONTAINER" ctr -n k8s.io images ls -q | grep -qxF "$name" || die "$name is not in $NODE_CONTAINER after import"
+# digest NAME prints the digest of CONTINUUM_REGISTRY/NAME in IMAGES.
+digest() {
+  local ref
+  ref=$(grep -F "$REGISTRY/$1@sha256:" "$IMAGES" | tail -1)
+  [ -n "$ref" ] || die "$IMAGES has no $REGISTRY/$1 image: run make images"
+  echo "${ref##*@}"
 }
 
-# build NAME: ko-build ./cmd/NAME for the node's architecture, load it into
-# the node and print the image name pods use.
-build() {
-  local arch flags=() ref name ref_hex
-  arch=$(k get nodes -o jsonpath='{.items[0].status.nodeInfo.architecture}')
-  [ "$INSECURE" = true ] && flags+=(--insecure-registry)
-  ref=$(cd "$root" && KO_DOCKER_REPO=$REGISTRY bounded 300 $KO build --base-import-paths \
-    --platform="linux/$arch" "${flags[@]}" "./cmd/$1" 2>/dev/null | tail -1)
-  case $ref in *@sha256:*) ;; *) die "ko build $1 printed no digest reference" ;; esac
-  name=${ref%@sha256:*}
-  ref_hex=${ref##*@sha256:}
-  name=$name:${ref_hex:0:12}
-  load_node "$ref" "$name"
-  echo "$name"
-}
-
-# prepull IMAGE...: pull images onto the node before the genesis fixes
-# systemStart, since a node that starts more than the stability window after
-# slot 0 has no ledger view and never forges.
-prepull() {
-  local i=0 img names=()
-  for img in "$@"; do
-    k -n "$NAMESPACE" apply -f - >/dev/null <<EOF
-apiVersion: v1
-kind: Pod
-metadata: {name: prepull-$i}
-spec:
-  terminationGracePeriodSeconds: 0
-  containers:
-    - {name: main, image: $img, command: [sleep, "3600"]}
-EOF
-    names+=("pod/prepull-$i")
-    i=$((i + 1))
-  done
-  k -n "$NAMESPACE" wait --for=condition=Ready --timeout=8m "${names[@]}" >/dev/null || die "image pre-pull failed"
-  k -n "$NAMESPACE" delete --wait=false "${names[@]}" >/dev/null
-}
-
-install_operator() {
-  k apply -f "$root/config/crd/bases" >/dev/null
-  k apply -f "$root/config/rbac/role.yaml" >/dev/null
-  local crd
-  for crd in continuumnetworks continuumpools; do
-    k wait --for=condition=Established --timeout=60s "crd/$crd.continuum.blinklabs.io" >/dev/null
-  done
-  local img
-  img=$(build continuum-operator)
-  sed -e "s|image: continuum-operator|image: $img|" -e "s|namespace: NAMESPACE|namespace: $NAMESPACE|" \
-    "$root/deploy/operator/operator.yaml" | k -n "$NAMESPACE" apply -f - >/dev/null
-  k -n "$NAMESPACE" wait --for=condition=Available --timeout=3m deployment/continuum-operator >/dev/null
-}
-
-run_genesis() {
-  k -n "$NAMESPACE" apply -f - >/dev/null <<EOF
-apiVersion: v1
-kind: Secret
-metadata: {name: continuum-seed}
-stringData: {seed: $SEED}
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata: {name: continuum-genesis}
-spec:
-  accessModes: [ReadWriteOnce]
-  resources: {requests: {storage: 100Mi}}
-EOF
-  if k -n "$NAMESPACE" get job continuum-genesis >/dev/null 2>&1; then
-    log "genesis job exists; keeping it"
+# json_list ITEM... prints the items as a JSON array of strings.
+json_list() {
+  if [ $# -eq 0 ]; then
+    echo '[]'
     return
   fi
-  local img
-  img=$(build continuum-genesis)
-  # -start-delay leaves time for the nodes to start; -pools is the pool count;
-  # GENESIS_ARGS are the overrides ATTACKS needs.
-  GENESIS_ARGS="$GENESIS_ARGS" awk -v img="$img" -v delay="${START_DELAY:-120s}" -v pools="$total" '
-    /^          image: continuum-genesis$/ { print "          image: " img; next }
-    /^            - -start-delay=60s$/ { print "            - -start-delay=" delay; next }
-    { print }
-    /^            - -out=\/genesis$/ {
-      print "            - -pools=" pools
-      n = split(ENVIRON["GENESIS_ARGS"], extra, "\n")
-      for (i = 1; i <= n; i++) if (extra[i] != "") print "            - " extra[i]
-    }' \
-    "$root/deploy/genesis/job.yaml" | k -n "$NAMESPACE" apply -f - >/dev/null
-  k -n "$NAMESPACE" wait --for=condition=Complete --timeout=4m job/continuum-genesis >/dev/null || die "genesis job did not complete"
+  printf '%s\n' "$@" | jq -R . | jq -cs .
 }
 
-# publish_genesis copies the rendered config into the ConfigMap the network's
-# genesisRef names and each pool's keys into a Secret, as the operator mounts them.
-publish_genesis() {
-  if k -n "$NAMESPACE" get configmap devnet-genesis >/dev/null 2>&1 &&
-    k -n "$NAMESPACE" get secret "keys-$((total - 1))" >/dev/null 2>&1; then
-    log "genesis already published"
-    return
+# check_run compares the run this install makes with the deployed one. A
+# deploy that cannot resume is reset with hack/down.sh, or refused with
+# KEEP_RUN=1.
+check_run() {
+  ENGINE_IMG=$REGISTRY/continuum@$(digest continuum)
+  local out old reason deployed want
+  old=$(k -n "$NAMESPACE" get statefulset continuum-engine -o jsonpath='{.metadata.annotations.continuum\.blinklabs\.io/run}' 2>/dev/null) || old=""
+  out=$(SEED=$SEED devup run -deployed "$old" -image "$ENGINE_IMG" -profiles "$PROFILES" -attacks "$ENGINE_ATTACKS")
+  RUN_ID=$(printf '%s\n' "$out" | sed -n 1p)
+  reason=$(printf '%s\n' "$out" | sed -n 2p)
+  helm_ -n "$NAMESPACE" status "$RELEASE" >/dev/null 2>&1 || return 0
+  deployed=$(helm_ -n "$NAMESPACE" get values "$RELEASE" -o json | jq -c '[.pools, (.genesis.overrides // [])]')
+  want=$(jq -cn --argjson n "$POOLS" --argjson d "$DINGO_POOLS" --argjson o "$(json_list ${OVERRIDES[@]+"${OVERRIDES[@]}"})" \
+    '[{cardanoNode: $n, dingo: $d}, $o]')
+  if [ -z "$reason" ] && [ "$deployed" != "$want" ]; then
+    reason="pools or genesis overrides changed: the genesis fixes them"
   fi
-  k -n "$NAMESPACE" apply -f - >/dev/null <<EOF
-apiVersion: v1
-kind: Pod
-metadata: {name: reader}
-spec:
-  terminationGracePeriodSeconds: 0
-  containers:
-    - name: main
-      image: busybox:1.37.0
-      command: [sleep, "3600"]
-      volumeMounts: [{name: genesis, mountPath: /genesis, readOnly: true}]
-  volumes: [{name: genesis, persistentVolumeClaim: {claimName: continuum-genesis}}]
-EOF
-  k -n "$NAMESPACE" wait --for=condition=Ready --timeout=3m pod/reader >/dev/null
-  local tmp f i
-  tmp=$(mktemp -d)
-  # shellcheck disable=SC2064
-  trap "rm -rf '$tmp'" RETURN
-  mkdir "$tmp/config"
-  for f in config.json byron-genesis.json shelley-genesis.json alonzo-genesis.json conway-genesis.json; do
-    k -n "$NAMESPACE" exec reader -- cat "/genesis/config/$f" >"$tmp/config/$f"
-  done
-  k -n "$NAMESPACE" create configmap devnet-genesis --from-file="$tmp/config" --dry-run=client -o yaml |
-    k -n "$NAMESPACE" apply -f - >/dev/null
-  for ((i = 0; i < total; i++)); do
-    mkdir "$tmp/k$i"
-    for f in kes.skey vrf.skey opcert.cert; do
-      k -n "$NAMESPACE" exec reader -- cat "/genesis/pools/$i/$f" >"$tmp/k$i/$f"
-    done
-    k -n "$NAMESPACE" create secret generic "keys-$i" --from-file="$tmp/k$i" --dry-run=client -o yaml |
-      k -n "$NAMESPACE" apply -f - >/dev/null
-  done
-  k -n "$NAMESPACE" delete pod reader --wait=false >/dev/null
+  [ -z "$reason" ] && return 0
+  [ "$KEEP_RUN" = 1 ] && die "$reason; KEEP_RUN=1, so not resetting (make down, or unset KEEP_RUN)"
+  log "$reason; resetting the network"
+  CONTEXT=$CONTEXT NAMESPACE=$NAMESPACE RELEASE=$RELEASE HELM=$HELM K_BIN=$K CONTINUUM_STATE_DIR=$state "$root/hack/down.sh" >&2 ||
+    die "reset failed; run make down"
 }
 
-system_start() {
-  k -n "$NAMESPACE" get configmap devnet-genesis -o jsonpath='{.data.shelley-genesis\.json}' | jq -r .systemStart
+# install applies the CRDs, which Helm installs but never upgrades, then
+# installs or upgrades the release. It does not pass --wait: the pools and
+# the engine become ready only after the genesis Job publishes.
+install() {
+  k apply -f "$chart/crds" >/dev/null
+  local attacks=()
+  [ -n "$ENGINE_ATTACKS" ] && IFS=, read -r -a attacks <<<"$ENGINE_ATTACKS"
+  local args=(
+    --set-string "images.registry=$REGISTRY"
+    --set-string "images.operator.digest=$(digest continuum-operator)"
+    --set-string "images.genesis.digest=$(digest continuum-genesis)"
+    --set-string "images.engine.digest=$(digest continuum)"
+    --set-string "seed.value=$SEED"
+    --set-json "pools={\"cardanoNode\":$POOLS,\"dingo\":$DINGO_POOLS}"
+    --set-json "genesis.overrides=$(json_list ${OVERRIDES[@]+"${OVERRIDES[@]}"})"
+    --set-json "genesis.allowInconsistentExUnits=$ALLOW_INCONSISTENT"
+    --set-string "engine.profiles=$PROFILES"
+    --set-json "engine.wallets=$WALLETS"
+    --set-json "engine.scale=$SCALE"
+    --set-json "engine.pools=$ENGINE_POOLS"
+    --set-json "engine.ui.port=$UI_PORT"
+    --set-json "engine.attacks=$(json_list ${attacks[@]+"${attacks[@]}"})"
+    --set-string "engine.runIdentity=$RUN_ID"
+  )
+  [ -n "$VALUES" ] && args+=(-f "$VALUES")
+  helm_ upgrade --install "$RELEASE" "$chart" -n "$NAMESPACE" --create-namespace --timeout 5m "${args[@]}" >/dev/null ||
+    die "helm upgrade --install failed"
 }
 
 pool_pods() {
   k -n "$NAMESPACE" get pods -l continuum.blinklabs.io/workload -o name 2>/dev/null
 }
 
-apply_network() {
-  devup render -pools "$POOLS" -dingo "$DINGO_POOLS" | k -n "$NAMESPACE" apply -f - >/dev/null
+# wait_pools waits for the genesis Job and then for every pool pod.
+wait_pools() {
+  k -n "$NAMESPACE" wait --for=condition=Complete --timeout=10m job -l app=continuum-genesis >/dev/null ||
+    die "the genesis Job did not complete (kubectl -n $NAMESPACE logs -l app=continuum-genesis)"
   local i
   for ((i = 0; i < 60; i++)); do
     [ "$(pool_pods | wc -l | tr -d ' ')" -ge "$total" ] && break
@@ -284,10 +221,9 @@ cardano_pods() {
     awk '$2 !~ /dingo/ {print $1}'
 }
 
-# require_one_chain waits, bounded by the stability window plus two minutes
-# after systemStart (and at least ten minutes from now), until the pools
-# have forged 2k blocks between them, then requires every tip to be within k
-# of the others. A pool that never dials its peers forges a fork of its own.
+# require_one_chain waits, bounded by fifteen minutes, until the pools have
+# forged 2k blocks between them, then requires every tip to be within k of
+# the others. A pool that never dials its peers forges a fork of its own.
 require_one_chain() {
   local k_param=5 magic=42 want=10 i forged lo hi n tips pod out
   local deadline=$(($(date +%s) + 900))
@@ -318,42 +254,6 @@ require_one_chain() {
   log "one chain: tips $lo..$hi, $forged blocks forged"
 }
 
-# check_run builds the engine image and compares the run identity it makes
-# with the deployed engine's. A deploy that cannot resume is reset with
-# hack/down.sh, or refused with KEEP_RUN=1.
-check_run() {
-  ENGINE_IMG=$(build continuum)
-  local out old reason
-  old=$(k -n "$NAMESPACE" get statefulset continuum-engine -o jsonpath='{.metadata.annotations.continuum\.blinklabs\.io/run}' 2>/dev/null) || old=""
-  out=$(SEED=$SEED devup run -deployed "$old" -image "$ENGINE_IMG" -profiles "$PROFILES" -attacks "$ENGINE_ATTACKS")
-  RUN_ID=$(printf '%s\n' "$out" | sed -n 1p)
-  reason=$(printf '%s\n' "$out" | sed -n 2p)
-  k -n "$NAMESPACE" get statefulset continuum-engine >/dev/null 2>&1 || return 0
-  [ -z "$reason" ] && return 0
-  [ "$KEEP_RUN" = 1 ] && die "$reason; KEEP_RUN=1, so not resetting (make down, or unset KEEP_RUN)"
-  log "$reason; resetting the network"
-  CONTEXT=$CONTEXT NAMESPACE=$NAMESPACE K_BIN=$K UI_PORT=$UI_PORT CONTINUUM_STATE_DIR=$state "$root/hack/down.sh" >&2 ||
-    die "reset failed; run make down"
-  k create namespace "$NAMESPACE" --dry-run=client -o yaml | k apply -f - >/dev/null
-}
-
-deploy_engine() {
-  k -n "$NAMESPACE" apply -f "$root/deploy/engine/rbac.yaml" >/dev/null
-  k -n "$NAMESPACE" create configmap continuum-engine --from-literal=node="$(devup node "$NAMESPACE")" \
-    --dry-run=client -o yaml | k -n "$NAMESPACE" apply -f - >/dev/null
-  local img=$ENGINE_IMG args
-  args=$(printf '            - %s\n' "--profiles=$PROFILES" "--wallets=$WALLETS" "--scale=$SCALE" "--pools=$ENGINE_POOLS" \
-    "--genesis-pools=$total" "--network=devnet" "--namespace=$NAMESPACE" "--serve=127.0.0.1:$UI_PORT" \
-    ${ENGINE_ATTACKS:+"--attack=$ENGINE_ATTACKS"})
-  ARGS="$args" awk -v img="$img" -v run="$RUN_ID" '
-    /^  name: continuum-engine$/ && !named { print; print "  annotations: {continuum.blinklabs.io/run: \"" run "\"}"; named = 1; next }
-    /^          image: continuum$/ { print "          image: " img; next }
-    /^            - --wallets=20$/ { print ENVIRON["ARGS"]; next }
-    /^      automountServiceAccountToken: false$/ { print "      serviceAccountName: continuum-engine"; print "      automountServiceAccountToken: true"; next }
-    { print }' "$root/deploy/engine/statefulset.yaml" | k -n "$NAMESPACE" apply -f - >/dev/null
-  retry 60 5 "the engine pod to be Ready" k -n "$NAMESPACE" wait --for=condition=Ready --timeout=4s pod/continuum-engine-0
-}
-
 # forward keeps a port-forward to the engine pod's loopback UI running after
 # this script exits, restarting it when kubectl drops. The API has no
 # authentication, so it listens on UI_ADDRESS, 127.0.0.1 unless asked.
@@ -370,21 +270,11 @@ forward() {
 
 main() {
   preflight
-  k create namespace "$NAMESPACE" --dry-run=client -o yaml | k apply -f - >/dev/null
   check_run
-  install_operator
-  if ! k -n "$NAMESPACE" get job continuum-genesis >/dev/null 2>&1; then
-    local node_img dingo_img imgs
-    { read -r node_img; read -r dingo_img; } < <(devup images)
-    imgs=("$node_img")
-    [ "$DINGO_POOLS" -gt 0 ] && imgs+=("$dingo_img")
-    prepull "${imgs[@]}"
-  fi
-  run_genesis
-  publish_genesis
-  apply_network
+  install
+  wait_pools
   require_one_chain
-  deploy_engine
+  retry 60 5 "the engine pod to be Ready" k -n "$NAMESPACE" wait --for=condition=Ready --timeout=4s pod/continuum-engine-0
   forward
   log "UI: http://127.0.0.1:$UI_PORT (port-forward to $NAMESPACE/continuum-engine-0, listening on $UI_ADDRESS)"
   log "from another host: ssh -L $UI_PORT:127.0.0.1:$UI_PORT <this host>, or rerun with UI_ADDRESS=0.0.0.0 (the API is unauthenticated)"

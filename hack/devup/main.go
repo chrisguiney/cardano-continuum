@@ -1,5 +1,6 @@
-// Command devup is the Go half of hack/up.sh: it checks memory, renders the
-// network manifests and resolves ATTACKS. It prints to stdout and reads no stdin.
+// Command devup is the Go half of hack/up.sh: it checks memory, resolves
+// ATTACKS, computes the engine's run identity and names pool 0's bridge. The
+// Helm chart renders the manifests. It prints to stdout and reads no stdin.
 package main
 
 import (
@@ -8,7 +9,6 @@ import (
 	"os"
 
 	"github.com/chrisguiney/cardano-continuum/internal/devup"
-	"github.com/chrisguiney/cardano-continuum/internal/genesis"
 	noderender "github.com/chrisguiney/cardano-continuum/internal/operator/render"
 )
 
@@ -21,13 +21,11 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: devup mem <quantity> <min-gib> | render -pools N -dingo M")
+		return fmt.Errorf("usage: devup mem|images|attacks|run|node")
 	}
 	switch args[0] {
 	case "mem":
 		return mem(args[1:])
-	case "render":
-		return render(args[1:])
 	case "images":
 		fmt.Println(noderender.CardanoNode{}.Image())
 		fmt.Println(noderender.Dingo{}.Image())
@@ -75,23 +73,6 @@ func mem(args []string) error {
 	if !ok {
 		fmt.Printf("WARNING: node allocatable memory %s is below %d GiB; see docs/single-machine.md\n", args[0], min)
 	}
-	return nil
-}
-
-func render(args []string) error {
-	d := genesis.Default()
-	fs := flag.NewFlagSet("render", flag.ContinueOnError)
-	p := devup.Plan{Magic: d.Magic, EpochLength: d.EpochLength, SecurityParam: d.SecurityParam}
-	fs.IntVar(&p.Nodes, "pools", d.Pools, "cardano-node pools")
-	fs.IntVar(&p.Dingo, "dingo", 1, "dingo pools")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	out, err := devup.Render(p)
-	if err != nil {
-		return err
-	}
-	fmt.Println(out)
 	return nil
 }
 

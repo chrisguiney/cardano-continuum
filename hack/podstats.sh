@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # Print one line per pod of NAMESPACE: working-set memory (MiB) and CPU
-# (millicores), read from the kubelet summary API because Docker Desktop has
-# no metrics-server. Columns: time, pod, mem_mib, cpu_m. Reads no stdin.
+# (millicores), read from the kubelet summary API, so no metrics-server is
+# needed. Columns: time, pod, mem_mib, cpu_m. Reads no stdin. On a cluster of
+# several nodes, NODE names the one to read.
 #
-# Environment: CONTEXT, NAMESPACE, NODE (default: the first node).
+# Environment: CONTEXT (default: the current context), NAMESPACE, NODE
+# (default: the first node).
 set -euo pipefail
 exec </dev/null
-CONTEXT=${CONTEXT:-docker-desktop}
+CONTEXT=${CONTEXT:-$(kubectl config current-context)}
 NAMESPACE=${NAMESPACE:-continuum}
 k() { kubectl --context "$CONTEXT" "$@"; }
 node=${NODE:-$(k get nodes -o jsonpath='{.items[0].metadata.name}')}
