@@ -103,6 +103,7 @@ func fold(t *testing.T, k uint64, gen []common.Utxo, chain []Block) *View {
 // within the settled point, the view equals a fresh fold of the chain it is
 // on; the settled point never moves back and is always on that chain.
 func TestPropApplyRollbackInverse(t *testing.T) {
+	t.Parallel()
 	for seed := range uint64(150) {
 		k := 1 + seed%4
 		r := rand.New(rand.NewPCG(seed, 7))

@@ -17,6 +17,7 @@ import (
 var _ agenda.View = (*View)(nil)
 
 func TestApplyCreatesAndSpends(t *testing.T) {
+	t.Parallel()
 	a1, a2 := addrOf(t, 1), addrOf(t, 2)
 	gen := utxo(txid(0), 0, a1, 100)
 	v := newView(t, 3, gen)
@@ -47,6 +48,7 @@ func TestApplyCreatesAndSpends(t *testing.T) {
 }
 
 func TestApplyIgnoresForeign(t *testing.T) {
+	t.Parallel()
 	foreign := addrOf(t, 50)
 	v := newView(t, 3)
 	eff := mustApply(t, v, next(nil, 0, mkTx(txid(1), []Ref{{txid(99), 0}}, pay{foreign, 5})))
@@ -59,6 +61,7 @@ func TestApplyIgnoresForeign(t *testing.T) {
 }
 
 func TestApplyRefusesDisconnectedBlock(t *testing.T) {
+	t.Parallel()
 	v := newView(t, 3)
 	b1 := next(nil, 0)
 	mustApply(t, v, b1)
@@ -108,6 +111,7 @@ func invalidTx(t *testing.T, in, coll Ref, out, ret common.Address) common.Trans
 }
 
 func TestInvalidTxUsesCollateral(t *testing.T) {
+	t.Parallel()
 	a1, a2 := addrOf(t, 1), addrOf(t, 2)
 	in := utxo(txid(10), 0, a1, 50)
 	coll := utxo(txid(11), 0, a1, 9_800_000)
@@ -134,6 +138,7 @@ func TestInvalidTxUsesCollateral(t *testing.T) {
 }
 
 func TestRollbackRestores(t *testing.T) {
+	t.Parallel()
 	a1, a2 := addrOf(t, 1), addrOf(t, 2)
 	gen := utxo(txid(0), 0, a1, 100)
 	v := newView(t, 5, gen)
@@ -165,6 +170,7 @@ func TestRollbackRestores(t *testing.T) {
 }
 
 func TestSettleDepth(t *testing.T) {
+	t.Parallel()
 	a1 := addrOf(t, 1)
 	gen := utxo(txid(0), 0, a1, 100)
 	v := newView(t, 3, gen)
@@ -209,6 +215,7 @@ func TestSettleDepth(t *testing.T) {
 }
 
 func TestSettleReportsSlot(t *testing.T) {
+	t.Parallel()
 	v := newView(t, 2)
 	b1 := next(nil, 0)
 	b1.Point.Slot = 40
@@ -226,6 +233,7 @@ func TestSettleReportsSlot(t *testing.T) {
 }
 
 func TestSettledPointNeverMovesBack(t *testing.T) {
+	t.Parallel()
 	v := newView(t, 2)
 	chain := []Block{next(nil, 0)}
 	for len(chain) < 5 {
@@ -260,6 +268,7 @@ func TestSettledPointNeverMovesBack(t *testing.T) {
 }
 
 func TestRollbackDeeperThanKIsError(t *testing.T) {
+	t.Parallel()
 	v := newView(t, 2)
 	chain := []Block{next(nil, 0)}
 	for len(chain) < 4 {
@@ -280,6 +289,7 @@ func TestRollbackDeeperThanKIsError(t *testing.T) {
 }
 
 func TestRollbackToTipIsNoop(t *testing.T) {
+	t.Parallel()
 	v := newView(t, 2)
 	b := next(nil, 0)
 	mustApply(t, v, b)
@@ -290,6 +300,7 @@ func TestRollbackToTipIsNoop(t *testing.T) {
 }
 
 func TestBaseReplaysToLive(t *testing.T) {
+	t.Parallel()
 	a1, a2 := addrOf(t, 1), addrOf(t, 2)
 	gen := utxo(txid(0), 0, a1, 100)
 	v := newView(t, 2, gen)
@@ -320,6 +331,7 @@ func TestBaseReplaysToLive(t *testing.T) {
 }
 
 func TestCertificatesTrackStakeAndPools(t *testing.T) {
+	t.Parallel()
 	v := newView(t, 2)
 	pool := hash224(9)
 	cred := common.Credential{Credential: hash224(1)}
@@ -383,6 +395,7 @@ func TestCertificatesTrackStakeAndPools(t *testing.T) {
 }
 
 func TestSetReturnsFeedsPools(t *testing.T) {
+	t.Parallel()
 	v := newView(t, 2)
 	v2, err := New(Config{K: 2, Slots: testSlots(t), Book: testBook(t)},
 		State{Pools: []PoolState{{ID: hash224(9)}}})
@@ -401,6 +414,7 @@ func TestSetReturnsFeedsPools(t *testing.T) {
 // TestTxFromFee: a valid transaction pays its body fee; an invalid one
 // forfeits its total collateral, and the body fee never reaches the pot.
 func TestTxFromFee(t *testing.T) {
+	t.Parallel()
 	a1, a2 := addrOf(t, 1), addrOf(t, 2)
 	in := utxo(txid(10), 0, a1, 50)
 	coll := utxo(txid(11), 0, a1, 9_800_000)

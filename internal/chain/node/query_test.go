@@ -43,6 +43,7 @@ func serveMock(t *testing.T, conv []mock.ConversationEntry) string {
 // A point the node no longer holds (it keeps the last k ledger states) is
 // an acquire failure, reported rather than answered from the tip.
 func TestUtxosAtPointRefusesAPointTooOld(t *testing.T) {
+	t.Parallel()
 	at := chain.Point{Slot: 7, Hash: common.Blake2b256{1}}
 	addr := serveMock(t, []mock.ConversationEntry{
 		mock.ConversationEntryHandshakeRequestGeneric,

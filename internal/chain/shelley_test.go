@@ -11,6 +11,7 @@ import (
 )
 
 func TestGenesisGuard(t *testing.T) {
+	t.Parallel()
 	want := Genesis{
 		Magic: 42, Start: time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC),
 		EpochLength: 200, SecurityParam: 10, SlotLength: time.Second,
@@ -29,6 +30,7 @@ func TestGenesisGuard(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := want
 			tc.mod(&got)
 			if err := Guard(want, got); !errors.Is(err, tc.err) {
@@ -48,6 +50,7 @@ func TestGenesisGuard(t *testing.T) {
 // TestParseShelleyGenesis reads back what internal/genesis renders, so the
 // engine can guard a node against the genesis files it was deployed with.
 func TestParseShelleyGenesis(t *testing.T) {
+	t.Parallel()
 	s := genesis.Default()
 	s.SystemStart = time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC)
 	var seed rng.Seed

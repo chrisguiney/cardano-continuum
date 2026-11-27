@@ -458,6 +458,7 @@ func (p *par) compareGov(s State, l fakechain.Ledger, fail func(string, any, any
 // DReps, proposals, votes and mark and set snapshots equal the fake
 // chain's own.
 func TestPropFoldedLedgerMatchesFake(t *testing.T) {
+	t.Parallel()
 	seeds, steps := uint64(16), 50
 	if testing.Short() {
 		seeds, steps = 3, 25

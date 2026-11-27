@@ -11,6 +11,7 @@ import (
 )
 
 func TestStakeSnapshotsFrom(t *testing.T) {
+	t.Parallel()
 	r := &localstatequery.StakeSnapshotsResult{
 		PoolSnapshots: map[common.Blake2b224]*localstatequery.PoolStakeSnapshot{
 			hash224(9):  {StakeMark: 5, StakeSet: 4, StakeGo: 3},
@@ -29,6 +30,7 @@ func TestStakeSnapshotsFrom(t *testing.T) {
 }
 
 func TestPoolRegsFrom(t *testing.T) {
+	t.Parallel()
 	r := &localstatequery.PoolStateResult{
 		PState:   map[common.Blake2b224]*localstatequery.PoolStateParams{hash224(9): {}, hash224(3): {}},
 		Retiring: map[common.Blake2b224]uint64{hash224(3): 7},
@@ -44,6 +46,7 @@ func TestPoolRegsFrom(t *testing.T) {
 }
 
 func TestGovFrom(t *testing.T) {
+	t.Parallel()
 	id := common.GovActionId{TransactionId: txid(5), GovActionIdx: 2}
 	drep := common.Drep{Type: common.DrepTypeAddrKeyHash, Credential: hash224(8).Bytes()}
 	got := govFrom(
@@ -75,6 +78,7 @@ func TestGovFrom(t *testing.T) {
 }
 
 func TestCommitteeFrom(t *testing.T) {
+	t.Parallel()
 	hot := common.Credential{Credential: hash224(6)}
 	exp := uint64(40)
 	got := committeeFrom(&localstatequery.CommitteeMembersStateResult{
@@ -95,6 +99,7 @@ func TestCommitteeFrom(t *testing.T) {
 }
 
 func TestDelegationsFrom(t *testing.T) {
+	t.Parallel()
 	r := &localstatequery.FilteredDelegationsAndRewardAccountsResult{
 		Delegations: map[localstatequery.StakeCredential]common.Blake2b224{{Bytes: hash224(1)}: hash224(9)},
 		Rewards:     map[localstatequery.StakeCredential]uint64{{Bytes: hash224(1)}: 5, {Bytes: hash224(2)}: 7},

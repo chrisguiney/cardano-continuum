@@ -281,6 +281,7 @@ func drive(t *testing.T, v *chain.View, evs []chain.Event) {
 }
 
 func TestFollowerDeliversInOrder(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	d := &fakeDialer{t: t, chain: w.chain}
 	d.idle = []func(){w.advance(3), w.rollback(1), w.advance(2)}
@@ -308,6 +309,7 @@ func TestFollowerDeliversInOrder(t *testing.T) {
 }
 
 func TestFollowerFeedsView(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	d := &fakeDialer{t: t, chain: w.chain}
 	d.idle = []func(){w.payBob(), w.advance(1)}
@@ -324,6 +326,7 @@ func TestFollowerFeedsView(t *testing.T) {
 }
 
 func TestFollowerReconnects(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	d := &fakeDialer{t: t, chain: w.chain, closeAfter: []int{5}, echo: true}
 	d.idle = []func(){w.advance(5)}
@@ -365,6 +368,7 @@ func TestFollowerReconnects(t *testing.T) {
 }
 
 func TestResumeFromSettledPoint(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	d := &fakeDialer{t: t, chain: w.chain}
 	d.idle = []func(){w.payBob(), w.advance(6)}
@@ -410,6 +414,7 @@ func TestResumeFromSettledPoint(t *testing.T) {
 }
 
 func TestRestartAfterOfflineRollback(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	d := &fakeDialer{t: t, chain: w.chain}
 	d.idle = []func(){w.advance(6)}
@@ -446,6 +451,7 @@ func heightOfPoint(evs []chain.Event, p chain.Point) int {
 }
 
 func TestFollowerNoIntersectIsFatal(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	d := &fakeDialer{t: t, chain: w.chain}
 	_, err := follow(t, d, []chain.Point{{Slot: 9, Hash: txid(9)}}, 1)

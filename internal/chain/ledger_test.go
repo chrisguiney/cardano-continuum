@@ -53,6 +53,7 @@ func entry(cred byte, pool byte, stake uint64) StakeEntry {
 }
 
 func TestSnapshotsRotateAtBoundaries(t *testing.T) {
+	t.Parallel()
 	v, chain := delegated(t, 10)
 	step := func(slot uint64, txs ...Tx) {
 		b := nextAt(&chain[len(chain)-1], slot, uint64(len(chain))+1, txs...)
@@ -88,6 +89,7 @@ func TestSnapshotsRotateAtBoundaries(t *testing.T) {
 }
 
 func TestEmptyEpochFreezesRotation(t *testing.T) {
+	t.Parallel()
 	v, chain := delegated(t, 10)
 	b2 := nextAt(&chain[0], 101, 2)
 	b3 := nextAt(&b2, 301, 3) // epoch 2 has no block
@@ -102,6 +104,7 @@ func TestEmptyEpochFreezesRotation(t *testing.T) {
 }
 
 func TestRetirementAppliesAtBoundary(t *testing.T) {
+	t.Parallel()
 	// K = 1: the guard reads pools and delegation from the settled point,
 	// so a block after each step settles it.
 	v, chain := delegated(t, 1)
@@ -134,6 +137,7 @@ func TestRetirementAppliesAtBoundary(t *testing.T) {
 }
 
 func TestRollbackRestoresTransition(t *testing.T) {
+	t.Parallel()
 	v, chain := delegated(t, 10)
 	before := v.Snapshot()
 	retire := certTx(60, &common.PoolRetirementCertificate{PoolKeyHash: hash224(9), Epoch: 1})
@@ -163,6 +167,7 @@ func (podsAllLive) Dark(population.ActorID) bool       { return false }
 func (podsAllLive) PodRunning(population.ActorID) bool { return true }
 
 func TestPoolStakeAndSaturation(t *testing.T) {
+	t.Parallel()
 	v, _ := delegated(t, 10)
 	// Without NOpt no cap is known.
 	for _, p := range v.Pools() {
@@ -184,6 +189,7 @@ func TestPoolStakeAndSaturation(t *testing.T) {
 }
 
 func TestGovernance(t *testing.T) {
+	t.Parallel()
 	v, chain := delegated(t, 10)
 	v.cfg.GovLifetime = 2
 	var _ agenda.Governance = v
@@ -243,6 +249,7 @@ func TestGovernance(t *testing.T) {
 }
 
 func TestPolicyState(t *testing.T) {
+	t.Parallel()
 	v, chain := delegated(t, 1)
 	b2 := nextAt(&chain[0], 101, 2)
 	mustApply(t, v, b2)
