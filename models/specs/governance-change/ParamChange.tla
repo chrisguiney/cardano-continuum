@@ -33,6 +33,20 @@
 (* Each *Bug.cfg replaces one rule with a simpler one, or denies a state  *)
 (* that must be reachable (a probe), and names the invariant that breaks. *)
 (*                                                                         *)
+(* Models cardano-continuum at 72c4fb0; README.md has the code map and    *)
+(* the drift table.                                                        *)
+(*   Propose  internal/engine/internal/intent/spec.go:207   buildPropose   *)
+(*            internal/engine/internal/intent/params.go:106 planParams     *)
+(*            internal/engine/internal/pace/pop.go:353      Pop.Decide     *)
+(*   Vote     internal/agenda/civic.go:71                   drepScores     *)
+(*            internal/engine/internal/pace/pop.go:213      committeeVote  *)
+(*            internal/engine/internal/intent/make.go:100   Maker.TTL      *)
+(*   Land     internal/fakechain/rules.go:114               gouroboros     *)
+(*            internal/fakechain/epoch.go:103               prune          *)
+(*   Tick     internal/fakechain/ratify.go:51               ratify (node)  *)
+(*            internal/chain/ratify.go:50                   ratify (view)  *)
+(*   Move     payments and vote delegations, through the view's stake     *)
+(*                                                                         *)
 (* HOW TO READ THE SYMBOLS: see the "Reading a formula literally" table   *)
 (* in models/specs/engine-recovery/README.md.                              *)
 (***************************************************************************)
@@ -147,9 +161,10 @@ Ratify(i, ps, r, e) ==
             /\ Pass(yes[i])
          THEN Ratify(i + 1, [ps EXCEPT ![i].st = "enacted", ![i].at = e], i, e)
          ELSE Ratify(i + 1, ps, r, e)
+\* Mutation NoExpire never expires a change.
 Expire(ps, e) ==
     [i \in DOMAIN ps |->
-        IF ps[i].st = "live" /\ ps[i].exp < e
+        IF Mutation # "NoExpire" /\ ps[i].st = "live" /\ ps[i].exp < e
         THEN [ps[i] EXCEPT !.st = "expired"] ELSE ps[i]]
 
 -----------------------------------------------------------------------------
@@ -159,11 +174,13 @@ Expire(ps, e) ==
 \* flight (Book.Has, checked in pace.Pop.Decide), no change open in the
 \* view (planParams), and the predecessor the change it believes enacted
 \* last. Mutation NoFlightGuard drops the first check, ProposeWhileOpen
-\* the second."
+\* the second; WaitEnacted also waits for every earlier change to be
+\* enacted, so one that expires stops the chain of changes."
 Propose ==
     /\ nsub < MaxProps
     /\ Mutation = "NoFlightGuard" \/ ~PropInFlight
     /\ Mutation = "ProposeWhileOpen" \/ \A i \in DOMAIN props : ~Open(i)
+    /\ Mutation # "WaitEnacted" \/ \A i \in DOMAIN props : props[i].st = "enacted"
     /\ pend' = pend \cup {[k |-> "prop", n |-> nsub + 1,
                            prev |-> Believe(Len(props)), ttl |-> epoch + 1]}
     /\ nsub' = nsub + 1
@@ -281,6 +298,16 @@ Next ==
 
 Spec == Init /\ [][Next]_vars
 
+\* In English: "The same behaviours, where the epoch keeps turning, a
+\* proposal the proposer may build is built, and a transaction that can
+\* land does. Votes get no fairness: a voter may never vote, which is how a
+\* change expires."
+LiveSpec ==
+    /\ Spec
+    /\ WF_vars(Tick)
+    /\ WF_vars(Propose)
+    /\ WF_vars(\E t \in pend : Land(t))
+
 -----------------------------------------------------------------------------
 \* Invariants.
 
@@ -298,6 +325,29 @@ PrevAccepted == "InvalidPrevGovActionId" \notin errs
 VotesInTime == "VotingOnExpiredGovAction" \notin errs
 \* In English: "No vote names a change the ledger no longer has."
 VotesFindAction == "GovActionsDoNotExist" \notin errs
+
+-----------------------------------------------------------------------------
+\* Liveness (LiveSpec). The run is bounded by MaxEpoch, so each property
+\* speaks only of what can still happen before the run ends.
+
+\* In English: "A landed change whose last voting epoch ends inside the run
+\* is eventually enacted or expired: none stays open for good."
+\* (IF, not /\: TLC's liveness checker rewrites the formula and does not
+\* keep a conjunction's short circuit, so props[i] must be guarded by IF.)
+Closes(i) == IF i \in DOMAIN props THEN props[i].exp < MaxEpoch ELSE FALSE
+Decided(i) == IF i \in DOMAIN props THEN props[i].st # "live" ELSE FALSE
+Settles == \A i \in Ids : Closes(i) ~> Decided(i)
+
+\* In English: "The proposer is free to build its next change (changes
+\* left, nothing of its own in flight, nothing open in the view)."
+Free(k) ==
+    /\ nsub = k /\ k < MaxProps
+    /\ ~PropInFlight
+    /\ \A i \in DOMAIN props : ~Open(i)
+
+\* In English: "Once the proposer is free to build its next change, it
+\* builds it."
+ProposerMoves == \A k \in 0..(MaxProps - 1) : Free(k) ~> nsub > k
 
 -----------------------------------------------------------------------------
 \* Probes. Each says a state is unreachable; its *Bug.cfg must find it.

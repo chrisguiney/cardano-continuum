@@ -97,6 +97,20 @@ Run it with `make models` (all models) or
 | `PrevAccepted` | no proposal is refused for its predecessor | `ParamProposeWhileOpenBug` |
 | `VotesInTime` | no vote lands after its change's last voting epoch | `ParamVoteTTLBug` |
 | `VotesFindAction` | no vote names a change the ledger no longer has | `ParamRealVoteOnEnactedBug` |
+| `Settles` (liveness) | a landed change whose last voting epoch ends inside the run is eventually enacted or expired | `ParamNoExpireLiveBug` |
+| `ProposerMoves` (liveness) | once the proposer is free to build its next change (changes left, nothing in flight, nothing open), it builds it | `ParamWaitEnactedLiveBug` |
+
+TLC's deadlock check is on: the run ends in `Done`, at `epoch = MaxEpoch`.
+Before that `Tick` is always possible, so the check finds no deadlock; it
+would report a stuck proposer or node if a change made one.
+
+The liveness properties hold under `LiveSpec`: weak fairness on `Tick`,
+`Propose` and landing a transaction, none on votes (a voter may never vote,
+which is how a change expires). The run is bounded by `MaxEpoch`, so they
+establish only what can still happen inside it: a change open past the last
+epoch is not required to settle, and the proposer is required to build its
+next change only while it has changes left. They do not establish that the
+voters ever pass anything.
 
 ## Configs and state counts
 
@@ -108,6 +122,10 @@ power that never moves, unless noted. TLC 2.19, `-workers auto`.
 | `Param` | none | all hold | 1,146,033 distinct, depth 29 |
 | `ParamLife2` | `Life = 2`, `MaxEpoch = 5` | all hold | 2,945,786 distinct, depth 30 |
 | `ParamPowerMoves` | weights 1 or 2, one move | all hold | 4,819,182 distinct, depth 30 |
+| `ParamNoFlightGuardFixed` | `ParamNoFlightGuardBug`'s bounds, the guard in place | all hold | 89,993 distinct |
+| `ParamLive` | fair (`LiveSpec`), `MaxEpoch = 3`, `MaxProps = 2` | `Settles`, `ProposerMoves` hold | 43,095 distinct |
+| `ParamNoExpireLiveBug` | the ledger never expires a change (`NoExpire`); `ParamLive`'s bounds | `Settles` | violated |
+| `ParamWaitEnactedLiveBug` | the proposer waits for every earlier change to be enacted (`WaitEnacted`); `ParamLive`'s bounds | `ProposerMoves` | violated |
 | `ParamVoteTTLBug` | a last-epoch vote keeps the usual TTL | `VotesInTime` | violated, trace 7 |
 | `ParamNoFlightGuardBug` | builds beside its own change in flight; `MaxProps = 2` | `OneOpen` | violated, trace 3 |
 | `ParamProposeWhileOpenBug` | builds while a change is open in the view | `PrevAccepted` | violated, trace 10 |
@@ -140,22 +158,61 @@ epoch the removal and the end of voting coincide, so it takes two
 (`ParamRealVoteOnEnactedBug`). Without the shortened TTL a last-epoch vote
 is refused (`ParamVoteTTLBug`, the `VotingOnExpiredGovAction` defect).
 
+## Defects: model first
+
+The two governance defects this model found (the proposer judging enactment
+from the power at build time, and votes on a change the node had removed)
+were reproduced here first, as `ParamPowerMovesBug` and
+`ParamRealVoteOnEnactedBug`, before the code changed. Two things went less
+well, and the next defect follows the order in `models/README.md` instead:
+
+- A passing config (`ParamReal`, since removed) left out `VotesFindAction`,
+  which it was known to violate. A passing config never omits a violated
+  invariant; such a config is a Bug config.
+- The model followed the fix instead of proposing it: no Fixed config
+  modelled the proposed rule before the Go change, the Go tests landed in
+  the fix commits with nothing showing them fail first, and the model was
+  rewritten to the fixed rules afterwards (the old rules became the
+  `TallyNow` and `VoteOnEnacted` mutations).
+
+For a future defect: a `<Name>Bug.cfg` that fails on the property the
+defect breaks; a `<Name>Fixed.cfg` at the same bounds modelling the
+proposed rule, passing; a Go test that fails for the reason TLC printed;
+then the fix. A review finding on the fix adds a Bug config.
+
 ## Code map
 
-| Model | Code |
-|---|---|
-| `Propose` | `buildPropose` in `internal/engine/internal/intent/spec.go`; the plan is `planParams` over `paramLinks` in `internal/engine/internal/intent/params.go`, which returns `errParamOpen` while a link is open |
-| in-flight guard (`PropInFlight`) | `pace.Pop.Decide` in `internal/engine/internal/pace/pop.go`, asking `Env.Flight.InFlight`, which is `pay.Book.Has` (`internal/engine/internal/pay/book.go`) through the engine's hooks (`internal/engine/state.go`) |
-| `Open` | `paramLinks`: closed once `ProposalState.Enacted` or `Expires < View.Epoch()`; the voters' side is `chain.View.OpenProposals` (`internal/chain/view.go`, `gov.open` in `internal/chain/gov.go`, which leaves out enacted changes) |
-| `Believe`, `Judged` | `planParams` folding `paramPlan.enacted` over the links the view enacted |
-| `vdone` | `ratify` in `internal/chain/ratify.go`, run by `View.Apply` when `epochs.next` closes an epoch, before the block's transactions; it marks the change enacted with `gov.enact` (`gov.go`). The predecessor and group reach it through `wire.ProposalDigest` and `window.viewProposal` |
-| `Pass` | `passes` (`ratify.go`) over `chain.CountVotes` (`view.go`), with power from `View.VotingPower` at the boundary; the threshold by `govGroup` |
-| `Vote` | DReps: `drepScores` in `internal/agenda/civic.go`; committee seats: `committeeDue` and `committeeVote` in `pace/pop.go`. Deciding once is `gov.Voted` and `gov.CommitteeVoted` (`internal/chain/gov.go`) |
-| last-epoch TTL | the `closing: lastEpoch` field of the vote kinds in `intent/spec.go`, which makes `Maker.Attempt` ask `Maker.TTL` (`intent/make.go`) for a TTL that ends with the epoch |
-| `LandProp`, `PrevOk` | gouroboros `conway.UtxoValidateProposalAncestry` (v0.220.1), with the fake's root from `newLedgerView` in `internal/fakechain/world.go` |
-| `LandVote` | gouroboros `VotingOnExpiredGovAction` and `UnknownGovActionIds` rules, classed in `internal/fakechain/rules.go`; removal is `prune` in `internal/fakechain/epoch.go`, run before the block's transactions are chosen (`producer.produce`) |
-| `Tick` (`Ratify`, `Expire`) | `ratify` and `accepted` in `internal/fakechain/ratify.go`; the last voting epoch is `effectsOf` in `internal/fakechain/world.go` |
-| `Move` | any settled payment or `IntentDelegateDRep`, through the view's stake |
+Models cardano-continuum at `72c4fb0`.
+
+| Model | Code | What |
+|---|---|---|
+| `Propose` | `internal/engine/internal/intent/spec.go:207` (`buildPropose`); `internal/engine/internal/intent/params.go:106` (`planParams`), `:132` (`paramLinks`), `:127` (`errParamOpen`) | the plan returns `errParamOpen` while a link is open |
+| in-flight guard (`PropInFlight`) | `internal/engine/internal/pace/pop.go:353` (`Pop.Decide`) asking `Env.Flight.InFlight`, which is `internal/engine/internal/pay/book.go:86` (`Book.Has`) through the engine's hooks (`internal/engine/state.go`) | |
+| `Open` | `internal/engine/internal/intent/params.go:132` (`paramLinks`: closed once enacted or `Expires < View.Epoch()`); voters' side `internal/chain/view.go:235` (`View.OpenProposals`), `internal/chain/gov.go:377` (`gov.open`) | enacted changes leave the open list |
+| `Believe`, `Judged` | `internal/engine/internal/intent/params.go:106` (`planParams` folding `paramPlan.enacted`) | |
+| `vdone` (the view's ratification in `Tick`) | `internal/chain/ratify.go:50` (`ratify`), run by `internal/chain/view.go:326` (`View.Apply`) when an epoch closes, before the block's transactions; `internal/chain/gov.go:306` (`gov.enact`) | |
+| `Pass` | `internal/chain/ratify.go:70` (`passes`) over `internal/chain/view.go:277` (`CountVotes`), power from `internal/chain/view.go:243` (`View.VotingPower`) at the boundary | threshold by `govGroup` |
+| `Vote` | DReps `internal/agenda/civic.go:71` (`drepScores`); committee `internal/engine/internal/pace/pop.go:177` (`committeeDue`), `:213` (`committeeVote`); once per change `internal/chain/gov.go:389` (`gov.Voted`), `:277` (`gov.CommitteeVoted`) | |
+| last-epoch TTL | `internal/engine/internal/intent/spec.go:117-118` (`closing: lastEpoch`), `internal/engine/internal/intent/make.go:48` (`Maker.Attempt`), `:100` (`Maker.TTL`) | a TTL that ends with the epoch |
+| `LandProp`, `PrevOk` | gouroboros `conway.UtxoValidateProposalAncestry` (v0.220.1); the fake's root from `internal/fakechain/world.go:78` (`newLedgerView`) | not continuum code |
+| `LandVote` | gouroboros rules classed in `internal/fakechain/rules.go:114-115`; removal `internal/fakechain/epoch.go:103` (`prune`), run before the block's transactions are chosen (`internal/fakechain/producer.go:36`, `producer.produce`) | |
+| `Tick` (`Ratify`, `Expire`) | `internal/fakechain/ratify.go:51` (`ratify`), `:79` (`accepted`); last voting epoch `internal/fakechain/world.go:109` (`effectsOf`) | |
+| `Move` | any settled payment or `IntentDelegateDRep` (`internal/engine/internal/intent/spec.go:105`), through the view's stake | |
+| `Done` | the end of the bounded run | not code |
+
+### Drift
+
+Where the model deliberately differs from the code (from "Not modelled" and
+"What the model contains"):
+
+| Id | Code | Model | Why | Config |
+|---|---|---|---|---|
+| G1 | the real ledger enacts at the boundary after ratifying | the root moves at the ratifying boundary, as the fake chain does | a change naming a ratified, not yet enacted change is accepted either way | all |
+| G2 | DReps and committee seats vote with separate thresholds per parameter group | one class of voters, two-thirds threshold | both sides apply the same rule | all |
+| G3 | the view tallies the stake it sees | the view sees all the voting stake | true on a devnet whose DRep stake is all the run's own | all |
+| G4 | votes and proposals are transactions the planner and retry machine submit | one transaction per intent, landing once up to its TTL | `planner-reservations` and `submit-retry` show at most one attempt lands | all |
+| G5 | stake moves through payments and vote delegations | `Move` changes one voter's weight, at most `MaxMoves` times | only the weight at a boundary matters | `ParamPowerMoves`, `ParamPowerMovesBug` |
+| G6 | orphans and siblings are removed on enactment | not modelled | with one change open at a time no change has a sibling | - |
 
 The Go tests covering the same rules are in `internal/engine/internal/intent`
 (`params_test.go`, `TestPlanParamsIgnoresStakeMovedAfterEnactment` for

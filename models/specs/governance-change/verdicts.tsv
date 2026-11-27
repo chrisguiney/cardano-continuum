@@ -1,7 +1,10 @@
 config	verdict	property	distinct	depth	secs
 Param.cfg	pass	-	1146033	29	3
 ParamLife2.cfg	pass	-	2945786	30	8
+ParamLive.cfg	pass	-	43095	20	3
+ParamNoExpireLiveBug.cfg	fails	Settles	-	-	2
 ParamNoFlightGuardBug.cfg	fails	OneOpen	-	-	1
+ParamNoFlightGuardFixed.cfg	pass	-	89993	21	1
 ParamPowerMoves.cfg	pass	-	4819182	30	12
 ParamPowerMovesBug.cfg	fails	RootAgrees	-	-	1
 ParamProbeEarlyEnactBug.cfg	fails	ProbeNoEarlyEnact	-	-	1
@@ -11,3 +14,4 @@ ParamProbeRevertBug.cfg	fails	ProbeNoRevert	-	-	1
 ParamProposeWhileOpenBug.cfg	fails	PrevAccepted	-	-	1
 ParamRealVoteOnEnactedBug.cfg	fails	VotesFindAction	-	-	1
 ParamVoteTTLBug.cfg	fails	VotesInTime	-	-	1
+ParamWaitEnactedLiveBug.cfg	fails	ProposerMoves	-	-	2
