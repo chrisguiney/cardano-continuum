@@ -43,6 +43,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/cli/export"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/harvest"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/image"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/live"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/profiles"
 	cliscenario "github.com/chrisguiney/cardano-continuum/internal/cli/scenario"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/serve"
@@ -109,16 +110,16 @@ func cmdRun(ctx context.Context, args []string, out io.Writer) error {
 	fake := fs.Bool("fake", false, "run against the in-process fake chain")
 	epochs := fs.Uint64("epochs", 2, "epochs to simulate (a live run: 0 runs until stopped)")
 	dir := fs.String("out", "", "directory for events.log (must not hold one)")
-	var lf liveFlags
-	lf.register(fs)
+	var lf live.Flags
+	lf.Register(fs)
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if !*fake {
-		if lf.node == "" {
+		if lf.Node == "" {
 			return errors.New("run: --fake or --node is required")
 		}
-		return runLive(ctx, sf, lf, *epochs)
+		return live.Run(ctx, sf, lf, *epochs)
 	}
 	if *dir == "" {
 		return errors.New("run: --out is required")
@@ -275,8 +276,8 @@ func cmdReplayWith(ctx context.Context, args []string, out io.Writer, deps repla
 	fs := flag.NewFlagSet("replay", flag.ContinueOnError)
 	var sf simflags.Flags
 	sf.Register(fs)
-	var lf liveFlags
-	lf.register(fs)
+	var lf live.Flags
+	lf.Register(fs)
 	image := fs.String("image", "", "replay against a node build: <impl>=<ref>; needs --live to re-run a live log")
 	live := fs.Bool("live", false, "the log was recorded by a live run (with --image: re-run it on --network)")
 	if err := fs.Parse(args); err != nil {

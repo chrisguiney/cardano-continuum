@@ -5,9 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 
-	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/live"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/kube"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/simflags"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
@@ -20,41 +19,16 @@ type replayDeps struct {
 	open kube.Opener
 	// want returns the header the live re-run would record, from the
 	// devnet's genesis and protocol parameters.
-	want func(ctx context.Context, sf simflags.Flags, lf liveFlags) (eventlog.HeaderBody, error)
+	want func(ctx context.Context, sf simflags.Flags, lf live.Flags) (eventlog.HeaderBody, error)
 }
 
-func realReplayDeps() replayDeps { return replayDeps{open: kube.Open, want: liveWant} }
-
-// liveWant derives the header a live run on the node at lf.node would write.
-func liveWant(ctx context.Context, sf simflags.Flags, lf liveFlags) (eventlog.HeaderBody, error) {
-	if lf.node == "" || lf.genesis == "" {
-		return eventlog.HeaderBody{}, errors.New("replay --live needs --node and --genesis to fingerprint the devnet")
-	}
-	seed, err := readSeed(os.Getenv(seedEnv))
-	if err != nil {
-		return eventlog.HeaderBody{}, err
-	}
-	g, err := readGenesis(lf.genesis)
-	if err != nil {
-		return eventlog.HeaderBody{}, err
-	}
-	q := chain.NewQuerier(chain.Node{Network: lf.network, Address: lf.node, Magic: g.Magic})
-	np, err := queryParams(ctx, q)
-	if err != nil {
-		return eventlog.HeaderBody{}, err
-	}
-	cfg, err := liveConfig(sf, lf, g, np, seed)
-	if err != nil {
-		return eventlog.HeaderBody{}, err
-	}
-	return cfg.Header()
-}
+func realReplayDeps() replayDeps { return replayDeps{open: kube.Open, want: live.Header} }
 
 // replayImage handles `replay --image impl=ref LOG`. A fake-chain log has no
 // node build to swap, so it only says so. A live log is re-run on the
 // devnet with the implementation's image replaced, after the log's seed,
 // profile and genesis fingerprints are checked against the devnet's.
-func replayImage(ctx context.Context, assign, logPath string, live bool, sf simflags.Flags, lf liveFlags, out io.Writer, deps replayDeps) error {
+func replayImage(ctx context.Context, assign, logPath string, live bool, sf simflags.Flags, lf live.Flags, out io.Writer, deps replayDeps) error {
 	impl, ref, err := imageset.ParseAssignment(assign)
 	if err != nil {
 		return fmt.Errorf("replay --image: %w", err)
@@ -63,7 +37,7 @@ func replayImage(ctx context.Context, assign, logPath string, live bool, sf simf
 		_, err := fmt.Fprintf(out, "replay --image %s: a fake-chain log has no node build, so there is nothing to swap; pass --live for a live log\n", assign)
 		return err
 	}
-	if lf.kubeNetwork == "" {
+	if lf.KubeNetwork == "" {
 		return errors.New("replay --image --live: --network is required")
 	}
 	l, err := eventlog.Open(logPath)
@@ -79,11 +53,11 @@ func replayImage(ctx context.Context, assign, logPath string, live bool, sf simf
 	if err != nil {
 		return err
 	}
-	cl, err := deps.open(lf.kubeconfig, lf.namespace)
+	cl, err := deps.open(lf.Kubeconfig, lf.Namespace)
 	if err != nil {
 		return err
 	}
-	req := rerun.Request{Network: lf.kubeNetwork, Impl: impl, Ref: ref, Seed: sf.Seed}
+	req := rerun.Request{Network: lf.KubeNetwork, Impl: impl, Ref: ref, Seed: sf.Seed}
 	return rerun.Replay(ctx, got, want, req, clusterRunner{cl: cl, out: out})
 }
 

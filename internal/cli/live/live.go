@@ -1,4 +1,6 @@
-package main
+// Package live runs the engine against a real node: a devnet the operator
+// stands up and the run follows, funds and attacks.
+package live
 
 import (
 	"context"
@@ -39,46 +41,47 @@ import (
 // the genesis Job read: a flag would put the seed in the process list.
 const seedEnv = "CONTINUUM_SEED"
 
-// liveFlags are the flags only a run against a real node takes.
-type liveFlags struct {
-	node        string
-	network     string
-	state       string
-	genesis     string
-	faucet      uint64
-	refillEvery uint64
-	report      time.Duration
-	gpools      int
-	poolStake   uint64
-	serve       string
-	kubeNetwork string
-	namespace   string
-	kubeconfig  string
-	poolFormat  string
+// Flags are the flags only a run against a real node takes.
+type Flags struct {
+	Node        string
+	Network     string
+	State       string
+	Genesis     string
+	Faucet      uint64
+	RefillEvery uint64
+	Report      time.Duration
+	GPools      int
+	PoolStake   uint64
+	Serve       string
+	KubeNetwork string
+	Namespace   string
+	Kubeconfig  string
+	PoolFormat  string
 }
 
-func (l *liveFlags) register(fs *flag.FlagSet) {
-	fs.StringVar(&l.node, "node", "", "node-to-client address of a live node (host:port, or a socket path with --node-network unix)")
-	fs.StringVar(&l.network, "node-network", "tcp", "network of --node: tcp or unix")
-	fs.StringVar(&l.state, "state", "", "directory holding the live run's events.log and state.db; the run resumes from it")
-	fs.StringVar(&l.genesis, "genesis", "", "the devnet's Shelley genesis file, which the node must match")
-	fs.Uint64Var(&l.faucet, "faucet", genesis.Default().FaucetLovelace, "lovelace the genesis faucet holds")
-	fs.Uint64Var(&l.refillEvery, "refill-every", 20, "slots between faucet refill rounds")
-	fs.DurationVar(&l.report, "report-every", 30*time.Second, "interval between progress records")
-	fs.IntVar(&l.gpools, "genesis-pools", genesis.Default().Pools, "pools the devnet genesis registers, operated by the first --pools operators")
-	fs.Uint64Var(&l.poolStake, "pool-stake", genesis.Default().PoolStake, "lovelace each genesis pool's owner holds delegated to it")
-	fs.StringVar(&l.serve, "serve", "", "serve the web UI and its API from the live engine on this loopback address")
-	fs.StringVar(&l.kubeNetwork, "network", "", "ContinuumNetwork whose pools the engine's pool plan patches and whose pod health it reads")
-	fs.StringVar(&l.namespace, "namespace", "default", "namespace of --network")
-	fs.StringVar(&l.kubeconfig, "kubeconfig", "", "kubeconfig path (default: KUBECONFIG rules, or in-cluster)")
-	fs.StringVar(&l.poolFormat, "pool-id-format", "continuum-pool-%d", "spec.poolId of genesis pool i's ContinuumPool, as a fmt pattern")
+// Register adds the flags to fs.
+func (l *Flags) Register(fs *flag.FlagSet) {
+	fs.StringVar(&l.Node, "node", "", "node-to-client address of a live node (host:port, or a socket path with --node-network unix)")
+	fs.StringVar(&l.Network, "node-network", "tcp", "network of --node: tcp or unix")
+	fs.StringVar(&l.State, "state", "", "directory holding the live run's events.log and state.db; the run resumes from it")
+	fs.StringVar(&l.Genesis, "genesis", "", "the devnet's Shelley genesis file, which the node must match")
+	fs.Uint64Var(&l.Faucet, "faucet", genesis.Default().FaucetLovelace, "lovelace the genesis faucet holds")
+	fs.Uint64Var(&l.RefillEvery, "refill-every", 20, "slots between faucet refill rounds")
+	fs.DurationVar(&l.Report, "report-every", 30*time.Second, "interval between progress records")
+	fs.IntVar(&l.GPools, "genesis-pools", genesis.Default().Pools, "pools the devnet genesis registers, operated by the first --pools operators")
+	fs.Uint64Var(&l.PoolStake, "pool-stake", genesis.Default().PoolStake, "lovelace each genesis pool's owner holds delegated to it")
+	fs.StringVar(&l.Serve, "serve", "", "serve the web UI and its API from the live engine on this loopback address")
+	fs.StringVar(&l.KubeNetwork, "network", "", "ContinuumNetwork whose pools the engine's pool plan patches and whose pod health it reads")
+	fs.StringVar(&l.Namespace, "namespace", "default", "namespace of --network")
+	fs.StringVar(&l.Kubeconfig, "kubeconfig", "", "kubeconfig path (default: KUBECONFIG rules, or in-cluster)")
+	fs.StringVar(&l.PoolFormat, "pool-id-format", "continuum-pool-%d", "spec.poolId of genesis pool i's ContinuumPool, as a fmt pattern")
 }
 
 // liveConfig is the engine configuration of a live run: the population from
 // the flags, the slot shape and k from the node's genesis, the builder from
 // the node's protocol parameters, and the run seed, so the faucet is the one
 // internal/genesis funded.
-func liveConfig(sf simflags.Flags, lf liveFlags, g chain.Genesis, np nodeParams, seed rng.Seed) (engine.Config, error) {
+func liveConfig(sf simflags.Flags, lf Flags, g chain.Genesis, np nodeParams, seed rng.Seed) (engine.Config, error) {
 	bp := np.build
 	fitted, cohorts, file, err := sf.Load()
 	if err != nil {
@@ -104,15 +107,15 @@ func liveConfig(sf simflags.Flags, lf liveFlags, g chain.Genesis, np nodeParams,
 	}
 	gpools := 0
 	if sf.Pools > 0 {
-		if sf.Pools < lf.gpools {
-			return engine.Config{}, fmt.Errorf("--pools %d cannot operate the %d genesis pools", sf.Pools, lf.gpools)
+		if sf.Pools < lf.GPools {
+			return engine.Config{}, fmt.Errorf("--pools %d cannot operate the %d genesis pools", sf.Pools, lf.GPools)
 		}
-		gpools = lf.gpools
+		gpools = lf.GPools
 	}
 	cfg := engine.Config{
 		Seed: seed, Profiles: reg, Fitted: fitted, Scale: sf.Scale, Cohorts: cohorts, Slots: slots, K: g.SecurityParam, TTL: sf.TTL,
-		Build: bp, BinaryVersion: simflags.Version, Faucet: lf.faucet, RefillEvery: lf.refillEvery,
-		NOpt: np.nOpt, GovLifetime: np.govLifetime, GenesisPoolStake: lf.poolStake, GenesisPools: gpools,
+		Build: bp, BinaryVersion: simflags.Version, Faucet: lf.Faucet, RefillEvery: lf.RefillEvery,
+		NOpt: np.nOpt, GovLifetime: np.govLifetime, GenesisPoolStake: lf.PoolStake, GenesisPools: gpools,
 		Floor: policy.Config{Floor: sf.Floor, Margin: 1}, Committee: genesis.Default().Committee,
 		Mistakes: mistakes, Horizon: g.StabilityWindow(), Run: sf.Oracle(mistakes),
 	}
@@ -124,10 +127,10 @@ func liveConfig(sf simflags.Flags, lf liveFlags, g chain.Genesis, np nodeParams,
 	return cfg, nil
 }
 
-// runLive runs the engine against a live node until epochs end (0: until
-// stopped).
-func runLive(ctx context.Context, sf simflags.Flags, lf liveFlags, epochs uint64) error {
-	if lf.state == "" || lf.genesis == "" {
+// Run runs the engine against the live node lf names until epochs end (0:
+// until stopped).
+func Run(ctx context.Context, sf simflags.Flags, lf Flags, epochs uint64) error {
+	if lf.State == "" || lf.Genesis == "" {
 		return errors.New("run: a live run needs --state and --genesis")
 	}
 	log := slog.New(slog.NewJSONHandler(os.Stderr, nil))
@@ -164,7 +167,7 @@ func (lr *liveRun) close() {
 // openLive connects to the node, opens the run's state, and starts the
 // engine. The returned context ends when ctx does or the live API fails;
 // on error everything opened so far is released.
-func openLive(ctx context.Context, sf simflags.Flags, lf liveFlags, log *slog.Logger) (context.Context, *liveRun, error) {
+func openLive(ctx context.Context, sf simflags.Flags, lf Flags, log *slog.Logger) (context.Context, *liveRun, error) {
 	lr := &liveRun{log: log}
 	ctx, err := lr.open(ctx, sf, lf)
 	if err != nil {
@@ -174,16 +177,16 @@ func openLive(ctx context.Context, sf simflags.Flags, lf liveFlags, log *slog.Lo
 	return ctx, lr, nil
 }
 
-func (lr *liveRun) open(ctx context.Context, sf simflags.Flags, lf liveFlags) (context.Context, error) {
+func (lr *liveRun) open(ctx context.Context, sf simflags.Flags, lf Flags) (context.Context, error) {
 	seed, err := readSeed(os.Getenv(seedEnv))
 	if err != nil {
 		return nil, err
 	}
-	want, err := readGenesis(lf.genesis)
+	want, err := readGenesis(lf.Genesis)
 	if err != nil {
 		return nil, err
 	}
-	node := chain.Node{Network: lf.network, Address: lf.node, Magic: want.Magic, Log: lr.log}
+	node := chain.Node{Network: lf.Network, Address: lf.Node, Magic: want.Magic, Log: lr.log}
 	q := chain.NewQuerier(node)
 	cleared, err := guard(ctx, lr.log, q, want)
 	if err != nil {
@@ -197,7 +200,7 @@ func (lr *liveRun) open(ctx context.Context, sf simflags.Flags, lf liveFlags) (c
 		return nil, err
 	}
 	lr.cfg.Adversaries = cleared
-	db, err := lr.openState(ctx, lf.state)
+	db, err := lr.openState(ctx, lf.State)
 	if err != nil {
 		return nil, err
 	}
@@ -229,10 +232,10 @@ func (lr *liveRun) openState(ctx context.Context, dir string) (*store.DB, error)
 }
 
 // start connects the node, wires the engine's dependencies and starts it.
-func (lr *liveRun) start(ctx context.Context, lf liveFlags, node chain.Node, q *chain.Querier, want chain.Genesis, db *store.DB) (context.Context, error) {
+func (lr *liveRun) start(ctx context.Context, lf Flags, node chain.Node, q *chain.Querier, want chain.Genesis, db *store.DB) (context.Context, error) {
 	dial := func(ctx context.Context) (net.Conn, error) {
 		var d net.Dialer
-		return d.DialContext(ctx, lf.network, lf.node)
+		return d.DialContext(ctx, lf.Network, lf.Node)
 	}
 	live := engine.NewLive(node, submit.NewLocal(dial, want.Magic), lr.cfg.K, lr.log)
 	live.Start(ctx)
@@ -245,7 +248,7 @@ func (lr *liveRun) start(ctx context.Context, lf liveFlags, node chain.Node, q *
 	})
 	lr.clock = sched.NewWall(want.Start)
 	lr.deps = engine.Deps{Clock: lr.clock, Log: lr.fl, Store: db, Node: live, CheckpointEvery: 200, Logger: lr.log,
-		Viewer: liveViewer{q: q, node: oracle.Node{Impl: "node", Pool: lf.node}}, ViewEvery: viewEvery,
+		Viewer: liveViewer{q: q, node: oracle.Node{Impl: "node", Pool: lf.Node}}, ViewEvery: viewEvery,
 		Findings: oracle.NewSet()}
 	lt, err := livePlan(&lr.deps, lr.cfg, lf, want.Magic, lr.log)
 	if err != nil {
@@ -267,12 +270,12 @@ func (lr *liveRun) start(ctx context.Context, lf liveFlags, node chain.Node, q *
 }
 
 // loop follows the node until epochs end and stops the live API.
-func (lr *liveRun) loop(ctx context.Context, lf liveFlags, epochs uint64) error {
+func (lr *liveRun) loop(ctx context.Context, lf Flags, epochs uint64) error {
 	end := sched.Time(math.MaxInt64)
 	if epochs > 0 {
 		end = lr.cfg.Slots.EpochStart(epochs)
 	}
-	return errors.Join(follow(ctx, lr.log, lr.cfg, lr.r, lr.fl, lr.clock, end, lf.report), lr.stop())
+	return errors.Join(follow(ctx, lr.log, lr.cfg, lr.r, lr.fl, lr.clock, end, lf.Report), lr.stop())
 }
 
 // viewEvery is the simulated time between view monitor queries: each asks
@@ -428,11 +431,11 @@ func readSeed(h string) (rng.Seed, error) {
 //
 // It returns the pool tracker the run's API and fork monitor read, or nil
 // without --network. The caller starts it.
-func livePlan(d *engine.Deps, cfg engine.Config, lf liveFlags, magic uint32, log *slog.Logger) (*liveTips, error) {
-	if lf.kubeNetwork == "" {
+func livePlan(d *engine.Deps, cfg engine.Config, lf Flags, magic uint32, log *slog.Logger) (*liveTips, error) {
+	if lf.KubeNetwork == "" {
 		return nil, nil
 	}
-	cl, err := kube.Open(lf.kubeconfig, lf.namespace)
+	cl, err := kube.Open(lf.Kubeconfig, lf.Namespace)
 	if err != nil {
 		return nil, err
 	}
@@ -444,10 +447,10 @@ func livePlan(d *engine.Deps, cfg engine.Config, lf liveFlags, magic uint32, log
 	if err != nil {
 		return nil, err
 	}
-	lp := newLivePools(pc, lf.kubeNetwork, lf.poolFormat, actors, log)
+	lp := newLivePools(pc, lf.KubeNetwork, lf.PoolFormat, actors, log)
 	d.Pools, d.Pods = lp, lp
-	lt := newLiveTips(pc, lf.kubeNetwork, magic, cfg.K, log)
-	lt.kube = kube.View{Cl: cl, Network: lf.kubeNetwork}
+	lt := newLiveTips(pc, lf.KubeNetwork, magic, cfg.K, log)
+	lt.kube = kube.View{Cl: cl, Network: lf.KubeNetwork}
 	d.Tips, d.ViewEvery = lt, viewEvery
 	return lt, nil
 }
@@ -455,11 +458,11 @@ func livePlan(d *engine.Deps, cfg engine.Config, lf liveFlags, magic uint32, log
 // liveServe starts the live API when --serve is set, wrapping the engine's
 // log so the API follows it. The returned context ends when ctx does or the
 // API fails; stop ends the server, waits for it, and returns its error.
-func liveServe(ctx context.Context, d *engine.Deps, db *store.DB, cfg engine.Config, lf liveFlags, lt *liveTips, log *slog.Logger) (context.Context, func() error, error) {
-	if lf.serve == "" {
+func liveServe(ctx context.Context, d *engine.Deps, db *store.DB, cfg engine.Config, lf Flags, lt *liveTips, log *slog.Logger) (context.Context, func() error, error) {
+	if lf.Serve == "" {
 		return ctx, func() error { return nil }, nil
 	}
-	if err := serving.CheckAddr(lf.serve, false); err != nil {
+	if err := serving.CheckAddr(lf.Serve, false); err != nil {
 		return nil, nil, err
 	}
 	s, err := newLiveServer(ctx, d.Log, db, cfg.Slots, cfg.GovLifetime, d.Findings, lt.poolView(cfg.K))
@@ -470,7 +473,7 @@ func liveServe(ctx context.Context, d *engine.Deps, db *store.DB, cfg engine.Con
 	ctx, cancel := context.WithCancel(ctx)
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error {
-		if err := s.serve(gctx, lf.serve, log); err != nil {
+		if err := s.serve(gctx, lf.Serve, log); err != nil {
 			return fmt.Errorf("live api: %w", err)
 		}
 		return nil

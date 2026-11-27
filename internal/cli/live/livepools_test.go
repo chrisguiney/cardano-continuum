@@ -1,4 +1,4 @@
-package main
+package live
 
 import (
 	"context"
@@ -126,7 +126,7 @@ func TestLiveServeFailureEndsTheRun(t *testing.T) {
 	}
 	defer func() { _ = ln.Close() }()
 	d := &engine.Deps{Log: &eventlog.MemLog{}}
-	lf := liveFlags{serve: ln.Addr().String()}
+	lf := Flags{Serve: ln.Addr().String()}
 	log := slog.New(slog.DiscardHandler)
 	ctx, stop, err := liveServe(context.Background(), d, nil, engine.Config{Slots: testSlots(t)}, lf, nil, log)
 	if err != nil {
