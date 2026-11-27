@@ -17,6 +17,7 @@ import (
 // byteStringToInteger at Plomin (175 + 10), V3 adds batch 5 at Plomin
 // (251 + 46).
 func TestParamCounts(t *testing.T) {
+	t.Parallel()
 	want := map[Language]int{PlutusV1: 166, PlutusV2: 185, PlutusV3: 297}
 	for l, n := range want {
 		got, ok := ParamCount(l, 10)
@@ -33,6 +34,7 @@ func TestParamCounts(t *testing.T) {
 // language, exactly the parameters its protocol version defines, and no
 // more than plutigo names (a longer list would be truncated silently).
 func TestCostModelsMatchProtocolVersion(t *testing.T) {
+	t.Parallel()
 	s := Default()
 	ms, err := CostModels(s)
 	if err != nil {
@@ -62,6 +64,7 @@ func TestCostModelsMatchProtocolVersion(t *testing.T) {
 // genesis models when a chain starts in a later era. dingo applies it the
 // same way, through gouroboros' ApplyExtraConfigCostModels.
 func TestGenesisCostModelsAsNodesRead(t *testing.T) {
+	t.Parallel()
 	b := render(t, fixedSpec(), 1)
 	ag, err := alonzo.NewAlonzoGenesisFromReader(bytes.NewReader(b.Alonzo))
 	if err != nil {
@@ -96,6 +99,7 @@ func TestGenesisCostModelsAsNodesRead(t *testing.T) {
 }
 
 func TestShortCostModelNeedsOverride(t *testing.T) {
+	t.Parallel()
 	s := Default()
 	s.CostModelLen[PlutusV3] = 251
 	err := Check(s)

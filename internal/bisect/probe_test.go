@@ -22,6 +22,7 @@ func (f checkFn) Check(ctx context.Context, image, commit string) (Verdict, erro
 }
 
 func TestProberBuildFailureIsSkip(t *testing.T) {
+	t.Parallel()
 	p := Prober{Builder: fakeBuilder{fail: map[string]bool{"x": true}}, Checker: checkFn(
 		func(context.Context, string, string) (Verdict, error) {
 			t.Fatal("checked a failed build")
@@ -33,6 +34,7 @@ func TestProberBuildFailureIsSkip(t *testing.T) {
 }
 
 func TestProberPassesTheImage(t *testing.T) {
+	t.Parallel()
 	var gotImg string
 	p := Prober{Builder: fakeBuilder{}, Checker: checkFn(func(_ context.Context, img, _ string) (Verdict, error) {
 		gotImg = img
@@ -44,6 +46,7 @@ func TestProberPassesTheImage(t *testing.T) {
 }
 
 func TestProberCancelledBuildIsAnError(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	b := builderFn(func(context.Context, string) (string, error) { cancel(); return "", ctx.Err() })
 	if _, err := (Prober{Builder: b}).Test(ctx, "x"); !errors.Is(err, context.Canceled) {
@@ -56,6 +59,7 @@ type builderFn func(context.Context, string) (string, error)
 func (f builderFn) Build(ctx context.Context, c string) (string, error) { return f(ctx, c) }
 
 func TestKindCheck(t *testing.T) {
+	t.Parallel()
 	src := func(kinds ...string) FindingSource {
 		return func(context.Context, string, string) ([]string, error) { return kinds, nil }
 	}
@@ -75,6 +79,7 @@ func TestKindCheck(t *testing.T) {
 }
 
 func TestCommandCheckExitCodes(t *testing.T) {
+	t.Parallel()
 	for name, tc := range map[string]struct {
 		script string
 		want   Verdict
@@ -93,6 +98,7 @@ func TestCommandCheckExitCodes(t *testing.T) {
 }
 
 func TestCommandCheckEnvAndMissingBinary(t *testing.T) {
+	t.Parallel()
 	c := CommandCheck{Argv: []string{"sh", "-c", `[ "$CONTINUUM_IMAGE" = img ] && [ "$CONTINUUM_COMMIT" = abc ] && [ "$CONTINUUM_SEED" = 7 ]`}, Seed: 7}
 	if v, err := c.Check(context.Background(), "img", "abc"); err != nil || v != Good {
 		t.Fatalf("v=%v err=%v", v, err)

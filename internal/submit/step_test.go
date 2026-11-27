@@ -130,6 +130,7 @@ func count[T Action](acts []Action) int {
 }
 
 func TestNodeRefusalReleases(t *testing.T) {
+	t.Parallel()
 	g := newRig(t)
 	g.start()
 	first := g.m.Current
@@ -148,6 +149,7 @@ func TestNodeRefusalReleases(t *testing.T) {
 }
 
 func TestDropYieldsRebuildNotRelease(t *testing.T) {
+	t.Parallel()
 	g := newRig(t)
 	g.start()
 	g.step(Answered{Out: okOut})
@@ -168,6 +170,7 @@ func TestDropYieldsRebuildNotRelease(t *testing.T) {
 }
 
 func TestRebuildGoesThroughReserve(t *testing.T) {
+	t.Parallel()
 	g := newRig(t)
 	g.start()
 	g.step(Answered{Out: okOut})
@@ -194,6 +197,7 @@ func TestRebuildGoesThroughReserve(t *testing.T) {
 }
 
 func TestRolledBackYieldsNoRelease(t *testing.T) {
+	t.Parallel()
 	g := newRig(t)
 	g.start()
 	g.step(Answered{Out: okOut})
@@ -218,6 +222,7 @@ func TestRolledBackYieldsNoRelease(t *testing.T) {
 }
 
 func TestRollbackKeepsAttempts(t *testing.T) {
+	t.Parallel()
 	g := newRig(t)
 	g.start()
 	g.step(Answered{Out: okOut})
@@ -239,6 +244,7 @@ func TestRollbackKeepsAttempts(t *testing.T) {
 }
 
 func TestGaveUpWaitsForSettledExpiry(t *testing.T) {
+	t.Parallel()
 	g := newRig(t)
 	g.start()
 	g.step(Answered{Out: lostOut})
@@ -280,6 +286,7 @@ func (g *rig) forward(slot, n uint64) chain.Event {
 }
 
 func TestGaveUpThenSettledIsPaid(t *testing.T) {
+	t.Parallel()
 	g := newRig(t)
 	g.start()
 	for range testPatience {
@@ -292,6 +299,7 @@ func TestGaveUpThenSettledIsPaid(t *testing.T) {
 }
 
 func TestRestartTreatsUnfinishedAsSent(t *testing.T) {
+	t.Parallel()
 	g := newRig(t)
 	g.start()
 	first := g.m.Current
@@ -317,6 +325,7 @@ func TestRestartTreatsUnfinishedAsSent(t *testing.T) {
 }
 
 func TestRestartWithoutUnfinishedBuilds(t *testing.T) {
+	t.Parallel()
 	m, acts, err := Restart(DefaultPolicy, Machine{State: Pending, Attempts: 1}, nil, testActor(testPatience), rand.New(rand.NewPCG(1, 2)))
 	if err != nil || m.State != Build || count[BuildAttempt](acts) != 1 {
 		t.Fatalf("restart with nothing unfinished: %v %v %v", m.State, acts, err)
@@ -330,6 +339,7 @@ func TestRestartWithoutUnfinishedBuilds(t *testing.T) {
 }
 
 func TestUnreachedIsNotRefusal(t *testing.T) {
+	t.Parallel()
 	g := newRig(t)
 	g.start()
 	first := g.m.Current
@@ -351,6 +361,7 @@ func TestUnreachedIsNotRefusal(t *testing.T) {
 }
 
 func TestGiveUpAtPatience(t *testing.T) {
+	t.Parallel()
 	g := newRig(t)
 	g.start()
 	var last []Action
@@ -369,6 +380,7 @@ func TestGiveUpAtPatience(t *testing.T) {
 }
 
 func TestFixesAccumulateInMachine(t *testing.T) {
+	t.Parallel()
 	g := newRig(t)
 	g.start()
 	g.step(Answered{Out: feeOut})
@@ -391,6 +403,7 @@ func TestFixesAccumulateInMachine(t *testing.T) {
 }
 
 func TestDoneLearnsOnlyAfterAFix(t *testing.T) {
+	t.Parallel()
 	g := newRig(t)
 	g.start()
 	if acts := g.step(Settled{Tx: g.m.Current}); count[Learn](acts) != 0 || g.m.State != Done {
@@ -405,6 +418,7 @@ func TestDoneLearnsOnlyAfterAFix(t *testing.T) {
 }
 
 func TestBackoffGrows(t *testing.T) {
+	t.Parallel()
 	p := Policy{Base: time.Second, Cap: 10 * time.Second, Jitter: 0}
 	r := rand.New(rand.NewPCG(1, 2))
 	var prev time.Duration
@@ -441,6 +455,7 @@ func TestBackoffGrows(t *testing.T) {
 }
 
 func TestBackoffEmittedBeforeResend(t *testing.T) {
+	t.Parallel()
 	g := newRig(t)
 	g.start()
 	first := g.step(Answered{Out: lostOut})
@@ -453,6 +468,7 @@ func TestBackoffEmittedBeforeResend(t *testing.T) {
 }
 
 func TestStepTable(t *testing.T) {
+	t.Parallel()
 	tx := tid(1)
 	events := map[string]Event{
 		"Start": Start{}, "Built": Built{Tx: tx}, "BuildFailed": BuildFailed{},
@@ -498,6 +514,7 @@ func TestStepTable(t *testing.T) {
 }
 
 func TestStepRejectsImpossiblePatience(t *testing.T) {
+	t.Parallel()
 	// A trait of 0 or less is read as one attempt, never as "no sends".
 	if p := Patience(testActor(0)); p != 1 {
 		t.Fatalf("Patience(0) = %d, want 1", p)
@@ -511,6 +528,7 @@ func TestStepRejectsImpossiblePatience(t *testing.T) {
 // planner reports leaves a machine that has not finished within Patience
 // sends able to finish, and never lets Attempts pass Patience.
 func TestPropMachineTerminates(t *testing.T) {
+	t.Parallel()
 	for seed := range uint64(300) {
 		rr := rand.New(rand.NewPCG(seed, 7))
 		g := newRig(t)

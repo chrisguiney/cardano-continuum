@@ -12,6 +12,7 @@ import (
 // epoch 669 (param_update rows enacted at epochs 393 and 614), not the
 // 140M per-transaction memory of cardano-api's alonzoGenesisDefaults.
 func TestRenderedLimits(t *testing.T) {
+	t.Parallel()
 	b := render(t, fixedSpec(), 1)
 	ag, err := alonzo.NewAlonzoGenesisFromReader(bytes.NewReader(b.Alonzo))
 	if err != nil {
@@ -26,6 +27,7 @@ func TestRenderedLimits(t *testing.T) {
 }
 
 func TestCheckRefusesTxAboveBlock(t *testing.T) {
+	t.Parallel()
 	for _, mod := range []func(*Spec){
 		func(s *Spec) { s.TxExUnits.Memory = s.BlockExUnits.Memory + 1 },
 		func(s *Spec) { s.TxExUnits.Steps = s.BlockExUnits.Steps + 1 },
@@ -47,6 +49,7 @@ func TestCheckRefusesTxAboveBlock(t *testing.T) {
 }
 
 func TestCheckRefusesZeroLimits(t *testing.T) {
+	t.Parallel()
 	s := Default()
 	s.BlockExUnits.Steps = 0
 	s.Allow.InconsistentExUnits = true
@@ -56,6 +59,7 @@ func TestCheckRefusesZeroLimits(t *testing.T) {
 }
 
 func TestOverride(t *testing.T) {
+	t.Parallel()
 	s := Default()
 	for _, in := range []string{"maxTxExUnits.memory=140000000", "maxBlockExUnits.memory=62000000", "costModels.PlutusV3.length=251"} {
 		o, err := ParseOverride(in)
@@ -83,6 +87,7 @@ func TestOverride(t *testing.T) {
 // TestDefaultUnchangedBySpecHash: the limits are part of the spec, so an
 // override makes a different devnet.
 func TestOverrideChangesSpecHash(t *testing.T) {
+	t.Parallel()
 	s := Default()
 	s.TxExUnits.Memory++
 	if specHash(s) == specHash(Default()) {

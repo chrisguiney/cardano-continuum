@@ -23,6 +23,7 @@ func wrongAccept(seq uint64, pool string) Finding {
 // a resend or another pool of the same implementation giving the same wrong
 // answer is the same finding, while a different answer is not.
 func TestFindingStableID(t *testing.T) {
+	t.Parallel()
 	a, b := wrongAccept(42, "p1"), wrongAccept(99, "p2")
 	if a.ID != b.ID {
 		t.Fatalf("same wrong answer, different ids %s %s", a.ID, b.ID)
@@ -53,6 +54,7 @@ func TestFindingStableID(t *testing.T) {
 }
 
 func TestSetDedups(t *testing.T) {
+	t.Parallel()
 	s := NewSet()
 	a, b := wrongAccept(42, "p1"), wrongAccept(99, "p2")
 	v := value()
@@ -70,6 +72,7 @@ func TestSetDedups(t *testing.T) {
 }
 
 func TestSetConcurrent(t *testing.T) {
+	t.Parallel()
 	s := NewSet()
 	var wg sync.WaitGroup
 	for i := range 8 {
@@ -87,6 +90,7 @@ func TestSetConcurrent(t *testing.T) {
 }
 
 func TestRecordRoundTrip(t *testing.T) {
+	t.Parallel()
 	dirty := node("dingo", "p2")
 	dirty.Dirty = true
 	f := wrongAccept(42, "p1")
@@ -127,6 +131,7 @@ func TestRecordRoundTrip(t *testing.T) {
 }
 
 func TestSetLoadsFromLog(t *testing.T) {
+	t.Parallel()
 	var log eventlog.MemLog
 	ctx := context.Background()
 	a := wrongAccept(42, "p1")
@@ -150,6 +155,7 @@ func TestSetLoadsFromLog(t *testing.T) {
 }
 
 func TestReplayCommand(t *testing.T) {
+	t.Parallel()
 	r := Run{Seed: 3, Log: "my run/it's.log", Flags: []string{"--k", "5"}}
 	if got, want := r.Command(), `continuum replay --seed 3 --k 5 'my run/it'\''s.log'`; got != want {
 		t.Fatalf("command = %s, want %s", got, want)

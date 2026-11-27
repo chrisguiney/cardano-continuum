@@ -28,6 +28,7 @@ func tipsFindings(t *testing.T, a, b *fakechain.Chain) []Finding {
 // TipsAgree is quiet while either side could still roll back to the other
 // and fires once both sides hold more than k blocks past the fork point.
 func TestTipsAgreeOnFakeChainFork(t *testing.T) {
+	t.Parallel()
 	wd := newWorld(t)
 	other := newChain(t, wd.w.Address())
 	step := func(slot uint64) {

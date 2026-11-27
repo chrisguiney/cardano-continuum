@@ -22,6 +22,7 @@ func heights(w *Window) []uint64 {
 }
 
 func TestWindowForwardCapsAtSize(t *testing.T) {
+	t.Parallel()
 	w := NewWindow(3)
 	for h := uint64(1); h <= 5; h++ {
 		w.Forward(mk(h, 'a'))
@@ -32,6 +33,7 @@ func TestWindowForwardCapsAtSize(t *testing.T) {
 }
 
 func TestWindowBackwardPopsToPoint(t *testing.T) {
+	t.Parallel()
 	w := NewWindow(8)
 	for h := uint64(1); h <= 5; h++ {
 		w.Forward(mk(h, 'a'))
@@ -47,6 +49,7 @@ func TestWindowBackwardPopsToPoint(t *testing.T) {
 }
 
 func TestWindowBackwardBeyondWindowResets(t *testing.T) {
+	t.Parallel()
 	w := NewWindow(8)
 	w.Forward(mk(5, 'a'))
 	w.Forward(mk(6, 'a'))
@@ -57,6 +60,7 @@ func TestWindowBackwardBeyondWindowResets(t *testing.T) {
 }
 
 func TestWindowMarksIsACopy(t *testing.T) {
+	t.Parallel()
 	w := NewWindow(4)
 	w.Forward(mk(1, 'a'))
 	w.Marks()[0].Height = 99

@@ -15,6 +15,7 @@ var (
 )
 
 func TestGapTarget(t *testing.T) {
+	t.Parallel()
 	if _, why := mainnet.GapTarget(); !strings.Contains(why, "fits") {
 		t.Fatalf("consistent budgets gave why %q", why)
 	}
@@ -36,6 +37,7 @@ func TestGapTarget(t *testing.T) {
 }
 
 func TestGapPlanAndScore(t *testing.T) {
+	t.Parallel()
 	v := fakeView{bal: 10_000_000_000, remaining: 1_000_000_000, budgets: mainnet}
 	if s := scores(t, []string{string(ExUnitsGap)}, v); s[ExUnitsGap.Kind()].Value != 0 {
 		t.Fatalf("scored with no gap: %+v", s[ExUnitsGap.Kind()])
@@ -60,6 +62,7 @@ func TestGapPlanAndScore(t *testing.T) {
 // TestGapGenesisOverrides: the attack's overrides make a genesis Check
 // refuses without the allow flag and accepts with it, with a real gap.
 func TestGapGenesisOverrides(t *testing.T) {
+	t.Parallel()
 	s := genesis.Default()
 	for _, o := range GenesisOverrides(ExUnitsGap) {
 		ov, err := genesis.ParseOverride(o)

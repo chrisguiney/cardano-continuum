@@ -24,6 +24,7 @@ func readSeed(t *testing.T, path string) Seed {
 }
 
 func TestHarvestHello(t *testing.T) {
+	t.Parallel()
 	tools := testTools(t)
 	models, err := filepath.Abs("../../models")
 	if err != nil {
@@ -71,6 +72,7 @@ func copyHello(t *testing.T, repo string) string {
 }
 
 func TestHarvestBrokenCfg(t *testing.T) {
+	t.Parallel()
 	tools := testTools(t)
 	repo := t.TempDir()
 	dir := copyHello(t, repo)
@@ -95,6 +97,7 @@ func TestHarvestBrokenCfg(t *testing.T) {
 }
 
 func TestHarvestPinnedCommit(t *testing.T) {
+	t.Parallel()
 	tools := testTools(t)
 	repo := t.TempDir()
 	dir := copyHello(t, repo)
@@ -139,6 +142,7 @@ func TestHarvestPinnedCommit(t *testing.T) {
 }
 
 func TestSpecFor(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	write := func(name, body string) {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {

@@ -20,6 +20,7 @@ func open(t *testing.T, path string) []byte {
 }
 
 func TestParseMinimal(t *testing.T) {
+	t.Parallel()
 	ps, err := Parse(bytes.NewReader(open(t, "testdata/minimal.yaml")))
 	if err != nil {
 		t.Fatal(err)
@@ -50,12 +51,14 @@ func TestParseMinimal(t *testing.T) {
 // TestPopulationDefaults pins the defaults to the values the population
 // package used as constants, so existing runs and goldens are unchanged.
 func TestPopulationDefaults(t *testing.T) {
+	t.Parallel()
 	if DefaultOnset != 1.0/3600 || DefaultTail != 1.5 {
 		t.Fatalf("onset %v tail %v", DefaultOnset, DefaultTail)
 	}
 }
 
 func TestParseFull(t *testing.T) {
+	t.Parallel()
 	ps, err := Parse(bytes.NewReader(open(t, "testdata/full.yaml")))
 	if err != nil {
 		t.Fatal(err)
@@ -77,6 +80,7 @@ func TestParseFull(t *testing.T) {
 }
 
 func TestParseRejects(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		file string
 		want string // substring naming the profile and field
@@ -96,6 +100,7 @@ func TestParseRejects(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.file, func(t *testing.T) {
+			t.Parallel()
 			path := filepath.Join("testdata", "invalid", tt.file+".yaml")
 			_, err := ParseNamed(path, bytes.NewReader(open(t, path)))
 			if err == nil {
@@ -109,6 +114,7 @@ func TestParseRejects(t *testing.T) {
 }
 
 func TestParseRejectsOversizeAndEmpty(t *testing.T) {
+	t.Parallel()
 	big := "version: 1\n# " + strings.Repeat("x", 2<<20) + "\nprofiles: []\n"
 	if _, err := Parse(strings.NewReader(big)); err == nil || !strings.Contains(err.Error(), "exceeds") {
 		t.Fatalf("oversize: got %v", err)
@@ -122,6 +128,7 @@ func TestParseRejectsOversizeAndEmpty(t *testing.T) {
 }
 
 func TestParseDist(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		in   string
 		want Dist
@@ -165,6 +172,7 @@ func (q *seq) Float64() float64 {
 }
 
 func TestDistMoments(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		d          Dist
@@ -179,6 +187,7 @@ func TestDistMoments(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			src := &seq{s: 42}
 			const n = 100_000
 			var sum, sumsq float64
@@ -200,6 +209,7 @@ func TestDistMoments(t *testing.T) {
 }
 
 func TestBetaStaysInUnitInterval(t *testing.T) {
+	t.Parallel()
 	src := &seq{s: 7}
 	for range 20_000 {
 		if x := (Beta{0.05, 0.05}).Sample(src); x < 0 || x > 1 || math.IsNaN(x) {
@@ -217,6 +227,7 @@ func (f *fixed) Float64() float64 {
 }
 
 func TestTraitsSampleIsDeterministic(t *testing.T) {
+	t.Parallel()
 	ps, err := Parse(bytes.NewReader(open(t, "testdata/minimal.yaml")))
 	if err != nil {
 		t.Fatal(err)
@@ -235,6 +246,7 @@ func TestTraitsSampleIsDeterministic(t *testing.T) {
 }
 
 func TestScalePreservesShape(t *testing.T) {
+	t.Parallel()
 	ps, err := Parse(bytes.NewReader(open(t, "testdata/full.yaml")))
 	if err != nil {
 		t.Fatal(err)
@@ -272,6 +284,7 @@ func TestScalePreservesShape(t *testing.T) {
 }
 
 func TestRegistry(t *testing.T) {
+	t.Parallel()
 	ps, err := Parse(bytes.NewReader(open(t, "testdata/full.yaml")))
 	if err != nil {
 		t.Fatal(err)
@@ -292,6 +305,7 @@ func TestRegistry(t *testing.T) {
 }
 
 func TestRegistryDuplicate(t *testing.T) {
+	t.Parallel()
 	ps, err := Parse(bytes.NewReader(open(t, "testdata/minimal.yaml")))
 	if err != nil {
 		t.Fatal(err)
@@ -330,6 +344,7 @@ func FuzzParse(f *testing.F) {
 }
 
 func TestParseEagerness(t *testing.T) {
+	t.Parallel()
 	const base = "version: 1\nprofiles:\n  - name: p\n    kind: pool\n    agenda: operator\n" +
 		"    traits: {competence: \"beta(8, 2)\", patience: \"const(5)\", learning_rate: \"const(0.05)\", care: \"beta(2, 2)\"}\n"
 	for _, tt := range []struct {

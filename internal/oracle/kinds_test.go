@@ -11,6 +11,7 @@ import (
 // Kinds must list every Kind constant in finding.go, so a new kind cannot
 // be left out of what the UI offers.
 func TestKindsListsEveryConstant(t *testing.T) {
+	t.Parallel()
 	f, err := parser.ParseFile(token.NewFileSet(), "finding.go", nil, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -42,6 +43,7 @@ func TestKindsListsEveryConstant(t *testing.T) {
 }
 
 func TestSeveritiesLeastFirst(t *testing.T) {
+	t.Parallel()
 	got := Severities()
 	if len(got) != 3 || got[0].String() != "warn" || got[2].String() != "fatal" {
 		t.Fatalf("Severities() = %v", got)

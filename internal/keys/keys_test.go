@@ -56,6 +56,7 @@ func checkGolden(t *testing.T, name, got string) {
 // first mainnet base address is a published CIP-1852 reference value (it
 // appears in the cardano-serialization-lib and Ledger test suites).
 func TestRootFromEntropyReference(t *testing.T) {
+	t.Parallel()
 	const want = "addr1qy8ac7qqy0vtulyl7wntmsxc6wex80gvcyjy33qffrhm7sh927ysx5sftuw0dlft05dz3c7revpf7jx0xnlcjz3g69mq4afdhv"
 	w, err := walletFromRoot(rootFromEntropy(make([]byte, 16)), 1, 0)
 	if err != nil {
@@ -66,6 +67,7 @@ func TestRootFromEntropyReference(t *testing.T) {
 	}
 }
 
+// Not parallel: rewrites its golden file under -update.
 func TestWalletGolden(t *testing.T) {
 	s := newStore(t)
 	var b strings.Builder
@@ -79,6 +81,7 @@ func TestWalletGolden(t *testing.T) {
 }
 
 func TestWalletDistinctAndStable(t *testing.T) {
+	t.Parallel()
 	a, b := newStore(t), newStore(t)
 	if a.Wallet(3).Address().String() != b.Wallet(3).Address().String() {
 		t.Fatal("same seed gave different wallet")
@@ -97,6 +100,7 @@ func TestWalletDistinctAndStable(t *testing.T) {
 
 // Actor 7's keys must not depend on which other actors were touched first.
 func TestOrderIndependence(t *testing.T) {
+	t.Parallel()
 	a := newStore(t)
 	want := a.Wallet(7).Address().String()
 	b := newStore(t)
@@ -112,6 +116,7 @@ func TestOrderIndependence(t *testing.T) {
 }
 
 func TestNetworkID(t *testing.T) {
+	t.Parallel()
 	main, _ := New(seedOne(), 1)
 	test, _ := New(seedOne(), 0)
 	if !strings.HasPrefix(main.Wallet(0).Address().String(), "addr1") ||
@@ -120,6 +125,7 @@ func TestNetworkID(t *testing.T) {
 	}
 }
 
+// Not parallel: rewrites its golden file under -update.
 func TestPoolKeysGolden(t *testing.T) {
 	s := newStore(t)
 	p, err := s.Pool(5, 0)
@@ -141,6 +147,7 @@ func TestPoolKeysGolden(t *testing.T) {
 }
 
 func TestTextEnvelope(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	p, _ := s.Pool(5, 0)
 	raw, err := p.KESSKey.TextEnvelope()
@@ -157,6 +164,7 @@ func TestTextEnvelope(t *testing.T) {
 }
 
 func TestOpCertVerifies(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	p, _ := s.Pool(5, 0)
 	raw, err := s.OpCert(5, 0, 3, 5)
@@ -179,6 +187,7 @@ func TestOpCertVerifies(t *testing.T) {
 }
 
 func TestSignTxBody(t *testing.T) {
+	t.Parallel()
 	w := newStore(t).Wallet(2)
 	body := []byte("tx body bytes")
 	wit := w.SignTxBody(body)
@@ -192,6 +201,7 @@ func TestSignTxBody(t *testing.T) {
 }
 
 func TestDRepAndCommittee(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	if s.DRep(1) == s.DRep(2) || s.DRep(1) != newStore(t).DRep(1) {
 		t.Fatal("drep credential not distinct and stable")
@@ -204,6 +214,7 @@ func TestDRepAndCommittee(t *testing.T) {
 }
 
 func TestSecretsRedacted(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	p, _ := s.Pool(5, 0)
 	w := s.Wallet(0)

@@ -19,6 +19,7 @@ func newRand(label string) *rand.Rand {
 }
 
 func TestQueueOrder(t *testing.T) {
+	t.Parallel()
 	var q sched.Queue
 	q.Push(10, "b1")
 	q.Push(5, "a")
@@ -42,6 +43,7 @@ func TestQueueOrder(t *testing.T) {
 }
 
 func TestQueueCancel(t *testing.T) {
+	t.Parallel()
 	var q sched.Queue
 	h1 := q.Push(1, "a")
 	h2 := q.Push(2, "b")
@@ -71,6 +73,7 @@ func TestQueueCancel(t *testing.T) {
 }
 
 func TestQueueMatchesStableSort(t *testing.T) {
+	t.Parallel()
 	type op struct {
 		At     uint8
 		Cancel uint8
@@ -117,6 +120,7 @@ func TestQueueMatchesStableSort(t *testing.T) {
 }
 
 func TestPoissonRate(t *testing.T) {
+	t.Parallel()
 	r := newRand("poisson")
 	var now sched.Time
 	const n = 50000
@@ -130,6 +134,7 @@ func TestPoissonRate(t *testing.T) {
 }
 
 func TestArrivalAlwaysAdvances(t *testing.T) {
+	t.Parallel()
 	r := newRand("adv")
 	now := sched.Time(0)
 	for range 1000 {
@@ -142,6 +147,7 @@ func TestArrivalAlwaysAdvances(t *testing.T) {
 }
 
 func TestDiurnalThinning(t *testing.T) {
+	t.Parallel()
 	// 1 hour on at factor 1, 1 hour off at floor 0.1.
 	const hour = sched.Time(3600_000)
 	mod := sched.SquareWave{Period: 2 * hour, OnFraction: 0.5, Floor: 0.1}
@@ -167,6 +173,7 @@ func TestDiurnalThinning(t *testing.T) {
 }
 
 func TestModulationBounds(t *testing.T) {
+	t.Parallel()
 	d := sched.Daily{Amplitude: 0.5}
 	w := sched.Weekly{Weekend: 0.4}
 	for ms := sched.Time(0); ms < 8*24*3600_000; ms += 600_000 {
@@ -180,6 +187,7 @@ func TestModulationBounds(t *testing.T) {
 }
 
 func TestHawkesRejectsExplosive(t *testing.T) {
+	t.Parallel()
 	for _, c := range [][3]float64{{1, 1, 1}, {1, 2, 1}, {0, 1, 2}, {1, -1, 2}, {1, 1, 0}} {
 		if _, err := sched.NewHawkes(c[0], c[1], c[2]); err == nil {
 			t.Fatalf("NewHawkes%v accepted", c)
@@ -191,6 +199,7 @@ func TestHawkesRejectsExplosive(t *testing.T) {
 }
 
 func TestHawkesIntensityDecays(t *testing.T) {
+	t.Parallel()
 	h, _ := sched.NewHawkes(1, 0.5, 1)
 	if got := h.Intensity(0); got != 1 {
 		t.Fatalf("base = %v", got)
@@ -206,6 +215,7 @@ func TestHawkesIntensityDecays(t *testing.T) {
 }
 
 func TestHawkesBranching(t *testing.T) {
+	t.Parallel()
 	h, _ := sched.NewHawkes(1, 0.5, 1) // branching 0.5, long-run rate 2/s
 	r := newRand("hawkes")
 	var now sched.Time
@@ -220,6 +230,7 @@ func TestHawkesBranching(t *testing.T) {
 }
 
 func TestVirtualClock(t *testing.T) {
+	t.Parallel()
 	c := sched.NewVirtual(0)
 	if err := c.Wait(context.Background(), 5000); err != nil {
 		t.Fatal(err)
@@ -233,6 +244,7 @@ func TestVirtualClock(t *testing.T) {
 }
 
 func TestWallClockCancel(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	c := sched.NewWall(time.Now())
@@ -242,6 +254,7 @@ func TestWallClockCancel(t *testing.T) {
 }
 
 func TestWallClockPastTargetReturns(t *testing.T) {
+	t.Parallel()
 	c := sched.NewWall(time.Now().Add(-time.Hour))
 	if err := c.Wait(context.Background(), 1000); err != nil {
 		t.Fatal(err)
@@ -252,6 +265,7 @@ func TestWallClockPastTargetReturns(t *testing.T) {
 }
 
 func TestSlotArithmetic(t *testing.T) {
+	t.Parallel()
 	// 1s slots, 100-slot epochs.
 	g, err := sched.NewSlots(1000, 100)
 	if err != nil {
@@ -292,6 +306,7 @@ func TestSlotArithmetic(t *testing.T) {
 	}
 }
 
+// Not parallel: testing.AllocsPerRun panics in a parallel test.
 func TestQueuePopAllocs(t *testing.T) {
 	var q sched.Queue
 	for i := range 1024 {
@@ -322,6 +337,7 @@ func BenchmarkQueuePushPop(b *testing.B) {
 // child comes an exponential wait of mean 1/Beta seconds after its
 // parent.
 func TestBranchingClusters(t *testing.T) {
+	t.Parallel()
 	b := sched.Branching{Ratio: 0.6, Beta: 2}
 	r := rand.New(rand.NewPCG(5, 5))
 	const n = 20000

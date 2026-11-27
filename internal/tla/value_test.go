@@ -8,6 +8,7 @@ import (
 )
 
 func TestDecodeValue(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		in   string
@@ -30,6 +31,7 @@ func TestDecodeValue(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := DecodeValue(strings.NewReader(tt.in))
 			if err != nil {
 				t.Fatal(err)
@@ -42,6 +44,7 @@ func TestDecodeValue(t *testing.T) {
 }
 
 func TestDecodeValueBigInt(t *testing.T) {
+	t.Parallel()
 	got, err := DecodeValue(strings.NewReader(`123456789012345678901234567890`))
 	if err != nil {
 		t.Fatal(err)
@@ -54,6 +57,7 @@ func TestDecodeValueBigInt(t *testing.T) {
 }
 
 func TestDecodeValueRejects(t *testing.T) {
+	t.Parallel()
 	deep := strings.Repeat("[", maxDepth+1) + strings.Repeat("]", maxDepth+1)
 	tests := map[string]string{
 		"empty":     ``,
@@ -65,6 +69,7 @@ func TestDecodeValueRejects(t *testing.T) {
 	}
 	for name, in := range tests {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			if _, err := DecodeValue(strings.NewReader(in)); err == nil {
 				t.Fatal("want error")
 			}

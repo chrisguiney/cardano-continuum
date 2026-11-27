@@ -30,6 +30,7 @@ import (
 // TestNodeServesItsChain runs a forger that leads every slot with no
 // upstream, syncs it with a gouroboros node-to-node client, and requires
 // each block served to pass gouroboros's block verification.
+// Not parallel: per-test goleak.VerifyNone would see other parallel tests' goroutines.
 func TestNodeServesItsChain(t *testing.T) {
 	defer goleak.VerifyNone(t, goleak.IgnoreCurrent())
 	p := testParams()
@@ -140,6 +141,7 @@ func syncClient(t *testing.T, addr string, magic uint32, want int, stopped <-cha
 // TestGenesisGuard renders a devnet, loads it as the forger does, and
 // requires a genesis file that is not the pinned one to be refused.
 func TestGenesisGuard(t *testing.T) {
+	t.Parallel()
 	store, err := keys.New(rng.Seed{3}, 0)
 	if err != nil {
 		t.Fatal(err)

@@ -26,6 +26,7 @@ func hdr() eventlog.HeaderBody {
 }
 
 func TestMismatchedFingerprintsRefuse(t *testing.T) {
+	t.Parallel()
 	for name, mut := range map[string]func(*eventlog.HeaderBody){
 		"seed":    func(h *eventlog.HeaderBody) { h.SeedFingerprint = []byte{9} },
 		"profile": func(h *eventlog.HeaderBody) { h.ProfileHash = []byte{9} },
@@ -45,6 +46,7 @@ func TestMismatchedFingerprintsRefuse(t *testing.T) {
 }
 
 func TestMatchingFingerprintsRun(t *testing.T) {
+	t.Parallel()
 	run := &fakeRunner{}
 	req := Request{Network: "n", Impl: v1alpha1.Dingo, Ref: "reg/dingo@sha256:ab", Seed: 7}
 	if err := Replay(context.Background(), hdr(), hdr(), req, run); err != nil {
@@ -56,6 +58,7 @@ func TestMatchingFingerprintsRun(t *testing.T) {
 }
 
 func TestRunnerErrorIsWrapped(t *testing.T) {
+	t.Parallel()
 	boom := errors.New("boom")
 	err := Replay(context.Background(), hdr(), hdr(), full, &fakeRunner{err: boom})
 	if !errors.Is(err, boom) {
@@ -64,6 +67,7 @@ func TestRunnerErrorIsWrapped(t *testing.T) {
 }
 
 func TestRefusesAnEmptyTarget(t *testing.T) {
+	t.Parallel()
 	for name, r := range map[string]Request{
 		"no network": {Impl: v1alpha1.Dingo, Ref: "x"},
 		"no ref":     {Network: "n", Impl: v1alpha1.Dingo},
@@ -76,6 +80,7 @@ func TestRefusesAnEmptyTarget(t *testing.T) {
 }
 
 func TestHeaderOf(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	mem := &eventlog.MemLog{}
 	body, err := eventlog.Encode(hdr())

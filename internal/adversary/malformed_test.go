@@ -105,6 +105,7 @@ func coinOf(u common.Utxo) Coin {
 }
 
 func TestMalformedCorpusIsRejected(t *testing.T) {
+	t.Parallel()
 	b := newBench(t)
 	if o := b.send(t, b.valid); o.Verdict != submit.Rejected && o.Verdict != submit.Accepted {
 		t.Fatalf("the base transaction: %+v", o)
@@ -124,6 +125,7 @@ func TestMalformedCorpusIsRejected(t *testing.T) {
 }
 
 func TestRawSpendIsWellFormed(t *testing.T) {
+	t.Parallel()
 	b := newBench(t)
 	tx, err := RawSpend(RawSpendOf{Inputs: []Coin{coinOf(b.advCoin)}, To: b.vic.Address(), Fee: StealFee, TTL: b.ttl, Signers: b.signers})
 	if err != nil {
@@ -135,6 +137,7 @@ func TestRawSpendIsWellFormed(t *testing.T) {
 }
 
 func TestNonCanonicalKeepsTheValue(t *testing.T) {
+	t.Parallel()
 	b := newBench(t)
 	tx, err := Mutate(b.valid, NonCanonical)
 	if err != nil {

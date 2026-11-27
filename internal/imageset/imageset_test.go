@@ -53,6 +53,7 @@ func names(cs []Change) []string {
 }
 
 func TestPercentSelectionDeterministic(t *testing.T) {
+	t.Parallel()
 	sel := Selector{Percent: 30, Tier: v1alpha1.TierForging}
 	want := []string{"p0", "p1", "p2"}
 	for range 5 {
@@ -69,6 +70,7 @@ func TestPercentSelectionDeterministic(t *testing.T) {
 }
 
 func TestPercentRoundsUp(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ pct, n, want int }{{1, 3, 1}, {33, 3, 1}, {34, 3, 2}, {100, 3, 3}, {50, 10, 5}} {
 		var pools []v1alpha1.ContinuumPool
 		for i := range tc.n {
@@ -82,6 +84,7 @@ func TestPercentRoundsUp(t *testing.T) {
 }
 
 func TestSelectorFilters(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		sel  Selector
@@ -100,6 +103,7 @@ func TestSelectorFilters(t *testing.T) {
 }
 
 func TestPlanRefusals(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		sel  Selector
@@ -119,6 +123,7 @@ func TestPlanRefusals(t *testing.T) {
 }
 
 func TestNetworkDefaultWithoutSelector(t *testing.T) {
+	t.Parallel()
 	got, err := Plan(network(), fleet(), v1alpha1.Dingo, "dingo:dev", Selector{})
 	if err != nil || len(got) != 1 || got[0].Kind != KindNetwork || got[0].From != "dingo:main" || got[0].To != "dingo:dev" {
 		t.Fatalf("got %+v, err %v", got, err)
@@ -126,6 +131,7 @@ func TestNetworkDefaultWithoutSelector(t *testing.T) {
 }
 
 func TestParse(t *testing.T) {
+	t.Parallel()
 	impl, ref, err := ParseAssignment("dingo=ghcr.io/x/dingo@sha256:ab")
 	if err != nil || impl != v1alpha1.Dingo || ref != "ghcr.io/x/dingo@sha256:ab" {
 		t.Fatalf("%v %q %v", impl, ref, err)
@@ -145,6 +151,7 @@ func TestParse(t *testing.T) {
 	}
 }
 
+// Not parallel: rewrites its golden file under -update.
 func TestWriteGolden(t *testing.T) {
 	var b bytes.Buffer
 	nc, err := Plan(network(), fleet(), v1alpha1.Dingo, "ghcr.io/x/dingo:dev-abc", Selector{})

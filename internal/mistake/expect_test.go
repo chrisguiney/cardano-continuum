@@ -18,6 +18,7 @@ func rejected(cs ...submit.Class) submit.Outcome {
 var accepted = submit.Outcome{Verdict: submit.Accepted}
 
 func TestCatalogClasses(t *testing.T) {
+	t.Parallel()
 	want := map[Kind]submit.Class{
 		FeeTooSmall:     submit.FeeTooSmall,
 		StaleInput:      submit.BadInputs,
@@ -46,6 +47,7 @@ func TestCatalogClasses(t *testing.T) {
 // RetrySingleExpectedVerdictBug: a node checking MissingSigner first names
 // the second mistake, so both classes must be expected.
 func TestExpectedIsSetPerMistake(t *testing.T) {
+	t.Parallel()
 	e := Expect(Of(FeeTooSmall, MissingSigner), false)
 	want := []submit.Class{submit.FeeTooSmall, submit.MissingVKeyWitnesses}
 	slices.Sort(want)
@@ -76,6 +78,7 @@ func TestExpectedIsSetPerMistake(t *testing.T) {
 // For every order of the UTXO rules the node stops at the first failure,
 // so a rejection naming any one mistake's class alone must pass.
 func TestExpectedAnyRuleOrder(t *testing.T) {
+	t.Parallel()
 	ks := Of(FeeTooSmall, StaleInput, OutputTooSmall, Expired)
 	e := Expect(ks, false)
 	var classes []submit.Class
@@ -110,6 +113,7 @@ func permutations(xs []submit.Class) [][]submit.Class {
 // RetryOracleIgnoresResubmitBug: once sent, "inputs spent" in either form is
 // an honest answer.
 func TestExpectedAfterSendIncludesSpent(t *testing.T) {
+	t.Parallel()
 	for _, ks := range []KindSet{0, Of(DoubleSubmit), Of(FeeTooSmall), Of(WrongAddress)} {
 		fresh, sent := Expect(ks, false), Expect(ks, true)
 		for _, c := range []submit.Class{submit.BadInputs, submit.MempoolFailure, submit.ValueNotConserved} {
@@ -136,6 +140,7 @@ func TestExpectedAfterSendIncludesSpent(t *testing.T) {
 }
 
 func TestStaleAndOwnSpendSameClass(t *testing.T) {
+	t.Parallel()
 	stale, _ := ClassOf(StaleInput)
 	if !Expect(0, true).Allows(stale) {
 		t.Fatalf("a resubmit's %s is not expected", stale)
@@ -146,6 +151,7 @@ func TestStaleAndOwnSpendSameClass(t *testing.T) {
 }
 
 func TestFixForCoversCatalog(t *testing.T) {
+	t.Parallel()
 	for _, k := range Kinds() {
 		c, ok := ClassOf(k)
 		if !ok {

@@ -18,6 +18,7 @@ func devnet(magic uint32) chain.Genesis {
 }
 
 func TestClearRefusesAllButADevnet(t *testing.T) {
+	t.Parallel()
 	if (Clearance{}).Cleared() {
 		t.Fatal("the zero clearance is cleared")
 	}
@@ -40,6 +41,7 @@ func TestClearRefusesAllButADevnet(t *testing.T) {
 }
 
 func TestLedgerRefusesPastTheCeiling(t *testing.T) {
+	t.Parallel()
 	l := NewLedger()
 	l.Limit(7, 10)
 	if err := l.Charge(7, 0, 6); err != nil {
@@ -66,6 +68,7 @@ func TestLedgerRefusesPastTheCeiling(t *testing.T) {
 }
 
 func TestNewPolicyValidates(t *testing.T) {
+	t.Parallel()
 	if _, err := NewPolicy(profile.AdversarySpec{Attacks: []string{"dust-flood"}, CostCeiling: 1, SuccessMetric: "utxo_growth"}); err != nil {
 		t.Fatal(err)
 	}
@@ -115,6 +118,7 @@ func scores(t *testing.T, attacks []string, v agenda.View) map[profile.IntentKin
 }
 
 func TestPolicyScoresWhatItCanAfford(t *testing.T) {
+	t.Parallel()
 	all := []string{"dust-flood", "utxo-contention", "malformed-cbor", "front-run", "double-spend"}
 	rich := fakeView{bal: 10_000_000_000, remaining: 1_000_000_000, payees: []population.ActorID{2, 3}}
 	s := scores(t, all, rich)
@@ -150,6 +154,7 @@ type agendaOnly struct{ fakeView }
 func (agendaOnly) Shared() {}
 
 func TestContentionTargetsOnlySharedOutputs(t *testing.T) {
+	t.Parallel()
 	v := fakeView{shared: []Locked{
 		{Ref: Ref{Index: 1}, Owner: 2, Lovelace: 5_000_000},
 		{Ref: Ref{Index: 2}, Owner: 3, Lovelace: 5_000_000, Busy: true},
@@ -172,6 +177,7 @@ func TestContentionTargetsOnlySharedOutputs(t *testing.T) {
 }
 
 func TestFrontRunOutbids(t *testing.T) {
+	t.Parallel()
 	target := Locked{Ref: Ref{Index: 4}, Owner: 2, Lovelace: 5_000_000, Busy: true}
 	st := Outbid(target, 300_000)
 	if st.Attack != FrontRun || st.Spend == nil || st.Spend.Ref != target.Ref || st.Tip <= 300_000 {
@@ -180,6 +186,7 @@ func TestFrontRunOutbids(t *testing.T) {
 }
 
 func TestDustAndRacePlans(t *testing.T) {
+	t.Parallel()
 	v := fakeView{payees: []population.ActorID{2, 3, 4, 5}}
 	r := rand.New(rand.NewPCG(3, 3))
 	st, why := Plan(DustFlood, v, r)
@@ -211,6 +218,7 @@ func TestDustAndRacePlans(t *testing.T) {
 }
 
 func TestMalformedPlanDrawsTheWholeCorpus(t *testing.T) {
+	t.Parallel()
 	v := fakeView{victims: []Coin{{Ref: Ref{Index: 9}, Owner: 2, Lovelace: 50_000_000}}}
 	seen := map[Mutation]bool{}
 	for i := range 400 {
@@ -231,6 +239,7 @@ func TestMalformedPlanDrawsTheWholeCorpus(t *testing.T) {
 }
 
 func TestPlanIsDeterministic(t *testing.T) {
+	t.Parallel()
 	v := fakeView{payees: []population.ActorID{2, 3, 4, 5}, shared: []Locked{{Ref: Ref{Index: 1}, Owner: 2}}}
 	for _, n := range []Name{DustFlood, Contention, Malformed, DoubleSpend} {
 		a, _ := Plan(n, v, rand.New(rand.NewPCG(5, 5)))
@@ -242,6 +251,7 @@ func TestPlanIsDeterministic(t *testing.T) {
 }
 
 func TestCompare(t *testing.T) {
+	t.Parallel()
 	m := Metrics{HonestEnded: 10, HonestFailed: 1, UtxoGrowth: 40, Rejections: 3}
 	for _, row := range Compare(m, m) {
 		if row.Delta() != 0 {
@@ -263,6 +273,7 @@ func TestCompare(t *testing.T) {
 }
 
 func TestPercentile(t *testing.T) {
+	t.Parallel()
 	xs := []float64{5, 1, 4, 2, 3}
 	if p := percentile(xs, 0.5); p != 3 {
 		t.Fatalf("p50 %v", p)
@@ -276,6 +287,7 @@ func TestPercentile(t *testing.T) {
 }
 
 func TestProfilesParse(t *testing.T) {
+	t.Parallel()
 	ps, err := Profiles(Names()...)
 	if err != nil {
 		t.Fatal(err)

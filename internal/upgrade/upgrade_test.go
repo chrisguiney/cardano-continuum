@@ -14,6 +14,7 @@ import (
 var curve = Curve{Start: 1000, End: 11000, Steepness: 6}
 
 func TestCurveBounds(t *testing.T) {
+	t.Parallel()
 	if got := curve.Fraction(curve.Start); got != 0 {
 		t.Errorf("Fraction(Start) = %v, want 0", got)
 	}
@@ -32,6 +33,7 @@ func TestCurveBounds(t *testing.T) {
 }
 
 func TestCurveMonotone(t *testing.T) {
+	t.Parallel()
 	for _, s := range []float64{0.5, 1, 6, 12} {
 		c := Curve{Start: 0, End: 10000, Steepness: s}
 		prev := -1.0
@@ -46,6 +48,7 @@ func TestCurveMonotone(t *testing.T) {
 }
 
 func TestCurveReachesFractionByTime(t *testing.T) {
+	t.Parallel()
 	for _, p := range []float64{0.1, 0.3, 0.5, 0.9} {
 		at := curve.When(p)
 		if f := curve.Fraction(at); math.Abs(f-p) > 1e-3 {
@@ -69,6 +72,7 @@ func pools(n int) []Pool {
 }
 
 func TestShareAdoptedByTime(t *testing.T) {
+	t.Parallel()
 	sched := Plan(curve, "dingo:v2", pools(2000), rng.Seed{1}.Rand())
 	if len(sched) != 2000 {
 		t.Fatalf("%d intents, want 2000", len(sched))
@@ -88,6 +92,7 @@ func TestShareAdoptedByTime(t *testing.T) {
 }
 
 func TestEagernessAdoptsEarlier(t *testing.T) {
+	t.Parallel()
 	for _, u := range []float64{0.1, 0.5, 0.9} {
 		if !(AdoptAt(curve, u, 3) < AdoptAt(curve, u, 1) && AdoptAt(curve, u, 1) < AdoptAt(curve, u, 0.3)) {
 			t.Errorf("u=%v: eagerness does not order adoption", u)
@@ -101,6 +106,7 @@ func TestEagernessAdoptsEarlier(t *testing.T) {
 }
 
 func TestPlanSameSeedSameSchedule(t *testing.T) {
+	t.Parallel()
 	a := Plan(curve, "dingo:v2", pools(50), rng.Seed{7}.Rand())
 	b := Plan(curve, "dingo:v2", pools(50), rng.Seed{7}.Rand())
 	if !slices.Equal(a, b) {
@@ -113,6 +119,7 @@ func TestPlanSameSeedSameSchedule(t *testing.T) {
 }
 
 func TestPlanIgnoresInputOrder(t *testing.T) {
+	t.Parallel()
 	ps := pools(30)
 	want := Plan(curve, "r", ps, rng.Seed{3}.Rand())
 	slices.Reverse(ps)
@@ -122,6 +129,7 @@ func TestPlanIgnoresInputOrder(t *testing.T) {
 }
 
 func TestPlanOrdered(t *testing.T) {
+	t.Parallel()
 	s := Plan(curve, "r", pools(100), rng.Seed{5}.Rand())
 	if !slices.IsSortedFunc(s, func(a, b Intent) int {
 		if a.At != b.At {
@@ -137,6 +145,7 @@ func TestPlanOrdered(t *testing.T) {
 }
 
 func TestValidate(t *testing.T) {
+	t.Parallel()
 	for _, c := range []Curve{{Start: 5, End: 5, Steepness: 1}, {Start: 9, End: 5, Steepness: 1}, {Start: 0, End: 5, Steepness: 0}, {Start: 0, End: 5, Steepness: math.NaN()}} {
 		if c.Validate() == nil {
 			t.Errorf("%+v accepted", c)

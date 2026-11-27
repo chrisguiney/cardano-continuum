@@ -63,6 +63,7 @@ func quiet(t *testing.T, name string, s Snapshot) {
 }
 
 func TestMonitorNames(t *testing.T) {
+	t.Parallel()
 	var names []string
 	for _, m := range Monitors(k, guard(t)) {
 		names = append(names, m.Name())
@@ -78,6 +79,7 @@ func value() *Value {
 }
 
 func TestValueConserved(t *testing.T) {
+	t.Parallel()
 	quiet(t, "value", Snapshot{Value: value()})
 	quiet(t, "value", Snapshot{})
 	v := value()
@@ -92,6 +94,7 @@ func TestValueConserved(t *testing.T) {
 }
 
 func TestPaidOnce(t *testing.T) {
+	t.Parallel()
 	quiet(t, "paid_once", Snapshot{Ends: []End{
 		{Intent: 1, Tx: txid(1), Seq: 3}, {Intent: 2, Tx: txid(2), Seq: 4},
 		{Intent: 3, Released: true, Seq: 5},
@@ -116,6 +119,7 @@ func pending(intent plan.IntentID, tx byte, in ...chain.Ref) plan.Pending {
 }
 
 func TestReservations(t *testing.T) {
+	t.Parallel()
 	ok := &Reservations{
 		Holds:      []Hold{{Ref: ref(1, 0), Intent: 1}, {Ref: ref(1, 1), Intent: 1}, {Ref: ref(2, 0), Intent: 2}},
 		Unfinished: []plan.Pending{pending(1, 0xa, ref(1, 0)), pending(1, 0xb, ref(1, 1)), pending(2, 0xc, ref(2, 0))},
@@ -173,6 +177,7 @@ func (fakeHolders) Holder(r plan.Ref) (plan.IntentID, bool) {
 }
 
 func TestReservationsOf(t *testing.T) {
+	t.Parallel()
 	r := ReservationsOf(fakeHolders{})
 	want := []Hold{{Ref: ref(1, 0), Intent: 1}, {Ref: chain.Ref{Tx: txid(0xa), Index: 1}, Intent: 5}}
 	if !slices.Equal(r.Holds, want) || len(r.Unfinished) != 1 {
@@ -181,6 +186,7 @@ func TestReservationsOf(t *testing.T) {
 }
 
 func TestSettledNeverMovesBack(t *testing.T) {
+	t.Parallel()
 	quiet(t, "settled", Snapshot{Settled: &SettledMove{From: pt(10, 1), To: pt(20, 2)}})
 	quiet(t, "settled", Snapshot{Settled: &SettledMove{From: pt(10, 1), To: pt(10, 1)}})
 	quiet(t, "settled", Snapshot{})
@@ -189,6 +195,7 @@ func TestSettledNeverMovesBack(t *testing.T) {
 }
 
 func TestViewMatchesNode(t *testing.T) {
+	t.Parallel()
 	cn := node("cardano-node", "p1")
 	same := ViewCheck{Node: cn, At: pt(10, 1), NodeAt: pt(10, 1),
 		Engine: map[population.ActorID]uint64{1: 5, 2: 7}, Chain: map[population.ActorID]uint64{1: 5, 2: 7}}
@@ -214,6 +221,7 @@ func TestViewMatchesNode(t *testing.T) {
 }
 
 func TestLiveness(t *testing.T) {
+	t.Parallel()
 	quiet(t, "liveness", Snapshot{Policy: &policy.State{Epoch: 5, Label: 4}})
 	quiet(t, "liveness", Snapshot{})
 	f := fires(t, "liveness", Snapshot{Policy: &policy.State{Epoch: 6, Label: 4}}, Frozen, Fatal)
@@ -232,6 +240,7 @@ func floorState(running bool) *policy.State {
 }
 
 func TestStakeFloor(t *testing.T) {
+	t.Parallel()
 	quiet(t, "stake_floor", Snapshot{Policy: floorState(true)})
 	quiet(t, "stake_floor", Snapshot{})
 	f := fires(t, "stake_floor", Snapshot{Policy: floorState(false)}, FloorBreached, Error)
@@ -245,6 +254,7 @@ func branch(pool, impl string, pts ...chain.Point) Branch {
 }
 
 func TestTipsAgree(t *testing.T) {
+	t.Parallel()
 	a := []chain.Point{pt(1, 1), pt(2, 2), pt(3, 3), pt(4, 4), pt(5, 5), pt(6, 6)}
 	// One pool behind the other on the same chain is lag, not a fork.
 	quiet(t, "tips", Snapshot{Tips: []Branch{branch("p1", "cardano-node", a...), branch("p2", "dingo", a[:3]...)}})
@@ -268,6 +278,7 @@ func TestTipsAgree(t *testing.T) {
 // on no honest node's chain. On one, it is a fatal finding carrying the
 // block and the node's build.
 func TestRogueBlockAdopted(t *testing.T) {
+	t.Parallel()
 	a := []chain.Point{pt(1, 1), pt(2, 2), pt(3, 3)}
 	bad := RogueBlock{Point: pt(4, 0x44), Kind: "body-hash", Rule: "InvalidBodyHashBBODY", CBOR: []byte{0x85, 1, 2}}
 	quiet(t, "rogue", Snapshot{
@@ -293,6 +304,7 @@ func TestRogueBlockAdopted(t *testing.T) {
 // TestBlockOverBudget: a block whose transactions declare more than
 // maxBlockExUnits is fatal on either dimension; one at the limit is fine.
 func TestBlockOverBudget(t *testing.T) {
+	t.Parallel()
 	max := common.ExUnits{Memory: 72_000_000, Steps: 20_000_000_000}
 	at := pt(9, 9)
 	quiet(t, "block_budget", Snapshot{Budget: &BlockBudget{At: at, Used: max, Max: max}})

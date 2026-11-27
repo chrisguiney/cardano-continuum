@@ -10,6 +10,7 @@ import (
 )
 
 func TestCheckMemory(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name, alloc string
 		min         int64
@@ -31,6 +32,7 @@ func TestCheckMemory(t *testing.T) {
 }
 
 func TestPlanCheck(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		p    Plan
@@ -54,6 +56,7 @@ func TestPlanCheck(t *testing.T) {
 }
 
 func TestRender(t *testing.T) {
+	t.Parallel()
 	out, err := Render(Plan{Nodes: 3, Dingo: 2, Magic: 42, EpochLength: 500, SecurityParam: 5})
 	if err != nil {
 		t.Fatal(err)
@@ -95,6 +98,7 @@ func TestRender(t *testing.T) {
 }
 
 func TestEngineNode(t *testing.T) {
+	t.Parallel()
 	got := EngineNode("continuum")
 	if !strings.HasPrefix(got, "pool-") || !strings.HasSuffix(got, ".continuum.svc.cluster.local:3002") {
 		t.Errorf("EngineNode = %q", got)
@@ -102,6 +106,7 @@ func TestEngineNode(t *testing.T) {
 }
 
 func TestAttacks(t *testing.T) {
+	t.Parallel()
 	def, err := Attacks("")
 	if err != nil {
 		t.Fatal(err)
@@ -126,6 +131,7 @@ func TestAttacks(t *testing.T) {
 }
 
 func TestRunChange(t *testing.T) {
+	t.Parallel()
 	a := RunIdentity{Image: "reg/continuum:aaaa", Profiles: "preprod", Seed: "00ff", Attacks: "dust-flood"}
 	if got := RunChange(a.String(), a); got != "" {
 		t.Fatalf("same identity changed: %q", got)

@@ -18,6 +18,7 @@ func conway(inner error) error {
 }
 
 func TestClassifyLedgerErrors(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		err  error
@@ -57,6 +58,7 @@ func TestClassifyLedgerErrors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			o := outcomeOf("n", tt.err)
 			if o.Verdict != Rejected || len(o.Failures) != 1 || o.Failures[0].Class != tt.want {
 				t.Fatalf("outcome = %+v, want one %s", o, tt.want)
@@ -66,6 +68,7 @@ func TestClassifyLedgerErrors(t *testing.T) {
 }
 
 func TestClassifyKeepsEveryFailureAndUnknowns(t *testing.T) {
+	t.Parallel()
 	err := localtxsubmission.TransactionRejectedError{Reason: &ledger.ShelleyTxValidationError{
 		Era: 6, Err: ledger.ApplyTxError{Failures: []error{
 			&ledger.UtxowFailure{Err: &ledger.UtxoFailure{Era: 6, Err: &ledger.BadInputsUtxo{}}},
@@ -94,6 +97,7 @@ func TestClassifyKeepsEveryFailureAndUnknowns(t *testing.T) {
 }
 
 func TestClassifyUndecodedRejectionKept(t *testing.T) {
+	t.Parallel()
 	o := outcomeOf("n", localtxsubmission.TransactionRejectedError{ReasonCbor: []byte{0x01}})
 	if o.Verdict != Rejected || len(o.Failures) != 1 || o.Failures[0].Class != Unknown || o.Failures[0].Detail == "" {
 		t.Fatalf("outcome = %+v", o)
@@ -101,6 +105,7 @@ func TestClassifyUndecodedRejectionKept(t *testing.T) {
 }
 
 func TestClassifyMempoolFailure(t *testing.T) {
+	t.Parallel()
 	raw, err := cbor.Encode([]any{7, "All inputs are spent."})
 	if err != nil {
 		t.Fatal(err)

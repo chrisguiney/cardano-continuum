@@ -26,6 +26,7 @@ func (g *fakeGit) Run(_ context.Context, dir string, _ []string, name string, ar
 }
 
 func TestListCommitsOldestFirst(t *testing.T) {
+	t.Parallel()
 	g := &fakeGit{out: "aaa\nbbb\nccc\n"}
 	got, err := ListCommits(context.Background(), g, "/repo", "v1", "main")
 	if err != nil || !reflect.DeepEqual(got, []string{"aaa", "bbb", "ccc"}) {
@@ -38,6 +39,7 @@ func TestListCommitsOldestFirst(t *testing.T) {
 }
 
 func TestListCommitsRefusesOptionLookingRefs(t *testing.T) {
+	t.Parallel()
 	for _, r := range []string{"--output=x", "", "a b", "a;b", "$(x)"} {
 		if _, err := ListCommits(context.Background(), &fakeGit{}, "/repo", r, "main"); err == nil {
 			t.Errorf("good %q: want error", r)
@@ -49,6 +51,7 @@ func TestListCommitsRefusesOptionLookingRefs(t *testing.T) {
 }
 
 func TestListCommitsGitFailure(t *testing.T) {
+	t.Parallel()
 	boom := errors.New("bad revision")
 	if _, err := ListCommits(context.Background(), &fakeGit{err: boom}, "/repo", "v1", "main"); !errors.Is(err, boom) {
 		t.Fatalf("err = %v", err)
@@ -56,6 +59,7 @@ func TestListCommitsGitFailure(t *testing.T) {
 }
 
 func TestParseRange(t *testing.T) {
+	t.Parallel()
 	g, b, err := ParseRange("v1.0..main")
 	if err != nil || g != "v1.0" || b != "main" {
 		t.Fatalf("%q %q %v", g, b, err)
@@ -68,6 +72,7 @@ func TestParseRange(t *testing.T) {
 }
 
 func TestListCommitsOnARealRepository(t *testing.T) {
+	t.Parallel()
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
 	}

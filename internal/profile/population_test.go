@@ -9,6 +9,7 @@ import (
 )
 
 func TestParseFilePopulations(t *testing.T) {
+	t.Parallel()
 	f, err := ParseFile(bytes.NewReader(open(t, "testdata/populations.yaml")))
 	if err != nil {
 		t.Fatal(err)
@@ -53,6 +54,7 @@ func TestParseFilePopulations(t *testing.T) {
 // A file without populations is a version-1 file as before, and Parse,
 // which the engine uses, reads a file with them as just its profiles.
 func TestParseFileOldAndNew(t *testing.T) {
+	t.Parallel()
 	f, err := ParseFile(bytes.NewReader(open(t, "testdata/minimal.yaml")))
 	if err != nil {
 		t.Fatal(err)
@@ -70,6 +72,7 @@ func TestParseFileOldAndNew(t *testing.T) {
 }
 
 func TestParsePopulationRejects(t *testing.T) {
+	t.Parallel()
 	tests := []struct{ file, want string }{
 		{"population-wallet", `population "q": kind`},
 		{"population-mismatch", `population "q": pool: a pool population needs`},
@@ -81,6 +84,7 @@ func TestParsePopulationRejects(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.file, func(t *testing.T) {
+			t.Parallel()
 			path := filepath.Join("testdata", "invalid", tt.file+".yaml")
 			_, err := ParseNamed(path, bytes.NewReader(open(t, path)))
 			if err == nil {
@@ -94,6 +98,7 @@ func TestParsePopulationRejects(t *testing.T) {
 }
 
 func TestSpikeSample(t *testing.T) {
+	t.Parallel()
 	s := Spike{Rest: Const{V: 5}, Point: 1, Share: 0.25}
 	if got := s.Sample(&fixed{v: []float64{0.1}}); got != 1 {
 		t.Errorf("draw below the share gave %v, want the point", got)
@@ -106,6 +111,7 @@ func TestSpikeSample(t *testing.T) {
 // MarshalFile renders populations and network rates too, and ParseFile
 // reads back what it rendered.
 func TestMarshalFileRoundTrip(t *testing.T) {
+	t.Parallel()
 	f, err := ParseFile(bytes.NewReader(open(t, "testdata/populations.yaml")))
 	if err != nil {
 		t.Fatal(err)
@@ -127,6 +133,7 @@ func TestMarshalFileRoundTrip(t *testing.T) {
 // Marshal renders its profiles, so the hash of an old profile file does not
 // change.
 func TestMarshalFileWithoutPopulations(t *testing.T) {
+	t.Parallel()
 	f, err := ParseFile(bytes.NewReader(open(t, "testdata/minimal.yaml")))
 	if err != nil {
 		t.Fatal(err)
@@ -145,6 +152,7 @@ func TestMarshalFileWithoutPopulations(t *testing.T) {
 }
 
 func TestPoolAndDRepIntents(t *testing.T) {
+	t.Parallel()
 	for _, k := range []IntentKind{IntentUpdatePool, IntentRetireDRep} {
 		if !intents[k] {
 			t.Fatalf("%s is not an intent kind", k)

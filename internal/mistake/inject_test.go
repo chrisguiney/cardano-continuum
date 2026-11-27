@@ -76,6 +76,7 @@ func fakeWorldOn(t testing.TB, pp conway.ConwayProtocolParameters) (*world, *fak
 }
 
 func TestCatalogOnFakeChain(t *testing.T) {
+	t.Parallel()
 	wd, c := fakeWorld(t)
 	for _, r := range runCatalog(t, wd) {
 		t.Log(r)
@@ -97,6 +98,7 @@ func TestCatalogOnFakeChain(t *testing.T) {
 // A mutant's rejection names only its own class, so a node answering with
 // any one failure under any rule order is judged correct.
 func TestMutantFailuresAnyOrder(t *testing.T) {
+	t.Parallel()
 	wd, _ := fakeWorld(t)
 	wd.prepare(t)
 	b := wd.base(t, FeeTooSmall)
@@ -132,6 +134,7 @@ func classesOf(o submit.Outcome) []submit.Class {
 // A stale input and a resubmit of a transaction already in a block are the
 // same answer.
 func TestStaleMutantAndResubmitBothBadInputs(t *testing.T) {
+	t.Parallel()
 	wd, _ := fakeWorld(t)
 	wd.prepare(t)
 	b := wd.base(t, StaleInput)
@@ -156,12 +159,14 @@ func TestStaleMutantAndResubmitBothBadInputs(t *testing.T) {
 }
 
 func TestFixForRemovesClass(t *testing.T) {
+	t.Parallel()
 	for _, k := range Kinds() {
 		c, ok := ClassOf(k)
 		if !ok {
 			continue
 		}
 		t.Run(k.String(), func(t *testing.T) {
+			t.Parallel()
 			wd, _ := fakeWorld(t)
 			wd.prepare(t)
 			b := wd.base(t, k)
@@ -184,6 +189,7 @@ func TestFixForRemovesClass(t *testing.T) {
 }
 
 func TestInjectReportsWitnessRecompute(t *testing.T) {
+	t.Parallel()
 	wd, _ := fakeWorld(t)
 	wd.prepare(t)
 	for _, k := range Kinds() {
@@ -200,6 +206,7 @@ func TestInjectReportsWitnessRecompute(t *testing.T) {
 }
 
 func TestInjectNotApplicable(t *testing.T) {
+	t.Parallel()
 	wd, _ := fakeWorld(t)
 	wd.prepare(t)
 	pay := wd.base(t, FeeTooSmall)

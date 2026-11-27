@@ -41,6 +41,7 @@ func kindProfile(k profile.Kind) profile.Profile {
 func seed(n byte) rng.Seed { return rng.Seed{n} }
 
 func TestLifecycleTables(t *testing.T) {
+	t.Parallel()
 	legal := map[profile.Kind][][2]State{
 		profile.Wallet:   {{Born, Active}, {Active, Dormant}, {Dormant, Active}, {Active, Abandoned}, {Dormant, Abandoned}},
 		profile.Pool:     {{Registered, Active}, {Active, Retiring}, {Retiring, Retired}, {Retiring, Active}},
@@ -81,6 +82,7 @@ func TestLifecycleTables(t *testing.T) {
 }
 
 func TestChainGatedTransitions(t *testing.T) {
+	t.Parallel()
 	c := &Census{}
 	p := c.Spawn(kindProfile(profile.Pool), seed(1), 0)
 	if p.State != Registered {
@@ -116,6 +118,7 @@ func TestChainGatedTransitions(t *testing.T) {
 }
 
 func TestSpawnDeterministic(t *testing.T) {
+	t.Parallel()
 	p := walletProfile()
 	a, b := &Census{}, &Census{}
 	for i := 0; i < 50; i++ {
@@ -141,6 +144,7 @@ func (c *Census) mustGet(id ActorID) Actor {
 }
 
 func TestSpawnAppendOnly(t *testing.T) {
+	t.Parallel()
 	p := walletProfile()
 	a, b := &Census{}, &Census{}
 	for i := 0; i < 20; i++ {
@@ -168,6 +172,7 @@ func ksLogNormal(xs []float64, mu, sigma float64) float64 {
 }
 
 func TestDormancyLogNormal(t *testing.T) {
+	t.Parallel()
 	p := walletProfile()
 	p.Hazards.Abandon = 0
 	const n = 20000
@@ -188,6 +193,7 @@ func TestDormancyLogNormal(t *testing.T) {
 }
 
 func TestAbandonCompetesWithDormancyEnd(t *testing.T) {
+	t.Parallel()
 	p := walletProfile()
 	p.Hazards.Abandon = 0.5
 	r := seed(2).Rand()
@@ -204,6 +210,7 @@ func TestAbandonCompetesWithDormancyEnd(t *testing.T) {
 }
 
 func TestActivityPareto(t *testing.T) {
+	t.Parallel()
 	p := walletProfile()
 	c := &Census{}
 	const n = 20000
@@ -224,6 +231,7 @@ func TestActivityPareto(t *testing.T) {
 // TestActivityTailFromProfile: the profile's tail index, not a package
 // constant, shapes the activity multiplier.
 func TestActivityTailFromProfile(t *testing.T) {
+	t.Parallel()
 	p := walletProfile()
 	p.Rates.Tail = 3
 	c := &Census{}
@@ -240,6 +248,7 @@ func TestActivityTailFromProfile(t *testing.T) {
 // TestDormancyOnsetFromProfile: a profile with a faster onset goes dormant
 // sooner, at the rate it names.
 func TestDormancyOnsetFromProfile(t *testing.T) {
+	t.Parallel()
 	p := walletProfile()
 	p.Hazards.Abandon = 0
 	p.Hazards.Onset = 0.01
@@ -257,6 +266,7 @@ func TestDormancyOnsetFromProfile(t *testing.T) {
 }
 
 func TestFrustrationRaisesHazard(t *testing.T) {
+	t.Parallel()
 	prev := -1.0
 	for f := 0.0; f <= 5; f += 0.25 {
 		r := DormancyOnsetRate(profile.DefaultOnset, f)
@@ -289,6 +299,7 @@ func TestFrustrationRaisesHazard(t *testing.T) {
 }
 
 func TestNextHazardOtherStates(t *testing.T) {
+	t.Parallel()
 	p := walletProfile()
 	r := seed(1).Rand()
 	at, to := NextHazard(Actor{Kind: profile.Wallet, State: Born}, p, r, 100)
@@ -320,6 +331,7 @@ func TestNextHazardOtherStates(t *testing.T) {
 }
 
 func TestPreferentialAttachment(t *testing.T) {
+	t.Parallel()
 	stake := []PoolStake{{1, 1000}, {2, 3000}, {3, 6000}, {4, 0}}
 	const n, floor = 50000, 100
 	r := seed(1).Rand()
@@ -351,6 +363,7 @@ func TestPreferentialAttachment(t *testing.T) {
 }
 
 func TestCounts(t *testing.T) {
+	t.Parallel()
 	c := &Census{}
 	kinds := []profile.Kind{profile.Wallet, profile.Pool, profile.DRep, profile.Contract, profile.Faucet}
 	for i := 0; i < 400; i++ {
@@ -403,6 +416,7 @@ func TestCounts(t *testing.T) {
 }
 
 func TestSetFrustration(t *testing.T) {
+	t.Parallel()
 	c := &Census{}
 	a := c.Spawn(walletProfile(), seed(1), 0)
 	if err := c.SetFrustration(a.ID, 2.5); err != nil {
@@ -420,6 +434,7 @@ func TestSetFrustration(t *testing.T) {
 }
 
 func TestSetCompetence(t *testing.T) {
+	t.Parallel()
 	c := &Census{}
 	a := c.Spawn(walletProfile(), seed(1), 0)
 	for _, tt := range []struct{ in, want float64 }{{0.75, 0.75}, {-1, 0}, {3, 1}} {
@@ -478,6 +493,7 @@ func run(n int, horizon sched.Time) []logEntry {
 }
 
 func TestRunDeterministic(t *testing.T) {
+	t.Parallel()
 	const horizon = 10 * 24 * 3600 * 1000
 	a, b := run(30, horizon), run(30, horizon)
 	if len(a) < 100 {
@@ -489,6 +505,7 @@ func TestRunDeterministic(t *testing.T) {
 }
 
 func TestAddingActorLeavesOthersUnchanged(t *testing.T) {
+	t.Parallel()
 	const horizon = 10 * 24 * 3600 * 1000
 	small, big := run(30, horizon), run(31, horizon)
 	var got []logEntry
@@ -515,6 +532,7 @@ func activePool(t *testing.T, c *Census) Actor {
 // TestPoolRetiringNeedsConfirmation: a pool is Retiring only once its
 // retirement certificate confirms, never on the engine's decision alone.
 func TestPoolRetiringNeedsConfirmation(t *testing.T) {
+	t.Parallel()
 	c := &Census{}
 	p := activePool(t, c)
 	for _, cause := range []Cause{Timer{}, Intent{}, Confirmed{}} {
@@ -533,6 +551,7 @@ func TestPoolRetiringNeedsConfirmation(t *testing.T) {
 // TestPoolRetiredOnlyAtEpochApply: the certificate's confirmation does not
 // retire a pool; only the epoch transition that applies it does.
 func TestPoolRetiredOnlyAtEpochApply(t *testing.T) {
+	t.Parallel()
 	c := &Census{}
 	p := activePool(t, c)
 	if err := c.Apply(Transition{ID: p.ID, To: Retiring, At: 2, Cause: Confirmed{Tx: "retire"}}); err != nil {
@@ -557,6 +576,7 @@ func TestPoolRetiredOnlyAtEpochApply(t *testing.T) {
 // TestPoolReregisterCancelsRetiring: a confirmed re-registration takes a
 // retiring pool back to Active; nothing else does.
 func TestPoolReregisterCancelsRetiring(t *testing.T) {
+	t.Parallel()
 	c := &Census{}
 	p := activePool(t, c)
 	if err := c.Apply(Transition{ID: p.ID, To: Retiring, At: 2, Cause: Confirmed{Tx: "retire"}}); err != nil {
@@ -579,6 +599,7 @@ func TestPoolReregisterCancelsRetiring(t *testing.T) {
 // could take a denominator from. A retired pool's stake stays in the leader
 // schedule for two epochs, so stake must come from the ledger's snapshots.
 func TestCensusNotAStakeSource(t *testing.T) {
+	t.Parallel()
 	typ := reflect.TypeOf(&Census{})
 	for i := 0; i < typ.NumMethod(); i++ {
 		if m := typ.Method(i); strings.Contains(strings.ToLower(m.Name), "stake") {

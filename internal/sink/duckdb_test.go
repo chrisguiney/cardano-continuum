@@ -28,6 +28,7 @@ for t in sys.argv[2:]:
 // TestDuckDBReadsTables checks row counts through DuckDB and pyarrow. It
 // skips when no python3 with both modules is installed.
 func TestDuckDBReadsTables(t *testing.T) {
+	t.Parallel()
 	py, err := exec.LookPath("python3")
 	if err != nil {
 		t.Skip("no python3")

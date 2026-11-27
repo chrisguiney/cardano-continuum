@@ -47,6 +47,7 @@ func drain(c *Chain, peer PeerID, cur *Cursor) []byte {
 }
 
 func TestChainServesFollowedAndOwn(t *testing.T) {
+	t.Parallel()
 	c := NewChain(testParams(), [32]byte{1})
 	bs := follow(t, c, 3)
 	cur := Cursor{Origin: true}
@@ -75,6 +76,7 @@ func TestChainServesFollowedAndOwn(t *testing.T) {
 }
 
 func TestChainAdoptedOwnBlockStays(t *testing.T) {
+	t.Parallel()
 	c := NewChain(testParams(), [32]byte{1})
 	follow(t, c, 2)
 	own := mkBlock(0x50, c.Tip(), 40)
@@ -96,6 +98,7 @@ func TestChainAdoptedOwnBlockStays(t *testing.T) {
 // TestChainOffersInvalidOnce: an invalid block reaches each peer once, and
 // a peer that reconnects is not shown it again.
 func TestChainOffersInvalidOnce(t *testing.T) {
+	t.Parallel()
 	c := NewChain(testParams(), [32]byte{1})
 	bs := follow(t, c, 2)
 	bad := mkBlock(0x70, c.Tip(), 40)
@@ -122,6 +125,7 @@ func TestChainOffersInvalidOnce(t *testing.T) {
 }
 
 func TestChainEquivocation(t *testing.T) {
+	t.Parallel()
 	c := NewChain(testParams(), [32]byte{1})
 	bs := follow(t, c, 2)
 	a, b := mkBlock(0x80, c.Tip(), 40), mkBlock(0x81, c.Tip(), 40)
@@ -147,6 +151,7 @@ func TestChainEquivocation(t *testing.T) {
 }
 
 func TestChainRollback(t *testing.T) {
+	t.Parallel()
 	c := NewChain(testParams(), [32]byte{1})
 	bs := follow(t, c, 4)
 	before := c.followed[1].nonces
@@ -166,6 +171,7 @@ func TestChainRollback(t *testing.T) {
 }
 
 func TestNonces(t *testing.T) {
+	t.Parallel()
 	p := testParams()
 	g := GenesisNonces(p)
 	if g.EpochNonce() != p.GenesisHash {

@@ -27,6 +27,7 @@ INVARIANTS
 `
 
 func TestRewriteCfg(t *testing.T) {
+	t.Parallel()
 	text, consts, err := utxoWrapper.rewriteCfg(tableBugCfg)
 	if err != nil {
 		t.Fatal(err)
@@ -68,6 +69,7 @@ func modelDir(t *testing.T, cfgs map[string]string) string {
 // TestExportUtxoTable: the witness of the Shelley TTL mutation is the
 // transaction whose TTL is the current slot, which the reference accepts.
 func TestExportUtxoTable(t *testing.T) {
+	t.Parallel()
 	tools := testTools(t)
 	dir := modelDir(t, map[string]string{"UtxoGoTtlExclusiveBug.cfg": tableBugCfg})
 	ex, err := ExportUtxo(context.Background(), tools, dir, "UtxoGoTtlExclusiveBug.cfg", 2*time.Minute)
@@ -105,6 +107,7 @@ INVARIANTS
 // TestExportUtxoRun: a ledger trace names each applied transaction and the
 // ledger after it.
 func TestExportUtxoRun(t *testing.T) {
+	t.Parallel()
 	tools := testTools(t)
 	dir := modelDir(t, map[string]string{"UtxoProbeNoBurnBug.cfg": probeCfg})
 	ex, err := ExportUtxo(context.Background(), tools, dir, "UtxoProbeNoBurnBug.cfg", 2*time.Minute)
@@ -126,6 +129,7 @@ func TestExportUtxoRun(t *testing.T) {
 // TestWalkDeterministic: the same seed gives the same walk, another seed
 // another one.
 func TestWalkDeterministic(t *testing.T) {
+	t.Parallel()
 	tools := testTools(t)
 	dir := modelDir(t, map[string]string{})
 	walk := func(seed int64) UtxoExport {
@@ -152,6 +156,7 @@ func TestWalkDeterministic(t *testing.T) {
 }
 
 func TestWalkRejectsBadSpec(t *testing.T) {
+	t.Parallel()
 	if _, err := Walk(context.Background(), Tools{}, t.TempDir(), WalkSpec{Era: "x y", Depth: 3}, time.Second); err == nil {
 		t.Error("bad era accepted")
 	}

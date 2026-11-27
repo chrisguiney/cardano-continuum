@@ -8,6 +8,7 @@ import (
 )
 
 func TestValues(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name, got, want string
 	}{
@@ -29,6 +30,7 @@ func TestValues(t *testing.T) {
 // TestMakefileMirrors keeps the Makefile's copy of each identifier equal to
 // the Go constant. Make cannot import Go, so the two are kept in step here.
 func TestMakefileMirrors(t *testing.T) {
+	t.Parallel()
 	raw, err := os.ReadFile("../../Makefile")
 	if err != nil {
 		t.Fatal(err)

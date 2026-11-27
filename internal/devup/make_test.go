@@ -9,6 +9,7 @@ import (
 // TestMakeDryRun pins the shape of `make -n up` and `make -n down`: the
 // variables reach the scripts, and nothing runs.
 func TestMakeDryRun(t *testing.T) {
+	t.Parallel()
 	if _, err := exec.LookPath("make"); err != nil {
 		t.Skip("make is not installed")
 	}

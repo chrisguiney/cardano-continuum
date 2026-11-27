@@ -6,6 +6,7 @@ import (
 )
 
 func TestDrives(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		family, config string
 		want           Kind

@@ -57,6 +57,7 @@ func render(t *testing.T, s Spec, b byte) Bundle {
 }
 
 func TestCheck(t *testing.T) {
+	t.Parallel()
 	ok := Default()
 	tests := []struct {
 		name string
@@ -81,6 +82,7 @@ func TestCheck(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			s := ok
 			tt.mod(&s)
 			err := Check(s)
@@ -97,6 +99,7 @@ func TestCheck(t *testing.T) {
 }
 
 func TestRenderRejectsInvalidSpec(t *testing.T) {
+	t.Parallel()
 	s := fixedSpec()
 	s.EpochLength = 450
 	if _, err := Render(s, store(t, 1)); err == nil {
@@ -105,6 +108,7 @@ func TestRenderRejectsInvalidSpec(t *testing.T) {
 }
 
 func TestRenderDeterministic(t *testing.T) {
+	t.Parallel()
 	a, b := render(t, fixedSpec(), 1), render(t, fixedSpec(), 1)
 	if !bundleEqual(a, b) {
 		t.Fatal("same spec and seed gave different bundles")
@@ -141,6 +145,7 @@ func bundleEqual(a, b Bundle) bool {
 // not by this package: `byron genesis print-genesis-hash` and
 // `hash genesis-file` over the files written by -dump, as in
 // testdata/record-hashes.sh.
+// Not parallel: writes the bundle to -dump.
 func TestHashesGolden(t *testing.T) {
 	b := render(t, fixedSpec(), 1)
 	if *dump != "" {
@@ -163,6 +168,7 @@ func TestHashesGolden(t *testing.T) {
 // file's formatting: reindenting and reordering keys must keep it, as
 // cardano-node hashes the canonical rendering, not the bytes.
 func TestByronHashIsCanonical(t *testing.T) {
+	t.Parallel()
 	b := render(t, fixedSpec(), 1)
 	var v map[string]any
 	dec := json.NewDecoder(bytes.NewReader(b.Byron))
@@ -192,6 +198,7 @@ func blake(b []byte) []byte {
 }
 
 func TestFileHashes(t *testing.T) {
+	t.Parallel()
 	b := render(t, fixedSpec(), 1)
 	for name, c := range map[string]struct {
 		file []byte
@@ -208,6 +215,7 @@ func TestFileHashes(t *testing.T) {
 }
 
 func TestParsesWithGouroboros(t *testing.T) {
+	t.Parallel()
 	s := fixedSpec()
 	b := render(t, s, 1)
 
@@ -250,6 +258,7 @@ func TestParsesWithGouroboros(t *testing.T) {
 }
 
 func TestGenesisPoolsStaked(t *testing.T) {
+	t.Parallel()
 	s := fixedSpec()
 	k := store(t, 1)
 	b, err := Render(s, k)
@@ -313,6 +322,7 @@ func TestGenesisPoolsStaked(t *testing.T) {
 }
 
 func TestFaucetFunded(t *testing.T) {
+	t.Parallel()
 	s := fixedSpec()
 	k := store(t, 1)
 	b, err := Render(s, k)
@@ -337,6 +347,7 @@ func TestFaucetFunded(t *testing.T) {
 }
 
 func TestCommitteeAndConstitution(t *testing.T) {
+	t.Parallel()
 	s := fixedSpec()
 	k := store(t, 1)
 	b, err := Render(s, k)
@@ -369,6 +380,7 @@ func TestCommitteeAndConstitution(t *testing.T) {
 }
 
 func TestPoolFiles(t *testing.T) {
+	t.Parallel()
 	s := fixedSpec()
 	k := store(t, 1)
 	b, err := Render(s, k)
@@ -422,6 +434,7 @@ func TestPoolFiles(t *testing.T) {
 }
 
 func TestTopology(t *testing.T) {
+	t.Parallel()
 	s := fixedSpec()
 	b := render(t, s, 1)
 	for i, p := range b.Pools {
@@ -450,6 +463,7 @@ func TestTopology(t *testing.T) {
 }
 
 func TestNodeConfig(t *testing.T) {
+	t.Parallel()
 	b := render(t, fixedSpec(), 1)
 	var cfg map[string]any
 	if err := json.Unmarshal(b.NodeConfig, &cfg); err != nil {
@@ -476,6 +490,7 @@ func TestNodeConfig(t *testing.T) {
 }
 
 func TestWriteDirIdempotent(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	b := render(t, fixedSpec(), 1)
 	wrote, err := WriteDir(dir, b)

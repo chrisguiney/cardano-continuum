@@ -168,6 +168,7 @@ func verdict(t *testing.T, p Params, b Block, nonce [32]byte, chainCounter uint6
 }
 
 func TestHonestBlockVerifies(t *testing.T) {
+	t.Parallel()
 	p, c := testParams(), testCreds(t)
 	nonce := p.GenesisHash
 	slot := leaderSlot(t, p, c, nonce, 100, true)
@@ -187,6 +188,7 @@ func TestHonestBlockVerifies(t *testing.T) {
 // requires gouroboros to reject the block for the one rule it targets, and
 // for nothing else.
 func TestMisbehaviours(t *testing.T) {
+	t.Parallel()
 	p, c := testParams(), testCreds(t)
 	nonce := p.GenesisHash
 	lead := leaderSlot(t, p, c, nonce, 100, true)
@@ -210,6 +212,7 @@ func TestMisbehaviours(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(string(tt.kind), func(t *testing.T) {
+			t.Parallel()
 			st := testState(t, p, c, nonce, tt.slot, tt.counter)
 			fs := planOne(t, tt.kind, st)
 			if len(fs) != 1 {
@@ -233,6 +236,7 @@ func TestMisbehaviours(t *testing.T) {
 }
 
 func TestBodyRulesNamed(t *testing.T) {
+	t.Parallel()
 	p, c := testParams(), testCreds(t)
 	nonce := p.GenesisHash
 	lead := leaderSlot(t, p, c, nonce, 100, true)
@@ -255,6 +259,7 @@ func TestBodyRulesNamed(t *testing.T) {
 // TestFutureSlot: the block is valid in every rule gouroboros checks; what
 // is wrong is only that its slot has not started.
 func TestFutureSlot(t *testing.T) {
+	t.Parallel()
 	p, c := testParams(), testCreds(t)
 	nonce := p.GenesisHash
 	st := testState(t, p, c, nonce, 100, testCounter)
@@ -276,6 +281,7 @@ func TestFutureSlot(t *testing.T) {
 }
 
 func TestEquivocatePlan(t *testing.T) {
+	t.Parallel()
 	p, c := testParams(), testCreds(t)
 	nonce := p.GenesisHash
 	lead := leaderSlot(t, p, c, nonce, 100, true)
@@ -344,6 +350,7 @@ func planOne(t *testing.T, kind Kind, st State) []Forge {
 }
 
 func TestDeterminism(t *testing.T) {
+	t.Parallel()
 	p, c := testParams(), testCreds(t)
 	nonce := p.GenesisHash
 	run := func(seed rng.Seed) string {
@@ -396,6 +403,7 @@ func peerStrings(ps []PeerID) []string {
 // TestWindowTakesTurns: with a window, one rule is live at a time, in
 // order, so a bounded run reaches every misbehaviour.
 func TestWindowTakesTurns(t *testing.T) {
+	t.Parallel()
 	p, c := testParams(), testCreds(t)
 	nonce := p.GenesisHash
 	pl, err := NewPlanner(p, c, Schedule{Seed: rng.Seed{1}, Window: 10, Rules: []Rule{

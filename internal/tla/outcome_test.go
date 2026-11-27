@@ -3,6 +3,7 @@ package tla
 import "testing"
 
 func TestClassify(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		out     string
@@ -22,6 +23,7 @@ func TestClassify(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, inv := Classify(tt.out, tt.exit, tt.timeout)
 			if got != tt.want || inv != tt.inv {
 				t.Fatalf("got %v %q, want %v %q", got, inv, tt.want, tt.inv)
@@ -31,6 +33,7 @@ func TestClassify(t *testing.T) {
 }
 
 func TestTLCVersion(t *testing.T) {
+	t.Parallel()
 	out := "Picked up JAVA_TOOL_OPTIONS: x\nTLC2 Version 2026.11.19.180144 (rev: bc1b506)\n"
 	if got, want := TLCVersion(out), "2026.11.19.180144 (rev: bc1b506)"; got != want {
 		t.Fatalf("got %q, want %q", got, want)

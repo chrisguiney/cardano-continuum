@@ -61,6 +61,7 @@ func concretized(t *testing.T, a *UtxoAdapter, s Scenario, start uint64) (*conwa
 // validated at; Shelley's inclusive TTL becomes the slot after, which keeps
 // the validated slot the last valid one.
 func TestUpperBoundOnTheSlot(t *testing.T) {
+	t.Parallel()
 	r := rand.New(rand.NewPCG(1, 2))
 	for range 200 {
 		era := tla.UtxoEras[r.IntN(len(tla.UtxoEras))]
@@ -87,6 +88,7 @@ func TestUpperBoundOnTheSlot(t *testing.T) {
 // TestLowerBoundOnTheSlot: lo equal to the slot becomes invalid_before equal
 // to the validated slot.
 func TestLowerBoundOnTheSlot(t *testing.T) {
+	t.Parallel()
 	for slot := 1; slot <= 2; slot++ {
 		tx := baseTx("Babbage")
 		tx.Lo = slot
@@ -100,6 +102,7 @@ func TestLowerBoundOnTheSlot(t *testing.T) {
 // TestDeltaIsOneLovelace: the model's one-coin imbalance is exactly one
 // lovelace, and a balanced transaction balances exactly.
 func TestDeltaIsOneLovelace(t *testing.T) {
+	t.Parallel()
 	for _, delta := range []int{-1, 0, 1} {
 		for _, fee := range []int{1, 2} {
 			tx := baseTx("Babbage")
@@ -139,6 +142,7 @@ func run(t *testing.T, a Adapter, s Scenario) Result {
 // UtxoGoIntervalInclusiveBug (Allegra: an upper bound equal to the slot is
 // rejected). The fake chain gives each the model's verdict.
 func TestTtlBoundaryGetsTheSpecVerdict(t *testing.T) {
+	t.Parallel()
 	shelley := baseTx("Shelley")
 	shelley.Hi = 1
 	allegra := baseTx("Allegra")
@@ -157,6 +161,7 @@ func TestTtlBoundaryGetsTheSpecVerdict(t *testing.T) {
 // TestWrongMappingIsADisagreement: an adapter that puts the upper bound one
 // slot late makes the fake accept what the model rejects.
 func TestWrongMappingIsADisagreement(t *testing.T) {
+	t.Parallel()
 	tx := baseTx("Allegra")
 	tx.Hi = 1
 	s := utxoScenario("Allegra", oneOutput(1), tla.Verdict{Tx: tx, Accepts: false})

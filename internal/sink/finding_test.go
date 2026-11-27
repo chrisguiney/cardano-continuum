@@ -11,6 +11,7 @@ import (
 )
 
 func TestExportFindings(t *testing.T) {
+	t.Parallel()
 	verdict := oracle.Finding{
 		ID: "id1", Kind: oracle.WrongClass, Severity: oracle.Warn, Seq: 2, Summary: "extra class",
 		Tx: []byte{0x84, 0xa0}, TxHash: bytes.Repeat([]byte{0xab}, 32),

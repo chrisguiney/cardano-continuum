@@ -10,6 +10,7 @@ import (
 )
 
 func TestLoadVectors(t *testing.T) {
+	t.Parallel()
 	row := `{"era":"Shelley","family":"interval","ledger":{"utxo":{"a":{"coin":3,"tok":0,"lock":"key"}},"slot":1,"registered":true,"reward":0},"tx":{"ins":["a"],"coll":[],"refs":[],"delta":0,"tdelta":0,"fee":1,"mint":0,"cert":"none","wdrl":false,"olock":"key","big":false,"lo":0,"hi":3,"rdmrs":false,"valid":true,"pass":true,"tcoll":-1},"specAccepts":true}`
 	in := strings.Repeat(row+"\n", 6)
 	got, err := LoadVectors(strings.NewReader(in))
@@ -22,6 +23,7 @@ func TestLoadVectors(t *testing.T) {
 }
 
 func TestLoadVectorsMalformedLine(t *testing.T) {
+	t.Parallel()
 	row := `{"era":"Shelley","family":"interval","specAccepts":true}`
 	in := row + "\n" + row + "\n" + `{"era": }` + "\n" + row + "\n"
 	_, err := LoadVectors(strings.NewReader(in))
@@ -64,6 +66,7 @@ func exportEra(t *testing.T, era string) VectorSet {
 // TableSpec is dumped once, and contributes exactly the transactions TLC
 // counted for each family.
 func TestVectorExportCount(t *testing.T) {
+	t.Parallel()
 	set := exportEra(t, "Shelley")
 	if set.Distinct != 81 {
 		t.Fatalf("distinct states = %d, want 81", set.Distinct)
@@ -120,6 +123,7 @@ func boundary(t *testing.T, set VectorSet, slot, lo, hi int) bool {
 // Shelley: SpecInterval is tx.hi >= slot, so a ttl equal to the slot is
 // accepted and one below it is not.
 func TestVectorExportShelleyTTL(t *testing.T) {
+	t.Parallel()
 	set := exportEra(t, "Shelley")
 	for hi, want := range map[int]bool{1: false, 2: true, 3: true} {
 		if got := boundary(t, set, 2, 0, hi); got != want {
@@ -131,6 +135,7 @@ func TestVectorExportShelleyTTL(t *testing.T) {
 // Allegra and later: lo <= slot < hi, with 0 meaning unbounded. A start equal
 // to the slot is accepted, a ttl equal to the slot is not (ttl is exclusive).
 func TestVectorExportAllegraInterval(t *testing.T) {
+	t.Parallel()
 	set := exportEra(t, "Allegra")
 	cases := []struct {
 		lo, hi int

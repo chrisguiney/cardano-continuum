@@ -16,6 +16,7 @@ const (
 )
 
 func TestTagComputation(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		revs  map[string]string
@@ -38,6 +39,7 @@ func TestTagComputation(t *testing.T) {
 }
 
 func TestReproNeverDirty(t *testing.T) {
+	t.Parallel()
 	r := Request{Mode: Repro}
 	if got := r.tag(dingoSha, map[string]string{Gouroboros: gouroSha}, true, diffHash6); got != "dev-d1234567-gabcdef1" {
 		t.Fatalf("repro tag = %q, want no dirty suffix", got)
@@ -49,6 +51,7 @@ func TestReproNeverDirty(t *testing.T) {
 }
 
 func TestLabels(t *testing.T) {
+	t.Parallel()
 	r := Request{Mode: Fast, With: []Overlay{{Module: Gouroboros}, {Module: Plutigo}}}
 	revs := map[string]string{Dingo: dingoSha, Gouroboros: gouroSha, Plutigo: plutiSha}
 	got := r.Labels(revs, true)

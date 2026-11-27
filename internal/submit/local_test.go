@@ -79,6 +79,7 @@ func conwayReject(utxo ...any) []any {
 }
 
 func TestLocalAccepts(t *testing.T) {
+	t.Parallel()
 	var got []byte
 	l := NewLocal(serve(t, func(tx []byte) error { got = tx; return nil }), testMagic)
 	o := Send(context.Background(), l, 6, []byte{0x80})
@@ -91,6 +92,7 @@ func TestLocalAccepts(t *testing.T) {
 }
 
 func TestLocalRejectionDecoded(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		reply wireReject
@@ -103,6 +105,7 @@ func TestLocalRejectionDecoded(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			l := NewLocal(serve(t, func([]byte) error { return tt.reply }), testMagic)
 			o := Send(context.Background(), l, 6, []byte{0x80})
 			if o.Verdict != Rejected || !o.Has(tt.want) {
@@ -115,6 +118,7 @@ func TestLocalRejectionDecoded(t *testing.T) {
 // TestLocalUnknownRejectionKept feeds a reason no decoder maps and requires
 // the text to survive on the outcome.
 func TestLocalUnknownRejectionKept(t *testing.T) {
+	t.Parallel()
 	l := NewLocal(serve(t, func([]byte) error { return wire(t, conwayReject(99, 7)) }), testMagic)
 	o := Send(context.Background(), l, 6, []byte{0x80})
 	if o.Verdict != Rejected || len(o.Failures) != 1 || o.Failures[0].Class != Unknown || o.Failures[0].Detail == "" {
@@ -123,6 +127,7 @@ func TestLocalUnknownRejectionKept(t *testing.T) {
 }
 
 func TestLocalDialFailureIsTransport(t *testing.T) {
+	t.Parallel()
 	boom := errors.New("no route")
 	l := NewLocal(func(context.Context) (net.Conn, error) { return nil, boom }, testMagic)
 	o := Send(context.Background(), l, 6, []byte{0x80})
@@ -132,6 +137,7 @@ func TestLocalDialFailureIsTransport(t *testing.T) {
 }
 
 func TestLocalHungServerUnblocksOnCancel(t *testing.T) {
+	t.Parallel()
 	block := make(chan struct{})
 	l := NewLocal(serve(t, func([]byte) error { <-block; return nil }), testMagic)
 	t.Cleanup(func() { close(block) })

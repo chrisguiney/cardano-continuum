@@ -15,6 +15,7 @@ import (
 func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
 
 func TestFakeAccepts(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	o := Send(context.Background(), NewFake(f.chain), fakechain.EraConway, f.encode(f.good()))
 	if o.Verdict != Accepted || o.Err != nil || o.Target != "fakechain" {
@@ -28,6 +29,7 @@ func TestFakeAccepts(t *testing.T) {
 // TestRejectionClasses submits one broken transaction per class and requires
 // the outcome to carry exactly the class the fake chain produced, by name.
 func TestRejectionClasses(t *testing.T) {
+	t.Parallel()
 	wrongNet := uint8(1)
 	tests := []struct {
 		name string
@@ -56,6 +58,7 @@ func TestRejectionClasses(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			f := newFixture(t)
 			s := f.good()
 			tt.mod(f, &s)
@@ -76,6 +79,7 @@ func TestRejectionClasses(t *testing.T) {
 // TestClassNamesMatchFakechain pins the shared vocabulary so a verdict from
 // the fake and one decoded from a real node compare directly.
 func TestClassNamesMatchFakechain(t *testing.T) {
+	t.Parallel()
 	pairs := map[Class]fakechain.Class{
 		BadInputs: fakechain.BadInputs, FeeTooSmall: fakechain.FeeTooSmall,
 		ValueNotConserved: fakechain.ValueNotConserved, OutsideValidityInterval: fakechain.OutsideValidityInterval,
@@ -95,6 +99,7 @@ func TestClassNamesMatchFakechain(t *testing.T) {
 }
 
 func TestUnmappedFakeClassKeptVerbatim(t *testing.T) {
+	t.Parallel()
 	o := outcomeOf("fakechain", &fakechain.RejectError{Failures: []fakechain.Failure{
 		{Class: "gouroboros:SomeRule", Err: errors.New("boom")},
 	}})
@@ -112,6 +117,7 @@ func (t failTarget) Submit(context.Context, uint, []byte) error {
 }
 
 func TestTransportErrorIsNotRefusal(t *testing.T) {
+	t.Parallel()
 	for _, err := range []error{context.DeadlineExceeded, errors.New("connection reset"), context.Canceled} {
 		o := Send(context.Background(), failTarget{err}, 6, nil)
 		if o.Verdict != Unreached {
@@ -127,6 +133,7 @@ func TestTransportErrorIsNotRefusal(t *testing.T) {
 }
 
 func TestUndecodableIsRejection(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	o := Send(context.Background(), NewFake(f.chain), fakechain.EraConway, []byte{0xff})
 	if o.Verdict != Rejected || !o.Has(Undecodable) {
@@ -143,6 +150,7 @@ func (s slowTarget) Submit(ctx context.Context, _ uint, _ []byte) error {
 }
 
 func TestFanoutPerTargetOutcomes(t *testing.T) {
+	t.Parallel()
 	good, bad := newFixture(t), newFixture(t)
 	if err := bad.chain.AdvanceTo(10); err != nil { // the same tx has a ttl in the past here
 		t.Fatal(err)
@@ -167,6 +175,7 @@ func TestFanoutPerTargetOutcomes(t *testing.T) {
 }
 
 func TestFanoutCancelUnblocksAndJoins(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 	outs := Fanout(ctx, []Target{slowTarget{"a"}, slowTarget{"b"}}, 6, nil)

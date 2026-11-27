@@ -13,6 +13,7 @@ import (
 func stream(n byte) *rand.Rand { return rng.Seed{n}.Derive("mistake").Rand() }
 
 func TestSampleDeterministic(t *testing.T) {
+	t.Parallel()
 	tr := profile.SampledTraits{Competence: 0.4, Care: 0.3}
 	all := Of(Kinds()...)
 	a, b := stream(1), stream(1)
@@ -35,6 +36,7 @@ func TestSampleDeterministic(t *testing.T) {
 }
 
 func TestSampleRateAndChoice(t *testing.T) {
+	t.Parallel()
 	all := Of(Kinds()...)
 	only := Of(FeeTooSmall, MissingSigner)
 	const n = 20000
@@ -73,6 +75,7 @@ func TestSampleRateAndChoice(t *testing.T) {
 }
 
 func TestDiagnoseAccuracyRises(t *testing.T) {
+	t.Parallel()
 	fs := []submit.Failure{{Class: submit.FeeTooSmall}, {Class: submit.MissingVKeyWitnesses}}
 	const n = 20000
 	prev := -1.0
@@ -102,6 +105,7 @@ func TestDiagnoseAccuracyRises(t *testing.T) {
 }
 
 func TestDiagnoseDeterministic(t *testing.T) {
+	t.Parallel()
 	fs := []submit.Failure{{Class: submit.BadInputs}}
 	d := Diagnoser{Competence: 0.3}
 	a, b := stream(8), stream(8)

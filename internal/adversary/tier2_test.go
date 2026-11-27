@@ -11,6 +11,7 @@ func approx(a, b float64) bool { return math.Abs(a-b) < 1e-9 }
 // TestPoolRewardSaturationCaps pins that a pool past the saturation size earns
 // no more than one exactly at it: the reward formula caps stake at z0.
 func TestPoolRewardSaturationCaps(t *testing.T) {
+	t.Parallel()
 	p := RewardParams{Influence: 0.3, OptimalPools: 10, Pot: 1e9}
 	z0 := p.z0()
 	at := p.PoolReward(z0, 0)
@@ -27,6 +28,7 @@ func TestPoolRewardSaturationCaps(t *testing.T) {
 // TestPledgeInfluenceRewardsPledge pins that, at equal stake, more pledge earns
 // more: the a0 term rewards pledge.
 func TestPledgeInfluenceRewardsPledge(t *testing.T) {
+	t.Parallel()
 	p := RewardParams{Influence: 0.3, OptimalPools: 10, Pot: 1e9}
 	low := p.PoolReward(0.05, 0.0)
 	high := p.PoolReward(0.05, 0.05)
@@ -39,6 +41,7 @@ func TestPledgeInfluenceRewardsPledge(t *testing.T) {
 // an over-saturated owner earns more by splitting into pools that each fit
 // under z0.
 func TestSybilSplitEscapesSaturation(t *testing.T) {
+	t.Parallel()
 	p := RewardParams{Influence: 0.3, OptimalPools: 10, Pot: 1e9}
 	// z0 = 0.1; a single 0.3-stake pool is heavily over-saturated.
 	rows := p.SybilImpact(0.3, 0.0, 3)
@@ -51,6 +54,7 @@ func TestSybilSplitEscapesSaturation(t *testing.T) {
 // TestSybilSplitDilutesPledge pins the pledge side: with stake under z0 and
 // full pledge, splitting lowers reward because each pool's pledge bonus shrinks.
 func TestSybilSplitDilutesPledge(t *testing.T) {
+	t.Parallel()
 	p := RewardParams{Influence: 0.3, OptimalPools: 10, Pot: 1e9}
 	// Stake 0.06 < z0 = 0.1, so saturation does not bite; pledge is the whole
 	// stake, so only the pledge term moves.
@@ -65,6 +69,7 @@ func TestSybilSplitDilutesPledge(t *testing.T) {
 // Ledger, binds the spam at the budget: exactly Count() proposals charge, the
 // next is refused.
 func TestProposalSpamCeilingBinds(t *testing.T) {
+	t.Parallel()
 	s := ProposalSpam{Deposit: 100_000_000_000, Budget: 1_000_000_000_000, ExpiryEpochs: 6, HonestRatifyEpochs: 2}
 	if s.Count() != 10 {
 		t.Fatalf("count = %d, want 10", s.Count())
@@ -82,6 +87,7 @@ func TestProposalSpamCeilingBinds(t *testing.T) {
 // TestProposalSpamThroughputUnchanged pins the model's claim that spam does not
 // change honest ratification latency: only the deposit locked moves.
 func TestProposalSpamThroughputUnchanged(t *testing.T) {
+	t.Parallel()
 	s := ProposalSpam{Deposit: 100_000_000_000, Budget: 500_000_000_000, ExpiryEpochs: 6, HonestRatifyEpochs: 2}
 	rows := s.Impact()
 	for _, r := range rows {
@@ -101,6 +107,7 @@ func TestProposalSpamThroughputUnchanged(t *testing.T) {
 // TestMempoolFloodRaisesLatency pins that an outbidding flood delays honest
 // confirmation, and that an equal run with no flood does not.
 func TestMempoolFloodRaisesLatency(t *testing.T) {
+	t.Parallel()
 	f := MempoolFlood{
 		BlockBytes: 90_000, SlotSeconds: 1, HonestTxBytes: 1_000, HonestTxs: 3,
 		FloodBytes: 900_000, FloodOutbids: true,
@@ -120,6 +127,7 @@ func TestMempoolFloodRaisesLatency(t *testing.T) {
 // TestMempoolFloodNoOutbidNoDelay pins that a flood that does not outbid does
 // not delay honest confirmation.
 func TestMempoolFloodNoOutbidNoDelay(t *testing.T) {
+	t.Parallel()
 	f := MempoolFlood{
 		BlockBytes: 90_000, SlotSeconds: 1, HonestTxBytes: 1_000, HonestTxs: 3,
 		FloodBytes: 900_000, FloodOutbids: false,

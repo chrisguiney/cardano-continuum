@@ -6,6 +6,7 @@ import (
 )
 
 func TestOverlayDockerfile(t *testing.T) {
+	t.Parallel()
 	want, err := os.ReadFile("testdata/overlay.Dockerfile.golden")
 	if err != nil {
 		t.Fatal(err)
@@ -17,6 +18,7 @@ func TestOverlayDockerfile(t *testing.T) {
 }
 
 func TestBinaryPath(t *testing.T) {
+	t.Parallel()
 	df := []byte("FROM x AS build\nCOPY --from=build /code/dingo /bin/\nCOPY --from=build /code/other /opt/\n")
 	got, err := BinaryPath(df, "dingo")
 	if err != nil || got != "/bin/dingo" {
@@ -28,6 +30,7 @@ func TestBinaryPath(t *testing.T) {
 }
 
 func TestLdflags(t *testing.T) {
+	t.Parallel()
 	got := ldflags("github.com/blinklabs-io/dingo", "", "abc123")
 	want := "-s -w -X github.com/blinklabs-io/dingo/internal/version.Version= -X github.com/blinklabs-io/dingo/internal/version.CommitHash=abc123"
 	if got != want {

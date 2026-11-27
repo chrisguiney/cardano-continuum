@@ -271,6 +271,7 @@ func (m model) cases() []modelCase {
 }
 
 func TestPolicyAgreesWithModel(t *testing.T) {
+	t.Parallel()
 	r := rand.New(rand.NewPCG(31, 1))
 	checked, allowed := 0, 0
 	for range 40_000 {

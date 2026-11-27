@@ -72,6 +72,7 @@ func run(t *testing.T, tr *Tracker) (stop func()) {
 // blocked, so a tip is read only after the tracker has settled, and the fake
 // clock moves only when the test sleeps.
 func TestTrackerFollowsEachTarget(t *testing.T) {
+	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		d := &fakeDial{dials: map[string]int{}, conns: map[string][]*fakeConn{
 			"a:3001": {{tip: mk(1, 'a'), script: []Event{fwd(mk(2, 'a')), fwd(mk(3, 'a'))}}},
@@ -94,6 +95,7 @@ func TestTrackerFollowsEachTarget(t *testing.T) {
 }
 
 func TestTrackerReconnectsAndDropsRemovedTarget(t *testing.T) {
+	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		d := &fakeDial{dials: map[string]int{}, conns: map[string][]*fakeConn{
 			"a:3001": {

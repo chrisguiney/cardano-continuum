@@ -14,6 +14,7 @@ func rej(cs ...Class) Outcome {
 }
 
 func TestRefutes(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		o    Outcome
@@ -43,6 +44,7 @@ func TestRefutes(t *testing.T) {
 }
 
 func TestIntrinsicReadsOnlyTheTransaction(t *testing.T) {
+	t.Parallel()
 	for _, c := range []Class{BadInputs, MempoolFailure, OutsideValidityInterval, ValueNotConserved, Unknown, EraMismatch, OutsideForecast, MissingScriptWitnesses, ScriptWitnessNotValid} {
 		if Intrinsic(c) {
 			t.Errorf("%s reads chain state but is Intrinsic", c)
@@ -56,6 +58,7 @@ func TestIntrinsicReadsOnlyTheTransaction(t *testing.T) {
 }
 
 func TestAggregateRejectsOnlyIfAllReject(t *testing.T) {
+	t.Parallel()
 	un := Outcome{Verdict: Unreached, Err: errors.New("timeout")}
 	tests := []struct {
 		name string
@@ -83,6 +86,7 @@ func TestAggregateRejectsOnlyIfAllReject(t *testing.T) {
 }
 
 func TestPerfectNamesAReportedClass(t *testing.T) {
+	t.Parallel()
 	fs := []Failure{{Class: BadInputs}, {Class: FeeTooSmall}}
 	if c := (Perfect{}).Diagnose(nil, fs); c != BadInputs && c != FeeTooSmall {
 		t.Fatalf("Perfect named %q, not a reported class", c)

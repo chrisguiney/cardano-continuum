@@ -25,6 +25,7 @@ import (
 // registry and requires the operator's resolver to read the same provenance
 // back into the CRD's BuildInfo.
 func TestLabelsRoundTripIntoBuildInfo(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(registry.New(registry.Logger(log.New(io.Discard, "", 0))))
 	t.Cleanup(srv.Close)
 	host := strings.TrimPrefix(srv.URL, "http://")
@@ -86,6 +87,7 @@ func dockerRecorder(t *testing.T, h *hybrid) {
 }
 
 func TestBuildFast(t *testing.T) {
+	t.Parallel()
 	dingo, gouro := fixture(t)
 	h := &hybrid{}
 	dockerRecorder(t, h)
@@ -119,6 +121,7 @@ func TestBuildFast(t *testing.T) {
 }
 
 func TestBuildFastDirtyTag(t *testing.T) {
+	t.Parallel()
 	dingo, gouro := fixture(t)
 	write(t, gouro, "gouro.go", "package gouro\n\nconst Name = \"x\"\n")
 	h := &hybrid{}
@@ -135,6 +138,7 @@ func TestBuildFastDirtyTag(t *testing.T) {
 }
 
 func TestBuildReproUsesDingoDockerfile(t *testing.T) {
+	t.Parallel()
 	dingo, gouro := fixture(t)
 	h := &hybrid{}
 	dockerRecorder(t, h)
@@ -169,6 +173,7 @@ func TestBuildReproUsesDingoDockerfile(t *testing.T) {
 }
 
 func TestBuildNeedsRegistry(t *testing.T) {
+	t.Parallel()
 	dingo, _ := fixture(t)
 	b := New(&hybrid{}, stubImages{}, image.Settings{}, discard())
 	if _, err := b.Build(t.Context(), Request{Dingo: dingo, Mode: Repro}); err == nil {

@@ -50,6 +50,7 @@ func kinds(fs []Finding) []Kind {
 }
 
 func TestJudgeTable(t *testing.T) {
+	t.Parallel()
 	cn := node("cardano-node", "p1")
 	tests := []struct {
 		name string
@@ -70,6 +71,7 @@ func TestJudgeTable(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			fs := Judge(attempt(tt.want, Answer{Node: cn, Outcome: tt.got}), run)
 			if got := kinds(fs); !slices.Equal(got, tt.kind) {
 				t.Fatalf("kinds = %v, want %v", got, tt.kind)
@@ -99,6 +101,7 @@ func checkVerdictFinding(t *testing.T, f Finding, blamed Node) {
 // MissingVKeyWitnessesUTXOW as a generic error, so a missing signer comes
 // back Unknown.
 func TestJudgeUnknownIsUnclassified(t *testing.T) {
+	t.Parallel()
 	want := expect(mistake.Of(mistake.MissingSigner), false)
 	for _, o := range []submit.Outcome{
 		rejected(submit.Unknown),
@@ -117,6 +120,7 @@ func TestJudgeUnknownIsUnclassified(t *testing.T) {
 // The fake chain adds MissingRedeemers to every BadInputs rejection, where a
 // node names BadInputs alone. The oracle must report it against fakechain.
 func TestJudgeFakeChainExtraClass(t *testing.T) {
+	t.Parallel()
 	fake := node("fakechain", "fakechain")
 	fs := Judge(attempt(expect(mistake.Of(mistake.StaleInput), false),
 		Answer{Node: fake, Outcome: rejected(submit.BadInputs, "MissingRedeemers")}), run)
@@ -134,6 +138,7 @@ func hasFact(f Finding, name, value string) bool {
 }
 
 func TestDifferentialSplit(t *testing.T) {
+	t.Parallel()
 	a := attempt(nil,
 		Answer{Node: node("cardano-node", "p1"), Outcome: rejected(submit.FeeTooSmall)},
 		Answer{Node: node("dingo", "p2"), Outcome: accepted()},
@@ -148,6 +153,7 @@ func TestDifferentialSplit(t *testing.T) {
 }
 
 func TestDifferentialAgreement(t *testing.T) {
+	t.Parallel()
 	for name, outs := range map[string][2]submit.Outcome{
 		"both accept":        {accepted(), accepted()},
 		"rule order differs": {rejected(submit.FeeTooSmall), rejected(submit.OutsideValidityInterval)},
@@ -174,6 +180,7 @@ func TestDifferentialAgreement(t *testing.T) {
 // when the transaction reached it second; only a state-independent rule
 // splitting the verdict is a disagreement.
 func TestDifferentialIgnoresTiming(t *testing.T) {
+	t.Parallel()
 	for _, c := range []submit.Class{submit.BadInputs, submit.MempoolFailure} {
 		a := attempt(nil,
 			Answer{Node: node("cardano-node", "p1"), Outcome: accepted()},
@@ -186,6 +193,7 @@ func TestDifferentialIgnoresTiming(t *testing.T) {
 }
 
 func TestFindingNonReproducibleFromDirty(t *testing.T) {
+	t.Parallel()
 	dirty := node("dingo", "p2")
 	dirty.Dirty = true
 	dirty.Revisions = map[string]string{"dingo": "abc123", "gouroboros": "def456"}

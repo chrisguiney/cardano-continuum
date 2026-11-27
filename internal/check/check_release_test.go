@@ -7,6 +7,7 @@ import "testing"
 // Release builds compile the checks away: a failing check must not panic and
 // a closure must never run, since it may be expensive.
 func TestChecksAreNoOpsInRelease(t *testing.T) {
+	t.Parallel()
 	Pre(false, "x")
 	Post(false, "x")
 	PreFn(func() bool { t.Fatal("closure ran in a release build"); return false }, "x")

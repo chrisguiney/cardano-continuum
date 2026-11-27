@@ -27,6 +27,7 @@ func witnessScenario(kind string, env tla.WitEnv, accepts bool, cell any) Scenar
 // TestKeyCells: each carried key source needs v1's witness and nothing else,
 // and a bad extra signature rejects.
 func TestKeyCells(t *testing.T) {
+	t.Parallel()
 	for src := range keySources {
 		for _, tc := range []struct {
 			wits    []string
@@ -51,6 +52,7 @@ func TestKeyCells(t *testing.T) {
 // (hi <= slot); one slot earlier it does not. The concrete script and
 // interval keep that equality.
 func TestNativeExpiryOnTheBound(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		hi, leaf int
 		accepts  bool
@@ -77,6 +79,7 @@ func TestNativeExpiryOnTheBound(t *testing.T) {
 }
 
 func TestNativeSignatureAndStart(t *testing.T) {
+	t.Parallel()
 	sig := nativeCell{Op: "any", Subs: []leaf{{Op: "sig", Key: "v1"}, {Op: "sig", Key: "b"}}}
 	start := nativeCell{Op: "atleast", M: 1, Subs: []leaf{{Op: "start", Key: "v1", Slot: 1}}}
 	for name, s := range map[string]Scenario{
@@ -95,6 +98,7 @@ func TestNativeSignatureAndStart(t *testing.T) {
 // TestUnmappableNamesTheReason: model state with no concrete form is reported
 // with what it was, never run as a partial scenario.
 func TestUnmappableNamesTheReason(t *testing.T) {
+	t.Parallel()
 	plutus := baseTx("Babbage")
 	plutus.Rdmrs, plutus.Coll = true, []string{"a"}
 	spec := utxoScenario("Mary", oneOutput(0), tla.Verdict{Tx: baseTx("Mary"), Accepts: true})
@@ -120,6 +124,7 @@ func TestUnmappableNamesTheReason(t *testing.T) {
 // TestRejectedStepSkippedAcceptedTruncates: a rejected step the mapping
 // cannot carry is left out and the rest runs; an accepted one ends the plan.
 func TestRejectedStepSkippedAcceptedTruncates(t *testing.T) {
+	t.Parallel()
 	plutus := baseTx("Babbage")
 	plutus.Rdmrs = true
 	ok := baseTx("Babbage")
@@ -137,6 +142,7 @@ func TestRejectedStepSkippedAcceptedTruncates(t *testing.T) {
 // TestModelStateCrossChecked: a next ledger that is not what the mapping's
 // arithmetic gives is an error, not a scenario.
 func TestModelStateCrossChecked(t *testing.T) {
+	t.Parallel()
 	wrong := tla.Ledger{UTxO: map[string]tla.Output{"a": key(3, 0)}, Slot: 1, Registered: true}
 	s := utxoScenario("Babbage", oneOutput(1), tla.Verdict{Tx: baseTx("Babbage"), Accepts: true, After: &wrong}, tla.Verdict{Tx: baseTx("Babbage")})
 	if _, err := Run(t.Context(), s, FakeBackend{}, testSeed()); err == nil || !strings.Contains(err.Error(), "mapping computed") {
@@ -184,6 +190,7 @@ func codecAnswer(t *testing.T, s Scenario) (Result, submit.Outcome) {
 // TestCodecRejectedAsUndecodable: encodings the reference refuses are
 // refused by the fake's decoder, with the deserialisation class.
 func TestCodecRejectedAsUndecodable(t *testing.T) {
+	t.Parallel()
 	for name, s := range map[string]Scenario{
 		"inputs under tag 259":    codecScenario("PreConwaySetTag", setTagInput{Era: "Conway", Field: "inputs", Tag: "other"}),
 		"tag 258 around a uint":   codecScenario("ValueSetMembers", setContentInput{Where: "top", Content: "uint"}),
@@ -203,6 +210,7 @@ func TestCodecRejectedAsUndecodable(t *testing.T) {
 // decode, rejected by a ledger rule, were decoded. A stand-in target that
 // answers ValueNotConserved to everything shows the judgement.
 func TestCodecDecodedThenRejectedIsADisagreement(t *testing.T) {
+	t.Parallel()
 	s := codecScenario("PreConwaySetTag", setTagInput{Era: "Conway", Field: "inputs", Tag: "other"})
 	res, err := runWith(t.Context(), s, NewCodecAdapter(), lenientBackend{}, testSeed())
 	if err != nil {
@@ -238,6 +246,7 @@ func (t *lenientTarget) Submit(ctx context.Context, tx []byte) submit.Outcome {
 // TestCodecAcceptedForms: forms the reference decodes are accepted outright
 // when the transaction around them is valid.
 func TestCodecAcceptedForms(t *testing.T) {
+	t.Parallel()
 	for name, s := range map[string]Scenario{
 		"wide outer array":       codecScenario("TxSizeFraming", framingInput{Framing: "wide"}),
 		"indefinite outer array": codecScenario("TxSizeFraming", framingInput{Framing: "indefinite"}),
@@ -253,6 +262,7 @@ func TestCodecAcceptedForms(t *testing.T) {
 }
 
 func TestQuantityEncodings(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		value, enc, hex string
 	}{
@@ -291,6 +301,7 @@ func mustHex(t *testing.T, s string) []byte {
 
 // TestFaultStep: a plan may inject a fake-chain fault between submissions.
 func TestFaultStep(t *testing.T) {
+	t.Parallel()
 	b := FakeBackend{}
 	env := b.Env()
 	env.Seed = testSeed()
@@ -320,6 +331,7 @@ func TestFaultStep(t *testing.T) {
 }
 
 func TestLibraryRoundTrip(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	want := utxoScenario("Allegra", oneOutput(1), tla.Verdict{Tx: baseTx("Allegra"), Accepts: true})
 	want.ID = "ledger-utxo/UtxoX/0"
@@ -341,6 +353,7 @@ func TestLibraryRoundTrip(t *testing.T) {
 }
 
 func TestDecodeRejects(t *testing.T) {
+	t.Parallel()
 	for name, text := range map[string]string{
 		"other version": `{"version":2,"id":"a/b","family":"codec","source":"table","provenance":{"repo":"","commit":"","spec":""},"codec":{"model":"m","input":{}}}`,
 		"unknown field": `{"version":1,"id":"a/b","surprise":1}`,
@@ -356,6 +369,7 @@ func TestDecodeRejects(t *testing.T) {
 // TestCuratedLibrary runs the committed scenarios. Every one gets the
 // model's verdict from the fake chain except those knownDisagreements lists.
 func TestCuratedLibrary(t *testing.T) {
+	t.Parallel()
 	ss, err := Load(filepath.Join("..", "..", "scenarios"))
 	if err != nil {
 		t.Fatal(err)
@@ -389,6 +403,7 @@ var knownDisagreements = map[string]bool{
 }
 
 func TestSampleVectorsDeterministic(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	var vs []tla.Vector
 	for i := range 50 {
@@ -418,6 +433,7 @@ func TestSampleVectorsDeterministic(t *testing.T) {
 }
 
 func TestSummary(t *testing.T) {
+	t.Parallel()
 	sum := Summarize([]Result{
 		{Family: FamilyUtxo, Source: SourceTrace, Status: Pass, Steps: 3, Skipped: []Skip{{1, "why"}}},
 		{Family: FamilyUtxo, Source: SourceTrace, Status: Unconcretizable, Reason: "no form"},
@@ -438,6 +454,7 @@ func TestSummary(t *testing.T) {
 }
 
 func TestOwners(t *testing.T) {
+	t.Parallel()
 	for fam, want := range map[string]Owner{
 		"chainsync": OwnerRoguePeer, "consensus-nonce": OwnerRoguePool, "ledger-utxo": OwnerTxCrafter,
 		"cbor-codec": OwnerMalformedTx, "ledger-governance": OwnerLater, "engine": OwnerNone,

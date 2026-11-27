@@ -17,6 +17,7 @@ func openFixture(t *testing.T, name string) *os.File {
 }
 
 func TestParseTraceHello(t *testing.T) {
+	t.Parallel()
 	tr, err := ParseTrace(openFixture(t, "hello.trace.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -40,6 +41,7 @@ func TestParseTraceHello(t *testing.T) {
 }
 
 func TestParseTraceKeepAlive(t *testing.T) {
+	t.Parallel()
 	tr, err := ParseTrace(openFixture(t, "keepalive.trace.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -69,6 +71,7 @@ func TestParseTraceKeepAlive(t *testing.T) {
 }
 
 func TestParseTraceRejects(t *testing.T) {
+	t.Parallel()
 	tests := map[string]string{
 		"not json":          `nope`,
 		"no counterexample": `{"vars":[]}`,
@@ -77,6 +80,7 @@ func TestParseTraceRejects(t *testing.T) {
 	}
 	for name, in := range tests {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			if _, err := ParseTrace(strings.NewReader(in)); err == nil {
 				t.Fatal("want error")
 			}

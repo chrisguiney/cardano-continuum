@@ -147,6 +147,7 @@ func newPeer(t *testing.T, addr string) *Peer {
 // TestNewRefusesWithoutClearance pins the Clearance guard: a rogue cannot be
 // built against a node that has not been cleared as the run's devnet.
 func TestNewRefusesWithoutClearance(t *testing.T) {
+	t.Parallel()
 	if _, err := New(Config{Addr: "127.0.0.1:1", Magic: testMagic}, discard()); err == nil {
 		t.Fatal("New accepted a peer without a clearance")
 	}
@@ -162,6 +163,7 @@ var handshakeDisconnects = []Behaviour{
 	ChainSyncNoAgency, KeepAliveNoAgency, PeerShareNoAgency,
 }
 
+// Not parallel: per-test goleak.VerifyNone would see other parallel tests' goroutines.
 func TestBehavioursDisconnect(t *testing.T) {
 	t.Cleanup(func() { goleak.VerifyNone(t, goleak.IgnoreCurrent()) })
 	h := newHonest(t, testMagic)
@@ -186,6 +188,7 @@ func TestBehavioursDisconnect(t *testing.T) {
 // TestBehavioursNeverFatal covers the behaviours whose exact reaction depends
 // on the node's timeouts. None may be fatal (an accepted invalid message, a
 // stall or a crash), and each must leave the node able to serve a fresh peer.
+// Not parallel: per-test goleak.VerifyNone would see other parallel tests' goroutines.
 func TestBehavioursNeverFatal(t *testing.T) {
 	t.Cleanup(func() { goleak.VerifyNone(t, goleak.IgnoreCurrent()) })
 	h := newHonest(t, testMagic)
@@ -241,6 +244,7 @@ func noninterference(t *testing.T, h *honest) {
 // TestCraftDeterministic pins that the bytes a behaviour sends are a function
 // of its inputs alone, so a run replays identically.
 func TestCraftDeterministic(t *testing.T) {
+	t.Parallel()
 	a, err := proposeVersions(defaultVersion, testMagic)
 	if err != nil {
 		t.Fatal(err)
@@ -264,6 +268,7 @@ func TestCraftDeterministic(t *testing.T) {
 // TestExpectationsComplete pins that every behaviour declares an expected
 // reaction, so no behaviour runs without an oracle.
 func TestExpectationsComplete(t *testing.T) {
+	t.Parallel()
 	for _, b := range Behaviours() {
 		if b.Expect() == "" {
 			t.Errorf("%s has no expected reaction", b)

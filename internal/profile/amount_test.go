@@ -27,6 +27,7 @@ profiles:
 `
 
 func TestParseAmount(t *testing.T) {
+	t.Parallel()
 	ps, err := Parse(strings.NewReader(amountDoc))
 	if err != nil {
 		t.Fatal(err)
@@ -48,6 +49,7 @@ func TestParseAmount(t *testing.T) {
 // A profile without the field has no amount and no weight, and marshals
 // without either key, so its hash and every golden stay as they were.
 func TestOldProfilesHaveNoAmount(t *testing.T) {
+	t.Parallel()
 	ps, err := Parse(bytes.NewReader(open(t, "testdata/minimal.yaml")))
 	if err != nil {
 		t.Fatal(err)
@@ -65,6 +67,7 @@ func TestOldProfilesHaveNoAmount(t *testing.T) {
 }
 
 func TestParseAmountRejects(t *testing.T) {
+	t.Parallel()
 	head := strings.Split(amountDoc, "    amount:")[0]
 	tests := map[string]string{
 		"no body":            "    amount:\n      tail_share: 0.1\n",
@@ -76,6 +79,7 @@ func TestParseAmountRejects(t *testing.T) {
 	}
 	for name, doc := range tests {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			_, err := Parse(strings.NewReader(head + doc))
 			if err == nil || !strings.Contains(err.Error(), "amount") {
 				t.Fatalf("want an amount error, got %v", err)
@@ -91,6 +95,7 @@ func TestParseAmountRejects(t *testing.T) {
 // With a fixed source the sample's quantiles follow the body below the tail
 // scale and the tail above it.
 func TestAmountSampleFollowsFit(t *testing.T) {
+	t.Parallel()
 	a := Amount{Body: LogNormal{15, 1}, Tail: &Pareto{2e7, 1.5}, TailShare: 0.1}
 	src := &seq{s: 42}
 	const n = 200_000
@@ -139,6 +144,7 @@ func TestAmountSampleFollowsFit(t *testing.T) {
 }
 
 func TestAmountBodyOnly(t *testing.T) {
+	t.Parallel()
 	a := Amount{Body: LogNormal{15, 1}}
 	src := &seq{s: 1}
 	var s float64
@@ -151,6 +157,7 @@ func TestAmountBodyOnly(t *testing.T) {
 }
 
 func TestParseAmountBodyOnly(t *testing.T) {
+	t.Parallel()
 	doc := strings.Split(amountDoc, "    amount:")[0] + "    amount:\n      body: lognormal(15, 1)\n"
 	ps, err := Parse(strings.NewReader(doc))
 	if err != nil {

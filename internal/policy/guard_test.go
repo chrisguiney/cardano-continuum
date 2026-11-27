@@ -63,6 +63,7 @@ func pool(s *State, id population.ActorID) *Pool {
 func dark(id population.ActorID) Intent { return Intent{Op: GoDark, Pool: id} }
 
 func TestNewValidates(t *testing.T) {
+	t.Parallel()
 	for _, c := range []Config{{Floor: 0, Margin: 1}, {Floor: 101, Margin: 1}, {Floor: 70, Margin: 0}, {Floor: 70, Margin: -1}} {
 		if _, err := New(c); err == nil {
 			t.Errorf("%+v accepted", c)
@@ -74,6 +75,7 @@ func TestNewValidates(t *testing.T) {
 }
 
 func TestScheduleSelection(t *testing.T) {
+	t.Parallel()
 	s := State{
 		Set:   Schedule{d(11, pA, 1)},
 		Mark:  Schedule{d(11, pA, 2)},
@@ -113,6 +115,7 @@ func TestScheduleSelection(t *testing.T) {
 }
 
 func TestGuardUsesSnapshotNotLive(t *testing.T) {
+	t.Parallel()
 	s := base()
 	s.Deleg = moved(moved(s.Deleg, 13, pA), 14, pA)
 	v := guard(70, 0).Check(s, dark(pB))
@@ -122,6 +125,7 @@ func TestGuardUsesSnapshotNotLive(t *testing.T) {
 }
 
 func TestGuardLooksTwoEpochsAhead(t *testing.T) {
+	t.Parallel()
 	g := guard(70, 0)
 	// Only the next schedule breaks: the mark holds B's stake on C, and the
 	// confirmed delegation has already moved it back.
@@ -142,6 +146,7 @@ func TestGuardLooksTwoEpochsAhead(t *testing.T) {
 }
 
 func TestGuardCountsInFlight(t *testing.T) {
+	t.Parallel()
 	// A 50 and B 30 forge, C (20) is dark: 80%. Moving 6 from B to C
 	// leaves 74%; moving 12 leaves 68%, below the floor.
 	all := Schedule{d(11, pA, 50), d(12, pB, 18), d(15, pB, 6), d(16, pB, 6), d(13, pC, 10), d(14, pC, 10)}
@@ -159,6 +164,7 @@ func TestGuardCountsInFlight(t *testing.T) {
 }
 
 func TestGuardRetiringIsDark(t *testing.T) {
+	t.Parallel()
 	g := guard(70, 0)
 	confirmed := base()
 	pool(&confirmed, pA).Reg = Retiring
@@ -175,6 +181,7 @@ func TestGuardRetiringIsDark(t *testing.T) {
 }
 
 func TestGuardDenominatorFromSnapshot(t *testing.T) {
+	t.Parallel()
 	// A retired at this epoch's transition and its delegator is reaped, but
 	// its 3 units stay in set and mark for two epochs. B alone holds 2 of 6
 	// (33%), not the 2 of 3 a count over live pools gives.
@@ -187,6 +194,7 @@ func TestGuardDenominatorFromSnapshot(t *testing.T) {
 }
 
 func TestGuardFaultMargin(t *testing.T) {
+	t.Parallel()
 	s := base()
 	if v := guard(30, 0).Check(s, dark(pB)); !v.OK {
 		t.Fatalf("no margin: %+v", v)
@@ -200,6 +208,7 @@ func TestGuardFaultMargin(t *testing.T) {
 }
 
 func TestGuardUsesObservedPods(t *testing.T) {
+	t.Parallel()
 	s := base()
 	pool(&s, pA).Running = false
 	if v := guard(70, 0).Check(s, dark(pC)); v.OK {
@@ -208,6 +217,7 @@ func TestGuardUsesObservedPods(t *testing.T) {
 }
 
 func TestGuardNeverBlocksRecovery(t *testing.T) {
+	t.Parallel()
 	s := base()
 	pool(&s, pA).Running = false
 	pool(&s, pB).Live = false
@@ -239,6 +249,7 @@ func TestGuardNeverBlocksRecovery(t *testing.T) {
 }
 
 func TestGuardRejectsMalformedState(t *testing.T) {
+	t.Parallel()
 	s := base()
 	s.Set = append(s.Set, d(11, pB, 1))
 	if v := guard(30, 0).Check(s, dark(pC)); v.OK || !strings.Contains(v.Why, "twice") {
@@ -257,6 +268,7 @@ func TestGuardRejectsMalformedState(t *testing.T) {
 }
 
 func TestCheckIsOrderIndependent(t *testing.T) {
+	t.Parallel()
 	s := base()
 	s.InFlight = []Intent{{Op: Delegate, Wallet: 13, Pool: pC}, {Op: Retire, Pool: pB}}
 	r := s

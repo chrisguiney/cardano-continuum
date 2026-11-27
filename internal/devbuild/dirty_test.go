@@ -39,6 +39,7 @@ func write(t *testing.T, dir, name, body string) {
 }
 
 func TestDirtyDetection(t *testing.T) {
+	t.Parallel()
 	dir := gitRepo(t)
 	ctx := t.Context()
 	dirty, _, err := DirtyState(ctx, dir)
@@ -67,6 +68,7 @@ func TestDirtyDetection(t *testing.T) {
 }
 
 func TestDirtyStateNotARepo(t *testing.T) {
+	t.Parallel()
 	if _, _, err := DirtyState(t.Context(), t.TempDir()); err == nil {
 		t.Fatal("want error outside a git repository")
 	}

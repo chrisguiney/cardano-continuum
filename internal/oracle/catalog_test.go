@@ -234,6 +234,7 @@ func rejectedFirst() []mistake.Kind {
 // the fake (it once added MissingRedeemers beside BadInputs) would show here
 // as a wrong-class finding against fakechain.
 func TestCatalogOnFakeChain(t *testing.T) {
+	t.Parallel()
 	wd := newWorld(t)
 	wd.prepare(t)
 	var all []Finding
@@ -267,6 +268,7 @@ func TestCatalogOnFakeChain(t *testing.T) {
 
 // A wrong expectation over a real answer fires.
 func TestCatalogWrongExpectationFires(t *testing.T) {
+	t.Parallel()
 	wd := newWorld(t)
 	wd.prepare(t)
 	tx, _ := wd.inject(t, mistake.FeeTooSmall)

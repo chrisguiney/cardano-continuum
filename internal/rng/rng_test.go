@@ -45,6 +45,7 @@ func checkGolden(t *testing.T, name, got string) {
 	}
 }
 
+// Not parallel: rewrites its golden file under -update.
 func TestDeriveStable(t *testing.T) {
 	d := seedOne().Derive("actor", "42", "activity")
 	var b strings.Builder
@@ -56,6 +57,7 @@ func TestDeriveStable(t *testing.T) {
 }
 
 func TestDeriveDeterministic(t *testing.T) {
+	t.Parallel()
 	a := seedOne().Derive("a", "b")
 	b := seedOne().Derive("a", "b")
 	if a != b {
@@ -64,6 +66,7 @@ func TestDeriveDeterministic(t *testing.T) {
 }
 
 func TestDerivePathUnambiguous(t *testing.T) {
+	t.Parallel()
 	s := seedOne()
 	paths := [][]string{
 		{}, {""}, {"a"}, {"a", "b"}, {"ab"}, {"a", ""}, {"", "a"},
@@ -81,6 +84,7 @@ func TestDerivePathUnambiguous(t *testing.T) {
 }
 
 func TestDeriveDiffersByRoot(t *testing.T) {
+	t.Parallel()
 	var zero rng.Seed
 	if zero.Derive("x") == seedOne().Derive("x") {
 		t.Fatal("different roots gave the same child")
@@ -91,6 +95,7 @@ func TestDeriveDiffersByRoot(t *testing.T) {
 }
 
 func TestDeriveIndependent(t *testing.T) {
+	t.Parallel()
 	const streams, outputs = 1000, 8
 	root := seedOne()
 	seen := map[uint64]int{}
@@ -121,6 +126,7 @@ func TestDeriveIndependent(t *testing.T) {
 }
 
 func TestAddOrderIndependence(t *testing.T) {
+	t.Parallel()
 	root := seedOne()
 	want := first(root.Derive("actor", "7", "activity"), 16)
 	for i := 1; i <= 6; i++ {
@@ -135,6 +141,7 @@ func TestAddOrderIndependence(t *testing.T) {
 }
 
 func TestRandIndependentInstances(t *testing.T) {
+	t.Parallel()
 	s := seedOne()
 	a, b := s.Rand(), s.Rand()
 	a.Uint64()
@@ -144,6 +151,7 @@ func TestRandIndependentInstances(t *testing.T) {
 	}
 }
 
+// Not parallel: rewrites its golden file under -update.
 func TestRandGoldenAcrossMethods(t *testing.T) {
 	r := seedOne().Derive("golden").Rand()
 	var b strings.Builder

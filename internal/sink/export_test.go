@@ -152,6 +152,7 @@ func export(t testing.TB, logPath, dir string, opts Options) Stats {
 }
 
 func TestExportRows(t *testing.T) {
+	t.Parallel()
 	d := t.TempDir()
 	lp := filepath.Join(d, "events.log")
 	writeLog(t, lp, fixture(t))
@@ -186,6 +187,7 @@ func TestExportRows(t *testing.T) {
 func hex32(b byte) string { return fmt.Sprintf("%x", bytes.Repeat([]byte{b}, 32)) }
 
 func TestSubmissionHashesAre32Bytes(t *testing.T) {
+	t.Parallel()
 	d := t.TempDir()
 	lp := filepath.Join(d, "events.log")
 	writeLog(t, lp, fixture(t))
@@ -204,6 +206,7 @@ func TestSubmissionHashesAre32Bytes(t *testing.T) {
 }
 
 func TestIncrementalEqualsOneShot(t *testing.T) {
+	t.Parallel()
 	recs := fixture(t)
 	d := t.TempDir()
 	one := filepath.Join(d, "one")
@@ -232,6 +235,7 @@ func TestIncrementalEqualsOneShot(t *testing.T) {
 }
 
 func TestRerunWritesNothing(t *testing.T) {
+	t.Parallel()
 	d := t.TempDir()
 	lp := filepath.Join(d, "events.log")
 	writeLog(t, lp, fixture(t))
@@ -246,6 +250,7 @@ func TestRerunWritesNothing(t *testing.T) {
 }
 
 func TestCrashKeepsPreviousManifest(t *testing.T) {
+	t.Parallel()
 	recs := fixture(t)
 	d := t.TempDir()
 	lp := filepath.Join(d, "events.log")
@@ -310,6 +315,7 @@ func parquetFiles(t testing.TB, dir string) []string {
 }
 
 func TestRejectsShortBlockHash(t *testing.T) {
+	t.Parallel()
 	recs := fixture(t)
 	recs[10].Body = enc(t, eventlog.BlockApplied{Point: eventlog.ChainPoint{Slot: 1, Hash: []byte{1}}})
 	d := t.TempDir()
@@ -321,6 +327,7 @@ func TestRejectsShortBlockHash(t *testing.T) {
 }
 
 func TestRefusesDifferentRun(t *testing.T) {
+	t.Parallel()
 	recs := fixture(t)
 	d := t.TempDir()
 	lp := filepath.Join(d, "a.log")
@@ -337,6 +344,7 @@ func TestRefusesDifferentRun(t *testing.T) {
 }
 
 func TestTornTailIgnored(t *testing.T) {
+	t.Parallel()
 	recs := fixture(t)
 	d := t.TempDir()
 	lp := filepath.Join(d, "events.log")

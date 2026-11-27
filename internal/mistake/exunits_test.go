@@ -18,6 +18,7 @@ import (
 // fee so no other rule fails; the fix for that class drops the mistake, and
 // the corrected budget is accepted.
 func TestOverDeclaredRejectedThenFixed(t *testing.T) {
+	t.Parallel()
 	wd, _ := fakeWorld(t)
 	wd.prepare(t)
 	b := wd.base(t, ExUnitsOverDeclared)
@@ -57,6 +58,7 @@ func gapParams(t testing.TB) conway.ConwayProtocolParameters {
 // the per-block one, the same honest over-declaration passes admission and
 // is never forged; the verdict admits acceptance.
 func TestOverDeclaredInGap(t *testing.T) {
+	t.Parallel()
 	wd, c := fakeWorldOn(t, gapParams(t))
 	wd.prepare(t)
 	b := wd.base(t, ExUnitsOverDeclared)
@@ -97,6 +99,7 @@ func TestOverDeclaredInGap(t *testing.T) {
 // model collateral collection and refuses it, so the engine never samples
 // the mistake.
 func TestUnderDeclaredWithheld(t *testing.T) {
+	t.Parallel()
 	if Withheld(ExUnitsUnderDeclared) == "" {
 		t.Fatal("exunits_under_declared is not withheld")
 	}

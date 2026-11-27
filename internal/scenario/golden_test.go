@@ -30,6 +30,7 @@ INVARIANTS
 // TestScenarioGolden: harvesting UtxoGoTtlExclusiveBug.cfg yields the
 // committed scenario, provenance included.
 func TestScenarioGolden(t *testing.T) {
+	t.Parallel()
 	jar, _ := filepath.Abs("../../models/.tools/tla2tools-1.8.0.jar")
 	if _, err := os.Stat(jar); err != nil {
 		t.Skipf("TLC 1.8.0 jar not installed (run make models-install): %v", err)

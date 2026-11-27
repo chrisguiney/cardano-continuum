@@ -49,6 +49,7 @@ func randIntent(r *rand.Rand) Intent {
 // nowhere is left out: it raises the total, and with a margin the pool it
 // joins can become the largest one assumed lost, so the share can fall.
 func TestPropGuardMonotone(t *testing.T) {
+	t.Parallel()
 	r := rand.New(rand.NewPCG(31, 2))
 	g := guard(40, 1)
 	tried := 0
@@ -101,6 +102,7 @@ func entry(s Schedule, w population.ActorID) Delegation {
 }
 
 func TestEndangeredOnProjectedBreach(t *testing.T) {
+	t.Parallel()
 	g := guard(70, 1)
 	if g.Endangered(base()) {
 		t.Fatal("genesis endangered")
@@ -120,6 +122,7 @@ func TestEndangeredOnProjectedBreach(t *testing.T) {
 }
 
 func TestRecoverPlan(t *testing.T) {
+	t.Parallel()
 	g := guard(70, 1)
 	s := base()
 	s.Pools = append(s.Pools,
@@ -164,6 +167,7 @@ func TestRecoverPlan(t *testing.T) {
 }
 
 func TestRecoverQuietWhenSafe(t *testing.T) {
+	t.Parallel()
 	s := base()
 	pool(&s, pC).Live = false
 	if p := guard(70, 1).Recover(s); !reflect.DeepEqual(p, Plan{}) {

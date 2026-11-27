@@ -8,6 +8,7 @@ func unclassified(expected, verdict string) Finding {
 }
 
 func TestKnownIssueMatchesMissingWitnessDecodedUnknown(t *testing.T) {
+	t.Parallel()
 	f := unclassified("reject naming only MissingVKeyWitnessesUTXOW", "rejected Unknown")
 	k, ok := KnownIssueOf(f)
 	if !ok || k.Ref != "gouroboros#3347" {
@@ -16,6 +17,7 @@ func TestKnownIssueMatchesMissingWitnessDecodedUnknown(t *testing.T) {
 }
 
 func TestKnownIssueDoesNotSwallowOtherShapes(t *testing.T) {
+	t.Parallel()
 	for name, f := range map[string]Finding{
 		"other expected class": unclassified("reject naming only BadInputsUTxO", "rejected Unknown"),
 		"other verdict":        unclassified("reject naming only MissingVKeyWitnessesUTXOW", "rejected FeeTooSmall"),

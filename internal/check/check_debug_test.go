@@ -5,6 +5,7 @@ package check
 import "testing"
 
 func TestPreFailsInDebug(t *testing.T) {
+	t.Parallel()
 	defer func() {
 		if recover() == nil {
 			t.Fatal("Pre(false) did not panic in a debug build")
@@ -14,11 +15,13 @@ func TestPreFailsInDebug(t *testing.T) {
 }
 
 func TestPrePassesInDebug(t *testing.T) {
+	t.Parallel()
 	Pre(true, "x")
 	Post(true, "x")
 }
 
 func TestPreFnRunsInDebug(t *testing.T) {
+	t.Parallel()
 	ran := false
 	PreFn(func() bool { ran = true; return true }, "x")
 	if !ran {
@@ -27,6 +30,7 @@ func TestPreFnRunsInDebug(t *testing.T) {
 }
 
 func TestPostFnFailsInDebug(t *testing.T) {
+	t.Parallel()
 	defer func() {
 		if recover() == nil {
 			t.Fatal("PostFn(false) did not panic in a debug build")
@@ -36,6 +40,7 @@ func TestPostFnFailsInDebug(t *testing.T) {
 }
 
 func TestSlowIsTrueInDebug(t *testing.T) {
+	t.Parallel()
 	if !Slow {
 		t.Fatal("Slow is false in a debug build")
 	}

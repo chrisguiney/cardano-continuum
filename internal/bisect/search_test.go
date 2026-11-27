@@ -40,6 +40,7 @@ func (f *fake) Test(_ context.Context, c string) (Verdict, error) {
 }
 
 func TestFirstBadInLogSteps(t *testing.T) {
+	t.Parallel()
 	for _, n := range []int{1, 2, 7, 64, 100} {
 		for _, first := range []int{0, n / 2, n - 1} {
 			f := &fake{list: commits(n), first: first}
@@ -59,6 +60,7 @@ func TestFirstBadInLogSteps(t *testing.T) {
 }
 
 func TestAllGoodRefusesTheBadEnd(t *testing.T) {
+	t.Parallel()
 	f := &fake{list: commits(10), first: 99}
 	if _, err := Search(context.Background(), f.list, f); !errors.Is(err, ErrBadIsGood) {
 		t.Fatalf("err = %v, want ErrBadIsGood", err)
@@ -66,6 +68,7 @@ func TestAllGoodRefusesTheBadEnd(t *testing.T) {
 }
 
 func TestAllBadIsTheFirstCommit(t *testing.T) {
+	t.Parallel()
 	f := &fake{list: commits(10), first: 0}
 	got, err := Search(context.Background(), f.list, f)
 	if err != nil || !got.Exact || got.First != "c000" {
@@ -74,6 +77,7 @@ func TestAllBadIsTheFirstCommit(t *testing.T) {
 }
 
 func TestSkipsStepAround(t *testing.T) {
+	t.Parallel()
 	f := &fake{list: commits(20), first: 12, skip: map[int]bool{9: true, 10: true}}
 	got, err := Search(context.Background(), f.list, f)
 	if err != nil || !got.Exact || got.First != "c012" {
@@ -82,6 +86,7 @@ func TestSkipsStepAround(t *testing.T) {
 }
 
 func TestSkippedBoundaryIsAnAmbiguousRange(t *testing.T) {
+	t.Parallel()
 	f := &fake{list: commits(20), first: 12, skip: map[int]bool{11: true, 12: true}}
 	got, err := Search(context.Background(), f.list, f)
 	if err != nil {
@@ -98,6 +103,7 @@ func TestSkippedBoundaryIsAnAmbiguousRange(t *testing.T) {
 }
 
 func TestSkippedTipCannotBeVerified(t *testing.T) {
+	t.Parallel()
 	f := &fake{list: commits(5), first: 2, skip: map[int]bool{4: true}}
 	if _, err := Search(context.Background(), f.list, f); !errors.Is(err, ErrBadSkipped) {
 		t.Fatalf("err = %v, want ErrBadSkipped", err)
@@ -105,6 +111,7 @@ func TestSkippedTipCannotBeVerified(t *testing.T) {
 }
 
 func TestStableAcrossReruns(t *testing.T) {
+	t.Parallel()
 	run := func() ([]string, Result) {
 		f := &fake{list: commits(37), first: 20, skip: map[int]bool{18: true}}
 		r, err := Search(context.Background(), f.list, f)
@@ -121,12 +128,14 @@ func TestStableAcrossReruns(t *testing.T) {
 }
 
 func TestEmptyRange(t *testing.T) {
+	t.Parallel()
 	if _, err := Search(context.Background(), nil, &fake{}); !errors.Is(err, ErrNoCommits) {
 		t.Fatalf("err = %v", err)
 	}
 }
 
 func TestProbeErrorStopsTheSearch(t *testing.T) {
+	t.Parallel()
 	boom := errors.New("boom")
 	tf := TestFunc(func(context.Context, string) (Verdict, error) { return Good, boom })
 	if _, err := Search(context.Background(), commits(3), tf); !errors.Is(err, boom) {
@@ -135,6 +144,7 @@ func TestProbeErrorStopsTheSearch(t *testing.T) {
 }
 
 func TestCancelledContextStops(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	f := &fake{list: commits(4), first: 1}

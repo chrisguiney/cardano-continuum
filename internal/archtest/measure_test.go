@@ -33,6 +33,7 @@ func has(fs []finding, key string) (finding, bool) {
 }
 
 func TestFunctionLimits(t *testing.T) {
+	t.Parallel()
 	long := "package p\n\nfunc long() {\n" + strings.Repeat("\t_ = 1\n", 80) + "}\n"
 	deep := `package p
 
@@ -71,6 +72,7 @@ func flat(x int) {
 }
 
 func TestTypeLimits(t *testing.T) {
+	t.Parallel()
 	var b strings.Builder
 	b.WriteString("package p\n\ntype Big struct {\n")
 	for i := range 15 {
@@ -99,6 +101,7 @@ func TestTypeLimits(t *testing.T) {
 }
 
 func TestFileLimit(t *testing.T) {
+	t.Parallel()
 	files := map[string]string{}
 	for i := range 13 {
 		files["p/f"+strings.Repeat("a", i+1)+".go"] = "package p\n"
@@ -115,6 +118,7 @@ func TestFileLimit(t *testing.T) {
 }
 
 func TestCompare(t *testing.T) {
+	t.Parallel()
 	found := []finding{{key: "func-length p a", n: 90}, {key: "nesting p b", n: 4}}
 	allowed := map[string]int{"func-length p a": 85, "members p gone": 30, "nesting p b": 5}
 	fresh, stale := compare(found, allowed)
@@ -127,6 +131,7 @@ func TestCompare(t *testing.T) {
 }
 
 func TestParseAllowance(t *testing.T) {
+	t.Parallel()
 	got, err := parseAllowance("# note\n\nfunc-length internal/a Restore 90\nfiles internal/b 48\n")
 	if err != nil {
 		t.Fatal(err)
@@ -140,6 +145,7 @@ func TestParseAllowance(t *testing.T) {
 }
 
 func TestComponentImports(t *testing.T) {
+	t.Parallel()
 	const c = "internal/engine/internal/"
 	tests := []struct {
 		name  string
@@ -155,6 +161,7 @@ func TestComponentImports(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if got := violations(tt.g); len(got) != tt.wantN {
 				t.Fatalf("violations = %q, want %d", got, tt.wantN)
 			}
@@ -167,6 +174,7 @@ func TestComponentImports(t *testing.T) {
 // shrinks: delete a line when this reports it stale, or run with
 // ARCHTEST_TIGHTEN=1 to lower every entry to its current size and drop the
 // stale ones.
+// Not parallel: rewrites allowance.txt when ARCHTEST_TIGHTEN is set.
 func TestRepositoryLimits(t *testing.T) {
 	m, err := scan("../..")
 	if err != nil {
@@ -197,6 +205,7 @@ func TestRepositoryLimits(t *testing.T) {
 }
 
 func TestTighten(t *testing.T) {
+	t.Parallel()
 	src := "# keep\nfunc-length p a 90\nmembers p gone 30\nnesting p b 4\n"
 	found := []finding{{key: "func-length p a", n: 85}, {key: "nesting p b", n: 9}}
 	got := tighten(src, found)

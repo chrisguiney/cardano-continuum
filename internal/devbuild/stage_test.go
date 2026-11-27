@@ -112,6 +112,7 @@ func treeHash(t *testing.T, root string) string {
 }
 
 func TestStageFastLeavesWorktreesUntouched(t *testing.T) {
+	t.Parallel()
 	dingo, gouro := fixture(t)
 	write(t, gouro, "gouro.go", "package gouro\n\nconst Name = \"dirty gouro\"\n")
 	before := treeHash(t, dingo) + treeHash(t, gouro)
@@ -160,6 +161,7 @@ func TestStageFastLeavesWorktreesUntouched(t *testing.T) {
 }
 
 func TestStageFastRejectsBadOverlay(t *testing.T) {
+	t.Parallel()
 	dingo, gouro := fixture(t)
 	b := New(&hybrid{}, nil, image.Settings{}, nil)
 	for name, o := range map[string]Overlay{
@@ -174,6 +176,7 @@ func TestStageFastRejectsBadOverlay(t *testing.T) {
 }
 
 func TestRevisionsRejectsShaNotAtHead(t *testing.T) {
+	t.Parallel()
 	dingo, gouro := fixture(t)
 	b := New(&hybrid{}, nil, image.Settings{}, nil)
 	r := Request{Dingo: dingo, Mode: Fast, With: []Overlay{{Module: Gouroboros, Path: gouro, Sha: "0000000"}}}
@@ -183,6 +186,7 @@ func TestRevisionsRejectsShaNotAtHead(t *testing.T) {
 }
 
 func TestStageReproGoGet(t *testing.T) {
+	t.Parallel()
 	dingo, gouro := fixture(t)
 	sha := strings.TrimSpace(git(t, gouro, "rev-parse", "HEAD"))
 	const pseudo = "v0.0.0-20260102030405-abcdef123456"
@@ -233,6 +237,7 @@ func TestStageReproGoGet(t *testing.T) {
 }
 
 func TestStageReproRefusesDirtyOverlay(t *testing.T) {
+	t.Parallel()
 	dingo, gouro := fixture(t)
 	write(t, gouro, "gouro.go", "package gouro\n\nconst Name = \"x\"\n")
 	b := New(&hybrid{}, nil, image.Settings{}, nil)
@@ -243,6 +248,7 @@ func TestStageReproRefusesDirtyOverlay(t *testing.T) {
 }
 
 func TestLocalReplaces(t *testing.T) {
+	t.Parallel()
 	mod := []byte("module x\n\n// replace a => ../a\nreplace b => ../b\nreplace (\n\tc => /abs/c\n\td => github.com/f/d v1.0.0\n)\n")
 	got := localReplaces(mod)
 	if len(got) != 2 {

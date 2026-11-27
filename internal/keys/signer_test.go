@@ -13,6 +13,7 @@ import (
 )
 
 func TestSignersMatchCredentials(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	w := s.Wallet(3)
 	pool, err := s.Pool(4, 0)
@@ -41,6 +42,7 @@ func TestSignersMatchCredentials(t *testing.T) {
 	h := common.Blake2b256Hash(body)
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if got := tt.sig.KeyHash(); got != tt.want {
 				t.Fatalf("key hash %x, want %x", got, tt.want)
 			}
@@ -59,6 +61,7 @@ func TestSignersMatchCredentials(t *testing.T) {
 }
 
 func TestPaymentSignerMatchesWallet(t *testing.T) {
+	t.Parallel()
 	w := newStore(t).Wallet(3)
 	body := []byte("body")
 	a, b := w.SignTxBody(body), w.PaymentSigner().SignTxBody(body)
@@ -68,6 +71,7 @@ func TestPaymentSignerMatchesWallet(t *testing.T) {
 }
 
 func TestSignersRedacted(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	w := s.Wallet(3)
 	poolSigner, err := s.PoolSigner(4)

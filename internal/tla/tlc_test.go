@@ -9,6 +9,7 @@ import (
 // TestTLCFlags settles which trace-dump flag the pinned TLC accepts: the run
 // must produce a parseable JSON counterexample.
 func TestTLCFlags(t *testing.T) {
+	t.Parallel()
 	tools := testTools(t)
 	run, err := RunTLC(context.Background(), tools, helloDir(t), "Hello.tla", "HelloBug.cfg", time.Minute)
 	if err != nil {
@@ -26,6 +27,7 @@ func TestTLCFlags(t *testing.T) {
 }
 
 func TestRunTLCPass(t *testing.T) {
+	t.Parallel()
 	tools := testTools(t)
 	run, err := RunTLC(context.Background(), tools, helloDir(t), "Hello.tla", "Hello.cfg", time.Minute)
 	if err != nil {
@@ -37,6 +39,7 @@ func TestRunTLCPass(t *testing.T) {
 }
 
 func TestRunTLCTimeout(t *testing.T) {
+	t.Parallel()
 	tools := testTools(t)
 	run, err := RunTLC(context.Background(), tools, helloDir(t), "Hello.tla", "HelloBug.cfg", time.Nanosecond)
 	if err != nil {

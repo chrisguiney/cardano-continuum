@@ -6,6 +6,7 @@ import (
 )
 
 func TestViolations(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		g     graph
@@ -19,6 +20,7 @@ func TestViolations(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := violations(tt.g)
 			if len(got) != tt.wantN {
 				t.Fatalf("violations = %q, want %d", got, tt.wantN)
@@ -30,6 +32,7 @@ func TestViolations(t *testing.T) {
 // TestRepositoryBoundaries applies the rules to the real tree. A failure here
 // names the package and the import that breaks a boundary.
 func TestRepositoryBoundaries(t *testing.T) {
+	t.Parallel()
 	g, err := load("../..")
 	if err != nil {
 		t.Fatal(err)

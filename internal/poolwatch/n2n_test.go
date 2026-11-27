@@ -22,6 +22,7 @@ func fixture(t *testing.T, name string) string {
 // A header forged by a pool carries the cold key whose hash is the pool's
 // PoolID; the chain-sync callback must report it on the Mark.
 func TestForwardCarriesIssuer(t *testing.T) {
+	t.Parallel()
 	raw, err := hex.DecodeString(fixture(t, "header.hex"))
 	if err != nil {
 		t.Fatal(err)
