@@ -4,21 +4,22 @@
 //
 // There is one method per intent kind, each taking a typed request, because
 // an agenda intent names only the kind, actor and target; the planner fills
-// in the inputs and amounts:
+// in the inputs and amounts. Payments stay on Builder; the other families
+// hang off it:
 //
-//	send             Pay
-//	register_stake   RegisterStake
-//	delegate         Delegate (Register: true also registers)
-//	undelegate       DeregisterStake
-//	withdraw_rewards Withdraw
-//	delegate_drep    DelegateVote
-//	register_drep    RegisterDRep
-//	vote             Vote
-//	propose          Propose
-//	register_pool    RegisterPool, UpdatePool
-//	retire_pool      RetirePool
-//	mint, burn       Mint (negative Quantity burns)
-//	script_call      Lock, Unlock
+//	send             Builder.Pay
+//	register_stake   Stake().RegisterStake
+//	delegate         Stake().Delegate (Register: true also registers)
+//	undelegate       Stake().DeregisterStake
+//	withdraw_rewards Stake().Withdraw
+//	delegate_drep    Stake().DelegateVote
+//	register_drep    Gov().RegisterDRep
+//	vote             Gov().Vote
+//	propose          Gov().Propose
+//	register_pool    Pool().RegisterPool, Pool().UpdatePool
+//	retire_pool      Pool().RetirePool
+//	mint, burn       Plutus().Mint (negative Quantity burns)
+//	script_call      Plutus().Lock, Plutus().Unlock
 //
 // Each intent family lives in its own file; the shared plumbing (protocol
 // parameters, the Apollo chain-context adapter, signing and exact fees) is
@@ -146,6 +147,18 @@ type Builder struct {
 
 // New returns a Builder for the given protocol parameters.
 func New(p Params) *Builder { return &Builder{params: p} }
+
+// Stake returns the builder for stake-key transactions.
+func (b *Builder) Stake() Stake { return Stake{b} }
+
+// Gov returns the builder for governance transactions.
+func (b *Builder) Gov() Gov { return Gov{b} }
+
+// Pool returns the builder for stake-pool transactions.
+func (b *Builder) Pool() Pool { return Pool{b} }
+
+// Plutus returns the builder for script transactions.
+func (b *Builder) Plutus() Plutus { return Plutus{b} }
 
 // spec is one transaction to build: the wallet paying fees and taking
 // change, the offered inputs, the extra keys that must witness it beyond the

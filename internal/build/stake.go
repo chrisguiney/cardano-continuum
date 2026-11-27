@@ -9,6 +9,9 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 )
 
+// Stake builds the stake-key transactions: registration, delegation and withdrawal.
+type Stake struct{ b *Builder }
+
 // Delegation delegates the wallet's stake to a pool.
 type Delegation struct {
 	Spend
@@ -41,50 +44,50 @@ func certType(c common.Certificate) uint { return uint(c.Type()) }
 
 // RegisterStake registers the wallet's stake credential with a Conway
 // reg_cert carrying the key deposit. The stake key witnesses it.
-func (b *Builder) RegisterStake(ctx context.Context, w keys.Wallet, sp Spend) (Built, error) {
-	return b.finish(ctx, w, b.stakeSpec(sp, w, []keys.Signer{w.StakeSigner()}))
+func (f Stake) RegisterStake(ctx context.Context, w keys.Wallet, sp Spend) (Built, error) {
+	return f.b.finish(ctx, w, f.stakeSpec(sp, w, []keys.Signer{w.StakeSigner()}))
 }
 
-func (b *Builder) stakeSpec(sp Spend, w keys.Wallet, signers []keys.Signer) spec {
+func (f Stake) stakeSpec(sp Spend, w keys.Wallet, signers []keys.Signer) spec {
 	return spec{
-		sp: sp, signers: signers, need: b.params.KeyDeposit,
+		sp: sp, signers: signers, need: f.b.params.KeyDeposit,
 		certs: []common.Certificate{&common.RegistrationCertificate{
-			CertType: uint(common.CertificateTypeRegistration), StakeCredential: stakeCred(w), Amount: b.params.KeyDeposit,
+			CertType: uint(common.CertificateTypeRegistration), StakeCredential: stakeCred(w), Amount: f.b.params.KeyDeposit,
 		}},
 	}
 }
 
 // DeregisterStake deregisters the wallet's stake credential, refunding the
 // key deposit to the change output.
-func (b *Builder) DeregisterStake(ctx context.Context, w keys.Wallet, sp Spend) (Built, error) {
-	return b.finish(ctx, w, spec{
+func (f Stake) DeregisterStake(ctx context.Context, w keys.Wallet, sp Spend) (Built, error) {
+	return f.b.finish(ctx, w, spec{
 		sp: sp, signers: []keys.Signer{w.StakeSigner()},
 		certs: []common.Certificate{&common.DeregistrationCertificate{
-			CertType: uint(common.CertificateTypeDeregistration), StakeCredential: stakeCred(w), Amount: b.params.KeyDeposit,
+			CertType: uint(common.CertificateTypeDeregistration), StakeCredential: stakeCred(w), Amount: f.b.params.KeyDeposit,
 		}},
 	})
 }
 
 // Delegate delegates the wallet's stake to d.Pool.
-func (b *Builder) Delegate(ctx context.Context, w keys.Wallet, d Delegation) (Built, error) {
+func (f Stake) Delegate(ctx context.Context, w keys.Wallet, d Delegation) (Built, error) {
 	cred := stakeCred(w)
 	var c common.Certificate = &common.StakeDelegationCertificate{
 		CertType: uint(common.CertificateTypeStakeDelegation), StakeCredential: &cred, PoolKeyHash: d.Pool,
 	}
 	var need uint64
 	if d.Register {
-		need = b.params.KeyDeposit
+		need = f.b.params.KeyDeposit
 		c = &common.StakeRegistrationDelegationCertificate{
 			CertType:        uint(common.CertificateTypeStakeRegistrationDelegation),
-			StakeCredential: cred, PoolKeyHash: d.Pool, Amount: b.params.KeyDeposit,
+			StakeCredential: cred, PoolKeyHash: d.Pool, Amount: f.b.params.KeyDeposit,
 		}
 	}
-	return b.finish(ctx, w, spec{sp: d.Spend, signers: []keys.Signer{w.StakeSigner()}, need: need, certs: []common.Certificate{c}})
+	return f.b.finish(ctx, w, spec{sp: d.Spend, signers: []keys.Signer{w.StakeSigner()}, need: need, certs: []common.Certificate{c}})
 }
 
 // DelegateVote delegates the wallet's voting power to d.DRep.
-func (b *Builder) DelegateVote(ctx context.Context, w keys.Wallet, d VoteDelegation) (Built, error) {
-	return b.finish(ctx, w, spec{
+func (f Stake) DelegateVote(ctx context.Context, w keys.Wallet, d VoteDelegation) (Built, error) {
+	return f.b.finish(ctx, w, spec{
 		sp: d.Spend, signers: []keys.Signer{w.StakeSigner()},
 		certs: []common.Certificate{&common.VoteDelegationCertificate{
 			CertType: uint(common.CertificateTypeVoteDelegation), StakeCredential: stakeCred(w), Drep: d.DRep,
@@ -94,8 +97,8 @@ func (b *Builder) DelegateVote(ctx context.Context, w keys.Wallet, d VoteDelegat
 
 // Withdraw withdraws from the wallet's reward account into the change
 // output. The stake key witnesses it.
-func (b *Builder) Withdraw(ctx context.Context, w keys.Wallet, wd Withdrawal) (Built, error) {
-	return b.finish(ctx, w, spec{
+func (f Stake) Withdraw(ctx context.Context, w keys.Wallet, wd Withdrawal) (Built, error) {
+	return f.b.finish(ctx, w, spec{
 		sp: wd.Spend, signers: []keys.Signer{w.StakeSigner()},
 		add: func(a *apollo.Apollo) (*apollo.Apollo, error) {
 			return a.AddWithdrawal(w.StakeAddress(), wd.Amount, nil, nil), nil

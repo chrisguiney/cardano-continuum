@@ -10,7 +10,6 @@ func-length cmd/continuum runLive 85
 func-length internal/engine Restore 90
 members cmd/continuum simFlags 22
 members internal/agenda world 22
-members internal/build Builder 33
 members internal/chain View 67
 members internal/chain par 23
 members internal/engine Config 44
@@ -41,7 +40,6 @@ nesting internal/scenario CodecTable 4
 nesting internal/scenario SampleVectors 4
 stray-methods cmd/continuum kubeCluster 1
 stray-methods cmd/continuum simFlags 3
-stray-methods internal/build Builder 22
 stray-methods internal/chain Querier 5
 stray-methods internal/chain View 35
 stray-methods internal/devbuild Builder 3

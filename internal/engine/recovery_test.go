@@ -34,7 +34,7 @@ func stakeOnto(t *testing.T, e *Engine, fc *fakechain.Chain, slot uint64) {
 	pool := e.pools[3]
 	for id := population.ActorID(4); id <= 7; id++ {
 		w := e.actors[id].wallet
-		got, err := e.builder.Delegate(context.Background(), w, build.Delegation{
+		got, err := e.builder.Stake().Delegate(context.Background(), w, build.Delegation{
 			Spend: build.Spend{Inputs: fc.UtxosAt(w.Address()), TTL: 100}, Pool: pool, Register: true,
 		})
 		if err != nil {

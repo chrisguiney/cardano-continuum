@@ -87,7 +87,7 @@ func unitDatum() common.Datum { return common.Datum{Data: data.NewConstr(0)} }
 
 func (h *harness) lock(amount uint64) (Built, common.Utxo) {
 	h.t.Helper()
-	got, err := h.b.Lock(ctx, h.alice, Lock{Spend: h.spend(), Script: AlwaysSucceeds, Amount: amount, Datum: unitDatum()})
+	got, err := h.b.Plutus().Lock(ctx, h.alice, Lock{Spend: h.spend(), Script: AlwaysSucceeds, Amount: amount, Datum: unitDatum()})
 	if err != nil {
 		h.t.Fatal(err)
 	}
@@ -106,12 +106,12 @@ func TestScriptLockAndUnlock(t *testing.T) {
 	h := newHarness(t)
 	sp := h.spend()
 	req := Lock{Spend: sp, Script: AlwaysSucceeds, Amount: 5_000_000, Datum: unitDatum()}
-	got, err := h.b.Lock(ctx, h.alice, req)
+	got, err := h.b.Plutus().Lock(ctx, h.alice, req)
 	if err != nil {
 		t.Fatal(err)
 	}
 	tx := h.check(got, sp.Inputs, want{signers: []keys.Credential{h.alice.PaymentKeyHash()}},
-		func() (Built, error) { return h.b.Lock(ctx, h.alice, req) })
+		func() (Built, error) { return h.b.Plutus().Lock(ctx, h.alice, req) })
 	out := tx.Outputs()[0]
 	if out.Address().String() != AlwaysSucceeds.Address(0).String() || out.Datum() == nil {
 		t.Fatalf("lock output %s has no inline datum at the script address", out.Address())
@@ -121,16 +121,16 @@ func TestScriptLockAndUnlock(t *testing.T) {
 	_, locked := h.lock(7_000_000)
 	sp = h.spend()
 	un := Unlock{Spend: sp, Script: AlwaysSucceeds, Locked: locked, Redeemer: unitDatum()}
-	got, err = h.b.Unlock(ctx, h.alice, un)
+	got, err = h.b.Plutus().Unlock(ctx, h.alice, un)
 	if err != nil {
 		t.Fatal(err)
 	}
 	all := append(append([]common.Utxo(nil), sp.Inputs...), locked)
 	h.check(got, all, want{signers: []keys.Credential{h.alice.PaymentKeyHash()}},
-		func() (Built, error) { return h.b.Unlock(ctx, h.alice, un) })
+		func() (Built, error) { return h.b.Plutus().Unlock(ctx, h.alice, un) })
 	h.checkExUnits(got, all)
 
-	bs, err := h.b.unlockSpec(un, &common.ExUnits{Memory: 1, Steps: 1})
+	bs, err := h.b.Plutus().unlockSpec(un, &common.ExUnits{Memory: 1, Steps: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,12 +146,12 @@ func TestMint(t *testing.T) {
 	h := newHarness(t)
 	sp := h.spend()
 	req := Mint{Spend: sp, Policy: FreeMint, Name: []byte("continuum"), Quantity: 1000, Redeemer: unitDatum()}
-	got, err := h.b.Mint(ctx, h.alice, req)
+	got, err := h.b.Plutus().Mint(ctx, h.alice, req)
 	if err != nil {
 		t.Fatal(err)
 	}
 	tx := h.check(got, sp.Inputs, want{signers: []keys.Credential{h.alice.PaymentKeyHash()}},
-		func() (Built, error) { return h.b.Mint(ctx, h.alice, req) })
+		func() (Built, error) { return h.b.Plutus().Mint(ctx, h.alice, req) })
 	h.checkExUnits(got, sp.Inputs)
 	var minted *big.Int
 	for _, o := range tx.Outputs() {
@@ -163,7 +163,7 @@ func TestMint(t *testing.T) {
 		t.Fatalf("minted %v, want 1000 in the change output", minted)
 	}
 
-	bs, err := h.b.mintSpec(req, &common.ExUnits{Memory: 1, Steps: 1})
+	bs, err := h.b.Plutus().mintSpec(req, &common.ExUnits{Memory: 1, Steps: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +194,7 @@ func TestContractsHaveTheirOwnAddresses(t *testing.T) {
 
 	h := newHarness(t)
 	c := Contract(7)
-	got, err := h.b.Lock(ctx, h.alice, Lock{Spend: h.spend(), Script: c, Amount: 5_000_000, Datum: unitDatum()})
+	got, err := h.b.Plutus().Lock(ctx, h.alice, Lock{Spend: h.spend(), Script: c, Amount: 5_000_000, Datum: unitDatum()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,7 +205,7 @@ func TestContractsHaveTheirOwnAddresses(t *testing.T) {
 	}
 	sp := h.spend()
 	un := Unlock{Spend: sp, Script: c, Locked: locked[0], Redeemer: unitDatum()}
-	got, err = h.b.Unlock(ctx, h.alice, un)
+	got, err = h.b.Plutus().Unlock(ctx, h.alice, un)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +222,7 @@ func TestTokensLeaveTheChangePure(t *testing.T) {
 	h := newHarness(t)
 	mint := func() Built {
 		t.Helper()
-		got, err := h.b.Mint(ctx, h.alice, Mint{Spend: h.spend(), Policy: FreeMint, Name: []byte("continuum"), Quantity: 1000, Redeemer: unitDatum()})
+		got, err := h.b.Plutus().Mint(ctx, h.alice, Mint{Spend: h.spend(), Policy: FreeMint, Name: []byte("continuum"), Quantity: 1000, Redeemer: unitDatum()})
 		if err != nil {
 			t.Fatal(err)
 		}

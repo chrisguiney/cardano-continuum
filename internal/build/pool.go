@@ -12,6 +12,9 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 )
 
+// Pool builds the stake-pool transactions: registration, update and retirement.
+type Pool struct{ b *Builder }
+
 // PoolRegistration registers (or updates) a stake pool owned by the
 // wallet: its stake key is the sole owner and the reward account.
 type PoolRegistration struct {
@@ -46,26 +49,26 @@ func (e *RetirementEpochError) Error() string {
 
 // RegisterPool registers a new pool, paying the pool deposit. The cold key,
 // the owner's stake key and the payment key witness it.
-func (b *Builder) RegisterPool(ctx context.Context, w keys.Wallet, p PoolRegistration) (Built, error) {
-	return b.pool(ctx, w, p, false)
+func (f Pool) RegisterPool(ctx context.Context, w keys.Wallet, p PoolRegistration) (Built, error) {
+	return f.pool(ctx, w, p, false)
 }
 
 // UpdatePool re-registers an existing pool with new parameters; no deposit
 // is taken.
-func (b *Builder) UpdatePool(ctx context.Context, w keys.Wallet, p PoolRegistration) (Built, error) {
-	return b.pool(ctx, w, p, true)
+func (f Pool) UpdatePool(ctx context.Context, w keys.Wallet, p PoolRegistration) (Built, error) {
+	return f.pool(ctx, w, p, true)
 }
 
-func (b *Builder) pool(ctx context.Context, w keys.Wallet, p PoolRegistration, update bool) (Built, error) {
-	cert, err := b.poolCert(w, p)
+func (f Pool) pool(ctx context.Context, w keys.Wallet, p PoolRegistration, update bool) (Built, error) {
+	cert, err := f.poolCert(w, p)
 	if err != nil {
 		return Built{}, err
 	}
-	need := b.params.PoolDeposit
+	need := f.b.params.PoolDeposit
 	if update {
 		need = 0
 	}
-	return b.finish(ctx, w, spec{
+	return f.b.finish(ctx, w, spec{
 		sp: p.Spend, need: need, signers: []keys.Signer{w.StakeSigner(), p.Cold},
 		add: func(a *apollo.Apollo) (*apollo.Apollo, error) {
 			if update {
@@ -76,7 +79,7 @@ func (b *Builder) pool(ctx context.Context, w keys.Wallet, p PoolRegistration, u
 	})
 }
 
-func (b *Builder) poolCert(w keys.Wallet, p PoolRegistration) (common.PoolRegistrationCertificate, error) {
+func (f Pool) poolCert(w keys.Wallet, p PoolRegistration) (common.PoolRegistrationCertificate, error) {
 	if p.Margin == nil || p.Margin.Sign() < 0 || p.Margin.Cmp(big.NewRat(1, 1)) > 0 {
 		return common.PoolRegistrationCertificate{}, fmt.Errorf("build: pool margin %v outside [0, 1]", p.Margin)
 	}
@@ -92,19 +95,19 @@ func (b *Builder) poolCert(w keys.Wallet, p PoolRegistration) (common.PoolRegist
 		Relays:       p.Relays,
 		PoolMetadata: p.Metadata,
 	}
-	if err := c.SetRewardAccountCredential(stakeCred(w), uint(b.params.NetworkID)); err != nil {
+	if err := c.SetRewardAccountCredential(stakeCred(w), uint(f.b.params.NetworkID)); err != nil {
 		return common.PoolRegistrationCertificate{}, fmt.Errorf("build: pool reward account: %w", err)
 	}
 	return c, nil
 }
 
 // RetirePool schedules the pool's retirement. The cold key witnesses it.
-func (b *Builder) RetirePool(ctx context.Context, w keys.Wallet, r PoolRetirement) (Built, error) {
-	if r.Epoch <= r.CurrentEpoch || r.Epoch > r.CurrentEpoch+b.params.MaxRetireEpochs {
-		return Built{}, &RetirementEpochError{Epoch: r.Epoch, Current: r.CurrentEpoch, Max: b.params.MaxRetireEpochs}
+func (f Pool) RetirePool(ctx context.Context, w keys.Wallet, r PoolRetirement) (Built, error) {
+	if r.Epoch <= r.CurrentEpoch || r.Epoch > r.CurrentEpoch+f.b.params.MaxRetireEpochs {
+		return Built{}, &RetirementEpochError{Epoch: r.Epoch, Current: r.CurrentEpoch, Max: f.b.params.MaxRetireEpochs}
 	}
 	pool := common.Blake2b224(r.Cold.KeyHash())
-	return b.finish(ctx, w, spec{
+	return f.b.finish(ctx, w, spec{
 		sp: r.Spend, signers: []keys.Signer{r.Cold},
 		add: func(a *apollo.Apollo) (*apollo.Apollo, error) { return a.DeregisterPool(pool, r.Epoch), nil },
 	})

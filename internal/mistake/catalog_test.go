@@ -96,7 +96,7 @@ const payAmount = 5_000_000
 func (wd *world) prepare(t *testing.T) {
 	t.Helper()
 	wd.spent = wd.funds[0].Id.(shelley.ShelleyTransactionInput)
-	lock, err := wd.b.Lock(context.Background(), wd.w, build.Lock{
+	lock, err := wd.b.Plutus().Lock(context.Background(), wd.w, build.Lock{
 		Spend: wd.spend(t), Script: wd.script, Amount: 10_000_000, Datum: unitDatum(),
 	})
 	if err != nil {
@@ -122,7 +122,7 @@ func (wd *world) base(t *testing.T, k Kind) build.Built {
 		err error
 	)
 	if Script(k) {
-		b, err = wd.b.Unlock(context.Background(), wd.w, build.Unlock{
+		b, err = wd.b.Plutus().Unlock(context.Background(), wd.w, build.Unlock{
 			Spend: wd.spend(t), Script: wd.script, Locked: wd.locked, Redeemer: seven(),
 		})
 	} else {

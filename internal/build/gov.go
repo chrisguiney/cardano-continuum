@@ -11,6 +11,9 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 )
 
+// Gov builds the governance transactions: DRep registration, hot-key authorisation, votes and proposals.
+type Gov struct{ b *Builder }
+
 // DRepRegistration registers a key-hash DRep, paying the DRep deposit.
 type DRepRegistration struct {
 	Spend
@@ -92,31 +95,31 @@ func keyCred(c keys.Credential) common.Credential {
 }
 
 // RegisterDRep registers the DRep key. The DRep key witnesses it.
-func (b *Builder) RegisterDRep(ctx context.Context, w keys.Wallet, r DRepRegistration) (Built, error) {
-	return b.finish(ctx, w, spec{
-		sp: r.Spend, need: b.params.DRepDeposit, signers: []keys.Signer{r.DRep},
+func (f Gov) RegisterDRep(ctx context.Context, w keys.Wallet, r DRepRegistration) (Built, error) {
+	return f.b.finish(ctx, w, spec{
+		sp: r.Spend, need: f.b.params.DRepDeposit, signers: []keys.Signer{r.DRep},
 		certs: []common.Certificate{&common.RegistrationDrepCertificate{
 			CertType:       uint(common.CertificateTypeRegistrationDrep),
-			DrepCredential: keyCred(r.DRep.KeyHash()), Amount: b.params.DRepDeposit, Anchor: r.Anchor,
+			DrepCredential: keyCred(r.DRep.KeyHash()), Amount: f.b.params.DRepDeposit, Anchor: r.Anchor,
 		}},
 	})
 }
 
 // RetireDRep deregisters the DRep key; the deposit returns in the change.
 // The DRep key witnesses it.
-func (b *Builder) RetireDRep(ctx context.Context, w keys.Wallet, r DRepRetirement) (Built, error) {
-	return b.finish(ctx, w, spec{
+func (f Gov) RetireDRep(ctx context.Context, w keys.Wallet, r DRepRetirement) (Built, error) {
+	return f.b.finish(ctx, w, spec{
 		sp: r.Spend, signers: []keys.Signer{r.DRep},
 		certs: []common.Certificate{&common.DeregistrationDrepCertificate{
 			CertType:       uint(common.CertificateTypeDeregistrationDrep),
-			DrepCredential: keyCred(r.DRep.KeyHash()), Amount: b.params.DRepDeposit,
+			DrepCredential: keyCred(r.DRep.KeyHash()), Amount: f.b.params.DRepDeposit,
 		}},
 	})
 }
 
 // AuthorizeHot authorises a committee hot key. The cold key witnesses it.
-func (b *Builder) AuthorizeHot(ctx context.Context, w keys.Wallet, h HotAuth) (Built, error) {
-	return b.finish(ctx, w, spec{
+func (f Gov) AuthorizeHot(ctx context.Context, w keys.Wallet, h HotAuth) (Built, error) {
+	return f.b.finish(ctx, w, spec{
 		sp: h.Spend, signers: []keys.Signer{h.Cold},
 		certs: []common.Certificate{&common.AuthCommitteeHotCertificate{
 			CertType:       uint(common.CertificateTypeAuthCommitteeHot),
@@ -132,7 +135,7 @@ var voterTypes = map[Role]uint8{
 }
 
 // Vote casts a vote. The voter's key witnesses it.
-func (b *Builder) Vote(ctx context.Context, w keys.Wallet, v Vote) (Built, error) {
+func (f Gov) Vote(ctx context.Context, w keys.Wallet, v Vote) (Built, error) {
 	t, ok := voterTypes[v.Role]
 	if !ok {
 		return Built{}, fmt.Errorf("build: unknown voter role %d", v.Role)
@@ -141,7 +144,7 @@ func (b *Builder) Vote(ctx context.Context, w keys.Wallet, v Vote) (Built, error
 		return Built{}, fmt.Errorf("build: unknown vote %d", v.Choice)
 	}
 	voter := common.Voter{Type: t, Hash: v.Voter.KeyHash()}
-	return b.finish(ctx, w, spec{
+	return f.b.finish(ctx, w, spec{
 		sp: v.Spend, signers: []keys.Signer{v.Voter},
 		add: func(a *apollo.Apollo) (*apollo.Apollo, error) {
 			return a.AddVote(voter, v.Action, common.VotingProcedure{Vote: v.Choice, Anchor: v.Anchor}), nil
@@ -153,24 +156,24 @@ func (b *Builder) Vote(ctx context.Context, w keys.Wallet, v Vote) (Built, error
 // current maximum transaction size, so enacting it would change nothing;
 // a treasury withdrawal pays the wallet's own reward account. Neither
 // names a guardrail policy: the devnet constitution has none.
-func (b *Builder) Propose(ctx context.Context, w keys.Wallet, p Proposal) (Built, error) {
-	act, err := b.govAction(w, p.Action)
+func (f Gov) Propose(ctx context.Context, w keys.Wallet, p Proposal) (Built, error) {
+	act, err := f.govAction(w, p.Action)
 	if err != nil {
 		return Built{}, err
 	}
 	proc := conway.ConwayProposalProcedure{
-		PPDeposit:       b.params.GovActionDeposit,
+		PPDeposit:       f.b.params.GovActionDeposit,
 		PPRewardAccount: w.StakeAddress(),
 		PPGovAction:     act,
 		PPAnchor:        p.Anchor,
 	}
-	return b.finish(ctx, w, spec{
-		sp: p.Spend, need: b.params.GovActionDeposit,
+	return f.b.finish(ctx, w, spec{
+		sp: p.Spend, need: f.b.params.GovActionDeposit,
 		add: func(a *apollo.Apollo) (*apollo.Apollo, error) { return a.AddProposal(proc), nil },
 	})
 }
 
-func (b *Builder) govAction(w keys.Wallet, t ActionType) (conway.ConwayGovAction, error) {
+func (f Gov) govAction(w keys.Wallet, t ActionType) (conway.ConwayGovAction, error) {
 	switch t {
 	case "", ActionInfo:
 		info, err := common.NewInfoGovAction()
@@ -179,7 +182,7 @@ func (b *Builder) govAction(w keys.Wallet, t ActionType) (conway.ConwayGovAction
 		}
 		return conway.ConwayGovAction{Type: uint(common.GovActionTypeInfo), Action: info}, nil
 	case ActionParameterChange:
-		size := uint(b.params.MaxTxSize)
+		size := uint(f.b.params.MaxTxSize)
 		return conway.ConwayGovAction{Type: uint(common.GovActionTypeParameterChange), Action: &conway.ConwayParameterChangeGovAction{
 			Type: uint(common.GovActionTypeParameterChange), ParamUpdate: conway.ConwayProtocolParameterUpdate{MaxTxSize: &size},
 		}}, nil

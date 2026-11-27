@@ -92,46 +92,46 @@ var specs = map[string]spec{
 	string(profile.IntentRegisterStake): {need: func(e *Engine, _ *pendingRec) uint64 { return e.cfg.Build.KeyDeposit }, headroom: feeHeadroom, again: againRegister,
 		deposit: func(e *Engine, _ *pendingRec) int64 { return int64(e.cfg.Build.KeyDeposit) },
 		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, _ *pendingRec) (build.Built, error) {
-			return e.builder.RegisterStake(ctx, w, sp)
+			return e.builder.Stake().RegisterStake(ctx, w, sp)
 		}},
 	string(profile.IntentDelegate): {need: registerNeed, headroom: feeHeadroom, guarded: true, deposit: registerDeposit, again: againRegister,
 		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
 			pool, _ := e.poolOf(population.ActorID(p.To))
-			return e.builder.Delegate(ctx, w, build.Delegation{Spend: sp, Pool: pool, Register: p.Register})
+			return e.builder.Stake().Delegate(ctx, w, build.Delegation{Spend: sp, Pool: pool, Register: p.Register})
 		}},
 	string(profile.IntentUndelegate): {need: none, headroom: feeHeadroom, guarded: true, again: againDeregister,
 		deposit: func(e *Engine, _ *pendingRec) int64 { return -int64(e.cfg.Build.KeyDeposit) },
 		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, _ *pendingRec) (build.Built, error) {
-			return e.builder.DeregisterStake(ctx, w, sp)
+			return e.builder.Stake().DeregisterStake(ctx, w, sp)
 		}},
 	string(profile.IntentWithdraw): {need: none, headroom: feeHeadroom, deposit: noDeposit,
 		again: []submit.Class{submit.Class(fakechain.WithdrawalsNotInRewards)},
 		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
-			return e.builder.Withdraw(ctx, w, build.Withdrawal{Spend: sp, Amount: p.Amount})
+			return e.builder.Stake().Withdraw(ctx, w, build.Withdrawal{Spend: sp, Amount: p.Amount})
 		}},
 	string(profile.IntentDelegateDRep): {need: none, headroom: feeHeadroom, deposit: noDeposit,
 		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
 			cred := e.keys.DRep(keysID(population.ActorID(p.To)))
 			d := common.Drep{Type: common.DrepTypeAddrKeyHash, Credential: cred[:]}
-			return e.builder.DelegateVote(ctx, w, build.VoteDelegation{Spend: sp, DRep: d})
+			return e.builder.Stake().DelegateVote(ctx, w, build.VoteDelegation{Spend: sp, DRep: d})
 		}},
 	string(profile.IntentRegisterDRep): {need: func(e *Engine, _ *pendingRec) uint64 { return e.cfg.Build.DRepDeposit }, headroom: feeHeadroom,
 		again:   []submit.Class{submit.Class(fakechain.DRepAlreadyRegistered)},
 		deposit: func(e *Engine, _ *pendingRec) int64 { return int64(e.cfg.Build.DRepDeposit) },
 		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
-			return e.builder.RegisterDRep(ctx, w, build.DRepRegistration{Spend: sp, DRep: e.keys.DRepSigner(keysID(population.ActorID(p.Actor)))})
+			return e.builder.Gov().RegisterDRep(ctx, w, build.DRepRegistration{Spend: sp, DRep: e.keys.DRepSigner(keysID(population.ActorID(p.Actor)))})
 		}},
 	string(profile.IntentVote): {need: none, headroom: feeHeadroom, deposit: noDeposit, build: buildVote},
 	string(profile.IntentPropose): {need: func(e *Engine, _ *pendingRec) uint64 { return e.cfg.Build.GovActionDeposit }, headroom: feeHeadroom,
 		deposit: func(e *Engine, _ *pendingRec) int64 { return int64(e.cfg.Build.GovActionDeposit) },
 		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
-			return e.builder.Propose(ctx, w, build.Proposal{Spend: sp, Action: build.ActionType(p.GovType)})
+			return e.builder.Gov().Propose(ctx, w, build.Proposal{Spend: sp, Action: build.ActionType(p.GovType)})
 		}},
 	string(profile.IntentRetireDRep): {need: none, headroom: feeHeadroom,
 		again:   []submit.Class{submit.Class(fakechain.DRepNotRegistered)},
 		deposit: func(e *Engine, _ *pendingRec) int64 { return -int64(e.cfg.Build.DRepDeposit) },
 		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
-			return e.builder.RetireDRep(ctx, w, build.DRepRetirement{Spend: sp, DRep: e.keys.DRepSigner(keysID(population.ActorID(p.Actor)))})
+			return e.builder.Gov().RetireDRep(ctx, w, build.DRepRetirement{Spend: sp, DRep: e.keys.DRepSigner(keysID(population.ActorID(p.Actor)))})
 		}},
 	string(profile.IntentUpdatePool): {need: none, headroom: feeHeadroom, deposit: noDeposit, build: buildPool},
 	string(profile.IntentMint):       {need: none, headroom: scriptHeadroom, deposit: noDeposit, build: buildMint, script: true},
@@ -139,7 +139,7 @@ var specs = map[string]spec{
 	lockKind: {need: func(_ *Engine, p *pendingRec) uint64 { return p.Amount }, headroom: feeHeadroom,
 		deposit: func(_ *Engine, p *pendingRec) int64 { return 0 },
 		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
-			return e.builder.Lock(ctx, w, build.Lock{Spend: sp, Script: build.Contract(p.Contract), Amount: p.Amount, Datum: actorDatum(population.ActorID(p.Actor))})
+			return e.builder.Plutus().Lock(ctx, w, build.Lock{Spend: sp, Script: build.Contract(p.Contract), Amount: p.Amount, Datum: actorDatum(population.ActorID(p.Actor))})
 		}},
 	hotKind: {need: none, headroom: feeHeadroom, deposit: noDeposit, build: buildHot},
 	// A dust flood is one-shot: nothing rebuilds it.
@@ -155,7 +155,7 @@ var specs = map[string]spec{
 			if err != nil {
 				return build.Built{}, err
 			}
-			return e.builder.RetirePool(ctx, w, build.PoolRetirement{Spend: sp, Cold: cold, Epoch: p.Epoch, CurrentEpoch: p.Epoch - 1})
+			return e.builder.Pool().RetirePool(ctx, w, build.PoolRetirement{Spend: sp, Cold: cold, Epoch: p.Epoch, CurrentEpoch: p.Epoch - 1})
 		}},
 }
 
@@ -188,7 +188,7 @@ func buildVote(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p 
 		}
 		v.Voter, v.Role = cold, build.RolePool
 	}
-	return e.builder.Vote(ctx, w, v)
+	return e.builder.Gov().Vote(ctx, w, v)
 }
 
 // Voter classes as Submitted names them.
@@ -214,7 +214,7 @@ func buildMint(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p 
 	if p.Kind == string(profile.IntentBurn) {
 		q = -q
 	}
-	return e.builder.Mint(ctx, w, build.Mint{Spend: sp, Policy: build.FreeMint, Name: tokenName, Quantity: q, Redeemer: unitDatum()})
+	return e.builder.Plutus().Mint(ctx, w, build.Mint{Spend: sp, Policy: build.FreeMint, Name: tokenName, Quantity: q, Redeemer: unitDatum()})
 }
 
 func buildUnlock(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
@@ -222,7 +222,7 @@ func buildUnlock(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, 
 	if !ok {
 		return build.Built{}, fmt.Errorf("locked output %x#%d not in the view", p.Locked.Tx[:4], p.Locked.Index)
 	}
-	return e.builder.Unlock(ctx, w, build.Unlock{Spend: sp, Script: build.Contract(p.Contract), Locked: u, Redeemer: unitDatum()})
+	return e.builder.Plutus().Unlock(ctx, w, build.Unlock{Spend: sp, Script: build.Contract(p.Contract), Locked: u, Redeemer: unitDatum()})
 }
 
 func buildPool(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
@@ -241,9 +241,9 @@ func buildPool(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p 
 		Spend: sp, Cold: cold, VRFKeyHash: pk.VRFVKeyHash, Pledge: pledge, Cost: cost, Margin: margin,
 	}
 	if p.Update || p.Kind == string(profile.IntentUpdatePool) {
-		return e.builder.UpdatePool(ctx, w, reg)
+		return e.builder.Pool().UpdatePool(ctx, w, reg)
 	}
-	return e.builder.RegisterPool(ctx, w, reg)
+	return e.builder.Pool().RegisterPool(ctx, w, reg)
 }
 
 func unitDatum() common.Datum { return common.Datum{Data: data.NewConstr(0)} }

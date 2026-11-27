@@ -463,7 +463,7 @@ func (e *Engine) gap(ctx context.Context, at sched.Time, id population.ActorID, 
 		return shot{}, why, nil
 	}
 	w := e.walletOf(id)
-	b, err := e.builder.Mint(ctx, w, build.Mint{
+	b, err := e.builder.Plutus().Mint(ctx, w, build.Mint{
 		Spend: build.Spend{Inputs: e.ledgerUtxos(w, coins), TTL: s.ttl}, Policy: build.Burn(build.BurnSize(step.Memory)),
 		Name: gapToken, Quantity: 1, Redeemer: unitDatum(), Collateral: adversary.GapCollateral,
 	})

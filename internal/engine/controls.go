@@ -266,7 +266,7 @@ const hotKind = "authorize_hot"
 
 func buildHot(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
 	cold, hot := e.rootKeys.CommitteeSigners(uint32(p.To))
-	return e.builder.AuthorizeHot(ctx, w, build.HotAuth{Spend: sp, Cold: cold, Hot: hot.KeyHash()})
+	return e.builder.Gov().AuthorizeHot(ctx, w, build.HotAuth{Spend: sp, Cold: cold, Hot: hot.KeyHash()})
 }
 
 // PoolPlan is what the engine wants of one pool actor's ContinuumPool.

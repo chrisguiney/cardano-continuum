@@ -17,16 +17,16 @@ func TestDRepRegisterVotePropose(t *testing.T) {
 
 	sp := h.spend()
 	reg := DRepRegistration{Spend: sp, DRep: drep}
-	got, err := h.b.RegisterDRep(ctx, h.alice, reg)
+	got, err := h.b.Gov().RegisterDRep(ctx, h.alice, reg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	h.check(got, sp.Inputs, want{deposit: h.pp.DRepDeposit, signers: []keys.Credential{pay, drep.KeyHash()}},
-		func() (Built, error) { return h.b.RegisterDRep(ctx, h.alice, reg) })
+		func() (Built, error) { return h.b.Gov().RegisterDRep(ctx, h.alice, reg) })
 	h.commit(got)
 
 	// The proposal's return account must be a registered stake credential.
-	early, err := h.b.Propose(ctx, h.alice, Proposal{Spend: h.spend()})
+	early, err := h.b.Gov().Propose(ctx, h.alice, Proposal{Spend: h.spend()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,12 +35,12 @@ func TestDRepRegisterVotePropose(t *testing.T) {
 
 	sp = h.spend()
 	prop := Proposal{Spend: sp}
-	got, err = h.b.Propose(ctx, h.alice, prop)
+	got, err = h.b.Gov().Propose(ctx, h.alice, prop)
 	if err != nil {
 		t.Fatal(err)
 	}
 	h.check(got, sp.Inputs, want{deposit: h.pp.GovActionDeposit, signers: []keys.Credential{pay}},
-		func() (Built, error) { return h.b.Propose(ctx, h.alice, prop) })
+		func() (Built, error) { return h.b.Gov().Propose(ctx, h.alice, prop) })
 	h.commit(got)
 	action := common.GovActionId{TransactionId: got.ID, GovActionIdx: 0}
 	if want := uint64(h.pp.KeyDeposit) + h.pp.DRepDeposit + h.pp.GovActionDeposit; h.chain.Deposits() != want {
@@ -49,18 +49,18 @@ func TestDRepRegisterVotePropose(t *testing.T) {
 
 	sp = h.spend()
 	vote := Vote{Spend: sp, Voter: drep, Role: RoleDRep, Action: action, Choice: common.GovVoteYes}
-	got, err = h.b.Vote(ctx, h.alice, vote)
+	got, err = h.b.Gov().Vote(ctx, h.alice, vote)
 	if err != nil {
 		t.Fatal(err)
 	}
 	h.check(got, sp.Inputs, want{signers: []keys.Credential{pay, drep.KeyHash()}},
-		func() (Built, error) { return h.b.Vote(ctx, h.alice, vote) })
+		func() (Built, error) { return h.b.Gov().Vote(ctx, h.alice, vote) })
 	h.commit(got)
 
 	missing := vote
 	missing.Spend = h.spend()
 	missing.Action.GovActionIdx = 1
-	bad, err := h.b.Vote(ctx, h.alice, missing)
+	bad, err := h.b.Gov().Vote(ctx, h.alice, missing)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func TestDRepRegisterVotePropose(t *testing.T) {
 
 	stranger := vote
 	stranger.Spend, stranger.Voter = h.spend(), h.store.DRepSigner(2)
-	bad, err = h.b.Vote(ctx, h.alice, stranger)
+	bad, err = h.b.Gov().Vote(ctx, h.alice, stranger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +78,7 @@ func TestDRepRegisterVotePropose(t *testing.T) {
 func TestCommitteeHotKeyAuthAndVote(t *testing.T) {
 	h := newHarness(t)
 	h.registerStake()
-	prop, err := h.b.Propose(ctx, h.alice, Proposal{Spend: h.spend()})
+	prop, err := h.b.Gov().Propose(ctx, h.alice, Proposal{Spend: h.spend()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,26 +88,26 @@ func TestCommitteeHotKeyAuthAndVote(t *testing.T) {
 
 	sp := h.spend()
 	auth := HotAuth{Spend: sp, Cold: cold, Hot: hot.KeyHash()}
-	got, err := h.b.AuthorizeHot(ctx, h.alice, auth)
+	got, err := h.b.Gov().AuthorizeHot(ctx, h.alice, auth)
 	if err != nil {
 		t.Fatal(err)
 	}
 	h.check(got, sp.Inputs, want{signers: []keys.Credential{pay, cold.KeyHash()}},
-		func() (Built, error) { return h.b.AuthorizeHot(ctx, h.alice, auth) })
+		func() (Built, error) { return h.b.Gov().AuthorizeHot(ctx, h.alice, auth) })
 	h.commit(got)
 
 	sp = h.spend()
 	vote := Vote{Spend: sp, Voter: hot, Role: RoleCommittee, Action: common.GovActionId{TransactionId: prop.ID}, Choice: common.GovVoteNo}
-	got, err = h.b.Vote(ctx, h.alice, vote)
+	got, err = h.b.Gov().Vote(ctx, h.alice, vote)
 	if err != nil {
 		t.Fatal(err)
 	}
 	h.check(got, sp.Inputs, want{signers: []keys.Credential{pay, hot.KeyHash()}},
-		func() (Built, error) { return h.b.Vote(ctx, h.alice, vote) })
+		func() (Built, error) { return h.b.Gov().Vote(ctx, h.alice, vote) })
 	h.commit(got)
 
 	outsider, _ := h.store.CommitteeSigners(5)
-	bad, err := h.b.AuthorizeHot(ctx, h.alice, HotAuth{Spend: h.spend(), Cold: outsider, Hot: hot.KeyHash()})
+	bad, err := h.b.Gov().AuthorizeHot(ctx, h.alice, HotAuth{Spend: h.spend(), Cold: outsider, Hot: hot.KeyHash()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestDRepRetirement(t *testing.T) {
 	h := newHarness(t)
 	drep := h.store.DRepSigner(1)
 	pay := h.alice.PaymentKeyHash()
-	reg, err := h.b.RegisterDRep(ctx, h.alice, DRepRegistration{Spend: h.spend(), DRep: drep})
+	reg, err := h.b.Gov().RegisterDRep(ctx, h.alice, DRepRegistration{Spend: h.spend(), DRep: drep})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,18 +126,18 @@ func TestDRepRetirement(t *testing.T) {
 
 	sp := h.spend()
 	ret := DRepRetirement{Spend: sp, DRep: drep}
-	got, err := h.b.RetireDRep(ctx, h.alice, ret)
+	got, err := h.b.Gov().RetireDRep(ctx, h.alice, ret)
 	if err != nil {
 		t.Fatal(err)
 	}
 	h.check(got, sp.Inputs, want{refund: h.pp.DRepDeposit, signers: []keys.Credential{pay, drep.KeyHash()}},
-		func() (Built, error) { return h.b.RetireDRep(ctx, h.alice, ret) })
+		func() (Built, error) { return h.b.Gov().RetireDRep(ctx, h.alice, ret) })
 	h.commit(got)
 	if h.chain.Deposits() != 0 {
 		t.Fatalf("deposits %d after the DRep retired, want 0", h.chain.Deposits())
 	}
 
-	again, err := h.b.RetireDRep(ctx, h.alice, DRepRetirement{Spend: h.spend(), DRep: drep})
+	again, err := h.b.Gov().RetireDRep(ctx, h.alice, DRepRetirement{Spend: h.spend(), DRep: drep})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,12 +153,12 @@ func TestProposeActionTypes(t *testing.T) {
 	for _, a := range []ActionType{ActionInfo, ActionParameterChange, ActionTreasuryWithdrawals, ActionNoConfidence, ActionNewConstitution} {
 		sp := h.spend()
 		prop := Proposal{Spend: sp, Action: a}
-		got, err := h.b.Propose(ctx, h.alice, prop)
+		got, err := h.b.Gov().Propose(ctx, h.alice, prop)
 		if err != nil {
 			t.Fatalf("%s: %v", a, err)
 		}
 		tx := h.check(got, sp.Inputs, want{deposit: h.pp.GovActionDeposit, signers: []keys.Credential{h.alice.PaymentKeyHash()}},
-			func() (Built, error) { return h.b.Propose(ctx, h.alice, prop) })
+			func() (Built, error) { return h.b.Gov().Propose(ctx, h.alice, prop) })
 		procs := tx.ProposalProcedures()
 		if len(procs) != 1 {
 			t.Fatalf("%s: %d proposals", a, len(procs))
@@ -172,7 +172,7 @@ func TestProposeActionTypes(t *testing.T) {
 			t.Fatalf("%s: deposits %d, want %d", a, h.chain.Deposits(), deposits)
 		}
 	}
-	if _, err := h.b.Propose(ctx, h.alice, Proposal{Spend: h.spend(), Action: "no_such_action"}); err == nil {
+	if _, err := h.b.Gov().Propose(ctx, h.alice, Proposal{Spend: h.spend(), Action: "no_such_action"}); err == nil {
 		t.Fatal("an unknown action type built")
 	}
 }

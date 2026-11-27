@@ -11,12 +11,12 @@ func TestBurnSpendsMemory(t *testing.T) {
 	var prev int64
 	for _, n := range []int{50, 100} {
 		req := Mint{Spend: h.spend(), Policy: Burn(n), Name: []byte("burn"), Quantity: 1, Redeemer: unitDatum(), Collateral: 12_000_000}
-		got, err := h.b.Mint(ctx, h.alice, req)
+		got, err := h.b.Plutus().Mint(ctx, h.alice, req)
 		if err != nil {
 			t.Fatal(err)
 		}
 		h.checkExUnits(got, req.Inputs)
-		tx := h.check(got, req.Inputs, want{}, func() (Built, error) { return h.b.Mint(ctx, h.alice, req) })
+		tx := h.check(got, req.Inputs, want{}, func() (Built, error) { return h.b.Plutus().Mint(ctx, h.alice, req) })
 		if c := tx.TotalCollateral(); c == nil || c.Uint64() != 12_000_000 {
 			t.Fatalf("total collateral %v, want the requested 12 ADA", c)
 		}
@@ -40,7 +40,7 @@ func TestBurnSize(t *testing.T) {
 	h := newHarness(t)
 	const want = 5_000_000
 	req := Mint{Spend: h.spend(), Policy: Burn(BurnSize(want)), Name: []byte("burn"), Quantity: 1, Redeemer: unitDatum(), Collateral: 12_000_000}
-	got, err := h.b.Mint(ctx, h.alice, req)
+	got, err := h.b.Plutus().Mint(ctx, h.alice, req)
 	if err != nil {
 		t.Fatal(err)
 	}

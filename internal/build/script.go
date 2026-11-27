@@ -14,6 +14,9 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 )
 
+// Plutus builds the script transactions: locking funds at a script, spending from it, and minting under a policy.
+type Plutus struct{ b *Builder }
+
 // Lock pays Amount to Script's address with Datum inline.
 type Lock struct {
 	Spend
@@ -55,9 +58,9 @@ var ErrNoCollateral = errors.New("build: no pure-ada input large enough for coll
 const collateralAmount = 5_000_000
 
 // Lock builds the locking payment.
-func (b *Builder) Lock(ctx context.Context, w keys.Wallet, l Lock) (Built, error) {
-	addr := l.Script.Address(b.params.NetworkID)
-	return b.finish(ctx, w, spec{
+func (f Plutus) Lock(ctx context.Context, w keys.Wallet, l Lock) (Built, error) {
+	addr := l.Script.Address(f.b.params.NetworkID)
+	return f.b.finish(ctx, w, spec{
 		sp: l.Spend, need: l.Amount,
 		add: func(a *apollo.Apollo) (*apollo.Apollo, error) {
 			return a.PayToContract(addr, &l.Datum, int64(l.Amount)), nil
@@ -67,18 +70,18 @@ func (b *Builder) Lock(ctx context.Context, w keys.Wallet, l Lock) (Built, error
 
 // Unlock builds the spend of a script output, with execution units from
 // local evaluation.
-func (b *Builder) Unlock(ctx context.Context, w keys.Wallet, u Unlock) (Built, error) {
-	s, err := b.unlockSpec(u, nil)
+func (f Plutus) Unlock(ctx context.Context, w keys.Wallet, u Unlock) (Built, error) {
+	s, err := f.unlockSpec(u, nil)
 	if err != nil {
 		return Built{}, err
 	}
-	return b.finish(ctx, w, s)
+	return f.b.finish(ctx, w, s)
 }
 
 // unlockSpec builds the spec for u. A non-nil budget declares those units
 // instead of evaluating, which only tests use, to build an under-budgeted
 // transaction.
-func (b *Builder) unlockSpec(u Unlock, budget *common.ExUnits) (spec, error) {
+func (f Plutus) unlockSpec(u Unlock, budget *common.ExUnits) (spec, error) {
 	col, err := collateral(u.Inputs, collateralAmount)
 	if err != nil {
 		return spec{}, err
@@ -97,16 +100,16 @@ func (b *Builder) unlockSpec(u Unlock, budget *common.ExUnits) (spec, error) {
 }
 
 // Mint builds the mint, with execution units from local evaluation.
-func (b *Builder) Mint(ctx context.Context, w keys.Wallet, m Mint) (Built, error) {
-	s, err := b.mintSpec(m, nil)
+func (f Plutus) Mint(ctx context.Context, w keys.Wallet, m Mint) (Built, error) {
+	s, err := f.mintSpec(m, nil)
 	if err != nil {
 		return Built{}, err
 	}
-	return b.finish(ctx, w, s)
+	return f.b.finish(ctx, w, s)
 }
 
 // mintSpec builds the spec for m; budget is as for unlockSpec.
-func (b *Builder) mintSpec(m Mint, budget *common.ExUnits) (spec, error) {
+func (f Plutus) mintSpec(m Mint, budget *common.ExUnits) (spec, error) {
 	amount := cmp.Or(m.Collateral, collateralAmount)
 	col, err := collateral(m.Inputs, amount)
 	if err != nil {

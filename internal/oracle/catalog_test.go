@@ -133,7 +133,7 @@ func (wd *world) spend() build.Spend {
 func (wd *world) prepare(t *testing.T) {
 	t.Helper()
 	wd.spent = wd.funds[0].Id.(shelley.ShelleyTransactionInput)
-	lock, err := wd.b.Lock(context.Background(), wd.w, build.Lock{
+	lock, err := wd.b.Plutus().Lock(context.Background(), wd.w, build.Lock{
 		Spend: wd.spend(), Script: wd.script, Amount: 10_000_000, Datum: common.Datum{Data: data.NewConstr(0)},
 	})
 	if err != nil {
@@ -153,7 +153,7 @@ func (wd *world) base(t *testing.T, k mistake.Kind) build.Built {
 		err error
 	)
 	if mistake.Script(k) {
-		b, err = wd.b.Unlock(context.Background(), wd.w, build.Unlock{
+		b, err = wd.b.Plutus().Unlock(context.Background(), wd.w, build.Unlock{
 			Spend: wd.spend(), Script: wd.script, Locked: wd.locked,
 			Redeemer: common.Datum{Data: data.NewInteger(big.NewInt(7))},
 		})

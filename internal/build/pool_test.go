@@ -28,7 +28,7 @@ func (h *harness) poolReq(id keys.ActorID, sp Spend) PoolRegistration {
 // registerPool registers pool id owned by alice and returns its pool id.
 func (h *harness) registerPool(id keys.ActorID) [28]byte {
 	h.t.Helper()
-	got, err := h.b.RegisterPool(ctx, h.alice, h.poolReq(id, h.spend()))
+	got, err := h.b.Pool().RegisterPool(ctx, h.alice, h.poolReq(id, h.spend()))
 	if err != nil {
 		h.t.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func TestPoolRegistration(t *testing.T) {
 	h := newHarness(t)
 	sp := h.spend()
 	req := h.poolReq(9, sp)
-	got, err := h.b.RegisterPool(ctx, h.alice, req)
+	got, err := h.b.Pool().RegisterPool(ctx, h.alice, req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func TestPoolRegistration(t *testing.T) {
 	tx := h.check(got, sp.Inputs, want{
 		deposit: uint64(h.pp.PoolDeposit),
 		signers: []keys.Credential{h.alice.PaymentKeyHash(), h.alice.StakeKeyHash(), keys.Credential(pk.PoolID)},
-	}, func() (Built, error) { return h.b.RegisterPool(ctx, h.alice, req) })
+	}, func() (Built, error) { return h.b.Pool().RegisterPool(ctx, h.alice, req) })
 	if op := tx.Certificates()[0]; op == nil {
 		t.Fatal("no certificate")
 	}
@@ -62,18 +62,18 @@ func TestPoolRegistration(t *testing.T) {
 	sp = h.spend()
 	upd := h.poolReq(9, sp)
 	upd.Cost++
-	got, err = h.b.UpdatePool(ctx, h.alice, upd)
+	got, err = h.b.Pool().UpdatePool(ctx, h.alice, upd)
 	if err != nil {
 		t.Fatal(err)
 	}
 	h.check(got, sp.Inputs, want{
 		signers: []keys.Credential{h.alice.PaymentKeyHash(), h.alice.StakeKeyHash(), keys.Credential(pk.PoolID)},
-	}, func() (Built, error) { return h.b.UpdatePool(ctx, h.alice, upd) })
+	}, func() (Built, error) { return h.b.Pool().UpdatePool(ctx, h.alice, upd) })
 	h.commit(got)
 
 	cheap := h.poolReq(10, h.spend())
 	cheap.Cost = h.pp.MinPoolCost - 1
-	bad, err := h.b.RegisterPool(ctx, h.alice, cheap)
+	bad, err := h.b.Pool().RegisterPool(ctx, h.alice, cheap)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,23 +87,23 @@ func TestPoolRetirement(t *testing.T) {
 	epoch := h.chain.Epoch()
 	sp := h.spend()
 	req := PoolRetirement{Spend: sp, Cold: cold, Epoch: epoch + 1, CurrentEpoch: epoch}
-	got, err := h.b.RetirePool(ctx, h.alice, req)
+	got, err := h.b.Pool().RetirePool(ctx, h.alice, req)
 	if err != nil {
 		t.Fatal(err)
 	}
 	h.check(got, sp.Inputs, want{signers: []keys.Credential{h.alice.PaymentKeyHash(), cold.KeyHash()}},
-		func() (Built, error) { return h.b.RetirePool(ctx, h.alice, req) })
+		func() (Built, error) { return h.b.Pool().RetirePool(ctx, h.alice, req) })
 	h.commit(got)
 
 	far := req
 	far.Spend, far.Epoch = h.spend(), epoch+uint64(h.pp.MaxEpoch)+1
 	var re *RetirementEpochError
-	if _, err := h.b.RetirePool(ctx, h.alice, far); !errors.As(err, &re) {
+	if _, err := h.b.Pool().RetirePool(ctx, h.alice, far); !errors.As(err, &re) {
 		t.Fatalf("want RetirementEpochError past eMax, got %v", err)
 	}
 
 	other, _ := h.store.PoolSigner(10)
-	bad, err := h.b.RetirePool(ctx, h.alice, PoolRetirement{Spend: h.spend(), Cold: other, Epoch: epoch + 1, CurrentEpoch: epoch})
+	bad, err := h.b.Pool().RetirePool(ctx, h.alice, PoolRetirement{Spend: h.spend(), Cold: other, Epoch: epoch + 1, CurrentEpoch: epoch})
 	if err != nil {
 		t.Fatal(err)
 	}
