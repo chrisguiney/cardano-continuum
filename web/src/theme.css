@@ -171,6 +171,11 @@ a.button:hover { border-color: var(--accent); }
 .weights { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: .4rem .8rem; margin-bottom: .6rem; }
 .weights .weight { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
 .weights .weight input { width: 6rem; }
-table.scenarios { width: 100%; margin-top: .8rem; border-collapse: collapse; }
+/* The scenario descriptions are sentences: they wrap inside the card instead of
+   inheriting the tables' nowrap, and the name and argument columns keep a fixed
+   width so an image reference breaks rather than widening the table. */
+table.scenarios { width: 100%; margin-top: .8rem; border-collapse: collapse; table-layout: fixed; }
+table.scenarios th:nth-child(1) { width: 9rem; }
+table.scenarios th:nth-child(2) { width: 14rem; }
 table.scenarios caption { text-align: left; font-weight: 600; padding-bottom: .3rem; }
-table.scenarios th, table.scenarios td { text-align: left; vertical-align: top; padding: .35rem .5rem; border-bottom: 1px solid var(--border); }
+table.scenarios th, table.scenarios td { text-align: left; vertical-align: top; padding: .35rem .5rem; border-bottom: 1px solid var(--border); white-space: normal; overflow-wrap: anywhere; }
