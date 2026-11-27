@@ -1,4 +1,4 @@
-package main
+package export
 
 import (
 	"context"
@@ -13,9 +13,9 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/sink"
 )
 
-// cmdExport writes an event log as Parquet tables. Re-running it on a longer
+// Run writes an event log as Parquet tables. Re-running it on a longer
 // log appends only the new records.
-func cmdExport(ctx context.Context, args []string, out io.Writer) error {
+func Run(ctx context.Context, args []string, out io.Writer) error {
 	errArgs := errors.New("usage: continuum export <events.log> --out <dir>")
 	// The log path may come before or after the flags; flag.Parse stops at
 	// the first non-flag, so take a leading path off first.
