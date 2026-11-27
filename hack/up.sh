@@ -13,7 +13,11 @@
 #
 # IMAGES is the file `make images` wrote: one digest reference per line,
 # CONTINUUM_REGISTRY/<name>@sha256:..., for continuum, continuum-operator
-# and continuum-genesis. The chart gets the registry and the digests.
+# and continuum-genesis. The chart gets the registry and the digests, or,
+# with IMAGE_REF=tag, a tag of each digest's first 12 hex characters: for a
+# cluster whose nodes were given the images under those tags by other means
+# (docs/single-machine.md has an example), since a runtime does not match an
+# imported image to a digest reference.
 #
 # ATTACKS selects the engine's tier-1 adversaries: empty (the default) is
 # every attack a stock genesis supports, "none" runs none, and a
@@ -36,8 +40,9 @@
 #
 # Environment (the Makefile passes these): CONTEXT, NAMESPACE, RELEASE,
 # PROFILES, POOLS, DINGO_POOLS, WALLETS, SCALE, SEED (64 hex), ATTACKS,
-# ENGINE_POOLS, KEEP_RUN, CONTINUUM_REGISTRY, IMAGES, HELM, VALUES (an extra
-# values file), MIN_MEM_GIB, UI_PORT, UI_ADDRESS.
+# ENGINE_POOLS, KEEP_RUN, CONTINUUM_REGISTRY, IMAGES, IMAGE_REF (digest or
+# tag), HELM, VALUES (an extra values file), MIN_MEM_GIB, UI_PORT,
+# UI_ADDRESS.
 set -euo pipefail
 exec </dev/null
 
@@ -55,6 +60,7 @@ ATTACKS=${ATTACKS:-}
 KEEP_RUN=${KEEP_RUN:-}
 REGISTRY=${CONTINUUM_REGISTRY:?set CONTINUUM_REGISTRY to the registry make images pushed to}
 IMAGES=${IMAGES:?set IMAGES to the file make images wrote}
+IMAGE_REF=${IMAGE_REF:-digest}
 HELM=${HELM:-helm}
 VALUES=${VALUES:-}
 MIN_MEM_GIB=${MIN_MEM_GIB:-48}
@@ -102,6 +108,9 @@ preflight() {
   [[ $SCALE =~ ^[0-9]+([.][0-9]+)?$ && $SCALE =~ [1-9] ]] || die "SCALE must be a positive number"
   [[ $SEED =~ ^[0-9a-f]{64}$ ]] || die "SEED must be 64 lowercase hex characters"
   [ -s "$IMAGES" ] || die "$IMAGES is empty: run make images"
+  [ "$IMAGE_REF" = digest ] || [ "$IMAGE_REF" = tag ] || die "IMAGE_REF must be digest or tag"
+  local name
+  for name in continuum continuum-operator continuum-genesis; do digest "$name" >/dev/null; done
   resolve_attacks
 }
 
@@ -132,6 +141,18 @@ digest() {
   echo "${ref##*@}"
 }
 
+# image_sets KEY NAME prints the --set-string arguments that make chart
+# image KEY name CONTINUUM_REGISTRY/NAME, by digest or by IMAGE_REF=tag.
+image_sets() {
+  local d
+  d=$(digest "$2")
+  if [ "$IMAGE_REF" = tag ]; then
+    printf '%s\n' --set-string "images.$1.tag=${d:7:12}" --set-string "images.$1.digest="
+  else
+    printf '%s\n' --set-string "images.$1.digest=$d"
+  fi
+}
+
 # json_list ITEM... prints the items as a JSON array of strings.
 json_list() {
   if [ $# -eq 0 ]; then
@@ -146,6 +167,7 @@ json_list() {
 # KEEP_RUN=1.
 check_run() {
   ENGINE_IMG=$REGISTRY/continuum@$(digest continuum)
+  [ "$IMAGE_REF" = tag ] && ENGINE_IMG=$REGISTRY/continuum:$(digest continuum | cut -c8-19)
   local out old reason deployed want
   old=$(k -n "$NAMESPACE" get statefulset continuum-engine -o jsonpath='{.metadata.annotations.continuum\.blinklabs\.io/run}' 2>/dev/null) || old=""
   out=$(SEED=$SEED devup run -deployed "$old" -image "$ENGINE_IMG" -profiles "$PROFILES" -attacks "$ENGINE_ATTACKS")
@@ -172,11 +194,9 @@ install() {
   k apply -f "$chart/crds" >/dev/null
   local attacks=()
   [ -n "$ENGINE_ATTACKS" ] && IFS=, read -r -a attacks <<<"$ENGINE_ATTACKS"
-  local args=(
-    --set-string "images.registry=$REGISTRY"
-    --set-string "images.operator.digest=$(digest continuum-operator)"
-    --set-string "images.genesis.digest=$(digest continuum-genesis)"
-    --set-string "images.engine.digest=$(digest continuum)"
+  local args=(--set-string "images.registry=$REGISTRY") line
+  while IFS= read -r line; do args+=("$line"); done < <(image_sets operator continuum-operator; image_sets genesis continuum-genesis; image_sets engine continuum)
+  args+=(
     --set-string "seed.value=$SEED"
     --set-json "pools={\"cardanoNode\":$POOLS,\"dingo\":$DINGO_POOLS}"
     --set-json "genesis.overrides=$(json_list ${OVERRIDES[@]+"${OVERRIDES[@]}"})"
@@ -187,7 +207,8 @@ install() {
     --set-json "engine.pools=$ENGINE_POOLS"
     --set-json "engine.ui.port=$UI_PORT"
     --set-json "engine.attacks=$(json_list ${attacks[@]+"${attacks[@]}"})"
-    --set-string "engine.runIdentity=$RUN_ID"
+    # --set and --set-string split on commas, which the identity holds.
+    --set-json "engine.runIdentity=$(jq -cn --arg v "$RUN_ID" '$v')"
   )
   [ -n "$VALUES" ] && args+=(-f "$VALUES")
   helm_ upgrade --install "$RELEASE" "$chart" -n "$NAMESPACE" --create-namespace --timeout 5m "${args[@]}" >/dev/null ||

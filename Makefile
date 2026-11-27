@@ -268,12 +268,16 @@ ATTACKS ?=
 # KEEP_RUN=1 makes `make up` refuse, rather than reset, a deploy whose
 # engine cannot resume its run.
 KEEP_RUN ?=
-# VALUES is an extra chart values file, applied after the variables above.
+# VALUES is an extra chart values file. Helm ranks the variables above,
+# which make up passes with --set, over it.
 VALUES ?=
+# IMAGE_REF=tag names the images by a tag of each digest's first 12 hex
+# characters instead of by digest (see hack/up.sh).
+IMAGE_REF ?= digest
 UP_ENV = CONTEXT='$(CONTEXT)' NAMESPACE='$(NAMESPACE)' RELEASE='$(RELEASE)' PROFILES='$(PROFILES)' POOLS='$(POOLS)' \
 	DINGO_POOLS='$(DINGO_POOLS)' WALLETS='$(WALLETS)' SCALE='$(SCALE)' SEED='$(SEED)' UI_PORT='$(UI_PORT)' UI_ADDRESS='$(UI_ADDRESS)' \
 	ENGINE_POOLS='$(ENGINE_POOLS)' ATTACKS='$(ATTACKS)' KEEP_RUN='$(KEEP_RUN)' VALUES='$(VALUES)' \
-	CONTINUUM_REGISTRY='$(CONTINUUM_REGISTRY)' IMAGES='$(IMAGES_OUT)' HELM='$(HELM)'
+	CONTINUUM_REGISTRY='$(CONTINUUM_REGISTRY)' IMAGES='$(IMAGES_OUT)' IMAGE_REF='$(IMAGE_REF)' HELM='$(HELM)'
 
 .PHONY: images up down
 up: images ## Build and push the images, then install the chart into CONTEXT/NAMESPACE (POOLS, DINGO_POOLS, WALLETS, SCALE, PROFILES, SEED, ATTACKS)
