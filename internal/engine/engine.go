@@ -21,7 +21,6 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/plan"
-	"github.com/chrisguiney/cardano-continuum/internal/policy"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
@@ -84,12 +83,7 @@ type Engine struct {
 	pc    *pace.Pace
 	in    *intent.Intent
 
-	guard policy.Guard
-	// dark is the pool plan: pools the engine wants not forging. down are
-	// pools whose pod is observed not running, repairs those a repair was
-	// asked for since. stalled is set by a stall incident.
-	dark, down, repairs map[population.ActorID]bool
-	stalled             bool
+	fl *stakeFloor
 
 	// Controls: paused stops the agendas; rateK multiplies every actor's
 	// rate (zero is 1); weights override the profiles' intent weights.
@@ -195,15 +189,15 @@ func newEmpty(cfg Config) (*Engine, error) {
 	}
 	e := &Engine{
 		cfg: cfg, builder: build.New(cfg.Build), sel: sel,
-		pay:  pay.New(),
-		win:  window.New(chain.Config{K: cfg.K, Slots: cfg.Slots, NOpt: cfg.NOpt, GovLifetime: cfg.GovLifetime}),
-		dark: map[population.ActorID]bool{}, down: map[population.ActorID]bool{}, repairs: map[population.ActorID]bool{},
+		pay:    pay.New(),
+		win:    window.New(chain.Config{K: cfg.K, Slots: cfg.Slots, NOpt: cfg.NOpt, GovLifetime: cfg.GovLifetime}),
 		images: map[population.ActorID]string{},
 		advs:   map[population.ActorID]adversary.Policy{}, costs: adversary.NewLedger(), contested: map[Ref]bool{},
 	}
 	e.retry = pay.NewRetry(pay.Spec{Policy: cfg.retry(), Diagnoser: diag}, e.pay,
 		pay.Env{Actors: hooks{e}, Builder: hooks{e}, Journal: &e.jr, Sched: evsched{&e.clk}, Chain: e.win})
-	if e.guard, err = policy.New(cfg.floor()); err != nil {
+	if e.fl, err = newFloor(floorSpec{Guard: cfg.floor(), Slots: cfg.Slots, SimulatedPods: cfg.SimulatedPods},
+		floorEnv{floorStake: floorHooks{e}, floorBook: e.pay, floorCensus: floorHooks{e}, floorJournal: &e.jr, floorClock: &e.clk}); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrConfig, err)
 	}
 	var genesis uint64
@@ -381,9 +375,9 @@ func (e *Engine) act(ctx context.Context, at sched.Time, id population.ActorID) 
 	e.pc.Owe(subject(st), d, r)
 	switch {
 	case d.Intent.Kind == agenda.Idle:
-	case !e.checkFloor(at, d.Intent):
+	case !e.fl.Check(at, d.Intent):
 	case d.Intent.Kind == agenda.GoDark, d.Intent.Kind == agenda.GoLive:
-		e.act1Pool(at, d.Intent)
+		e.fl.Take(at, d.Intent)
 	case isAttack(d.Intent.Kind):
 		if err := e.attack(ctx, at, a, d.Intent, r); err != nil {
 			return err

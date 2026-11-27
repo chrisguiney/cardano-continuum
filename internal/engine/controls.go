@@ -151,7 +151,7 @@ func (e *Engine) injectGoDark(at sched.Time, arg string) string {
 		pool = population.ActorID(n)
 	}
 	for _, id := range e.co.Ring.PoolIDs() {
-		if pool == 0 && !e.dark[id] {
+		if pool == 0 && !e.fl.Dark(id) {
 			pool = id
 		}
 	}
@@ -159,10 +159,10 @@ func (e *Engine) injectGoDark(at sched.Time, arg string) string {
 		return "no such pool actor"
 	}
 	in := agenda.Intent{Kind: agenda.GoDark, Actor: pool}
-	if !e.checkFloor(at, in) {
+	if !e.fl.Check(at, in) {
 		return "refused by the stake floor"
 	}
-	e.act1Pool(at, in)
+	e.fl.Take(at, in)
 	return ""
 }
 
@@ -286,7 +286,7 @@ type PoolPlan struct {
 func (e *Engine) Pools() []PoolPlan {
 	var out []PoolPlan
 	for _, id := range e.co.Ring.PoolIDs() {
-		p := PoolPlan{Actor: uint64(id), Genesis: -1, Dark: e.dark[id], Image: e.images[id]}
+		p := PoolPlan{Actor: uint64(id), Genesis: -1, Dark: e.fl.Dark(id), Image: e.images[id]}
 		if g, ok := e.co.Ring.Gen.Of(id); ok {
 			p.Genesis = g.Index
 		}

@@ -15,7 +15,7 @@ func judgeSpec(e *Engine, genesis uint64) judge.Spec {
 	cfg := &e.cfg
 	return judge.Spec{
 		Mistakes: cfg.Mistakes, Build: cfg.Build, Run: cfg.Run, K: cfg.K, BlockEvery: cfg.BlockEvery,
-		Guard: e.guard, Genesis: genesis, Faucet: faucetActor, Again: intent.Again,
+		Guard: e.fl.Guard(), Genesis: genesis, Faucet: faucetActor, Again: intent.Again,
 	}
 }
 
@@ -38,7 +38,7 @@ func (h jhooks) Balances() map[uint64]uint64 { return h.e.Balances() }
 func (h jhooks) Holders() oracle.Holders { return h.e.pay.Reads() }
 
 // State implements judge.Floor.
-func (h jhooks) State(at sched.Time) policy.State { return h.e.floorState(at) }
+func (h jhooks) State(at sched.Time) policy.State { return h.e.fl.State(at) }
 
 // Contested implements judge.Race.
 func (h jhooks) Contested(ref wire.Ref) bool { return h.e.contested[ref] }

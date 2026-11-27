@@ -387,3 +387,17 @@ func SeedFromInt(n uint64) rng.Seed {
 	binary.BigEndian.PutUint64(s[24:], n)
 	return s.Derive("int-seed")
 }
+
+// defaultFloor fills the fields of Config.Floor left zero.
+var defaultFloor = policy.Config{Floor: 50, Margin: 1}
+
+func (c *Config) floor() policy.Config {
+	f := c.Floor
+	if f.Floor == 0 {
+		f.Floor = defaultFloor.Floor
+	}
+	if f.Margin == 0 {
+		f.Margin = defaultFloor.Margin
+	}
+	return f
+}

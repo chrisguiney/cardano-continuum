@@ -59,7 +59,8 @@ func (e *Engine) Snapshot() ([]byte, error) {
 		return nil, fmt.Errorf("engine: ledger: %w", err)
 	}
 	s.Ledger = ledgerBlob{Version: blob.Version, Data: blob.Data}
-	s.Dark, s.Down, s.Repairs, s.Stalled = idSet(e.dark), idSet(e.down), idSet(e.repairs), e.stalled
+	fs := e.fl.Save()
+	s.Dark, s.Down, s.Repairs, s.Stalled = fs.Dark, fs.Down, fs.Repairs, fs.Stalled
 	s.Paused, s.RateK, s.Waves, s.Adoptions = e.paused, e.rateK, e.waves, slices.Clone(e.adoptions)
 	for _, k := range slices.Sorted(maps.Keys(e.weights)) {
 		s.Weights = append(s.Weights, weightRec{Kind: string(k), Weight: e.weights[k]})
@@ -94,7 +95,7 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 	// Between inputs the last Tick's time is the clock.
 	e.clk.Restore(s.Now)
 	e.pc.SetMarket(s.Market)
-	e.paused, e.rateK, e.waves, e.adoptions, e.stalled = s.Paused, s.RateK, s.Waves, s.Adoptions, s.Stalled
+	e.paused, e.rateK, e.waves, e.adoptions = s.Paused, s.RateK, s.Waves, s.Adoptions
 	if err := e.in.Load(intent.State{N: s.Contracts, At: s.DeployAt, Drawn: s.DeployN}); err != nil {
 		return nil, err
 	}
@@ -115,14 +116,7 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 			e.clk.Push(a.At, clock.Event{Kind: clock.Adopt, Intent: uint64(i)})
 		}
 	}
-	for _, set := range []struct {
-		m   map[population.ActorID]bool
-		ids []uint64
-	}{{e.dark, s.Dark}, {e.down, s.Down}, {e.repairs, s.Repairs}} {
-		for _, id := range set.ids {
-			set.m[population.ActorID(id)] = true
-		}
-	}
+	e.fl.Load(floorSaved{Dark: s.Dark, Down: s.Down, Repairs: s.Repairs, Stalled: s.Stalled})
 	for _, r := range s.Actors {
 		if err := e.restoreActor(r); err != nil {
 			return nil, err

@@ -137,7 +137,7 @@ func TestRecoveryStartsOnProjectedBreach(t *testing.T) {
 	}
 	stakeOnto(t, e, fc, 2*epochSlots-cfg.BlockEvery)
 	at := cfg.Slots.SlotStart(2*epochSlots - 2)
-	s := e.floorState(at)
+	s := e.fl.State(at)
 	if s.Label != 1 || s.Epoch != 1 || forgingShare(s.Set, 3) < 50 || forgingShare(s.Mark, 3) >= 50 {
 		t.Fatalf("precondition: label %d epoch %d, set share %d%%, mark share %d%%",
 			s.Label, s.Epoch, forgingShare(s.Set, 3), forgingShare(s.Mark, 3))
@@ -170,7 +170,7 @@ func TestRecoveryIntentsInOneEpoch(t *testing.T) {
 	}
 	stakeOnto(t, e, fc, epochSlots+4*cfg.BlockEvery)
 	at := cfg.Slots.SlotStart(epochSlots + 4*cfg.BlockEvery + 1)
-	e.dark[1] = true
+	e.fl.Load(floorSaved{Dark: []uint64{1}})
 	r := readRecovery(t,
 		mustHandle(t, e, podInput(t, 2, false, at)),
 		mustHandle(t, e, podInput(t, 3, false, at+1000)))
@@ -263,7 +263,7 @@ func boundConfig(t *testing.T, simulated bool) Config {
 // endangeredWithout reports whether the floor is endangered at at once the
 // pods of dead stop.
 func endangeredWithout(e *Engine, at sched.Time, dead []population.ActorID) bool {
-	s := e.floorState(at)
+	s := e.fl.State(at)
 	for i := range s.Pools {
 		for _, d := range dead {
 			if s.Pools[i].ID == d {
@@ -271,7 +271,7 @@ func endangeredWithout(e *Engine, at sched.Time, dead []population.ActorID) bool
 			}
 		}
 	}
-	return e.guard.Endangered(s)
+	return e.fl.Guard().Endangered(s)
 }
 
 // TestRecoveryBound: the pods of pools 1 and 2 die at the start of epoch
@@ -308,8 +308,8 @@ func TestRecoveryBound(t *testing.T) {
 			if err := p.r.Run(context.Background(), end); err != nil {
 				t.Fatal(err)
 			}
-			if e := p.r.Engine(); e.guard.Endangered(e.floorState(end)) {
-				t.Fatalf("floor still endangered at the end of epoch %d: %+v", 2+tt.epochs, e.floorState(end))
+			if e := p.r.Engine(); e.fl.Guard().Endangered(e.fl.State(end)) {
+				t.Fatalf("floor still endangered at the end of epoch %d: %+v", 2+tt.epochs, e.fl.State(end))
 			}
 		})
 	}

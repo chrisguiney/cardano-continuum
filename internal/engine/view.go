@@ -125,7 +125,24 @@ func (v view) VoteDelegated(a population.ActorID) bool { return v.e.win.View().V
 var (
 	_ agenda.Governance = view{}
 	_ agenda.Market     = view{}
+	_ agenda.Floor      = view{}
+	_ agenda.Pods       = view{}
 )
 
 // Burst implements agenda.Market.
 func (v view) Burst() float64 { return v.e.pc.Burst(v.e.clk.Now()) }
+
+// Forging implements agenda.Floor.
+func (v view) Forging(pool population.ActorID) bool { return v.e.fl.Forging(pool) }
+
+// Allows implements agenda.Floor.
+func (v view) Allows(in agenda.Intent) (bool, string) {
+	vd := v.e.fl.Allows(v.e.clk.Now(), in)
+	return vd.OK, vd.Why
+}
+
+// Dark implements agenda.Pods.
+func (v view) Dark(pool population.ActorID) bool { return v.e.fl.Dark(pool) }
+
+// PodRunning implements agenda.Pods.
+func (v view) PodRunning(pool population.ActorID) bool { return v.e.fl.PodRunning(pool) }
