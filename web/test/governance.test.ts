@@ -42,7 +42,7 @@ describe("governance view", () => {
   it("finds a pool actor's SPO votes", () => {
     const v: GovernanceView = {
       lifetime_epochs: 6, proposals: [], votes: [],
-      pools: [{ actor: 7, votes: [{ slot: 1, at: 1000, tx: "aa", proposal: "a#0", type: "info", voter: "spo", actor: 7, choice: "yes", power: 1 }] }],
+      pools: [{ actor: 7, votes: [{ slot: 1, at: 1000, tx: "aa", proposal: "a#0", type: "info", voter: "spo", voter_id: "07", actor: 7, choice: "yes", power: 1 }] }],
     };
     expect(poolVotes(v, 7)).toHaveLength(1);
     expect(poolVotes(v, 8)).toEqual([]);
@@ -50,7 +50,7 @@ describe("governance view", () => {
   });
 
   it("filters votes by voter class and proposals by action type", () => {
-    const vote = (voter: string, type: string) => ({ slot: 1, at: 1, tx: voter + type, proposal: "a#0", type, voter, choice: "yes", power: 0 });
+    const vote = (voter: string, type: string) => ({ slot: 1, at: 1, tx: voter + type, proposal: "a#0", type, voter, voter_id: "00", choice: "yes", power: 0 });
     const v: GovernanceView = {
       lifetime_epochs: 6, proposals: [prop("a#0", "open", 3), { ...prop("b#0", "open", 4), type: "treasury_withdrawals" }],
       votes: [vote("spo", "info"), vote("drep", "info"), vote("drep", "treasury_withdrawals")], pools: [],

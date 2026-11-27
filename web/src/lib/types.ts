@@ -248,6 +248,8 @@ export interface ProposalRow {
   status: string;
   spo_may_vote: boolean;
   tally: Record<string, Tally>;
+  /** summary is one line on what the action asks for; empty when the explorer has not decoded it. */
+  summary?: string;
 }
 export interface VoteRow {
   slot: number;
@@ -256,6 +258,7 @@ export interface VoteRow {
   proposal: string;
   type: string;
   voter: string;
+  voter_id: string;
   actor?: number;
   profile?: string;
   choice: string;
@@ -272,4 +275,79 @@ export interface GovernanceView {
   proposals: ProposalRow[];
   votes: VoteRow[];
   pools: PoolVotes[];
+}
+
+/** GovParam is one protocol parameter a parameter-change action sets. */
+export interface GovParam {
+  field: string;
+  name: string;
+  group: string;
+  security: boolean;
+  unit: string;
+  desc: string;
+  new: string;
+  current?: string;
+}
+export interface GovAnchor {
+  url: string;
+  hash: string;
+}
+export interface GovRef {
+  tx: string;
+  index: number;
+}
+export interface GovActorRef {
+  id: number;
+  name: string;
+  role: string;
+}
+export interface GovPayee {
+  address: string;
+  lovelace: number;
+  actor?: GovActorRef;
+}
+export interface GovMember {
+  credential: string;
+  epoch?: number;
+}
+/** GovContent is the proposal procedure decoded; only the fields of its kind are set. */
+export interface GovContent {
+  tx: string;
+  index: number;
+  slot: number;
+  kind: string;
+  return_address: string;
+  return_actor?: GovActorRef;
+  deposit: number;
+  anchor?: GovAnchor;
+  prev_action?: GovRef;
+  params?: GovParam[];
+  policy_hash?: string;
+  withdrawals?: GovPayee[];
+  total?: number;
+  removed?: string[];
+  added?: GovMember[];
+  quorum?: string;
+  constitution?: { anchor: GovAnchor; script_hash?: string };
+  version?: { major: number; minor: number };
+}
+export interface VoterRule {
+  class: string;
+  allowed: boolean;
+  reason: string;
+  rule: string;
+}
+export interface GovVote extends VoteRow {
+  anchor?: GovAnchor;
+}
+/** GovDetail is /api/governance/{tx}/{index}. */
+export interface GovDetail {
+  id: string;
+  epoch?: number;
+  lifetime_epochs: number;
+  proposal: ProposalRow;
+  summary?: string;
+  content?: GovContent;
+  voters: VoterRule[];
+  votes: GovVote[];
 }

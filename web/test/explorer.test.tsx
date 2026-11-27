@@ -155,6 +155,10 @@ describe("transaction detail", () => {
   it("decodes certificates, votes and proposals", () => {
     for (const t of ["stake_delegation", "drep_registration", "deposit 500 ADA", "drep_key", "yes", "info"]) expect(html).toContain(t);
   });
+  it("links each proposal and each vote's action to the governance action page", () => {
+    expect(html).toContain(`href="/governance/${H2}/0"`);
+    expect(html).toContain(`href="/governance/${H1}/0"`);
+  });
   it("shows mint, metadata, redeemer ExUnits, scripts and signers", () => {
     for (const t of ["Mint and burn", "-7 tok", "hello", "1,000", "2,000", "Scripts, redeemers and signers", "Required signers"]) expect(html).toContain(t);
   });

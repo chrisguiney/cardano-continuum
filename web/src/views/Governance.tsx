@@ -2,16 +2,18 @@ import { useEffect, useMemo, useState } from "preact/hooks";
 import { Feed, appendDecision, type EventSourceLike, type FeedState } from "../lib/feed";
 import { ada, count, short, simTime } from "../lib/format";
 import { CLASSES, choiceLine, filterGov, sortProposals, yesShare, type GovFilter } from "../lib/governance";
+import { govPath } from "../lib/govdetail";
+import { GOV_HELP } from "../lib/govhelp";
 import { FIELD_HELP, VIEW_BLURB } from "../lib/help";
 import { optionsOf, useEnums } from "../lib/meta";
 import { usePoll } from "../lib/hooks";
-import type { Decision, GovernanceView, VoteRow } from "../lib/types";
+import type { Decision, GovernanceView, ProposalRow, VoteRow } from "../lib/types";
 import { ErrorNote, Link, Stat } from "./common";
-import { Blurb, SelectField } from "./fields";
+import { Blurb, HelpTip, SelectField } from "./fields";
 
 const FEED_CAP = 100;
 
-const CLASS_LABEL: Record<string, string> = { drep: "DRep", spo: "SPO", committee: "Committee" };
+const CLASS_LABEL: Record<string, string> = { drep: "DRep", spo: "SPO", committee: "Constitutional committee" };
 
 function Actor({ id, profile }: { id?: number; profile?: string }) {
   if (id === undefined) return <span class="muted">not ours</span>;
@@ -41,13 +43,62 @@ export function VoteTable({ votes, empty }: { votes: VoteRow[]; empty: string })
               <td class="num">{count(v.slot)}</td>
               <td>{CLASS_LABEL[v.voter] ?? v.voter}</td>
               <td><Actor id={v.actor} profile={v.profile} /></td>
-              <td><code>{short(v.proposal, 10)}</code></td>
+              <td><ProposalLink id={v.proposal} /></td>
               <td>{v.type || "–"}</td>
               <td>{v.choice}</td>
               <td class="num">{v.power > 0 ? ada(v.power) : "–"}</td>
             </tr>
           ))}
           {votes.length === 0 && <tr><td colSpan={7} class="empty">{empty}</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ProposalLink({ id }: { id: string }) {
+  const to = govPath(id);
+  const text = <code>{short(id, 10)}</code>;
+  return to ? <Link to={to}>{text}</Link> : text;
+}
+
+/** ColHead is a column heading with the "?" tip of a governance term. */
+function ColHead({ k, label, id }: { k: string; label?: string; id: string }) {
+  const h = (GOV_HELP[k] ?? FIELD_HELP[k])!;
+  return <th>{label ?? h.label}<HelpTip id={`gh-${id}`} label={h.label} text={h.help} /></th>;
+}
+
+const CLASS_TERM: Record<string, string> = { drep: "drep", spo: "spo", committee: "committee" };
+
+/** ProposalTable lists proposals, each linking to its page with a one-line summary of what it asks for. */
+export function ProposalTable({ proposals }: { proposals: ProposalRow[] }) {
+  return (
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Proposal</th><ColHead k="action_type" label="Type" id="type" /><th>Proposer</th><ColHead k="deposit" id="deposit" />
+            <ColHead k="gov_lifetime" label="Expires" id="expires" /><ColHead k="status" id="status" />
+            {CLASSES.map((c) => <ColHead key={c} k={CLASS_TERM[c]!} label={CLASS_LABEL[c]} id={`class-${c}`} />)}
+          </tr>
+        </thead>
+        <tbody>
+          {proposals.map((p) => (
+            <tr key={p.id} class={p.status === "open" ? undefined : "dim"}>
+              <td><ProposalLink id={p.id} /></td>
+              <td>{p.type || "unknown"}{p.summary && <div class="muted">{p.summary}</div>}</td>
+              <td><Actor id={p.proposer} profile={p.profile} /></td>
+              <td class="num">{ada(p.deposit_lovelace)}</td>
+              <td class="num">{p.expires_epoch === undefined ? "–" : `epoch ${p.expires_epoch}`}</td>
+              <td><span class={`tag ${p.status === "open" ? "ok" : "warn"}`}>{p.status}</span></td>
+              {CLASSES.map((c) => {
+                const t = p.tally[c];
+                if (c === "spo" && !p.spo_may_vote) return <td key={c} class="muted" title="the ledger does not let stake pools vote on this action">not eligible</td>;
+                return <td key={c}>{t ? <>{choiceLine(t)}<br /><Share v={yesShare(t)} /></> : "–"}</td>;
+              })}
+            </tr>
+          ))}
+          {proposals.length === 0 && <tr><td colSpan={9} class="empty">No proposals on the chain yet.</td></tr>}
         </tbody>
       </table>
     </div>
@@ -107,32 +158,7 @@ export function Governance() {
           <Summary g={g} />
           <h2>Proposals</h2>
           <p class="muted">Votes are each voter's latest; power is the stake behind the vote in the engine's chain view.</p>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr><th>Proposal</th><th>Type</th><th>Proposer</th><th>Deposit</th><th>Expires</th><th>Status</th>
-                  {CLASSES.map((c) => <th key={c}>{CLASS_LABEL[c]}</th>)}</tr>
-              </thead>
-              <tbody>
-                {proposals.map((p) => (
-                  <tr key={p.id} class={p.status === "open" ? undefined : "dim"}>
-                    <td><code>{short(p.id, 10)}</code></td>
-                    <td>{p.type || "unknown"}</td>
-                    <td><Actor id={p.proposer} profile={p.profile} /></td>
-                    <td class="num">{ada(p.deposit_lovelace)}</td>
-                    <td class="num">{p.expires_epoch === undefined ? "–" : `epoch ${p.expires_epoch}`}</td>
-                    <td><span class={`tag ${p.status === "open" ? "ok" : "warn"}`}>{p.status}</span></td>
-                    {CLASSES.map((c) => {
-                      const t = p.tally[c];
-                      if (c === "spo" && !p.spo_may_vote) return <td key={c} class="muted" title="the ledger does not let stake pools vote on this action">not eligible</td>;
-                      return <td key={c}>{t ? <>{choiceLine(t)}<br /><Share v={yesShare(t)} /></> : "–"}</td>;
-                    })}
-                  </tr>
-                ))}
-                {proposals.length === 0 && <tr><td colSpan={9} class="empty">No proposals on the chain yet.</td></tr>}
-              </tbody>
-            </table>
-          </div>
+          <ProposalTable proposals={proposals} />
           <h2>Votes on the chain</h2>
           <VoteTable votes={g.votes} empty="No votes on the chain yet." />
         </>

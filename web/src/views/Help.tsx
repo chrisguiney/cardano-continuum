@@ -1,4 +1,6 @@
-import { FIELD_HELP, GLOSSARY, VIEW_BLURB } from "../lib/help";
+import { ADV_GLOSSARY } from "../lib/advhelp";
+import { GOV_GLOSSARY } from "../lib/govhelp";
+import { FIELD_HELP, GLOSSARY, VIEW_BLURB, type Term } from "../lib/help";
 import { Blurb } from "./fields";
 
 const VIEWS: [string, string][] = [
@@ -7,6 +9,22 @@ const VIEWS: [string, string][] = [
 ];
 
 const CONTROLS = ["profile", "state", "kind", "delegated", "limit", "sort", "dir", "known", "severity", "finding_kind", "impl", "tier", "phase", "attack", "agenda", "intent", "decision_kind", "voter_class", "action_type", "actor", "search", "theme"];
+
+function Glossary({ id, title, terms }: { id: string; title: string; terms: Term[] }) {
+  return (
+    <section class="card" aria-labelledby={id}>
+      <h2 id={id}>{title}</h2>
+      <dl class="glossary">
+        {terms.map((g) => (
+          <>
+            <dt>{g.term}</dt>
+            <dd>{g.def}</dd>
+          </>
+        ))}
+      </dl>
+    </section>
+  );
+}
 
 /** Help defines the jargon and lists what each filter and control does. */
 export function Help() {
@@ -36,6 +54,8 @@ export function Help() {
           ))}
         </dl>
       </section>
+      <Glossary id="h-gov" title="Governance" terms={GOV_GLOSSARY} />
+      <Glossary id="h-adv" title="Adversaries" terms={ADV_GLOSSARY} />
       <section class="card" aria-labelledby="h-ctl">
         <h2 id="h-ctl">Filters and controls</h2>
         <p class="muted">Dropdowns list every value the server accepts. The page address keeps the filters, so you can share a link to a filtered view.</p>

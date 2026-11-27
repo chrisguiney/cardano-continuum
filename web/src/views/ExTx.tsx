@@ -85,12 +85,12 @@ function Tail({ tx }: { tx: TxDetail }) {
       )}
       {tx.votes.length > 0 && (
         <Section id="t-votes" title="Votes">
-          <ul>{tx.votes.map((v, i) => <li key={i}><span class="tag">{v.choice}</span> by {v.voter} <span class="mono" title={v.voter_hash}>{v.voter_hash.slice(0, 10)}</span> on <TxHash value={v.action_tx} n={12} />{`#${v.action_index}`}</li>)}</ul>
+          <ul>{tx.votes.map((v, i) => <li key={i}><span class="tag">{v.choice}</span> by {v.voter} <span class="mono" title={v.voter_hash}>{v.voter_hash.slice(0, 10)}</span> on <TxHash value={v.action_tx} n={12} /><Link to={`/governance/${v.action_tx}/${v.action_index}`}>{`#${v.action_index}`}</Link></li>)}</ul>
         </Section>
       )}
       {tx.proposals.length > 0 && (
         <Section id="t-props" title="Proposals">
-          <ul>{tx.proposals.map((p) => <li key={p.index}><span class="tag">{p.kind}</span> deposit {lovelaceText(p.deposit)}, returns to <Addr value={p.return_address} />{p.anchor && <> · anchor {p.anchor}</>}</li>)}</ul>
+          <ul>{tx.proposals.map((p) => <li key={p.index}><span class="tag">{p.kind}</span> deposit {lovelaceText(p.deposit)}, returns to <Addr value={p.return_address} />{p.anchor && <> · anchor {p.anchor}</>} · <Link to={`/governance/${tx.hash}/${p.index}`}>details and votes</Link></li>)}</ul>
         </Section>
       )}
       {tx.withdrawals.length > 0 && (

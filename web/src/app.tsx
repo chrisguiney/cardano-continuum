@@ -11,6 +11,7 @@ import { Help } from "./views/Help";
 import { HelpTip } from "./views/fields";
 import { FIELD_HELP } from "./lib/help";
 import { Governance } from "./views/Governance";
+import { GovAction } from "./views/GovAction";
 import { Overview } from "./views/Overview";
 import { ExAddress } from "./views/ExAddress";
 import { ExBlock } from "./views/ExBlock";
@@ -116,6 +117,7 @@ export function App() {
         {route.name === "actor" && <Actor id={route.id} />}
         {route.name === "pools" && <Pools />}
         {route.name === "governance" && <Governance />}
+        {route.name === "govaction" && <GovAction tx={route.tx} index={route.index} />}
         {route.name === "decisions" && <Decisions />}
         {route.name === "findings" && <Findings />}
         {route.name === "adversaries" && <Adversaries />}

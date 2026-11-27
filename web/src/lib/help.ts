@@ -69,7 +69,6 @@ export const GLOSSARY: Term[] = [
   { term: "Tip", def: "The newest block a node knows. If nodes disagree on it, the chain has forked." },
   { term: "Fork", def: "Two groups of nodes follow different chains." },
   { term: "Delegation", def: "Pointing your stake at a pool so it can make blocks for you; you keep your ADA." },
-  { term: "DRep", def: "Delegated representative: someone who votes on governance proposals for the ADA delegated to them." },
   { term: "Lovelace", def: "The smallest unit of ADA: one ADA is 1,000,000 lovelace." },
   { term: "Block", def: "A batch of transactions the chain adds in one slot. Each block names the block before it, so blocks form a chain; a block is issued by one pool." },
   { term: "Transaction", def: "A signed instruction that spends outputs and creates new ones, and may also mint tokens, register stake or vote." },

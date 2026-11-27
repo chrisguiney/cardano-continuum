@@ -1,6 +1,7 @@
 export type Route =
   | { name: "overview" | "actors" | "pools" | "governance" | "decisions" | "findings" | "adversaries" | "controls" | "help" | "explorer" | "notfound" }
   | { name: "actor"; id: number }
+  | { name: "govaction"; tx: string; index: number }
   | { name: "xblock" | "xtx" | "xaddr" | "xpool"; key: string }
   | { name: "xepoch"; n: number };
 
@@ -26,8 +27,13 @@ export function parseRoute(path: string): Route {
   if (parts.length === 0) return { name: "overview" };
   if (parts.length === 1 && head && simple.has(head)) return { name: head as "actors" };
   if (parts.length === 2 && head === "actors" && arg && /^\d+$/.test(arg)) return { name: "actor", id: Number(arg) };
+  if (head === "governance" && parts.length === 3 && arg && key) return govRoute(arg, key);
   if (head === "explorer" && parts.length === 3 && arg && key) return explorerRoute(arg, key);
   return { name: "notfound" };
+}
+
+function govRoute(tx: string, index: string): Route {
+  return reHash.test(tx) && /^\d{1,9}$/.test(index) ? { name: "govaction", tx: tx.toLowerCase(), index: Number(index) } : { name: "notfound" };
 }
 
 function explorerRoute(kind: string, key: string): Route {
