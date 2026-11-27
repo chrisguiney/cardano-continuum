@@ -27,6 +27,19 @@ const (
 	VerdictDropped
 )
 
+// Submission is a payment waiting for the node's answer. Twice asks for the
+// bytes to be sent a second time (a DoubleSubmit mistake). It is never
+// logged.
+type Submission struct {
+	Intent uint64
+	Actor  uint64
+	ID     TxID
+	Tx     []byte
+	Twice  bool
+	// Rivals are sent right after Tx: a double-spend race.
+	Rivals []Rival
+}
+
 // SubmitResult is the body of a SubmitResult input: what the node said to a
 // submission.
 type SubmitResult struct {

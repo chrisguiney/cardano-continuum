@@ -8,11 +8,11 @@ import (
 
 	// Aliased: the package tests declare a recovery type of their own.
 	restart "github.com/chrisguiney/cardano-continuum/internal/engine/internal/recovery"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/send"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/store"
-	"github.com/chrisguiney/cardano-continuum/internal/submit"
 )
 
 // Node is the chain the loop submits to and follows.
@@ -134,16 +134,14 @@ type Runner struct {
 	eng    *Engine
 	sess   eventlog.Session
 	follow Follower
-	// resumed are the intents in flight when this process started.
-	resumed map[uint64]bool
-	ckpt    *restart.Saver
-	stats   Stats
+	send   *send.Sender
+	ckpt   *restart.Saver
+	stats  Stats
 	// plan is the pool plan last synced.
 	plan   []PoolPlan
 	synced bool
-	// node is who answers submissions; viewed and viewAt are the settled
-	// point and time of the last view query.
-	node    *oracle.Node
+	// viewed and viewAt are the settled point and time of the last view
+	// query.
 	viewed  eventlog.ChainPoint
 	viewAt  sched.Time
 	queried bool
@@ -168,10 +166,6 @@ func Start(ctx context.Context, cfg Config, d Deps) (*Runner, error) {
 		return nil, err
 	}
 	r := &Runner{cfg: cfg, d: d, log: d.Logger}
-	if id, ok := d.Node.(Identifier); ok {
-		n := id.Identity()
-		r.node = &n
-	}
 	if r.log == nil {
 		r.log = slog.New(slog.DiscardHandler)
 	}
@@ -185,12 +179,12 @@ func Start(ctx context.Context, cfg Config, d Deps) (*Runner, error) {
 	}
 	r.ckpt = restart.NewSaver(d.Log, d.Store, d.CheckpointEvery, d.Crash)
 	r.sess = eventlog.Session{Eng: r.eng, Log: d.Log}
-	// A payment in flight at a restart may have been sent by the process
-	// that died, so a rejection of it proves nothing.
-	r.resumed = map[uint64]bool{}
-	for _, s := range r.eng.pay.InFlight(r.eng.clk.Now()) {
-		r.resumed[s.Intent] = true
+	var who *oracle.Node
+	if id, ok := d.Node.(Identifier); ok {
+		n := id.Identity()
+		who = &n
 	}
+	r.send = send.New(d.Node, d.Log, who, r.eng.pay.InFlight(r.eng.clk.Now()))
 	r.log.Info("engine started", "covers", covers, "log_seq", d.Log.LastSeq(), "actors", r.eng.Summary().Actors)
 	if err := r.effects(ctx); err != nil {
 		return nil, err
@@ -268,11 +262,10 @@ func (r *Runner) effects(ctx context.Context) error {
 			return nil
 		}
 		s := inf[0]
-		res, err := r.send(ctx, s)
+		res, err := r.send.Send(ctx, s)
 		if err != nil {
 			return err
 		}
-		delete(r.resumed, s.Intent)
 		r.stats.Submissions++
 		if err := r.ckpt.Crash(StageSubmitted); err != nil {
 			return err
@@ -287,96 +280,6 @@ func (r *Runner) effects(ctx context.Context) error {
 		}
 	}
 }
-
-// send submits s unless the mempool already holds it, and classifies the
-// answer with internal/submit.
-func (r *Runner) send(ctx context.Context, s Submission) (SubmitResult, error) {
-	res, err := r.sendOnce(ctx, s)
-	if err != nil {
-		return res, err
-	}
-	for _, rv := range s.Rivals {
-		res.Rivals = append(res.Rivals, r.sendRival(ctx, rv))
-	}
-	if ctx.Err() != nil {
-		return res, ctx.Err()
-	}
-	if !s.Twice {
-		return res, nil
-	}
-	// The second send goes out whatever the first answered, as an actor
-	// pressing send twice would; HasTx would only hide its answer.
-	o := submit.Send(ctx, nodeTarget{r.d.Node}, 0, s.Tx)
-	if ctx.Err() != nil {
-		return res, ctx.Err()
-	}
-	res.Again = &Answer{Verdict: verdictOf(o), Failures: classesOf(o)}
-	return res, nil
-}
-
-func (r *Runner) sendOnce(ctx context.Context, s Submission) (SubmitResult, error) {
-	res := SubmitResult{Intent: s.Intent, Verdict: VerdictAccepted, Node: r.node}
-	if r.d.Node.HasTx(s.ID) {
-		return res, nil
-	}
-	if err := r.d.Log.Sync(ctx); err != nil {
-		return res, fmt.Errorf("engine: sync before submit: %w", err)
-	}
-	o := submit.Send(ctx, nodeTarget{r.d.Node}, 0, s.Tx)
-	if ctx.Err() != nil {
-		return res, ctx.Err()
-	}
-	switch o.Verdict {
-	case submit.Rejected:
-		res.Verdict, res.Reason = VerdictRejected, (&submit.RejectedError{Failures: o.Failures}).Error()
-		res.Failures = classesOf(o)
-		res.Resend = r.resumed[s.Intent]
-		r.stats.Rejections++
-	case submit.Unreached:
-		res.Verdict, res.Reason = VerdictUnreached, o.Err.Error()
-		r.stats.Unreached++
-	}
-	return res, nil
-}
-
-// sendRival sends a race's further transaction. One the mempool already
-// holds was sent before a crash and is taken as accepted.
-func (r *Runner) sendRival(ctx context.Context, rv Rival) Answer {
-	if r.d.Node.HasTx(rv.ID) {
-		return Answer{Verdict: VerdictAccepted}
-	}
-	o := submit.Send(ctx, nodeTarget{r.d.Node}, 0, rv.Tx)
-	if o.Verdict == submit.Rejected {
-		r.stats.Rejections++
-	}
-	return Answer{Verdict: verdictOf(o), Failures: classesOf(o)}
-}
-
-func verdictOf(o submit.Outcome) Verdict {
-	switch o.Verdict {
-	case submit.Accepted:
-		return VerdictAccepted
-	case submit.Rejected:
-		return VerdictRejected
-	}
-	return VerdictUnreached
-}
-
-func classesOf(o submit.Outcome) []string {
-	var out []string
-	for _, f := range o.Failures {
-		out = append(out, string(f.Class))
-	}
-	return out
-}
-
-// nodeTarget lets internal/submit classify a Node's answer. The era is the
-// Node's concern.
-type nodeTarget struct{ n Node }
-
-func (t nodeTarget) Submit(ctx context.Context, _ uint, tx []byte) error { return t.n.Submit(ctx, tx) }
-
-func (nodeTarget) Name() string { return "node" }
 
 // drain feeds every chain event the follower has.
 func (r *Runner) drain(ctx context.Context) error {
@@ -603,4 +506,8 @@ func (r *Runner) state(seq uint64) (store.Checkpoint, error) {
 func (r *Runner) Engine() *Engine { return r.eng }
 
 // Stats returns what the loop did in this process.
-func (r *Runner) Stats() Stats { return r.stats }
+func (r *Runner) Stats() Stats {
+	st := r.stats
+	st.Rejections, st.Unreached = r.send.Rejections(), r.send.Unreached()
+	return st
+}

@@ -11,17 +11,9 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 )
 
-// Submission is a payment waiting for the node's answer. Twice asks for the
-// bytes to be sent a second time (a DoubleSubmit mistake).
-type Submission struct {
-	Intent uint64
-	Actor  uint64
-	ID     wire.TxID
-	Tx     []byte
-	Twice  bool
-	// Rivals are sent right after Tx: a double-spend race.
-	Rivals []wire.Rival
-}
+// Submission is a payment waiting for the node's answer; see
+// wire.Submission.
+type Submission = wire.Submission
 
 // Book is the unfinished intents: by ID, by unfinished attempt, and the
 // ones waiting for a node's answer.
