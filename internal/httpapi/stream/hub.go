@@ -23,6 +23,8 @@ type Hub struct {
 	next    int
 	dropped int
 	closed  bool
+	// changed holds at most one pending signal that subs changed.
+	changed chan struct{}
 }
 
 type sub struct {
@@ -33,7 +35,7 @@ type sub struct {
 // NewHub returns a hub that keeps ringSize decisions, serves at most
 // maxClients subscribers and buffers buf undelivered decisions for each.
 func NewHub(ringSize, maxClients, buf int) *Hub {
-	return &Hub{cap: max(ringSize, 1), maxClients: maxClients, buf: max(buf, 1), subs: map[int]*sub{}}
+	return &Hub{cap: max(ringSize, 1), maxClients: maxClients, buf: max(buf, 1), subs: map[int]*sub{}, changed: make(chan struct{}, 1)}
 }
 
 // Publish adds d to the ring and delivers it to matching subscribers.
@@ -60,6 +62,7 @@ func (h *Hub) Publish(d view.Decision) {
 			delete(h.subs, id)
 			close(s.c)
 			h.dropped++
+			h.signal()
 		}
 	}
 }
@@ -82,6 +85,7 @@ func (h *Hub) Subscribe(f view.Filter, after *uint64) (*view.Subscription, error
 	id := h.next
 	h.next++
 	h.subs[id] = s
+	h.signal()
 	out := &view.Subscription{C: s.c}
 	if after != nil {
 		out.Gap = *after < h.evicted
@@ -100,6 +104,7 @@ func (h *Hub) Subscribe(f view.Filter, after *uint64) (*view.Subscription, error
 			if _, ok := h.subs[id]; ok {
 				delete(h.subs, id)
 				close(s.c)
+				h.signal()
 			}
 		})
 	}
@@ -111,6 +116,18 @@ func (h *Hub) Subscribers() int {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return len(h.subs)
+}
+
+// Changes receives a signal after the subscriber set changes. Signals
+// coalesce, so a waiter re-reads Subscribers after each one.
+func (h *Hub) Changes() <-chan struct{} { return h.changed }
+
+// signal must be called with h.mu held.
+func (h *Hub) signal() {
+	select {
+	case h.changed <- struct{}{}:
+	default:
+	}
 }
 
 // Dropped counts clients disconnected for falling behind.
@@ -132,4 +149,5 @@ func (h *Hub) Close() {
 		delete(h.subs, id)
 		close(s.c)
 	}
+	h.signal()
 }

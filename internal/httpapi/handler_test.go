@@ -398,12 +398,13 @@ func TestSSEDeliversFilteredInOrder(t *testing.T) {
 
 func waitSubscribers(t *testing.T, h *Hub, n int) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.After(5 * time.Second)
 	for h.Subscribers() != n {
-		if time.Now().After(deadline) {
+		select {
+		case <-h.Changes():
+		case <-deadline:
 			t.Fatalf("subscribers %d, want %d", h.Subscribers(), n)
 		}
-		time.Sleep(5 * time.Millisecond)
 	}
 }
 
