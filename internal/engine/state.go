@@ -10,9 +10,10 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
-	evclock "github.com/chrisguiney/cardano-continuum/internal/engine/internal/clock"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/clock"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/cohort"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/window"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/mistake"
@@ -29,7 +30,7 @@ func blake2b256(b []byte) common.Blake2b256 { return common.Blake2b256Hash(b) }
 // the ledger's blob included.
 func (e *Engine) Snapshot() ([]byte, error) {
 	sv := e.win.Saved()
-	s := snapshot{Version: snapshotVersion, Now: e.clk.Now(), NextIntent: e.nextID, Conf: sv.Conf, Fees: sv.Fees, Foreign: sv.Foreign, RefillAt: e.refillAt, Deposits: e.deposits, Market: e.pc.market, Lost: e.lost,
+	s := snapshot{Version: snapshotVersion, Now: e.clk.Now(), NextIntent: e.nextID, Conf: sv.Conf, Fees: sv.Fees, Foreign: sv.Foreign, RefillAt: e.refillAt, Deposits: e.deposits, Market: e.pc.Market(), Lost: e.lost,
 		Contracts: e.contracts, DeployAt: e.deployAt, DeployN: e.deployN}
 	for _, id := range e.co.IDs() {
 		a, _ := e.co.Get(id)
@@ -97,8 +98,8 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 	e.nextID, e.deposits = s.NextIntent, s.Deposits
 	// Between inputs the last Tick's time is the clock.
 	e.clk.Restore(s.Now)
-	e.pc.market, e.stalled, e.lost = s.Market, s.Stalled, s.Lost
-	e.paused, e.rateK, e.waves, e.adoptions = s.Paused, s.RateK, s.Waves, s.Adoptions
+	e.pc.SetMarket(s.Market)
+	e.paused, e.rateK, e.waves, e.adoptions, e.stalled, e.lost = s.Paused, s.RateK, s.Waves, s.Adoptions, s.Stalled, s.Lost
 	e.contracts, e.deployAt, e.deployN = max(s.Contracts, 1), s.DeployAt, s.DeployN
 	for i := uint64(1); i < e.contracts; i++ {
 		if err := e.bookContract(i); err != nil {
@@ -120,7 +121,7 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 	}
 	for i, a := range e.adoptions {
 		if !a.Done {
-			e.clk.Push(a.At, evclock.Event{Kind: evclock.Adopt, Intent: uint64(i)})
+			e.clk.Push(a.At, clock.Event{Kind: clock.Adopt, Intent: uint64(i)})
 		}
 	}
 	for _, set := range []struct {
@@ -147,7 +148,7 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 	}
 	if cfg.Faucet > 0 {
 		e.refillAt = s.RefillAt
-		e.clk.Push(e.refillAt, evclock.Event{Kind: evclock.Refill})
+		e.clk.Push(e.refillAt, clock.Event{Kind: clock.Refill})
 	}
 	// After restoreActor: the actors' ceilings are set, the spends restored.
 	e.costs.Restore(s.Charges)
@@ -237,10 +238,10 @@ func (e *Engine) restoreActor(r actorRec) error {
 		st.Paid = append(st.Paid, population.ActorID(id))
 	}
 	if st.HazardAt != population.Never {
-		st.HazardH = e.clk.Push(st.HazardAt, evclock.Event{Kind: evclock.Hazard, Actor: a.ID})
+		st.HazardH = e.clk.Push(st.HazardAt, clock.Event{Kind: clock.Hazard, Actor: a.ID})
 	}
 	if st.ActAt != population.Never {
-		st.ActH = e.clk.Push(st.ActAt, evclock.Event{Kind: evclock.Act, Actor: a.ID})
+		st.ActH = e.clk.Push(st.ActAt, clock.Event{Kind: clock.Act, Actor: a.ID})
 	}
 	return nil
 }
@@ -280,14 +281,18 @@ func (o owners) Owner(a common.Address) (population.ActorID, bool) {
 }
 
 // evsched is the event queue as the cohort schedules on it.
-type evsched struct{ *evclock.Clock }
+type evsched struct{ *clock.Clock }
 
 func (c evsched) Hazard(at sched.Time, id population.ActorID) sched.Handle {
-	return c.Push(at, evclock.Event{Kind: evclock.Hazard, Actor: id})
+	return c.Push(at, clock.Event{Kind: clock.Hazard, Actor: id})
+}
+
+func (c evsched) Act(at sched.Time, id population.ActorID) sched.Handle {
+	return c.Push(at, clock.Event{Kind: clock.Act, Actor: id})
 }
 
 func (c evsched) Birth(at sched.Time, idx int) sched.Handle {
-	return c.Push(at, evclock.Event{Kind: evclock.Birth, Birth: idx})
+	return c.Push(at, clock.Event{Kind: clock.Birth, Birth: idx})
 }
 
 // hooks is the rest of the engine as the cohort reaches it: the adversaries
@@ -302,12 +307,22 @@ func (h hooks) Adversary(id population.ActorID) bool { return h.e.isAdversary(id
 
 func (h hooks) Spent(id population.ActorID) uint64 { return h.e.costs.Total(id) }
 
-func (h hooks) Clocks(a population.Actor, p profile.Profile) ([]clock, profile.IntentKind) {
-	cs, boot, _ := h.e.pc.clocks(a, p)
+func (h hooks) Clocks(a population.Actor, p profile.Profile) ([]wire.Clock, profile.IntentKind) {
+	cs, boot, _ := h.e.pc.Clocks(a, p)
 	return cs, boot
 }
 
-func (h hooks) Wake(a population.Actor, st *actor, now sched.Time) { h.e.pc.nextAct(a, st, now) }
+func (h hooks) Wake(a population.Actor, st *cohort.Actor, now sched.Time) {
+	h.e.pc.Next(a, subject(st), now)
+}
+
+func (h hooks) InFlight(id population.ActorID, kind string) bool { return h.e.inFlight(id, kind) }
+
+func (h hooks) Agenda() agenda.View { return view(h) }
+
+func (h hooks) RateK() uint32 { return h.e.rateK }
+
+func (h hooks) Weights() map[profile.IntentKind]float64 { return h.e.weights }
 
 // logged is the ledger's Committer inside the pure engine. It writes
 // nothing: every ledger change is a deterministic result of a logged input,

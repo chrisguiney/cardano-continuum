@@ -18,6 +18,7 @@ package cohort
 import (
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
@@ -61,7 +62,7 @@ type Adversaries interface {
 // Pacer is what the cohort asks of the pacing: an actor's intent clocks,
 // and its next wake.
 type Pacer interface {
-	Clocks(a population.Actor, p profile.Profile) ([]Clock, profile.IntentKind)
+	Clocks(a population.Actor, p profile.Profile) ([]wire.Clock, profile.IntentKind)
 	Wake(a population.Actor, st *Actor, now sched.Time)
 }
 

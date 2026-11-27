@@ -11,9 +11,10 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
-	evclock "github.com/chrisguiney/cardano-continuum/internal/engine/internal/clock"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/clock"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/cohort"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/journal"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/pace"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/window"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
@@ -36,7 +37,7 @@ var (
 	// ErrUnknownPoint: a rollback names a point the engine never applied.
 	ErrUnknownPoint = window.ErrUnknownPoint
 	// ErrTimeBackwards: a Tick older than the engine's clock.
-	ErrTimeBackwards = evclock.ErrBackwards
+	ErrTimeBackwards = clock.ErrBackwards
 	// ErrUnknownInput: an input kind the engine does not handle.
 	ErrUnknownInput = errors.New("engine: unknown input kind")
 	// ErrUnknownVerdict: a SubmitResult whose verdict is missing or unknown.
@@ -76,7 +77,7 @@ type Engine struct {
 	faucet   keys.Wallet
 	refillAt sched.Time
 
-	clk evclock.Clock
+	clk clock.Clock
 	jr  journal.Journal
 	co  *cohort.Cohort
 
@@ -91,7 +92,7 @@ type Engine struct {
 	// deposits is the lovelace the engine's settled certificates and
 	// proposals hold in the ledger's deposit pot.
 	deposits uint64
-	pc       pace
+	pc       *pace.Pace
 	// contracts is how many contracts are deployed (contract 0 from
 	// genesis); deployAt is the next deployment, deployN its draw.
 	contracts uint64
@@ -157,7 +158,7 @@ func New(cfg Config) (*Engine, error) {
 	if cfg.Faucet > 0 {
 		owners = []population.ActorID{faucetActor}
 		e.refillAt = 0
-		e.clk.Push(0, evclock.Event{Kind: evclock.Refill})
+		e.clk.Push(0, clock.Event{Kind: clock.Refill})
 	}
 	var genesis []plan.Utxo
 	for i, f := range funds {
@@ -246,7 +247,8 @@ func newEmpty(cfg Config) (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
-	e.pc.e = e
+	e.pc = pace.New(pace.Spec{Proposer: proposerName, Proposals: cfg.Network.Proposals, Population: e.cfg.population, Slots: cfg.Slots, BlockEvery: cfg.BlockEvery},
+		pace.Env{Sched: evsched{&e.clk}, Knobs: hooks{e}, Chain: e.win, Flight: hooks{e}, Agenda: hooks{e}})
 	e.co = cohort.New(cohort.Spec{Seed: cfg.Seed, Census: cfg.Seed.Derive(censusStream), Slots: cfg.Slots, Proposer: proposerName,
 		ActorKeys: ks, RootKeys: rootKeys, Pools: gpools, PoolStake: cfg.GenesisPoolStake},
 		cohort.Env{Sched: evsched{&e.clk}, Emit: &e.jr, Chain: e.win, Att: hooks{e}, Pace: hooks{e}})
@@ -355,20 +357,20 @@ func (e *Engine) tick(ctx context.Context, t sched.Time) error {
 	}
 }
 
-func (e *Engine) run(ctx context.Context, at sched.Time, ev evclock.Event) error {
+func (e *Engine) run(ctx context.Context, at sched.Time, ev clock.Event) error {
 	switch ev.Kind {
-	case evclock.Birth:
+	case clock.Birth:
 		e.co.Births.Run(at, ev.Birth)
-	case evclock.Hazard:
+	case clock.Hazard:
 		return e.co.Life.Hazard(at, ev.Actor)
-	case evclock.Act:
+	case clock.Act:
 		return e.act(ctx, at, ev.Actor)
-	case evclock.Retry:
-	case evclock.Refill:
+	case clock.Retry:
+	case clock.Refill:
 		return e.refill(ctx, at)
-	case evclock.Adopt:
+	case clock.Adopt:
 		e.adopt(at, ev.Intent)
-	case evclock.Deploy:
+	case clock.Deploy:
 		return e.deploy(at)
 	}
 	return nil
@@ -378,7 +380,7 @@ func (e *Engine) act(ctx context.Context, at sched.Time, id population.ActorID) 
 	a, _ := e.co.Get(id)
 	st := e.co.Rec(id)
 	if e.paused {
-		e.pc.nextAct(a, st, at)
+		e.pc.Next(a, subject(st), at)
 		return nil
 	}
 	r := st.Draw(a, "act")
@@ -386,17 +388,17 @@ func (e *Engine) act(ctx context.Context, at sched.Time, id population.ActorID) 
 	var gov build.ActionType
 	switch {
 	case st.Boot != "":
-		d, gov = e.pc.decideClock(a, st, r)
+		d, gov = e.pc.Decide(a, subject(st), r)
 	case st.FollowUp:
-		d = agenda.Decide(a, r, view{e: e}, st.Policy, e.pc.followWeights(st.Prof))
+		d = agenda.Decide(a, r, view{e: e}, st.Policy, e.pc.FollowWeights(st.Prof))
 	default:
-		d = agenda.Decide(a, r, view{e: e}, st.Policy, e.pc.weightsOf(st.Prof))
+		d = agenda.Decide(a, r, view{e: e}, st.Policy, e.pc.Weights(st.Prof))
 	}
 	e.jr.Emit(at, KindIntentChosen, id, d)
-	if e.pc.wait(a, st, at, d) {
+	if e.pc.Wait(a, subject(st), at, d) {
 		return nil
 	}
-	e.pc.owe(st, d, r)
+	e.pc.Owe(subject(st), d, r)
 	switch {
 	case d.Intent.Kind == agenda.Idle:
 	case !e.checkFloor(at, d.Intent):
@@ -411,7 +413,7 @@ func (e *Engine) act(ctx context.Context, at sched.Time, id population.ActorID) 
 			return err
 		}
 	}
-	e.pc.nextAct(a, st, at)
+	e.pc.Next(a, subject(st), at)
 	return nil
 }
 

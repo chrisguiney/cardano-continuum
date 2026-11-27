@@ -273,7 +273,7 @@ func (p *pendingRec) kindOf() string {
 
 // intend turns the chosen intent into a pending record and starts it. A
 // kind with no transaction (idle, go_dark, go_live) never reaches it.
-func (e *Engine) intend(ctx context.Context, at sched.Time, a population.Actor, st *actor, in agenda.Intent, gov build.ActionType, r *rand.Rand) error {
+func (e *Engine) intend(ctx context.Context, at sched.Time, a population.Actor, st *cohort.Actor, in agenda.Intent, gov build.ActionType, r *rand.Rand) error {
 	p, why := e.prepare(at, a, in, r)
 	if p != nil {
 		p.GovType = string(gov)
@@ -509,7 +509,7 @@ func (e *Engine) start(ctx context.Context, at sched.Time, p *pendingRec) (strin
 			st.Remember(population.ActorID(p.To))
 		}
 	}
-	e.pc.market.excite(at)
+	e.pc.Excite(at)
 	e.emitSubmitted(at, p, built, inputs)
 	return "", e.react(ctx, at, p, built.Fee)
 }

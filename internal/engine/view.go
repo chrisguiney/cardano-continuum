@@ -128,4 +128,4 @@ var (
 )
 
 // Burst implements agenda.Market.
-func (v view) Burst() float64 { return v.e.pc.market.burst(v.e.clk.Now()) }
+func (v view) Burst() float64 { return v.e.pc.Burst(v.e.clk.Now()) }

@@ -9,8 +9,9 @@ import (
 	"strconv"
 
 	"github.com/chrisguiney/cardano-continuum/internal/build"
-	evclock "github.com/chrisguiney/cardano-continuum/internal/engine/internal/clock"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/clock"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/cohort"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/pace"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
@@ -21,23 +22,12 @@ import (
 // cohort of Count members; the network's proposal rates are one proposer
 // actor. Their per-member rates are per day and scale-free, so they hold
 // at any head count.
-//
-// A population actor does not wake at one rate and let its agenda choose
-// among everything: that would make each intent's rate depend on what else
-// the agenda offers. It runs one Poisson clock per intent at the fitted
-// rate (a superposition: wake at the sum, then draw which clock fired), and
-// the agenda only says whether the fired intent is possible now. Until it
-// is registered it wakes at bootRate to register instead, since a pool or
-// DRep that waited a fitted lifetime to register would never exist.
 
 // proposerName is the network proposer's profile name.
 const proposerName = "network"
 
 const (
 	secondsPerDay = 86400.0
-	// bootRate is how often (per second) an unregistered population actor
-	// wakes to register: every ten minutes, a few blocks of a devnet.
-	bootRate = 1.0 / 600
 	// Budgets are what each actor needs beyond its deposits: fees and the
 	// proposer's stake key deposit.
 	feeBudget = 100_000_000
@@ -201,11 +191,10 @@ func (c *Config) contractParams() (*profile.ContractParams, bool) {
 	return nil, false
 }
 
-// clock is one of a population actor's per-intent Poisson clocks.
-type clock = cohort.Clock
-
-// actor is an actor's in-memory record.
-type actor = cohort.Actor
+// subject is the pace's view of an actor's record.
+func subject(st *cohort.Actor) pace.Subject {
+	return pace.Subject{State: &st.Pace, Prof: &st.Prof, Policy: st.Policy, Rate: st.Rate, Drawer: st}
+}
 
 // poolTerms are the pledge, cost and margin a pool actor registers or
 // updates with: draws from the population's fitted distributions on a
@@ -276,7 +265,7 @@ func (e *Engine) scheduleDeploy(now sched.Time) {
 
 func (e *Engine) pushDeploy() {
 	if e.deployAt != population.Never && e.deployAt != 0 {
-		e.clk.Push(e.deployAt, evclock.Event{Kind: evclock.Deploy})
+		e.clk.Push(e.deployAt, clock.Event{Kind: clock.Deploy})
 	}
 }
 

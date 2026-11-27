@@ -4,6 +4,7 @@ import (
 	"bytes"
 
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/pace"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
@@ -104,9 +105,9 @@ type snapshot struct {
 	Foreign    uint64              `cbor:"10,keyasint"`
 	Ledger     ledgerBlob          `cbor:"11,keyasint"`
 	// RefillAt is the faucet's next round; zero without a faucet.
-	RefillAt sched.Time `cbor:"12,keyasint,omitempty"`
-	Deposits uint64     `cbor:"14,keyasint,omitempty"`
-	Market   market     `cbor:"15,keyasint"`
+	RefillAt sched.Time  `cbor:"12,keyasint,omitempty"`
+	Deposits uint64      `cbor:"14,keyasint,omitempty"`
+	Market   pace.Market `cbor:"15,keyasint"`
 	// Dark, Down and Repairs are the pool plan and pod state, ascending.
 	Dark    []uint64 `cbor:"16,keyasint,omitempty"`
 	Down    []uint64 `cbor:"17,keyasint,omitempty"`
