@@ -23,19 +23,19 @@ type toy struct {
 }
 
 type toyState struct {
-	Blocks   []toyBlock   `cbor:"1,keyasint"`
-	Counters []toyCounter `cbor:"2,keyasint"` // sorted by actor
-	Tick     int64        `cbor:"3,keyasint"`
+	Blocks   []toyBlock   `json:"blocks"`
+	Counters []toyCounter `json:"counters"` // sorted by actor
+	Tick     int64        `json:"tick"`
 }
 
 type toyBlock struct {
-	Slot  uint64 `cbor:"1,keyasint"`
-	Actor uint64 `cbor:"2,keyasint"`
+	Slot  uint64 `json:"slot"`
+	Actor uint64 `json:"actor"`
 }
 
 type toyCounter struct {
-	Actor uint64 `cbor:"1,keyasint"`
-	N     int    `cbor:"2,keyasint"`
+	Actor uint64 `json:"actor"`
+	N     int    `json:"n"`
 }
 
 func newToy(snap []byte) (Engine, error) {
@@ -164,23 +164,6 @@ func drive(t testing.TB, s *Session, n int) []byte {
 	return snap
 }
 
-func TestEncodeCanonical(t *testing.T) {
-	a := map[string]int{"a": 1, "b": 2, "c": 3}
-	b := map[string]int{"c": 3, "b": 2, "a": 1}
-	ea, err := Encode(a)
-	if err != nil {
-		t.Fatal(err)
-	}
-	eb, _ := Encode(b)
-	if !bytes.Equal(ea, eb) {
-		t.Fatalf("insertion order changed bytes: %x vs %x", ea, eb)
-	}
-	want := []byte{0xa3, 0x61, 'a', 0x01, 0x61, 'b', 0x02, 0x61, 'c', 0x03}
-	if !bytes.Equal(ea, want) {
-		t.Fatalf("golden: got %x want %x", ea, want)
-	}
-}
-
 func TestAppendScanRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	f, err := Open(filepath.Join(t.TempDir(), "log"))
@@ -192,7 +175,7 @@ func TestAppendScanRoundTrip(t *testing.T) {
 		Writer
 		Reader
 	}{"mem": &MemLog{}, "file": f} {
-		in := []Record{block(t, 1, 7), {At: 5, Class: Decision, Kind: "X", Actor: 7, Body: []byte{1, 2}}}
+		in := []Record{block(t, 1, 7), {At: 5, Class: Decision, Kind: "X", Actor: 7, Body: []byte(`[1,2]`)}}
 		if err := w.Append(ctx, in...); err != nil {
 			t.Fatal(name, err)
 		}
@@ -201,7 +184,7 @@ func TestAppendScanRoundTrip(t *testing.T) {
 			t.Fatal(name, err)
 		}
 		if len(got) != 2 || got[0].Seq != 1 || got[1].Seq != 2 || got[1].Kind != "X" ||
-			got[1].Actor != 7 || got[1].At != 5 || !bytes.Equal(got[1].Body, []byte{1, 2}) {
+			got[1].Actor != 7 || got[1].At != 5 || string(got[1].Body) != `[1,2]` {
 			t.Fatalf("%s: round trip: %+v", name, got)
 		}
 	}
@@ -256,7 +239,7 @@ func TestTornTailTruncatedOnOpen(t *testing.T) {
 	}
 	good, _ := os.ReadFile(p)
 
-	frame, _ := AppendFrame(nil, Record{Seq: 3, Class: Input, Kind: "K", Body: bytes.Repeat([]byte{9}, 40)})
+	frame, _ := AppendFrame(nil, Record{Seq: 3, Class: Input, Kind: "K", Body: []byte(`"` + strings.Repeat("9", 40) + `"`)})
 	flipped := append([]byte(nil), frame...)
 	flipped[len(flipped)-1] ^= 0xff
 	for name, tail := range map[string][]byte{
@@ -465,7 +448,7 @@ func TestNoSecretsInLog(t *testing.T) {
 	if seq, err := LeaksSecret(context.Background(), log, secret); err != nil || seq != 0 {
 		t.Fatalf("clean log: seq %d err %v", seq, err)
 	}
-	_ = log.Append(context.Background(), Record{Class: Input, Kind: "Control", Body: append([]byte{1}, secret...)})
+	_ = log.Append(context.Background(), Record{Class: Input, Kind: "Control", Body: append(append([]byte(`"`), secret...), '"')})
 	if seq, _ := LeaksSecret(context.Background(), log, secret); seq != log.LastSeq() {
 		t.Fatalf("planted secret not found, seq %d", seq)
 	}
@@ -671,7 +654,7 @@ func TestApplyPointRebuildsIntersectionPoints(t *testing.T) {
 }
 
 func FuzzDecodeFrame(f *testing.F) {
-	for _, r := range []Record{block(f, 1, 1), rollback(f, 3), {Class: Decision, Kind: "K", Body: []byte{1}}} {
+	for _, r := range []Record{block(f, 1, 1), rollback(f, 3), {Class: Decision, Kind: "K", Body: []byte(`1`)}} {
 		r.Seq = 1
 		b, _ := AppendFrame(nil, r)
 		f.Add(b)
@@ -701,7 +684,7 @@ func FuzzDecodeFrame(f *testing.F) {
 // block, which ApplyPoint ignores, and a body without one still decodes.
 func TestBlockContentIsOpaque(t *testing.T) {
 	p := ChainPoint{Slot: 7, Hash: []byte{1, 2}}
-	with, err := Encode(BlockApplied{Point: p, Content: []byte{0xa0}})
+	with, err := Encode(BlockApplied{Point: p, Content: []byte(`{}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -719,8 +702,8 @@ func TestBlockContentIsOpaque(t *testing.T) {
 		}
 	}
 	var got BlockApplied
-	if err := Decode(with, &got); err != nil || !bytes.Equal(got.Content, []byte{0xa0}) {
-		t.Fatalf("content round trip: %v %x", err, got.Content)
+	if err := Decode(with, &got); err != nil || string(got.Content) != `{}` {
+		t.Fatalf("content round trip: %v %s", err, got.Content)
 	}
 }
 

@@ -8,7 +8,7 @@ import (
 )
 
 // ControlSource hands the loop the controls submitted since the last call,
-// each the CBOR body of a Control input (httpapi.Control). A live run's
+// each the JSON body of a Control input (httpapi.Control). A live run's
 // HTTP API queues them; the loop logs and applies them in order.
 type ControlSource interface {
 	Controls(ctx context.Context) ([][]byte, error)

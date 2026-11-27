@@ -53,6 +53,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/blinklabs-io/gouroboros/cbor"
 	"github.com/blinklabs-io/gouroboros/ledger/conway"
 
 	"github.com/blinklabs-io/gouroboros/ledger/common"
@@ -337,35 +338,35 @@ func (c *Config) Header() (eventlog.HeaderBody, error) {
 		return eventlog.HeaderBody{}, err
 	}
 	type fund struct {
-		Actor    uint64 `cbor:"1,keyasint"`
-		Address  []byte `cbor:"2,keyasint"`
-		Lovelace uint64 `cbor:"3,keyasint"`
+		Actor    uint64 `json:"actor"`
+		Address  []byte `json:"address"`
+		Lovelace uint64 `json:"lovelace"`
 	}
 	g := struct {
-		Funds      []fund        `cbor:"1,keyasint"`
-		K          uint64        `cbor:"2,keyasint"`
-		BlockEvery uint64        `cbor:"3,keyasint"`
-		NetworkID  uint8         `cbor:"4,keyasint"`
-		SlotMs     sched.Time    `cbor:"5,keyasint"`
-		EpochMs    sched.Time    `cbor:"6,keyasint"`
-		TTL        uint64        `cbor:"7,keyasint"`
-		Build      build.Params  `cbor:"8,keyasint"`
-		Format     uint32        `cbor:"9,keyasint"`
-		Retry      submit.Policy `cbor:"10,keyasint"`
-		Refill     uint64        `cbor:"11,keyasint,omitempty"`
-		NOpt       uint64        `cbor:"12,keyasint,omitempty"`
-		GovLife    uint64        `cbor:"13,keyasint,omitempty"`
-		Floor      uint64        `cbor:"14,keyasint"`
-		Margin     int           `cbor:"15,keyasint"`
-		SimPods    bool          `cbor:"16,keyasint,omitempty"`
-		GPools     int           `cbor:"17,keyasint,omitempty"`
-		GStake     uint64        `cbor:"18,keyasint,omitempty"`
-		Scale      float64       `cbor:"19,keyasint,omitempty"`
-		Committee  int           `cbor:"20,keyasint,omitempty"`
-		Mistakes   bool          `cbor:"21,keyasint,omitempty"`
-		Horizon    uint64        `cbor:"22,keyasint,omitempty"`
+		Funds      []fund        `json:"funds"`
+		K          uint64        `json:"k"`
+		BlockEvery uint64        `json:"block_every"`
+		NetworkID  uint8         `json:"network_id"`
+		SlotMs     sched.Time    `json:"slot_ms"`
+		EpochMs    sched.Time    `json:"epoch_ms"`
+		TTL        uint64        `json:"ttl"`
+		Build      params        `json:"build"`
+		Format     uint32        `json:"format"`
+		Retry      submit.Policy `json:"retry"`
+		Refill     uint64        `json:"refill,omitzero"`
+		NOpt       uint64        `json:"n_opt,omitzero"`
+		GovLife    uint64        `json:"gov_life,omitzero"`
+		Floor      uint64        `json:"floor"`
+		Margin     int           `json:"margin"`
+		SimPods    bool          `json:"sim_pods,omitzero"`
+		GPools     int           `json:"g_pools,omitzero"`
+		GStake     uint64        `json:"g_stake,omitzero"`
+		Scale      float64       `json:"scale,omitzero"`
+		Committee  int           `json:"committee,omitzero"`
+		Mistakes   bool          `json:"mistakes,omitzero"`
+		Horizon    uint64        `json:"horizon,omitzero"`
 	}{Mistakes: c.Mistakes, Horizon: c.Horizon, Committee: c.Committee, GPools: c.GenesisPools, GStake: c.GenesisPoolStake, NOpt: c.NOpt, GovLife: c.GovLifetime, Floor: c.floor().Floor, Margin: c.floor().Margin, SimPods: c.SimulatedPods, Format: logFormat, K: c.K, BlockEvery: c.BlockEvery, NetworkID: c.NetworkID, SlotMs: c.Slots.SlotStart(1),
-		EpochMs: c.Slots.EpochStart(1), TTL: c.TTL, Build: c.Build, Retry: c.retry(), Refill: c.RefillEvery}
+		EpochMs: c.Slots.EpochStart(1), TTL: c.TTL, Build: paramsOf(c.Build), Retry: c.retry(), Refill: c.RefillEvery}
 	if c.Scale != 0 && c.Scale != 1 {
 		g.Scale = c.Scale
 	}
@@ -518,4 +519,35 @@ func (c *Config) GenesisPoolActors() (map[int]uint64, error) {
 		out[g.Index] = uint64(g.Actor)
 	}
 	return out, nil
+}
+
+// params is build.Params as the fingerprint encodes it. The gouroboros
+// ExUnits and ExUnitPrice embed cbor.StructAsArray, which JSON cannot
+// encode, so these fields shadow Params' own as plain values: units as
+// (memory, steps), prices as "num/den" rationals.
+type params struct {
+	// Params is every other parameter, encoded as it is.
+	build.Params
+	// Prices are the memory and step prices.
+	Prices [2]string `json:"Prices"`
+	// MaxTxExUnits are the per-transaction memory and steps.
+	MaxTxExUnits [2]int64 `json:"MaxTxExUnits"`
+	// MaxBlockExUnits are the per-block memory and steps.
+	MaxBlockExUnits [2]int64 `json:"MaxBlockExUnits"`
+}
+
+func paramsOf(p build.Params) params {
+	return params{
+		Params:          p,
+		Prices:          [2]string{ratio(p.Prices.MemPrice), ratio(p.Prices.StepPrice)},
+		MaxTxExUnits:    [2]int64{p.MaxTxExUnits.Memory, p.MaxTxExUnits.Steps},
+		MaxBlockExUnits: [2]int64{p.MaxBlockExUnits.Memory, p.MaxBlockExUnits.Steps},
+	}
+}
+
+func ratio(r *cbor.Rat) string {
+	if r == nil || r.Rat == nil {
+		return ""
+	}
+	return r.RatString()
 }

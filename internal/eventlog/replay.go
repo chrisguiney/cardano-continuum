@@ -3,8 +3,11 @@ package eventlog
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // Engine is what replay and Session drive: one pure step per input. The live
@@ -176,7 +179,7 @@ func LeaksSecret(ctx context.Context, r Reader, secrets ...[]byte) (uint64, erro
 	var hit uint64
 	err := r.Scan(ctx, 1, func(rec Record) error {
 		for _, s := range secrets {
-			if len(s) > 0 && (bytes.Contains(rec.Body, s) || bytes.Contains([]byte(rec.Kind), s)) {
+			if leaks(rec, s) {
 				hit = rec.Seq
 				return ErrStop
 			}
@@ -184,4 +187,24 @@ func LeaksSecret(ctx context.Context, r Reader, secrets ...[]byte) (uint64, erro
 		return nil
 	})
 	return hit, err
+}
+
+// leaks reports whether rec holds s raw or in a form the codec writes bytes
+// in: lowercase hex (Hex) or standard base64 ([]byte). The base64 form is
+// matched on s's leading whole 3-byte groups, which encode the same wherever
+// s ends, so s must start a byte field for that form to be found.
+func leaks(rec Record, s []byte) bool {
+	if len(s) == 0 {
+		return false
+	}
+	forms := [][]byte{s, hex.AppendEncode(nil, s)}
+	if n := len(s) / 3 * 3; n > 0 {
+		forms = append(forms, base64.StdEncoding.AppendEncode(nil, s[:n]))
+	}
+	for _, f := range forms {
+		if bytes.Contains(rec.Body, f) || strings.Contains(rec.Kind, string(f)) {
+			return true
+		}
+	}
+	return false
 }

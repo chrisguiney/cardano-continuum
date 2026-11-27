@@ -15,19 +15,20 @@ import (
 
 // BlobVersion is the version of the encoding a Committer receives, stored
 // as store.Checkpoint.Reservations. Version 1 was the store's opaque
-// placeholder, which carried no reservation state; Open refuses it.
-const BlobVersion = 2
+// placeholder, which carried no reservation state, and version 2 was CBOR;
+// Open refuses both.
+const BlobVersion = 3
 
 // disk is the durable part of the state: everything at and below the
 // settled point, and every unfinished attempt. The blocks above the settled
 // point are not stored; chain-sync replays them after ResumePoint.
 type disk struct {
-	SettledSlot uint64
-	SettledHash []byte
-	Utxos       []Utxo
-	Attempts    []record
-	Paid        []IntentID
-	NextSeq     uint64
+	SettledSlot uint64       `json:"settled_slot"`
+	SettledHash eventlog.Hex `json:"settled_hash"`
+	Utxos       []Utxo       `json:"utxos"`
+	Attempts    []record     `json:"attempts"`
+	Paid        []IntentID   `json:"paid"`
+	NextSeq     uint64       `json:"next_seq"`
 }
 
 // encode returns the canonical encoding of s, sorted so equal states give

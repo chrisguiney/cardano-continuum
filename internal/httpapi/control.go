@@ -44,15 +44,15 @@ var (
 )
 
 // Control is a request to steer a run. It is the body of a Control input
-// record, so its CBOR keys are part of the log format. K is the
+// record, so its JSON names are part of the log format. K is the
 // amplification factor, Weights override intent weights by name, and
 // Scenario names a scenario to inject.
 type Control struct {
-	RequestID string             `json:"request_id" cbor:"1,keyasint"`
-	Op        Op                 `json:"op" cbor:"2,keyasint"`
-	K         uint32             `json:"k,omitempty" cbor:"3,keyasint,omitempty"`
-	Weights   map[string]float64 `json:"weights,omitempty" cbor:"4,keyasint,omitempty"`
-	Scenario  string             `json:"scenario,omitempty" cbor:"5,keyasint,omitempty"`
+	RequestID string             `json:"request_id"`
+	Op        Op                 `json:"op"`
+	K         uint32             `json:"k,omitempty"`
+	Weights   map[string]float64 `json:"weights,omitempty"`
+	Scenario  string             `json:"scenario,omitempty"`
 }
 
 // Receipt says where a control landed. Duplicate is true when the request

@@ -31,7 +31,8 @@ func (j *Journal) Seq() uint64 { return j.seq }
 func (j *Journal) Emit(at sched.Time, kind string, a population.ActorID, body any) {
 	raw, err := eventlog.Encode(body)
 	if err != nil {
-		// Bodies are fixed structs of plain fields; encoding cannot fail.
+		// Bodies are fixed structs of plain fields; only a NaN or infinite
+		// float fails to encode, and producing one is an engine bug.
 		panic(fmt.Sprintf("engine: encode %s: %v", kind, err))
 	}
 	j.out = append(j.out, eventlog.Record{At: at, Class: eventlog.Decision, Kind: kind, Actor: eventlog.ActorID(a), Body: raw})

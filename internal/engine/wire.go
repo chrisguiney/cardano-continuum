@@ -83,64 +83,64 @@ func DecisionKinds() []string { return wire.DecisionKinds() }
 func Digest(blockCbor []byte) ([]byte, error) { return wire.Digest(blockCbor) }
 
 // snapshotVersion is bumped whenever snapshot's shape changes.
-const snapshotVersion = 7
+const snapshotVersion = 8
 
 // logFormat is the version of the engine's input and decision bodies. It is
 // part of the log header's genesis fingerprint, so a log written in another
 // format is refused at the header rather than failing on its first body.
-const logFormat = 5
+const logFormat = 6
 
 // snapshot is the engine state in canonical form: every slice sorted, so
 // equal states encode to equal bytes.
 type snapshot struct {
-	Version    uint32              `cbor:"1,keyasint"`
-	Now        sched.Time          `cbor:"2,keyasint"`
-	NextIntent uint64              `cbor:"3,keyasint"`
-	Actors     []wire.ActorRec     `cbor:"4,keyasint"`
-	Births     []wire.BirthRec     `cbor:"5,keyasint"`
-	Conf       eventlog.ChainPoint `cbor:"6,keyasint"`
-	Window     []blockRec          `cbor:"7,keyasint"`
-	Pending    []pendingRec        `cbor:"8,keyasint"`
-	Fees       uint64              `cbor:"9,keyasint"`
-	Foreign    uint64              `cbor:"10,keyasint"`
-	Ledger     ledgerBlob          `cbor:"11,keyasint"`
+	Version    uint32              `json:"version"`
+	Now        sched.Time          `json:"now"`
+	NextIntent uint64              `json:"next_intent"`
+	Actors     []wire.ActorRec     `json:"actors"`
+	Births     []wire.BirthRec     `json:"births"`
+	Conf       eventlog.ChainPoint `json:"conf"`
+	Window     []blockRec          `json:"window"`
+	Pending    []pendingRec        `json:"pending"`
+	Fees       uint64              `json:"fees"`
+	Foreign    uint64              `json:"foreign"`
+	Ledger     ledgerBlob          `json:"ledger"`
 	// RefillAt is the faucet's next round; zero without a faucet.
-	RefillAt sched.Time  `cbor:"12,keyasint,omitempty"`
-	Deposits uint64      `cbor:"14,keyasint,omitempty"`
-	Market   pace.Market `cbor:"15,keyasint"`
+	RefillAt sched.Time  `json:"refill_at,omitzero"`
+	Deposits uint64      `json:"deposits,omitzero"`
+	Market   pace.Market `json:"market"`
 	// Dark, Down and Repairs are the pool plan and pod state, ascending.
-	Dark    []uint64 `cbor:"16,keyasint,omitempty"`
-	Down    []uint64 `cbor:"17,keyasint,omitempty"`
-	Repairs []uint64 `cbor:"18,keyasint,omitempty"`
-	Stalled bool     `cbor:"19,keyasint,omitempty"`
+	Dark    []uint64 `json:"dark,omitempty"`
+	Down    []uint64 `json:"down,omitempty"`
+	Repairs []uint64 `json:"repairs,omitempty"`
+	Stalled bool     `json:"stalled,omitzero"`
 	// Controls and upgrade waves; Images is (pool actor, image) pairs,
 	// ascending.
-	Paused    bool             `cbor:"20,keyasint,omitempty"`
-	RateK     uint32           `cbor:"21,keyasint,omitempty"`
-	Weights   []wire.WeightRec `cbor:"22,keyasint,omitempty"`
-	Waves     uint64           `cbor:"23,keyasint,omitempty"`
-	Adoptions []adoption       `cbor:"24,keyasint,omitempty"`
-	Images    []wire.ImageRec  `cbor:"25,keyasint,omitempty"`
+	Paused    bool             `json:"paused,omitzero"`
+	RateK     uint32           `json:"rate_k,omitzero"`
+	Weights   []wire.WeightRec `json:"weights,omitempty"`
+	Waves     uint64           `json:"waves,omitzero"`
+	Adoptions []adoption       `json:"adoptions,omitempty"`
+	Images    []wire.ImageRec  `json:"images,omitempty"`
 	// View is the chain view at the confirmed point; the window is replayed
 	// onto it on restore.
-	View wire.ViewRec `cbor:"13,keyasint"`
+	View wire.ViewRec `json:"view"`
 	// Lost is the lovelace settled payments sent to wrong addresses.
-	Lost uint64 `cbor:"26,keyasint,omitempty"`
+	Lost uint64 `json:"lost,omitzero"`
 	// Charges are the adversaries' spends by epoch; Contested the shared
 	// outputs they tried to spend, ascending.
-	Charges   []adversary.Charge `cbor:"27,keyasint,omitempty"`
-	Contested []Ref              `cbor:"28,keyasint,omitempty"`
+	Charges   []adversary.Charge `json:"charges,omitempty"`
+	Contested []Ref              `json:"contested,omitempty"`
 	// Contracts is how many contracts are deployed; DeployAt and DeployN
 	// are the next deployment and its draw.
-	Contracts uint64     `cbor:"29,keyasint,omitempty"`
-	DeployAt  sched.Time `cbor:"30,keyasint,omitempty"`
-	DeployN   uint64     `cbor:"31,keyasint,omitempty"`
+	Contracts uint64     `json:"contracts,omitzero"`
+	DeployAt  sched.Time `json:"deploy_at,omitzero"`
+	DeployN   uint64     `json:"deploy_n,omitzero"`
 }
 
 // ledgerBlob is the planner ledger's store.Blob.
 type ledgerBlob struct {
-	Version uint32 `cbor:"1,keyasint"`
-	Data    []byte `cbor:"2,keyasint"`
+	Version uint32 `json:"version"`
+	Data    []byte `json:"data"`
 }
 
 type blockRec = wire.Block
@@ -148,64 +148,64 @@ type blockRec = wire.Block
 // pendingRec is wire.Pending as the snapshot records it; the field
 // comments are on wire.Pending's parts.
 type pendingRec struct {
-	ID    uint64 `cbor:"1,keyasint"`
-	Actor uint64 `cbor:"2,keyasint"`
+	ID    uint64 `json:"id"`
+	Actor uint64 `json:"actor"`
 	// Tx and TTL are the current attempt's.
-	Tx  TxID   `cbor:"3,keyasint"`
-	TTL uint64 `cbor:"4,keyasint"`
+	Tx  TxID   `json:"tx"`
+	TTL uint64 `json:"ttl"`
 	// Cbor is held while the current attempt may still be sent, so a
 	// restart or a resend can submit the same bytes.
-	Cbor     []byte `cbor:"5,keyasint"`
-	Awaiting bool   `cbor:"6,keyasint"`
+	Cbor     []byte `json:"cbor"`
+	Awaiting bool   `json:"awaiting"`
 	// M is the retry machine; To and Amount are what a rebuild pays.
-	M      submit.Machine `cbor:"7,keyasint"`
-	To     uint64         `cbor:"8,keyasint"`
-	Amount uint64         `cbor:"9,keyasint"`
+	M      submit.Machine `json:"m"`
+	To     uint64         `json:"to"`
+	Amount uint64         `json:"amount"`
 	// Txs are every unfinished attempt of the payment, oldest first. Only
 	// the ledger removes one: settled, dead, or refused by every node.
-	Txs []TxID `cbor:"10,keyasint"`
+	Txs []TxID `json:"txs"`
 	// NotBefore is when the current attempt may next be sent: the backoff.
-	NotBefore sched.Time `cbor:"11,keyasint,omitempty"`
+	NotBefore sched.Time `json:"not_before,omitzero"`
 	// Refill marks the faucet's refill, which M does not drive.
-	Refill bool `cbor:"12,keyasint,omitempty"`
+	Refill bool `json:"refill,omitzero"`
 	// Kind is the intent's builder (internal/intent); empty is a payment. To is
 	// the payee, pool or DRep it names, Amount what a payment pays, a lock
 	// locks, a mint or burn moves, or an unlock frees.
-	Kind string `cbor:"13,keyasint,omitempty"`
+	Kind string `json:"kind,omitempty"`
 	// Action is the governance action a vote is on, Choice the vote.
-	Action *Ref  `cbor:"14,keyasint,omitempty"`
-	Choice uint8 `cbor:"15,keyasint,omitempty"`
+	Action *Ref  `json:"action,omitzero"`
+	Choice uint8 `json:"choice,omitzero"`
 	// Locked is the script output an unlock spends.
-	Locked *Ref `cbor:"16,keyasint,omitempty"`
+	Locked *Ref `json:"locked,omitzero"`
 	// Epoch is the epoch a retirement takes effect.
-	Epoch uint64 `cbor:"17,keyasint,omitempty"`
+	Epoch uint64 `json:"epoch,omitzero"`
 	// Register makes a delegation also register the stake key; Update
 	// makes a pool registration a re-registration.
-	Register bool `cbor:"18,keyasint,omitempty"`
-	Update   bool `cbor:"19,keyasint,omitempty"`
+	Register bool `json:"register,omitzero"`
+	Update   bool `json:"update,omitzero"`
 	// Injected is the mistake sampled for the intent; Carried those the
 	// current attempt carries (Injected less every fix so far), and Lost
 	// what the current attempt pays to a wrong address.
-	Injected mistake.KindSet `cbor:"20,keyasint,omitempty"`
-	Carried  mistake.KindSet `cbor:"21,keyasint,omitempty"`
-	Lost     uint64          `cbor:"22,keyasint,omitempty"`
+	Injected mistake.KindSet `json:"injected,omitzero"`
+	Carried  mistake.KindSet `json:"carried,omitzero"`
+	Lost     uint64          `json:"lost,omitzero"`
 	// Attack names the attack of an adversary's step (attack.go), which
 	// no retry machine drives; Want is the verdict its first send calls
 	// for, Rivals a race's further transactions still to send, and Jump
 	// sends it ahead of every other submission (a front-run).
-	Attack string   `cbor:"23,keyasint,omitempty"`
-	Want   *wantRec `cbor:"24,keyasint,omitempty"`
-	Rivals []Rival  `cbor:"25,keyasint,omitempty"`
-	Jump   bool     `cbor:"26,keyasint,omitempty"`
+	Attack string   `json:"attack,omitempty"`
+	Want   *wantRec `json:"want,omitzero"`
+	Rivals []Rival  `json:"rivals,omitempty"`
+	Jump   bool     `json:"jump,omitzero"`
 	// GovType is a proposal's governance action type; Contract the
 	// contract a lock or unlock calls.
-	GovType  string `cbor:"27,keyasint,omitempty"`
-	Contract uint64 `cbor:"28,keyasint,omitempty"`
+	GovType  string `json:"gov_type,omitempty"`
+	Contract uint64 `json:"contract,omitzero"`
 	// Power is a vote's voting power when it was chosen. Probe marks a
 	// vote the ledger must refuse (an SPO vote on an action pools may not
 	// vote on): its expected verdict is DisallowedVoters.
-	Power uint64 `cbor:"29,keyasint,omitempty"`
-	Probe bool   `cbor:"30,keyasint,omitempty"`
+	Power uint64 `json:"power,omitzero"`
+	Probe bool   `json:"probe,omitzero"`
 }
 
 // recOf is p as the snapshot records it.
@@ -243,6 +243,6 @@ func samePoint(a, b eventlog.ChainPoint) bool {
 // wantRec is the verdict an attack's first send calls for
 // (mistake.Expected).
 type wantRec struct {
-	Classes []string `cbor:"1,keyasint,omitempty"`
-	Accept  bool     `cbor:"2,keyasint,omitempty"`
+	Classes []string `json:"classes,omitempty"`
+	Accept  bool     `json:"accept,omitzero"`
 }

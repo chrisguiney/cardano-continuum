@@ -310,7 +310,7 @@ type FindingPage struct {
 
 // Decision is one engine decision on the live feed. ID is the log seq, so
 // it orders the feed and is the SSE event id. Intent and Scores are set for
-// an IntentChosen decision; Body is the decoded record body.
+// an IntentChosen decision; Body is the record body, the log's JSON.
 type Decision struct {
 	ID      uint64         `json:"id"`
 	At      int64          `json:"at"`

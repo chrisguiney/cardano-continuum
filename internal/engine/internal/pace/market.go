@@ -23,8 +23,8 @@ const marketBaseline = marketMu / (1 - marketAlpha/marketBeta)
 
 // Market is the market signal's state, as the snapshot holds it.
 type Market struct {
-	Excess float64    `cbor:"1,keyasint,omitempty"`
-	At     sched.Time `cbor:"2,keyasint,omitempty"`
+	Excess float64    `json:"excess,omitzero"`
+	At     sched.Time `json:"at,omitzero"`
 }
 
 // decayed is the excess at now; times before the last update read as it.

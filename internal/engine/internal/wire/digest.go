@@ -30,7 +30,10 @@ func DigestOf(b chain.Block) ([]byte, error) {
 			d.Gov = append(d.Gov, ProposalDigest{Type: p.Type, Pools: p.Pools, Deposit: p.Deposit})
 		}
 		if u := tx.Units; u.Memory != 0 || u.Steps != 0 {
-			d.Units = &u
+			d.Units = &Units{
+				Memory: u.Memory,
+				Steps:  u.Steps,
+			}
 		}
 		for _, in := range tx.Spends {
 			d.Inputs = append(d.Inputs, Ref{Tx: TxID(in.Tx), Index: in.Index})

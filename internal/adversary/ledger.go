@@ -24,9 +24,9 @@ type account struct {
 
 // Charge is one actor's spend in one epoch, as the engine snapshots it.
 type Charge struct {
-	Actor uint64 `cbor:"1,keyasint"`
-	Epoch uint64 `cbor:"2,keyasint"`
-	Spent uint64 `cbor:"3,keyasint"`
+	Actor uint64 `json:"actor"`
+	Epoch uint64 `json:"epoch"`
+	Spent uint64 `json:"spent"`
 }
 
 // NewLedger returns an empty ledger.

@@ -78,21 +78,21 @@ func (s State) String() string {
 
 // Machine is one payment's retry state. It is persisted with the payment.
 type Machine struct {
-	State State `cbor:"1,keyasint"`
+	State State `json:"state"`
 	// Current is the attempt being worked on.
-	Current chain.TxID `cbor:"2,keyasint"`
+	Current chain.TxID `json:"current"`
 	// Attempts counts every send, first or again. It is never reset: not by
 	// a rollback, a drop or a restart.
-	Attempts uint32 `cbor:"3,keyasint"`
+	Attempts uint32 `json:"attempts"`
 	// Fixed holds the classes the actor has fixed, sorted, without repeats.
 	// It only grows; a fix never undoes another.
-	Fixed []Class `cbor:"4,keyasint,omitempty"`
+	Fixed []Class `json:"fixed,omitempty"`
 	// Sent is true once a send of Current returned Accepted or Unreached,
 	// and for every unfinished attempt after a restart. It makes a later
 	// "inputs spent" answer ambiguous: the attempt may have caused it.
-	Sent bool `cbor:"5,keyasint,omitempty"`
+	Sent bool `json:"sent,omitzero"`
 	// Paid is set when an attempt settled after the actor gave up.
-	Paid bool `cbor:"6,keyasint,omitempty"`
+	Paid bool `json:"paid,omitzero"`
 }
 
 // Fixes reports whether c has been fixed.
@@ -184,11 +184,11 @@ func (Frustrate) isAction()    {}
 // is the wait between a rejection or an unanswered send and the next attempt.
 type Policy struct {
 	// Base is the wait before the second attempt; it doubles each attempt.
-	Base time.Duration `cbor:"1,keyasint"`
+	Base time.Duration `json:"base"`
 	// Cap bounds every wait, jitter included.
-	Cap time.Duration `cbor:"2,keyasint"`
+	Cap time.Duration `json:"cap"`
 	// Jitter is the fraction a wait varies by, either way, in [0, 1).
-	Jitter float64 `cbor:"3,keyasint"`
+	Jitter float64 `json:"jitter"`
 }
 
 // DefaultPolicy waits 2s, 4s, 8s, ... up to a minute, give or take a fifth.

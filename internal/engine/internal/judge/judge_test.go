@@ -54,7 +54,7 @@ func TestAnswerOutcome(t *testing.T) {
 
 func TestBlockBudget(t *testing.T) {
 	t.Parallel()
-	units := func(m, s int64) *common.ExUnits { return &common.ExUnits{Memory: m, Steps: s} }
+	units := func(m, s int64) *wire.Units { return &wire.Units{Memory: m, Steps: s} }
 	j := New(Spec{Build: build.Params{MaxBlockExUnits: common.ExUnits{Memory: 10, Steps: 10}}}, Env{})
 	j.Block(eventlog.ChainPoint{}, []wire.TxDigest{{Units: units(3, 4)}, {}, {Units: units(2, 1)}})
 	if b := j.budget; b == nil || b.Used.Memory != 5 || b.Used.Steps != 5 || b.Txs != 3 {

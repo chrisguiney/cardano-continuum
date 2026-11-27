@@ -11,8 +11,8 @@ import (
 
 // Ref names a transaction output.
 type Ref struct {
-	Tx    [32]byte `cbor:"1,keyasint"`
-	Index uint32   `cbor:"2,keyasint"`
+	Tx    [32]byte
+	Index uint32
 }
 
 // Locked is an output at the engine's shared script address that an honest

@@ -21,7 +21,7 @@ const depthK = 2
 // counter is a deterministic engine: the chain points it has seen.
 type counter struct {
 	S struct {
-		Points []eventlog.ChainPoint `cbor:"1,keyasint"`
+		Points []eventlog.ChainPoint `json:"points"`
 	}
 }
 

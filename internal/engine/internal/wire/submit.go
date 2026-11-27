@@ -43,53 +43,53 @@ type Submission struct {
 // SubmitResult is the body of a SubmitResult input: what the node said to a
 // submission.
 type SubmitResult struct {
-	Intent  uint64  `cbor:"1,keyasint"`
-	Verdict Verdict `cbor:"2,keyasint"`
-	Reason  string  `cbor:"3,keyasint,omitempty"`
+	Intent  uint64  `json:"intent"`
+	Verdict Verdict `json:"verdict"`
+	Reason  string  `json:"reason,omitempty"`
 	// Resend marks a rejection of a transaction that may have been sent
 	// before, by a process that died before logging the answer. The
 	// transaction's own arrival can cause that rejection, so it proves
 	// nothing. It is recorded for rejections only, the one verdict it
 	// changes, so a resumed accepted submission logs the same record as an
 	// uninterrupted one.
-	Resend bool `cbor:"4,keyasint,omitempty"`
+	Resend bool `json:"resend,omitzero"`
 	// Failures are the classes the node named, for a rejection. The retry
 	// machine reads them: after an earlier send only a class that depends on
 	// the transaction alone proves the attempt never reached a mempool.
-	Failures []string `cbor:"5,keyasint,omitempty"`
+	Failures []string `json:"failures,omitempty"`
 	// Tx is the attempt a drop notice is about.
-	Tx *TxID `cbor:"6,keyasint,omitempty"`
+	Tx *TxID `json:"tx,omitzero"`
 	// Node is the node that answered, for the oracle's findings.
-	Node *oracle.Node `cbor:"7,keyasint,omitempty"`
+	Node *oracle.Node `json:"node,omitzero"`
 	// Again is the node's answer to the second send of a DoubleSubmit
 	// mistake. The retry machine reads only the first answer; the oracle
 	// judges both.
-	Again *Answer `cbor:"8,keyasint,omitempty"`
+	Again *Answer `json:"again,omitzero"`
 	// Rivals are the node's answers to a double-spend race's further
 	// transactions, sent in order after the first.
-	Rivals []Answer `cbor:"9,keyasint,omitempty"`
+	Rivals []Answer `json:"rivals,omitempty"`
 }
 
 // Answer is one node answer to one send.
 type Answer struct {
-	Verdict  Verdict  `cbor:"1,keyasint"`
-	Failures []string `cbor:"2,keyasint,omitempty"`
+	Verdict  Verdict  `json:"verdict"`
+	Failures []string `json:"failures,omitempty"`
 }
 
 // MonitorSnapshot is the body of a MonitorSnapshot input: what the runner
 // asked the nodes for the invariant monitors. The engine adds its own side
 // (each view's At and Engine balances) when it handles the input.
 type MonitorSnapshot struct {
-	Views []oracle.ViewCheck `cbor:"1,keyasint,omitempty"`
+	Views []oracle.ViewCheck `json:"views,omitempty"`
 	// Tips are the pools' chains as followed, for the fork monitor.
-	Tips []oracle.Branch `cbor:"2,keyasint,omitempty"`
+	Tips []oracle.Branch `json:"tips,omitempty"`
 }
 
 // PoolStatus is the body of a PoolStatus input: a pool actor's pod was
 // observed running or not (operator status).
 type PoolStatus struct {
-	Pool    uint64 `cbor:"1,keyasint"`
-	Running bool   `cbor:"2,keyasint"`
+	Pool    uint64 `json:"pool"`
+	Running bool   `json:"running"`
 }
 
 // PoolPlan is what the engine wants of one pool actor's ContinuumPool.

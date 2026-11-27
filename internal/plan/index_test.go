@@ -12,7 +12,7 @@ import (
 
 // goldenBlob is the SHA-256 of the blob encodeWorld produces. The encoding
 // is stored in checkpoints, so a change here is a format change.
-const goldenBlob = "83cbbc6dcc7eae10f490a3eb521dc7e4117eb5d71de06fbb302177543c5b17e3"
+const goldenBlob = "21778a44f2b56d4cf87d78b4f144c4519d23e4bf82ebfc4e4b7954da7501c0d9"
 
 func encodeWorld(t *testing.T) store.Blob {
 	t.Helper()

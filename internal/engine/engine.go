@@ -232,7 +232,7 @@ func newEmpty(cfg Config) (*Engine, error) {
 	return e, nil
 }
 
-// Snapshot implements eventlog.Engine: the whole state in canonical CBOR,
+// Snapshot implements eventlog.Engine: the whole state in deterministic JSON,
 // the ledger's blob included.
 func (e *Engine) Snapshot() ([]byte, error) {
 	wi, err := e.win.Save()

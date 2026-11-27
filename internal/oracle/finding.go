@@ -123,40 +123,40 @@ const (
 // Node is one node involved in a finding: its implementation, the pool it
 // runs, and the build provenance from its ContinuumPool status.
 type Node struct {
-	Impl   string `cbor:"1,keyasint"`
-	Pool   string `cbor:"2,keyasint,omitempty"`
-	Digest string `cbor:"3,keyasint,omitempty"`
+	Impl   string `json:"impl"`
+	Pool   string `json:"pool,omitempty"`
+	Digest string `json:"digest,omitempty"`
 	// Dirty is BuildInfo.Dirty: the image included uncommitted source, so
 	// its commit does not reproduce it.
-	Dirty bool `cbor:"4,keyasint,omitempty"`
+	Dirty bool `json:"dirty,omitzero"`
 	// Revisions is BuildInfo.Revisions: the commit of each dependency group
 	// (dingo, gouroboros, ...).
-	Revisions map[string]string `cbor:"5,keyasint,omitempty"`
+	Revisions map[string]string `json:"revisions,omitempty"`
 }
 
 // Fact is one piece of evidence. Key facts identify the finding and enter
 // its ID; the rest describe it.
 type Fact struct {
-	Name  string `cbor:"1,keyasint"`
-	Value string `cbor:"2,keyasint"`
-	Key   bool   `cbor:"3,keyasint,omitempty"`
+	Name  string `json:"name"`
+	Value string `json:"value"`
+	Key   bool   `json:"key,omitzero"`
 }
 
 // Verdict is one node's answer as a finding records it.
 type Verdict struct {
-	Node Node `cbor:"1,keyasint"`
+	Node Node `json:"node"`
 	// Verdict is "accepted", "rejected" or "unreached".
-	Verdict string         `cbor:"2,keyasint"`
-	Classes []submit.Class `cbor:"3,keyasint,omitempty"`
+	Verdict string         `json:"verdict"`
+	Classes []submit.Class `json:"classes,omitempty"`
 	// Detail is the node's own text for the classes the decoder could not
 	// map.
-	Detail string `cbor:"4,keyasint,omitempty"`
+	Detail string `json:"detail,omitempty"`
 }
 
 // Expectation is the verdict set the oracle expected (mistake.Expected).
 type Expectation struct {
-	Classes []submit.Class `cbor:"1,keyasint,omitempty"`
-	Accept  bool           `cbor:"2,keyasint,omitempty"`
+	Classes []submit.Class `json:"classes,omitempty"`
+	Accept  bool           `json:"accept,omitzero"`
 }
 
 func (e Expectation) String() string {
@@ -173,30 +173,30 @@ func (e Expectation) String() string {
 // Finding is one oracle or monitor disagreement. It is also the body of a
 // KindFinding record.
 type Finding struct {
-	ID       string   `cbor:"1,keyasint"`
-	Kind     Kind     `cbor:"2,keyasint"`
-	Severity Severity `cbor:"3,keyasint"`
+	ID       string   `json:"id"`
+	Kind     Kind     `json:"kind"`
+	Severity Severity `json:"severity"`
 	// Seq is the log seq of the input the finding was derived from: the
 	// submit result, or the snapshot's input.
-	Seq     uint64 `cbor:"4,keyasint"`
-	Summary string `cbor:"5,keyasint"`
+	Seq     uint64 `json:"seq"`
+	Summary string `json:"summary"`
 	// Tx is the transaction's CBOR, for verdict findings.
-	Tx       []byte       `cbor:"6,keyasint,omitempty"`
-	Expected *Expectation `cbor:"7,keyasint,omitempty"`
+	Tx       []byte       `json:"tx,omitempty"`
+	Expected *Expectation `json:"expected,omitzero"`
 	// Verdicts are every node answer to the transaction.
-	Verdicts []Verdict `cbor:"8,keyasint,omitempty"`
-	Facts    []Fact    `cbor:"9,keyasint,omitempty"`
+	Verdicts []Verdict `json:"verdicts,omitempty"`
+	Facts    []Fact    `json:"facts,omitempty"`
 	// Nodes are the nodes the finding blames or involves.
-	Nodes []Node `cbor:"10,keyasint,omitempty"`
-	Seed  uint64 `cbor:"11,keyasint"`
+	Nodes []Node `json:"nodes,omitempty"`
+	Seed  uint64 `json:"seed"`
 	// Replay is the command line that replays the run's log.
-	Replay string `cbor:"12,keyasint,omitempty"`
+	Replay string `json:"replay,omitempty"`
 	// Reproducible is false when any involved node ran a dirty build.
-	Reproducible bool `cbor:"13,keyasint,omitempty"`
+	Reproducible bool `json:"reproducible,omitzero"`
 	// TxHash is the transaction's ID, for verdict findings.
-	TxHash []byte `cbor:"14,keyasint,omitempty"`
+	TxHash eventlog.Hex `json:"tx_hash,omitempty"`
 	// Block is the block's CBOR, for a RogueAdopted finding.
-	Block []byte `cbor:"15,keyasint,omitempty"`
+	Block []byte `json:"block,omitempty"`
 }
 
 // Run identifies the run findings come from, for their replay command.
@@ -285,7 +285,7 @@ func Kinds() []Kind {
 }
 
 // Record returns f as a log record at simulated time at. The body is f in
-// the log's canonical CBOR, so equal findings give equal bytes.
+// the log's deterministic JSON, so equal findings give equal bytes.
 func (f Finding) Record(at sched.Time) (eventlog.Record, error) {
 	b, err := eventlog.Encode(f)
 	if err != nil {
