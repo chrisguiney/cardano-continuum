@@ -58,6 +58,13 @@ type Governance interface {
 	VoteDelegated(actor population.ActorID) bool
 }
 
+// Deposits are the chain's deposits as the agendas see them.
+type Deposits interface {
+	// Deposit is the lovelace kind locks as a deposit on this chain; ok is
+	// false for a kind that pays none.
+	Deposit(kind profile.IntentKind) (lovelace profile.Lovelace, ok bool)
+}
+
 // Market is a signal of how busy the chain is.
 type Market interface {
 	// Burst is the recent transaction rate over its long-run baseline: 1 is

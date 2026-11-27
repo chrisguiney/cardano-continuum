@@ -5,10 +5,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/fakenode"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
+	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 )
 
@@ -82,5 +84,33 @@ func TestViewFoldsCertificates(t *testing.T) {
 	mustHandle(t, r, rollbackInput(t, before))
 	if viewOf(r).StakeRegistered(1) {
 		t.Fatal("stake registration survived the rollback")
+	}
+}
+
+// The agendas price deposits at the chain's parameters, not mainnet's.
+func TestViewDepositsAreTheChains(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig(t, 1, 2)
+	cfg.Build = fullParams()
+	cfg.Build.DRepDeposit = 2_000_000
+	e, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, ok := agenda.View(viewOf(e)).(agenda.Deposits)
+	if !ok {
+		t.Fatal("engine view offers no deposits")
+	}
+	for k, want := range map[profile.IntentKind]uint64{
+		profile.IntentRegisterDRep:  cfg.Build.DRepDeposit,
+		profile.IntentRegisterPool:  cfg.Build.PoolDeposit,
+		profile.IntentRegisterStake: cfg.Build.KeyDeposit,
+	} {
+		if got, ok := d.Deposit(k); !ok || uint64(got) != want {
+			t.Errorf("deposit of %s = %d, %v; want %d", k, got, ok, want)
+		}
+	}
+	if _, ok := d.Deposit(profile.IntentSend); ok {
+		t.Error("a payment has a deposit")
 	}
 }

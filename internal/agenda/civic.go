@@ -12,7 +12,7 @@ import (
 // expiry. A wallet registers its stake and delegates its vote to one of
 // the registered DReps, each equally likely.
 func civicScores(a population.Actor, v View) []Score {
-	bal := v.Balance(a.ID)
+	bal := purseOf(v, a.ID)
 	ss := []Score{
 		{Kind: Idle, Value: 1, Why: "citizen waits"},
 		off(profile.IntentPropose, "civic actors vote, they do not propose"),
@@ -48,7 +48,7 @@ func civicScores(a population.Actor, v View) []Score {
 // against 1 for waiting: DReps stay registered for years.
 const drepRetireScore = 0.001
 
-func drepScores(a population.Actor, v View, g Governance, bal profile.Lovelace) []Score {
+func drepScores(a population.Actor, v View, g Governance, bal purse) []Score {
 	if !g.DRepRegistered(a.ID) {
 		return []Score{
 			pick(profile.IntentRegisterDRep, 1, bal, "DRep not registered"),

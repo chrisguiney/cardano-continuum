@@ -11,7 +11,7 @@ import (
 // and mints grow with the burst above baseline, while idle stays fixed. It
 // chases the best-paying pool on any gap at all.
 func opportunistScores(a population.Actor, v View) []Score {
-	bal := v.Balance(a.ID)
+	bal := purseOf(v, a.ID)
 	burst := 1.0
 	if m, ok := v.(Market); ok {
 		burst = m.Burst()
@@ -31,7 +31,7 @@ func opportunistScores(a population.Actor, v View) []Score {
 }
 
 // chase moves to the highest-ROI pool whenever it beats the current one.
-func chase(a population.Actor, v View, bal profile.Lovelace) Score {
+func chase(a population.Actor, v View, bal purse) Score {
 	best, ok := bestPool(v.Pools())
 	if !ok {
 		return off(profile.IntentDelegate, "no pools")

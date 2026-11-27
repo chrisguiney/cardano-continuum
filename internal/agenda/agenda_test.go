@@ -604,3 +604,36 @@ func TestCivicDRepRetires(t *testing.T) {
 		t.Fatalf("registered DRep scores retire %v against idle %v", s, value(ss, Idle))
 	}
 }
+
+// deposits is a world that knows the chain's deposits.
+type deposits struct {
+	world
+	drep profile.Lovelace
+}
+
+func (d deposits) Deposit(k profile.IntentKind) (profile.Lovelace, bool) {
+	if k == profile.IntentRegisterDRep {
+		return d.drep, true
+	}
+	return 0, false
+}
+
+// A DRep funded for the chain's own deposit registers. The devnet's DRep
+// deposit is 2 ADA, not mainnet's 500, and the population budget is sized
+// from it: a cost table fixed at mainnet's deposit kept every such DRep
+// from ever registering.
+func TestCivicDRepRegistersAtChainDeposit(t *testing.T) {
+	p := mustFor(t, "civic")
+	drep := actor(profile.DRep, 1)
+	v := deposits{world: ok(fakeView{balance: 102 * ada}), drep: 2 * ada}
+	if s := score(p.Score(drep, v), profile.IntentRegisterDRep); s.Value <= 0 {
+		t.Fatalf("DRep with 102 ADA does not register at a 2 ADA deposit: %+v", s)
+	}
+	v.balance = 2 * ada
+	if s := score(p.Score(drep, v), profile.IntentRegisterDRep); s.Value != 0 {
+		t.Fatalf("DRep that cannot pay the fee allowance registers: %+v", s)
+	}
+	if s := score(p.Score(drep, ok(fakeView{balance: 102 * ada})), profile.IntentRegisterDRep); s.Value != 0 {
+		t.Fatalf("without the chain's deposits the mainnet deposit should hold: %+v", s)
+	}
+}

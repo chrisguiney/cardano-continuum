@@ -30,6 +30,7 @@ var (
 	_ agenda.Market     = view{}
 	_ agenda.Floor      = view{}
 	_ agenda.Pods       = view{}
+	_ agenda.Deposits   = view{}
 	_ adversary.View    = view{}
 )
 
@@ -45,6 +46,23 @@ func (v view) DelegatedTo(id population.ActorID) (population.ActorID, bool) {
 	return v.e.win.View().DelegatedTo(id)
 }
 func (v view) PoolRegistered(id population.ActorID) bool { return v.e.win.View().PoolRegistered(id) }
+
+// Deposit implements agenda.Deposits from the builder's parameters, which
+// are the chain's.
+func (v view) Deposit(k profile.IntentKind) (profile.Lovelace, bool) {
+	var d uint64
+	switch k {
+	case profile.IntentRegisterStake:
+		d = v.e.cfg.Build.KeyDeposit
+	case profile.IntentRegisterPool:
+		d = v.e.cfg.Build.PoolDeposit
+	case profile.IntentRegisterDRep:
+		d = v.e.cfg.Build.DRepDeposit
+	default:
+		return 0, false
+	}
+	return profile.Lovelace(d), true
+}
 
 // Burst implements agenda.Market.
 func (v view) Burst() float64 { return v.e.pc.Burst(v.e.clk.Now()) }

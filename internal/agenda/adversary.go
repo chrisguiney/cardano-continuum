@@ -38,7 +38,7 @@ func WithAttacks(name profile.AgendaName, attacks Policy) (Policy, error) {
 
 // disruptCover is a busy, noisy payer: the volume an attack hides in.
 func disruptCover(a population.Actor, v View) []Score {
-	bal := v.Balance(a.ID)
+	bal := purseOf(v, a.ID)
 	return []Score{
 		{Kind: Idle, Value: 1, Why: "disruptor waits; attack steps come from its hook"},
 		pick(profile.IntentSend, 0.3, bal, "cover traffic"),
@@ -47,7 +47,7 @@ func disruptCover(a population.Actor, v View) []Score {
 
 // extractCover collects every reward it can and moves funds on.
 func extractCover(a population.Actor, v View) []Score {
-	bal := v.Balance(a.ID)
+	bal := purseOf(v, a.ID)
 	ss := []Score{
 		{Kind: Idle, Value: 1, Why: "extractor waits; attack steps come from its hook"},
 		pick(profile.IntentSend, 0.1, bal, "moves value on"),

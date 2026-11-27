@@ -209,29 +209,66 @@ func finite(x float64) float64 {
 	return x
 }
 
-// Approximate lovelace cost of attempting each intent: deposit or amount
-// floor plus a fee allowance. An intent whose cost exceeds the balance scores
-// zero so the planner never receives one it must reject.
+// Approximate lovelace cost of attempting each intent beyond its deposit:
+// an amount floor plus a fee allowance. An intent whose cost and deposit
+// exceed the balance scores zero so the planner never receives one it must
+// reject.
 var cost = map[profile.IntentKind]profile.Lovelace{
 	profile.IntentSend:          2_000_000,
 	profile.IntentDelegate:      500_000,
-	profile.IntentRegisterStake: 3_000_000,
+	profile.IntentRegisterStake: 1_000_000,
 	profile.IntentWithdraw:      500_000,
-	profile.IntentRegisterPool:  505_000_000,
+	profile.IntentRegisterPool:  5_000_000,
 	profile.IntentRetirePool:    500_000,
 	profile.IntentUpdatePool:    500_000,
 	profile.IntentRetireDRep:    500_000,
-	profile.IntentRegisterDRep:  500_500_000,
+	profile.IntentRegisterDRep:  500_000,
 	profile.IntentDelegateDRep:  500_000,
 	profile.IntentVote:          500_000,
 	profile.IntentScriptCall:    2_000_000,
 	profile.IntentMint:          2_000_000,
 }
 
+// mainnetDeposits are the deposits an intent pays when the view does not
+// know the chain's (Deposits): mainnet's keyDeposit, poolDeposit and
+// dRepDeposit.
+var mainnetDeposits = map[profile.IntentKind]profile.Lovelace{
+	profile.IntentRegisterStake: 2_000_000,
+	profile.IntentRegisterPool:  500_000_000,
+	profile.IntentRegisterDRep:  500_000_000,
+}
+
+// purse is what an actor can pay with: its balance, and the chain's
+// deposits when the view knows them.
+type purse struct {
+	// balance is the actor's spendable lovelace.
+	balance profile.Lovelace
+	// deposits is the view's Deposits capability, nil without one.
+	deposits Deposits
+}
+
+func purseOf(v View, id population.ActorID) purse {
+	d, _ := v.(Deposits)
+	return purse{
+		balance:  v.Balance(id),
+		deposits: d,
+	}
+}
+
+// need is the lovelace attempting kind takes: its cost and its deposit.
+func (p purse) need(kind profile.IntentKind) profile.Lovelace {
+	if p.deposits != nil {
+		if d, ok := p.deposits.Deposit(kind); ok {
+			return cost[kind] + d
+		}
+	}
+	return cost[kind] + mainnetDeposits[kind]
+}
+
 // pick scores kind at value, or zero with a reason when the actor cannot pay.
-func pick(kind profile.IntentKind, value float64, bal profile.Lovelace, why string) Score {
-	if c := cost[kind]; bal < c {
-		return Score{Kind: kind, Why: fmt.Sprintf("balance %d below cost %d", bal, c)}
+func pick(kind profile.IntentKind, value float64, bal purse, why string) Score {
+	if c := bal.need(kind); bal.balance < c {
+		return Score{Kind: kind, Why: fmt.Sprintf("balance %d below cost %d", bal.balance, c)}
 	}
 	return Score{Kind: kind, Value: value, Why: why}
 }

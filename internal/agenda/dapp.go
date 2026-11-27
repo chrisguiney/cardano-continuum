@@ -16,7 +16,7 @@ const dappScore = 0.02
 // profile's weights alone set the mix. Unlike opportunist it does not wait
 // for a burst: chain users who mostly call scripts do so at a steady rate.
 func dappScores(a population.Actor, v View) []Score {
-	bal := v.Balance(a.ID)
+	bal := purseOf(v, a.ID)
 	return []Score{
 		{Kind: Idle, Value: 1, Why: "script user waits"},
 		pick(profile.IntentSend, dappScore, bal, "pays"),

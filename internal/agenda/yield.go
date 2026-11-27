@@ -11,7 +11,7 @@ import (
 // another pool's ROI beats the current one by more than the actor's patience
 // (in ROI units, so the same scale as PoolInfo.ROI).
 func yieldScores(a population.Actor, v View) []Score {
-	bal := v.Balance(a.ID)
+	bal := purseOf(v, a.ID)
 	ss := []Score{{Kind: Idle, Value: 1, Why: "yield farmer waits"}}
 	if !v.StakeRegistered(a.ID) {
 		return append(ss,
@@ -25,7 +25,7 @@ func yieldScores(a population.Actor, v View) []Score {
 	return append(ss, delegateScore(a, v, bal))
 }
 
-func delegateScore(a population.Actor, v View, bal profile.Lovelace) Score {
+func delegateScore(a population.Actor, v View, bal purse) Score {
 	best, ok := bestPool(v.Pools())
 	if !ok {
 		return off(profile.IntentDelegate, "no pools")

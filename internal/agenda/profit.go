@@ -12,7 +12,7 @@ import (
 // yield it has no patience, and it discounts a pool past saturation, whose
 // reward does not grow with the stake it attracts.
 func profitScores(a population.Actor, v View) []Score {
-	bal := v.Balance(a.ID)
+	bal := purseOf(v, a.ID)
 	ss := []Score{
 		{Kind: Idle, Value: 0.5, Why: "profit seeker waits"},
 		pick(profile.IntentSend, 0.1, bal, "trades"),
@@ -29,7 +29,7 @@ func profitScores(a population.Actor, v View) []Score {
 		profitMove(a, v, bal))
 }
 
-func profitMove(a population.Actor, v View, bal profile.Lovelace) Score {
+func profitMove(a population.Actor, v View, bal purse) Score {
 	ps := v.Pools()
 	cur, delegated := v.DelegatedTo(a.ID)
 	var best PoolInfo
@@ -41,7 +41,7 @@ func profitMove(a population.Actor, v View, bal profile.Lovelace) Score {
 		}
 		// Ties go to the first listed, so the order of Pools decides them;
 		// the chain view lists pools by ID.
-		if r := effectiveROI(p, bal); r > bestROI {
+		if r := effectiveROI(p, bal.balance); r > bestROI {
 			best, bestROI = p, r
 		}
 	}
@@ -49,7 +49,7 @@ func profitMove(a population.Actor, v View, bal profile.Lovelace) Score {
 		return off(profile.IntentDelegate, "no other pool")
 	}
 	fee := float64(cost[profile.IntentDelegate])
-	gain := (bestROI - curROI) * float64(bal)
+	gain := (bestROI - curROI) * float64(bal.balance)
 	if gain <= fee {
 		return off(profile.IntentDelegate, fmt.Sprintf("gain %.0f per epoch does not cover fee %.0f", gain, fee))
 	}

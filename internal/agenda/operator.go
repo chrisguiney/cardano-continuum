@@ -19,7 +19,7 @@ const poolUpdateScore = 0.05
 // is gone may retire, and a dark pool may come back. Going dark and
 // retiring both ask the stake-floor guard first.
 func operatorScores(a population.Actor, v View) []Score {
-	bal := v.Balance(a.ID)
+	bal := purseOf(v, a.ID)
 	if !v.PoolRegistered(a.ID) {
 		return []Score{
 			pick(profile.IntentRegisterPool, 1, bal, "pool not registered"),
@@ -76,7 +76,7 @@ func operatorScores(a population.Actor, v View) []Score {
 // pools may vote on (ProposalInfo.Pools) that it has not voted on, sooner
 // as the proposal nears expiry, as a DRep votes. A vote on any other
 // action the ledger refuses with DisallowedVoters, so it is never offered.
-func poolVotes(a population.Actor, v View, bal profile.Lovelace) []Score {
+func poolVotes(a population.Actor, v View, bal purse) []Score {
 	g, ok := v.(Governance)
 	if !ok {
 		return []Score{off(profile.IntentVote, "no governance state in view")}
