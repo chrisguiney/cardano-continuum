@@ -1,4 +1,4 @@
-package main
+package bisect
 
 import (
 	"bytes"
@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/chrisguiney/cardano-continuum/internal/bisect"
+	ibisect "github.com/chrisguiney/cardano-continuum/internal/bisect"
 	"github.com/chrisguiney/cardano-continuum/internal/devbuild"
 )
 
@@ -62,18 +62,18 @@ func (b commitBuilder) Build(_ context.Context, c string) (string, error) {
 
 type threshold struct{ firstBad string }
 
-func (c threshold) Check(_ context.Context, _, commit string) (bisect.Verdict, error) {
+func (c threshold) Check(_ context.Context, _, commit string) (ibisect.Verdict, error) {
 	if commit >= c.firstBad {
-		return bisect.Bad, nil
+		return ibisect.Bad, nil
 	}
-	return bisect.Good, nil
+	return ibisect.Good, nil
 }
 
 func TestRunBisectReportsTheFirstBadCommit(t *testing.T) {
 	a := bisectArgs{dep: "gouroboros", good: "g", bad: "b", repo: "/r"}
 	git := listGit{"c1\nc2\nc3\nc4\nc5\n"}
 	var out bytes.Buffer
-	err := runBisect(context.Background(), a, git, bisect.Prober{Builder: commitBuilder{fail: map[string]bool{"c3": true}}, Checker: threshold{"c2"}}, &out)
+	err := runBisect(context.Background(), a, git, ibisect.Prober{Builder: commitBuilder{fail: map[string]bool{"c3": true}}, Checker: threshold{"c2"}}, &out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestRunBisectNamesAnAmbiguousRange(t *testing.T) {
 	a := bisectArgs{dep: "gouroboros", good: "g", bad: "b", repo: "/r"}
 	git := listGit{"c1\nc2\nc3\nc4\n"}
 	var out bytes.Buffer
-	err := runBisect(context.Background(), a, git, bisect.Prober{Builder: commitBuilder{fail: map[string]bool{"c2": true, "c3": true}}, Checker: threshold{"c3"}}, &out)
+	err := runBisect(context.Background(), a, git, ibisect.Prober{Builder: commitBuilder{fail: map[string]bool{"c2": true, "c3": true}}, Checker: threshold{"c3"}}, &out)
 	if err != nil {
 		t.Fatal(err)
 	}

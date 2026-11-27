@@ -1,4 +1,4 @@
-package main
+package bisect
 
 import (
 	"context"
@@ -12,8 +12,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/chrisguiney/cardano-continuum/internal/bisect"
+	ibisect "github.com/chrisguiney/cardano-continuum/internal/bisect"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/flagx"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/lines"
 	"github.com/chrisguiney/cardano-continuum/internal/devbuild"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/image"
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
@@ -71,7 +72,7 @@ func parseBisect(args []string) (bisectArgs, error) {
 	if len(pos) != 1 {
 		return a, errors.New("bisect: want one <good>..<bad> range\n" + bisectUsage)
 	}
-	if a.good, a.bad, err = bisect.ParseRange(pos[0]); err != nil {
+	if a.good, a.bad, err = ibisect.ParseRange(pos[0]); err != nil {
 		return a, fmt.Errorf("bisect: %w", err)
 	}
 	if a.repo == "" || *check == "" {
@@ -107,12 +108,14 @@ func (d devBuilder) request(commit string) devbuild.Request {
 	}
 }
 
-// Build implements bisect.Builder.
+// Build implements ibisect.Builder.
 func (d devBuilder) Build(ctx context.Context, commit string) (string, error) {
 	return d.build(ctx, d.request(commit))
 }
 
-func cmdBisect(ctx context.Context, args []string, out io.Writer) error {
+// Run finds the first commit of a dependency range that fails a check, building
+// each candidate into a Dingo image.
+func Run(ctx context.Context, args []string, out io.Writer) error {
 	a, err := parseBisect(args)
 	if err != nil {
 		return err
@@ -133,32 +136,32 @@ func cmdBisect(ctx context.Context, args []string, out io.Writer) error {
 	if a.kind != "" {
 		return fmt.Errorf("bisect: --check %s needs a finding source: a live devnet run per commit is not wired to this command yet; check with a command that runs it", a.kind)
 	}
-	p := bisect.Prober{
+	p := ibisect.Prober{
 		Builder: devBuilder{dep: a.dep, repo: a.repo, dingo: a.dingo, arch: a.arch, build: build},
-		Checker: bisect.CommandCheck{Argv: a.argv, Seed: a.seed},
+		Checker: ibisect.CommandCheck{Argv: a.argv, Seed: a.seed},
 	}
 	return runBisect(ctx, a, devbuild.ExecRunner{}, p, out)
 }
 
 // runBisect lists the range and searches it, printing the result.
-func runBisect(ctx context.Context, a bisectArgs, git bisect.Runner, t bisect.Test, out io.Writer) error {
-	commits, err := bisect.ListCommits(ctx, git, a.repo, a.good, a.bad)
+func runBisect(ctx context.Context, a bisectArgs, git ibisect.Runner, t ibisect.Test, out io.Writer) error {
+	commits, err := ibisect.ListCommits(ctx, git, a.repo, a.good, a.bad)
 	if err != nil {
 		return err
 	}
-	res, err := bisect.Search(ctx, commits, t)
+	res, err := ibisect.Search(ctx, commits, t)
 	if err != nil {
 		return err
 	}
-	w := &writer{out: out}
-	w.printf("%s: %d commits in %s..%s, %d probes\n", a.dep, len(commits), a.good, a.bad, res.Probes)
+	w := &lines.Writer{Out: out}
+	w.Printf("%s: %d commits in %s..%s, %d probes\n", a.dep, len(commits), a.good, a.bad, res.Probes)
 	if res.Exact {
-		w.printf("first bad commit: %s\n", res.First)
-		return w.err
+		w.Printf("first bad commit: %s\n", res.First)
+		return w.Err
 	}
-	w.printf("the first bad commit is one of (skipped builds hide it):\n")
+	w.Printf("the first bad commit is one of (skipped builds hide it):\n")
 	for _, c := range res.Candidates {
-		w.printf("  %s\n", c)
+		w.Printf("  %s\n", c)
 	}
-	return w.err
+	return w.Err
 }

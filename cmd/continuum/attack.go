@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/lines"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
@@ -88,7 +89,7 @@ func clearFake(cfg *engine.Config) error {
 }
 
 // summarizeAttacks prints what a run's adversaries did, when it had any.
-func summarizeAttacks(ctx context.Context, w *writer, l eventlog.Reader) error {
+func summarizeAttacks(ctx context.Context, w *lines.Writer, l eventlog.Reader) error {
 	m, err := engine.Measure(ctx, l)
 	if err != nil {
 		return err
@@ -96,7 +97,7 @@ func summarizeAttacks(ctx context.Context, w *writer, l eventlog.Reader) error {
 	if m.AttackSteps == 0 {
 		return nil
 	}
-	w.printf("attacks: steps %d, cost %.3f ADA, landed %d, detected %d; honest failure rate %.3f, utxo growth %d\n",
+	w.Printf("attacks: steps %d, cost %.3f ADA, landed %d, detected %d; honest failure rate %.3f, utxo growth %d\n",
 		m.AttackSteps, float64(m.AttackCost)/1e6, m.AttackLanded, m.AttackDetected,
 		m.FailureRate(), m.UtxoGrowth)
 	return nil
@@ -130,10 +131,10 @@ func cmdCompare(ctx context.Context, args []string, out io.Writer) error {
 	for _, n := range names {
 		mark = append(mark, adversary.SuccessMetric(n))
 	}
-	w := &writer{out: out}
-	w.printf("%s", adversary.Table(adversary.Compare(ms[0], ms[1]), mark...))
-	w.printf("* an attack's success metric (%s)\n", joinNames(names))
-	return w.err
+	w := &lines.Writer{Out: out}
+	w.Printf("%s", adversary.Table(adversary.Compare(ms[0], ms[1]), mark...))
+	w.Printf("* an attack's success metric (%s)\n", joinNames(names))
+	return w.Err
 }
 
 // attacksIn lists the attacks a log's Attack decisions name, sorted.

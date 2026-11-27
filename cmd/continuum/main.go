@@ -41,11 +41,13 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
 	"github.com/chrisguiney/cardano-continuum/internal/build"
+	clibisect "github.com/chrisguiney/cardano-continuum/internal/cli/bisect"
 	clibuild "github.com/chrisguiney/cardano-continuum/internal/cli/build"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/export"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/image"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/profiles"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/kube"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/lines"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
@@ -95,7 +97,7 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 	case "build":
 		return clibuild.Run(ctx, args[1:], out)
 	case "bisect":
-		return cmdBisect(ctx, args[1:], out)
+		return clibisect.Run(ctx, args[1:], out)
 	case "serve":
 		return cmdServe(ctx, args[1:], out, kube.Open)
 	case "harvest":
@@ -417,7 +419,7 @@ func summarize(out io.Writer, cfg engine.Config, r *engine.Runner, chain *fakech
 	}
 	e := r.Engine().Summary()
 	recs := mem.LastSeq()
-	w := &writer{out: out}
+	w := &lines.Writer{Out: out}
 	// The chain also holds the genesis pools' owners' stake, which no
 	// actor owns, and the deposits certificates and proposals hold.
 	owners, _, err := engine.GenesisStaking(&cfg)
@@ -429,28 +431,28 @@ func summarize(out io.Writer, cfg engine.Config, r *engine.Runner, chain *fakech
 		onChain += o.Lovelace
 	}
 	conserved := e.Supply == genesis && chain.UnspentLovelace()+chain.Fees()+chain.Deposits() == onChain
-	w.printf("epochs %d, actors %d (genesis %d), blocks %d, records %d\n",
+	w.Printf("epochs %d, actors %d (genesis %d), blocks %d, records %d\n",
 		epochs, e.Actors, len(funds), len(chain.Blocks()), recs)
-	w.printf("payments: submitted %d, confirmed %d, released %d, skipped %d, pending %d\n",
+	w.Printf("payments: submitted %d, confirmed %d, released %d, skipped %d, pending %d\n",
 		kinds[engine.KindSubmitted], kinds[engine.KindConfirmed], kinds[engine.KindReleased], kinds[engine.KindSkipped], e.Pending)
-	w.printf("value conserved: %t (genesis %d lovelace, fees %d)\n", conserved, genesis, chain.Fees())
+	w.Printf("value conserved: %t (genesis %d lovelace, fees %d)\n", conserved, genesis, chain.Fees())
 	t, err := engine.AuditLog(context.Background(), mem)
 	if err != nil {
 		return err
 	}
-	w.printf("mistakes %t: rejections %s; findings %d (fatal %d); lost %d lovelace\n",
+	w.Printf("mistakes %t: rejections %s; findings %d (fatal %d); lost %d lovelace\n",
 		cfg.Mistakes, classCounts(t.Rejections), t.Findings, t.Fatal, t.Lost)
 	gov, err := countGov(context.Background(), mem)
 	if err != nil {
 		return err
 	}
-	w.printf("%s", gov.line())
+	w.Printf("%s", gov.line())
 	if err := summarizeAttacks(context.Background(), w, mem); err != nil {
 		return err
 	}
-	w.printf("elapsed %s, %.0f events/s\n", elapsed.Round(time.Millisecond), float64(recs)/elapsed.Seconds())
-	if w.err != nil {
-		return w.err
+	w.Printf("elapsed %s, %.0f events/s\n", elapsed.Round(time.Millisecond), float64(recs)/elapsed.Seconds())
+	if w.Err != nil {
+		return w.Err
 	}
 	if !conserved {
 		return errors.New("value not conserved")
@@ -468,18 +470,6 @@ func classCounts(m map[string]int) string {
 		parts = append(parts, fmt.Sprintf("%s=%d", c, m[c]))
 	}
 	return strings.Join(parts, " ")
-}
-
-// writer keeps the first write error so a run of prints checks it once.
-type writer struct {
-	out io.Writer
-	err error
-}
-
-func (w *writer) printf(format string, a ...any) {
-	if w.err == nil {
-		_, w.err = fmt.Fprintf(w.out, format, a...)
-	}
 }
 
 func cmdReplay(ctx context.Context, args []string, out io.Writer) error {
@@ -519,22 +509,22 @@ func cmdReplayWith(ctx context.Context, args []string, out io.Writer, deps repla
 		return err
 	}
 	defer func() { _ = l.Close() }()
-	w := &writer{out: out}
+	w := &lines.Writer{Out: out}
 	start := time.Now()
 	diff, err := (&eventlog.Replayer{New: cfg.Factory(), Log: l, Header: &hdr}).Run(ctx)
 	if err != nil {
 		return err
 	}
-	w.printf("replayed %d records in %s: %d mismatches\n", l.LastSeq(), time.Since(start).Round(time.Millisecond), len(diff))
+	w.Printf("replayed %d records in %s: %d mismatches\n", l.LastSeq(), time.Since(start).Round(time.Millisecond), len(diff))
 	for i, m := range diff {
 		if i == 10 {
-			w.printf("... %d more\n", len(diff)-10)
+			w.Printf("... %d more\n", len(diff)-10)
 			break
 		}
-		w.printf("  %s\n", m)
+		w.Printf("  %s\n", m)
 	}
 	if len(diff) > 0 {
 		return errors.New("replay diverged from the log")
 	}
-	return w.err
+	return w.Err
 }
