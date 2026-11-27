@@ -83,7 +83,9 @@ func defaulted(set *appsv1.StatefulSet) {
 func stored(t *testing.T, r *applier, set *appsv1.StatefulSet) *appsv1.StatefulSet {
 	t.Helper()
 	ctx := context.Background()
-	stamp(set)
+	if err := stamp(set); err != nil {
+		t.Fatal(err)
+	}
 	if err := r.client.Create(ctx, set); err != nil {
 		t.Fatal(err)
 	}

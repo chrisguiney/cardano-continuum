@@ -68,7 +68,9 @@ func (r *applier) apply(ctx context.Context, p *v1alpha1.ContinuumPool, w render
 	}
 	switch {
 	case cur == nil:
-		stamp(want)
+		if err := stamp(want); err != nil {
+			return "", reconcile.Result{}, err
+		}
 		return r.create(ctx, p, want)
 	case cur.DeletionTimestamp != nil:
 		return "", reconcile.Result{RequeueAfter: fenceRetry}, nil
@@ -121,7 +123,9 @@ func (r *applier) holder(ctx context.Context, p *v1alpha1.ContinuumPool, want *a
 // also ignores a removed list element, a removed map key and a field set back
 // to its zero value.
 func (r *applier) update(ctx context.Context, cur, want *appsv1.StatefulSet) error {
-	stamp(want)
+	if err := stamp(want); err != nil {
+		return err
+	}
 	if *cur.Spec.Replicas == *want.Spec.Replicas &&
 		cur.Annotations[AnnotationSpecHash] == want.Annotations[AnnotationSpecHash] &&
 		hasLabels(cur.Labels, want.Labels) {
@@ -146,17 +150,17 @@ func (r *applier) update(ctx context.Context, cur, want *appsv1.StatefulSet) err
 const AnnotationSpecHash = ident.LabelPrefix + "/spec-hash"
 
 // stamp records the digest of want's pod template on want.
-func stamp(want *appsv1.StatefulSet) {
+func stamp(want *appsv1.StatefulSet) error {
 	b, err := json.Marshal(want.Spec.Template)
 	if err != nil {
-		// A PodTemplateSpec is plain data; Marshal cannot fail on it.
-		panic(fmt.Sprintf("marshal pod template of %s: %v", want.Name, err))
+		return fmt.Errorf("marshal pod template of %s: %w", want.Name, err)
 	}
 	sum := sha256.Sum256(b)
 	if want.Annotations == nil {
 		want.Annotations = map[string]string{}
 	}
 	want.Annotations[AnnotationSpecHash] = hex.EncodeToString(sum[:])
+	return nil
 }
 
 // hasLabels reports whether have carries every label in want with its value.
