@@ -1,13 +1,7 @@
 package main
 
 import (
-	"bytes"
-	"encoding/hex"
-	"encoding/json"
-	"errors"
-	"flag"
 	"fmt"
-	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -92,46 +86,4 @@ func cohortsOf(reg *profile.Registry, names []string, wallets int) ([]engine.Coh
 		cohorts[i] = engine.Cohort{Profile: n, Count: counts[i]}
 	}
 	return cohorts, nil
-}
-
-type indexEntry struct {
-	Profile string `json:"profile"`
-	Target  string `json:"target"`
-}
-
-func cmdProfiles(args []string, out io.Writer) error {
-	if len(args) == 0 || args[0] != "index" {
-		return errors.New("usage: continuum profiles index [--out FILE]")
-	}
-	fs := flag.NewFlagSet("profiles index", flag.ContinueOnError)
-	file := fs.String("out", "", "write the index to this file instead of stdout")
-	if err := fs.Parse(args[1:]); err != nil {
-		return err
-	}
-	idx := map[string]indexEntry{}
-	for _, name := range profiles.Fitted {
-		raw, err := profiles.Named(name)
-		if err != nil {
-			return err
-		}
-		f, err := profile.ParseFile(bytes.NewReader(raw))
-		if err != nil {
-			return fmt.Errorf("%s.yaml: %w", name, err)
-		}
-		h, err := engine.FileHash(f)
-		if err != nil {
-			return err
-		}
-		idx[hex.EncodeToString(h[:])] = indexEntry{Profile: name, Target: profiles.TargetFile(name)}
-	}
-	b, err := json.MarshalIndent(idx, "", "  ")
-	if err != nil {
-		return err
-	}
-	b = append(b, '\n')
-	if *file != "" {
-		return os.WriteFile(*file, b, 0o644) //nolint:gosec // a shipped, public file
-	}
-	_, err = out.Write(b)
-	return err
 }

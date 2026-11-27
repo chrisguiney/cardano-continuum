@@ -42,6 +42,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/export"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/profiles"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
@@ -87,7 +88,7 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 	case "image":
 		return cmdImage(ctx, args[1:], out, openKube)
 	case "profiles":
-		return cmdProfiles(args[1:], out)
+		return profiles.Run(ctx, args[1:], out)
 	case "build":
 		return cmdBuild(ctx, args[1:], out)
 	case "bisect":
