@@ -18,6 +18,31 @@
 // Everything Handle decides is a function of the configuration, the seed and
 // the logged inputs: it reads no clock (time arrives as Tick inputs), starts
 // no goroutine and never lets map order reach an output.
+//
+// Engine is a composite: each concern is a component under internal/, which
+// owns its state and its part of the snapshot (Save and Load). No component
+// imports another; they share only the value types in wire, and reach each
+// other through interfaces they declare, which the engine satisfies with
+// small adapters. Engine orders every call, so the order of journal
+// records and RNG draws is decided here, in Handle and the steps it runs.
+//
+//	```mermaid
+//	flowchart TD
+//	  cmd[cmd/continuum, httpapi, sink] --> engine
+//	  engine[engine: Engine composite, Runner, aliases] --> clock & journal & window & cohort & pace & pay & intent & floor & steer & faucet & judge & attack & meter & live & fakenode
+//	  journal & window & cohort & pace & pay & intent & floor & steer & faucet & judge & attack & meter & live & fakenode --> wire
+//	  clock --> sched[internal/sched]
+//	  window --> chain[internal/chain]
+//	  pay --> plan[internal/plan] & submit[internal/submit]
+//	  floor --> policy[internal/policy]
+//	  judge --> oracle[internal/oracle] & mistake[internal/mistake]
+//	  attack --> adversary[internal/adversary]
+//	  intent --> build[internal/build]
+//	  cohort --> population[internal/population] & keys[internal/keys]
+//	  wire --> eventlog[internal/eventlog] & sched
+//	```
+//
+// internal/archtest enforces the component boundary.
 package engine
 
 import (
