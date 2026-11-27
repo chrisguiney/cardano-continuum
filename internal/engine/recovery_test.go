@@ -31,9 +31,9 @@ func floorConfig(t *testing.T) Config {
 // K deep.
 func stakeOnto(t *testing.T, e *Engine, fc *fakechain.Chain, slot uint64) {
 	t.Helper()
-	pool, _ := e.co.ring.poolOf(3)
+	pool, _ := e.co.Ring.PoolOf(3)
 	for id := population.ActorID(4); id <= 7; id++ {
-		w := e.co.rec(id).wallet
+		w := e.co.Rec(id).Wallet
 		got, err := e.builder.Stake().Delegate(context.Background(), w, build.Delegation{
 			Spend: build.Spend{Inputs: fc.UtxosAt(w.Address()), TTL: 100}, Pool: pool, Register: true,
 		})

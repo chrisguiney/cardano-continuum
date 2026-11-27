@@ -45,7 +45,7 @@ func (e *Engine) sample(p *pendingRec, w keys.Wallet, built build.Built) {
 	if !e.cfg.Mistakes {
 		return
 	}
-	a, _ := e.co.get(population.ActorID(p.Actor))
+	a, _ := e.co.Get(population.ActorID(p.Actor))
 	t := profile.SampledTraits{Competence: a.Competence, Care: a.Traits.Care}
 	// The engine's scripts (build.AlwaysSucceeds, build.FreeMint) accept
 	// any redeemer, so a wrong one is no mistake: the node rightly
@@ -95,10 +95,10 @@ func (e *Engine) mistakeCtx(p *pendingRec, w keys.Wallet) mistake.Ctx {
 	id := population.ActorID(p.Actor)
 	signers := []keys.Signer{w.PaymentSigner(), w.StakeSigner()}
 	if id != faucetActor {
-		signers = append(signers, e.co.ring.drepSigner(id))
+		signers = append(signers, e.co.Ring.DRepSigner(id))
 	}
-	if _, ok := e.co.ring.poolOf(id); ok {
-		if s, err := e.co.ring.poolSigner(id); err == nil {
+	if _, ok := e.co.Ring.PoolOf(id); ok {
+		if s, err := e.co.Ring.PoolSigner(id); err == nil {
 			signers = append(signers, s)
 		}
 	}

@@ -105,29 +105,29 @@ func (e *Engine) dead(ctx context.Context, at sched.Time, p *pendingRec, tx TxID
 // learn raises the actor's competence toward 1 at its learning rate: a
 // fix it made worked.
 func (e *Engine) learn(id population.ActorID) error {
-	a, ok := e.co.get(id)
+	a, ok := e.co.Get(id)
 	if !ok {
 		return nil
 	}
-	return e.co.pop().SetCompetence(id, a.Competence+a.Traits.LearningRate*(1-a.Competence))
+	return e.co.Pop().SetCompetence(id, a.Competence+a.Traits.LearningRate*(1-a.Competence))
 }
 
 // frustrate raises the actor's frustration, and with it the dormancy
 // hazard, which is drawn again from now.
 func (e *Engine) frustrate(at sched.Time, id population.ActorID) error {
-	a, ok := e.co.get(id)
+	a, ok := e.co.Get(id)
 	if !ok {
 		return nil
 	}
-	if err := e.co.pop().SetFrustration(id, a.Frustration+frustration); err != nil {
+	if err := e.co.Pop().SetFrustration(id, a.Frustration+frustration); err != nil {
 		return err
 	}
-	st := e.co.rec(id)
-	if st.hazardAt != population.Never {
-		e.clk.Cancel(st.hazardH)
+	st := e.co.Rec(id)
+	if st.HazardAt != population.Never {
+		e.clk.Cancel(st.HazardH)
 	}
-	a, _ = e.co.get(id)
-	e.co.life.nextHazard(a, st, at)
+	a, _ = e.co.Get(id)
+	e.co.Life.NextHazard(a, st, at)
 	return nil
 }
 
@@ -149,5 +149,5 @@ func (e *Engine) settle(at sched.Time, p *pendingRec, tx TxID) error {
 		// The lock's script output counted as foreign when it settled.
 		e.win.Reclaim(p.Amount)
 	}
-	return e.co.life.settled(at, population.ActorID(p.Actor), profile.IntentKind(p.Kind), tx)
+	return e.co.Life.Settled(at, population.ActorID(p.Actor), profile.IntentKind(p.Kind), tx)
 }

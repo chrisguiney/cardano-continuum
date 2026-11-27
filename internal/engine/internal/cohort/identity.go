@@ -1,4 +1,4 @@
-package engine
+package cohort
 
 import (
 	"encoding/hex"
@@ -22,10 +22,10 @@ import (
 // without the run's seed. Nothing here touches private key material: only
 // public hashes and addresses are read from the wallet.
 
-// holding is one actor's share of the planner ledger and the chain view.
-type holding struct {
-	settled, reserved, unconfirmed uint64
-	utxos, inflight                int
+// Holding is one actor's share of the planner ledger and the chain view.
+type Holding struct {
+	Settled, Reserved, Unconfirmed uint64
+	UTxOs, InFlight                int
 	tokens                         map[tokenKey]uint64
 }
 
@@ -34,8 +34,8 @@ type tokenKey struct {
 	name   string
 }
 
-// addTokens adds the native assets of output u to h.
-func (h *holding) addTokens(u common.Utxo) {
+// AddTokens adds the native assets of output u to h.
+func (h *Holding) AddTokens(u common.Utxo) {
 	ma := u.Output.Assets()
 	if ma == nil {
 		return
@@ -53,7 +53,7 @@ func (h *holding) addTokens(u common.Utxo) {
 }
 
 // tokenList is h's tokens in policy then name order.
-func tokenList(h *holding) []store.Token {
+func tokenList(h *Holding) []store.Token {
 	out := make([]store.Token, 0, len(h.tokens))
 	for k, q := range h.tokens {
 		t := store.Token{Policy: hex.EncodeToString(k.policy[:]), Name: hex.EncodeToString([]byte(k.name)), Quantity: q}
@@ -121,18 +121,18 @@ func ActorKinds() []string {
 	return out
 }
 
-// idents builds the identity rows.
-type idents struct {
-	r *roster
+// Idents builds the identity rows.
+type Idents struct {
+	r *Roster
 	// proposer is the profile name of the network proposer.
 	proposer string
-	att      attackHooks
-	view     chainView
+	att      Adversaries
+	chain    Chain
 }
 
 // kindOf names an actor's role for the UI: a profile kind, refined for the
 // network proposer and for adversaries.
-func (n *idents) kindOf(id population.ActorID, p profile.Profile) string {
+func (n *Idents) kindOf(id population.ActorID, p profile.Profile) string {
 	switch {
 	case n.att.Adversary(id):
 		return kindAdversary
@@ -144,43 +144,43 @@ func (n *idents) kindOf(id population.ActorID, p profile.Profile) string {
 
 // staticIdentity is the part of an actor's identity that never changes,
 // computed once per actor.
-func (n *idents) staticIdentity(id population.ActorID, st *actor) store.Identity {
-	w := st.wallet
+func (n *Idents) staticIdentity(id population.ActorID, st *Actor) store.Identity {
+	w := st.Wallet
 	pk, sk := w.PaymentKeyHash(), w.StakeKeyHash()
 	out := store.Identity{
-		Kind: n.kindOf(id, st.prof), Agenda: string(st.prof.Agenda),
+		Kind: n.kindOf(id, st.Prof), Agenda: string(st.Prof.Agenda),
 		PaymentAddr: w.Address().String(), StakeAddr: w.StakeAddress().String(),
 		PaymentKeyHash: hex.EncodeToString(pk[:]), StakeKeyHash: hex.EncodeToString(sk[:]),
 	}
-	if st.prof.Kind == profile.DRep {
-		d := n.r.ring.drep(id)
+	if st.Prof.Kind == profile.DRep {
+		d := n.r.Ring.DRep(id)
 		out.DRepID = bech32Of("drep", d[:])
 	}
-	if pool, ok := n.r.ring.poolOf(id); ok {
+	if pool, ok := n.r.Ring.PoolOf(id); ok {
 		out.PoolID = bech32Of("pool", pool[:])
 	}
-	if ad := st.prof.Adversary; ad != nil {
+	if ad := st.Prof.Adversary; ad != nil {
 		out.CostCeiling, out.Metric = uint64(ad.CostCeiling), ad.SuccessMetric
-		out.Budget, out.Attacks = uint64(st.prof.Budget), slices.Clone(ad.Attacks)
+		out.Budget, out.Attacks = uint64(st.Prof.Budget), slices.Clone(ad.Attacks)
 	}
 	return out
 }
 
-// identityOf is the actor's identity now.
-func (n *idents) identityOf(a population.Actor, st *actor, hs map[population.ActorID]*holding) store.Identity {
-	if !st.identOK {
-		st.ident, st.identOK = n.staticIdentity(a.ID, st), true
+// Identity is the actor's identity now.
+func (n *Idents) Identity(a population.Actor, st *Actor, hs map[population.ActorID]*Holding) store.Identity {
+	if !st.IdentOK {
+		st.Ident, st.IdentOK = n.staticIdentity(a.ID, st), true
 	}
-	out := st.ident
+	out := st.Ident
 	out.Competence, out.Care = a.Competence, a.Traits.Care
 	out.Patience, out.LearningRate = a.Traits.Patience, a.Traits.LearningRate
 	out.Frustration = a.Frustration
 	if a.Kind == profile.Wallet {
-		out.Hazard = population.DormancyOnsetRate(st.prof.Hazards.OnsetRate(), a.Frustration)
+		out.Hazard = population.DormancyOnsetRate(st.Prof.Hazards.OnsetRate(), a.Frustration)
 	}
 	if h := hs[a.ID]; h != nil {
-		out.Settled, out.UTxOs, out.Reserved = h.settled, h.utxos, h.reserved
-		out.InFlight, out.Unconfirmed = h.inflight, h.unconfirmed
+		out.Settled, out.UTxOs, out.Reserved = h.Settled, h.UTxOs, h.Reserved
+		out.InFlight, out.Unconfirmed = h.InFlight, h.Unconfirmed
 		out.Tokens = tokenList(h)
 	}
 	if n.att.Adversary(a.ID) {
@@ -190,15 +190,15 @@ func (n *idents) identityOf(a population.Actor, st *actor, hs map[population.Act
 	return out
 }
 
-func (n *idents) delegationOf(out *store.Identity, id population.ActorID) {
-	s, ok := n.view.View().StakeOf(id)
+func (n *Idents) delegationOf(out *store.Identity, id population.ActorID) {
+	s, ok := n.chain.View().StakeOf(id)
 	if !ok {
 		return
 	}
 	out.StakeRegistered = s.Registered
 	if s.Delegated {
 		out.DelegatedPool = bech32Of("pool", s.Pool[:])
-		if pa, ok := n.view.View().PoolActor(s.Pool); ok {
+		if pa, ok := n.chain.View().PoolActor(s.Pool); ok {
 			out.DelegatedActor = uint64(pa)
 		}
 	}

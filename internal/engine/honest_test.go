@@ -166,10 +166,10 @@ func TestHonestIntentsLand(t *testing.T) {
 	if s, g := e.Supply(), genesisTotal(t, cfg); s != g {
 		t.Errorf("supply %d, genesis %d", s, g)
 	}
-	if n := e.co.pop().Count(profile.Pool, "active"); n != 4 {
+	if n := e.co.Pop().Count(profile.Pool, "active"); n != 4 {
 		t.Errorf("%d active pools, want 4", n)
 	}
-	if n := e.co.pop().Count(profile.DRep, "voting"); n != 2 {
+	if n := e.co.Pop().Count(profile.DRep, "voting"); n != 2 {
 		t.Errorf("%d voting DReps, want 2", n)
 	}
 }

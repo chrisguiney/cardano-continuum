@@ -33,11 +33,11 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
 	"github.com/chrisguiney/cardano-continuum/internal/build"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/cohort"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 	"github.com/chrisguiney/cardano-continuum/internal/policy"
-	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/rng"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
@@ -351,7 +351,22 @@ func (c Config) Factory() eventlog.Factory {
 
 // faucetActor is the faucet's owner ID in the ledger. It is above maxActors,
 // so no census actor can take it.
-const faucetActor = population.ActorID(keys.FaucetID)
+const faucetActor = cohort.Faucet
+
+// genesisPools lists the genesis pools and their operators. root is the
+// keystore of the run seed itself.
+func (c *Config) genesisPools(root *keys.Store) ([]cohort.GenesisPool, error) {
+	groups := make([]cohort.Group, len(c.Cohorts))
+	for i, co := range c.Cohorts {
+		p, _ := c.Profiles.Get(co.Profile)
+		groups[i] = cohort.Group{Kind: p.Kind, Count: co.Count}
+	}
+	out, err := cohort.GenesisPools(c.GenesisPools, groups, root)
+	if errors.As(err, &cohort.ShortError{}) {
+		return nil, fmt.Errorf("%w: %w", ErrConfig, err)
+	}
+	return out, err
+}
 
 // faucetWallet is internal/genesis's faucet for c's seed: keys.New on the
 // root seed itself, where actor keys come from a derived one.

@@ -18,6 +18,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/cohort"
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/plan"
@@ -53,7 +54,7 @@ var tokenName = []byte("continuum")
 
 // scriptActor owns the always-succeeds address in the view's book, so the
 // view tracks locked outputs. It is above maxActors and below the faucet.
-const scriptActor = population.ActorID(keys.FaucetID - 1)
+const scriptActor = cohort.Script
 
 type spec struct {
 	// need is the lovelace the inputs cover besides headroom.
@@ -87,7 +88,7 @@ func noDeposit(*Engine, *pendingRec) int64 { return 0 }
 var specs = map[string]spec{
 	string(profile.IntentSend): {need: func(_ *Engine, p *pendingRec) uint64 { return p.Amount }, headroom: feeHeadroom, deposit: noDeposit,
 		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
-			return e.builder.Pay(ctx, w, build.Payment{Inputs: sp.Inputs, TTL: sp.TTL, To: e.co.wallet(population.ActorID(p.To)).Address(), Amount: p.Amount})
+			return e.builder.Pay(ctx, w, build.Payment{Inputs: sp.Inputs, TTL: sp.TTL, To: e.co.Wallet(population.ActorID(p.To)).Address(), Amount: p.Amount})
 		}},
 	string(profile.IntentRegisterStake): {need: func(e *Engine, _ *pendingRec) uint64 { return e.cfg.Build.KeyDeposit }, headroom: feeHeadroom, again: againRegister,
 		deposit: func(e *Engine, _ *pendingRec) int64 { return int64(e.cfg.Build.KeyDeposit) },
@@ -96,7 +97,7 @@ var specs = map[string]spec{
 		}},
 	string(profile.IntentDelegate): {need: registerNeed, headroom: feeHeadroom, guarded: true, deposit: registerDeposit, again: againRegister,
 		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
-			pool, _ := e.co.ring.poolOf(population.ActorID(p.To))
+			pool, _ := e.co.Ring.PoolOf(population.ActorID(p.To))
 			return e.builder.Stake().Delegate(ctx, w, build.Delegation{Spend: sp, Pool: pool, Register: p.Register})
 		}},
 	string(profile.IntentUndelegate): {need: none, headroom: feeHeadroom, guarded: true, again: againDeregister,
@@ -111,7 +112,7 @@ var specs = map[string]spec{
 		}},
 	string(profile.IntentDelegateDRep): {need: none, headroom: feeHeadroom, deposit: noDeposit,
 		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
-			cred := e.co.ring.drep(population.ActorID(p.To))
+			cred := e.co.Ring.DRep(population.ActorID(p.To))
 			d := common.Drep{Type: common.DrepTypeAddrKeyHash, Credential: cred[:]}
 			return e.builder.Stake().DelegateVote(ctx, w, build.VoteDelegation{Spend: sp, DRep: d})
 		}},
@@ -119,7 +120,7 @@ var specs = map[string]spec{
 		again:   []submit.Class{submit.Class(fakechain.DRepAlreadyRegistered)},
 		deposit: func(e *Engine, _ *pendingRec) int64 { return int64(e.cfg.Build.DRepDeposit) },
 		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
-			return e.builder.Gov().RegisterDRep(ctx, w, build.DRepRegistration{Spend: sp, DRep: e.co.ring.drepSigner(population.ActorID(p.Actor))})
+			return e.builder.Gov().RegisterDRep(ctx, w, build.DRepRegistration{Spend: sp, DRep: e.co.Ring.DRepSigner(population.ActorID(p.Actor))})
 		}},
 	string(profile.IntentVote): {need: none, headroom: feeHeadroom, deposit: noDeposit, build: buildVote},
 	string(profile.IntentPropose): {need: func(e *Engine, _ *pendingRec) uint64 { return e.cfg.Build.GovActionDeposit }, headroom: feeHeadroom,
@@ -131,7 +132,7 @@ var specs = map[string]spec{
 		again:   []submit.Class{submit.Class(fakechain.DRepNotRegistered)},
 		deposit: func(e *Engine, _ *pendingRec) int64 { return -int64(e.cfg.Build.DRepDeposit) },
 		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
-			return e.builder.Gov().RetireDRep(ctx, w, build.DRepRetirement{Spend: sp, DRep: e.co.ring.drepSigner(population.ActorID(p.Actor))})
+			return e.builder.Gov().RetireDRep(ctx, w, build.DRepRetirement{Spend: sp, DRep: e.co.Ring.DRepSigner(population.ActorID(p.Actor))})
 		}},
 	string(profile.IntentUpdatePool): {need: none, headroom: feeHeadroom, deposit: noDeposit, build: buildPool},
 	string(profile.IntentMint):       {need: none, headroom: scriptHeadroom, deposit: noDeposit, build: buildMint, script: true},
@@ -151,7 +152,7 @@ var specs = map[string]spec{
 	string(profile.IntentRegisterPool): {need: poolNeed, headroom: feeHeadroom, deposit: poolDeposit, build: buildPool},
 	string(profile.IntentRetirePool): {need: none, headroom: feeHeadroom, guarded: true, deposit: noDeposit,
 		build: func(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
-			cold, err := e.co.ring.poolSigner(population.ActorID(p.Actor))
+			cold, err := e.co.Ring.PoolSigner(population.ActorID(p.Actor))
 			if err != nil {
 				return build.Built{}, err
 			}
@@ -180,9 +181,9 @@ func poolDeposit(e *Engine, p *pendingRec) int64 { return int64(poolNeed(e, p)) 
 func buildVote(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
 	act := common.GovActionId{TransactionId: common.Blake2b256(p.Action.Tx), GovActionIdx: p.Action.Index}
 	id := population.ActorID(p.Actor)
-	v := build.Vote{Spend: sp, Voter: e.co.ring.drepSigner(id), Role: build.RoleDRep, Action: act, Choice: p.Choice}
-	if _, ok := e.co.ring.poolOf(id); ok {
-		cold, err := e.co.ring.poolSigner(id)
+	v := build.Vote{Spend: sp, Voter: e.co.Ring.DRepSigner(id), Role: build.RoleDRep, Action: act, Choice: p.Choice}
+	if _, ok := e.co.Ring.PoolOf(id); ok {
+		cold, err := e.co.Ring.PoolSigner(id)
 		if err != nil {
 			return build.Built{}, err
 		}
@@ -200,10 +201,10 @@ const (
 // voterOf is the voter an actor votes as: its pool, as an SPO, when it
 // operates one, else its DRep key.
 func (e *Engine) voterOf(id population.ActorID) (chain.Voter, string) {
-	if pool, ok := e.co.ring.poolOf(id); ok {
+	if pool, ok := e.co.Ring.PoolOf(id); ok {
 		return chain.Voter{Kind: common.VoterTypeStakingPoolKeyHash, Hash: pool}, voterSPO
 	}
-	return chain.Voter{Kind: common.VoterTypeDRepKeyHash, Hash: common.Blake2b224(e.co.ring.drep(id))}, voterDRep
+	return chain.Voter{Kind: common.VoterTypeDRepKeyHash, Hash: common.Blake2b224(e.co.Ring.DRep(id))}, voterDRep
 }
 
 // choiceNames are a vote's choices by common.GovVote value.
@@ -227,11 +228,11 @@ func buildUnlock(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, 
 
 func buildPool(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
 	id := population.ActorID(p.Actor)
-	cold, err := e.co.ring.poolSigner(id)
+	cold, err := e.co.Ring.PoolSigner(id)
 	if err != nil {
 		return build.Built{}, err
 	}
-	ks, i := e.co.ring.poolKeys(id)
+	ks, i := e.co.Ring.PoolKeys(id)
 	pk, err := ks.Pool(i, 0)
 	if err != nil {
 		return build.Built{}, err
@@ -306,7 +307,7 @@ func (e *Engine) prepare(at sched.Time, a population.Actor, in agenda.Intent, r 
 			return nil, "DRep registered or being registered"
 		}
 	case profile.IntentDelegate:
-		if _, ok := e.co.ring.poolOf(in.Target); !ok {
+		if _, ok := e.co.Ring.PoolOf(in.Target); !ok {
 			return nil, fmt.Sprintf("actor %d operates no pool", in.Target)
 		}
 		if e.registering(a.ID) {
@@ -332,7 +333,7 @@ func (e *Engine) prepare(at sched.Time, a population.Actor, in agenda.Intent, r 
 			return nil, "nothing to burn"
 		}
 	case profile.IntentRegisterPool:
-		if _, ok := e.co.ring.poolOf(a.ID); !ok {
+		if _, ok := e.co.Ring.PoolOf(a.ID); !ok {
 			return nil, "actor operates no pool"
 		}
 		p.Update = e.win.View().PoolRegistered(a.ID)
@@ -384,12 +385,12 @@ func (e *Engine) inFlight(id population.ActorID, kind string) bool {
 
 func (e *Engine) prepareSend(a population.Actor, p *pendingRec, r *rand.Rand) (*pendingRec, string) {
 	var targets []population.ActorID
-	for _, id := range e.co.ids() {
+	for _, id := range e.co.IDs() {
 		// Nobody pays an adversary.
 		if id == a.ID || e.isAdversary(id) {
 			continue
 		}
-		if t, _ := e.co.get(id); t.State != population.Abandoned {
+		if t, _ := e.co.Get(id); t.State != population.Abandoned {
 			targets = append(targets, id)
 		}
 	}
@@ -398,8 +399,8 @@ func (e *Engine) prepareSend(a population.Actor, p *pendingRec, r *rand.Rand) (*
 	}
 	p.Kind, p.To = "", uint64(e.payee(a, targets, r))
 	bal := e.Spendable(uint64(a.ID))
-	floor := e.builder.MinPayment(e.co.wallet(population.ActorID(p.To)).Address())
-	p.Amount = paymentSize(e.co.rec(a.ID).prof.Amount, bal, floor, r)
+	floor := e.builder.MinPayment(e.co.Wallet(population.ActorID(p.To)).Address())
+	p.Amount = paymentSize(e.co.Rec(a.ID).Prof.Amount, bal, floor, r)
 	return p, ""
 }
 
@@ -409,7 +410,7 @@ func (e *Engine) prepareSend(a population.Actor, p *pendingRec, r *rand.Rand) (*
 // paid before (lab/population_fit.py). Otherwise anyone in targets.
 func (e *Engine) payee(a population.Actor, targets []population.ActorID, r *rand.Rand) population.ActorID {
 	var known []population.ActorID
-	for _, id := range e.co.rec(a.ID).paid {
+	for _, id := range e.co.Rec(a.ID).Paid {
 		if _, ok := slices.BinarySearch(targets, id); ok {
 			known = append(known, id)
 		}
@@ -450,7 +451,7 @@ func (e *Engine) prepareScript(id population.ActorID, p *pendingRec, r *rand.Ran
 func (e *Engine) tokens(id population.ActorID) uint64 {
 	policy := build.FreeMint.Hash()
 	var sum uint64
-	for _, u := range e.win.View().UtxosAt(e.co.wallet(id).Address()) {
+	for _, u := range e.win.View().UtxosAt(e.co.Wallet(id).Address()) {
 		if as := u.Output.Assets(); as != nil {
 			if q := as.Asset(common.Blake2b224(policy), tokenName); q != nil {
 				sum += q.Uint64()
@@ -504,8 +505,8 @@ func (e *Engine) start(ctx context.Context, at sched.Time, p *pendingRec) (strin
 	}
 	e.addPending(p)
 	if p.Kind == "" && !p.Refill {
-		if st := e.co.rec(population.ActorID(p.Actor)); st != nil {
-			st.remember(population.ActorID(p.To))
+		if st := e.co.Rec(population.ActorID(p.Actor)); st != nil {
+			st.Remember(population.ActorID(p.To))
 		}
 	}
 	e.market.excite(at)
@@ -545,7 +546,7 @@ func (e *Engine) attemptOf(ctx context.Context, at sched.Time, p *pendingRec) (b
 	if ttl == 0 {
 		return build.Built{}, nil, 0, "too close to the epoch boundary", nil
 	}
-	w := e.co.wallet(a)
+	w := e.co.Wallet(a)
 	// Only the first attempt is built before any send; it samples the
 	// intent's mistake.
 	first := p.M.Attempts == 0

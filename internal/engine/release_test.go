@@ -396,7 +396,7 @@ func TestRefusedGiveUpReleasesOnce(t *testing.T) {
 		t.Fatal("no intent gave up")
 	}
 	// Giving up frustrates the actor (submit.Frustrate).
-	a, _ := r.Engine().co.get(population.ActorID(p.actor[p.submitted[0].Intent]))
+	a, _ := r.Engine().co.Get(population.ActorID(p.actor[p.submitted[0].Intent]))
 	if a.Frustration <= 0 {
 		t.Fatalf("actor %d gave up with frustration %v", a.ID, a.Frustration)
 	}
@@ -429,7 +429,7 @@ func TestFixThatWorksTeaches(t *testing.T) {
 	if p.confirmed[s.Intent] != 1 || p.refused[s.ID] != 1 {
 		t.Fatalf("intent %d: confirmed %d, first attempt refused %d", s.Intent, p.confirmed[s.Intent], p.refused[s.ID])
 	}
-	a, _ := r.Engine().co.get(population.ActorID(p.actor[s.Intent]))
+	a, _ := r.Engine().co.Get(population.ActorID(p.actor[s.Intent]))
 	if a.Competence <= a.Traits.Competence {
 		t.Fatalf("competence %v, drawn %v: the fix taught nothing", a.Competence, a.Traits.Competence)
 	}

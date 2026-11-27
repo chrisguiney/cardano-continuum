@@ -65,7 +65,7 @@ func (e *Engine) inflight() []policy.Intent {
 		case profile.IntentRetirePool:
 			out = append(out, policy.Intent{Op: policy.Retire, Pool: a})
 		case profile.IntentRegisterPool:
-			if act, _ := e.co.get(a); act.State == population.Retiring {
+			if act, _ := e.co.Get(a); act.State == population.Retiring {
 				out = append(out, policy.Intent{Op: policy.Reregister, Pool: a})
 			}
 		}
@@ -150,7 +150,7 @@ func (e *Engine) setTier(at sched.Time, pool population.ActorID, dark bool, why 
 // poolStatus applies an observed pod state, then recovers.
 func (e *Engine) poolStatus(ctx context.Context, at sched.Time, s PoolStatus) error {
 	id := population.ActorID(s.Pool)
-	if _, ok := e.co.ring.poolOf(id); !ok {
+	if _, ok := e.co.Ring.PoolOf(id); !ok {
 		return nil
 	}
 	if s.Running {
@@ -207,7 +207,7 @@ func (e *Engine) repair(at sched.Time, pool population.ActorID) {
 // move1 starts a recovery move: the engine's own delegation of a stranded
 // wallet onto a forging pool. It needs no agenda and is never guarded.
 func (e *Engine) move1(ctx context.Context, at sched.Time, mv policy.Intent) error {
-	a, ok := e.co.get(mv.Wallet)
+	a, ok := e.co.Get(mv.Wallet)
 	if !ok {
 		return nil
 	}

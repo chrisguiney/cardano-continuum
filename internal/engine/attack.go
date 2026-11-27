@@ -159,7 +159,7 @@ func (e *Engine) react(ctx context.Context, at sched.Time, p *pendingRec, fee ui
 		Ref:   adversary.Ref{Tx: p.Locked.Tx, Index: p.Locked.Index},
 		Owner: population.ActorID(p.Actor), Lovelace: p.Amount, Busy: true,
 	}
-	for _, id := range e.co.ids() {
+	for _, id := range e.co.IDs() {
 		if pol := e.advs[id]; !pol.Has(adversary.FrontRun) || e.abandoned(id) {
 			continue
 		}
@@ -173,7 +173,7 @@ func (e *Engine) react(ctx context.Context, at sched.Time, p *pendingRec, fee ui
 }
 
 func (e *Engine) abandoned(id population.ActorID) bool {
-	a, ok := e.co.get(id)
+	a, ok := e.co.Get(id)
 	return !ok || a.State == population.Abandoned
 }
 
@@ -290,7 +290,7 @@ func (e *Engine) dust(ctx context.Context, at sched.Time, id population.ActorID,
 	for i, p := range step.Payees {
 		outs[i] = build.Output{To: build.AlwaysSucceeds.Address(e.cfg.NetworkID), Amount: dustGuess}
 		if !p.Script {
-			outs[i].To = e.co.wallet(p.Actor).Address()
+			outs[i].To = e.co.Wallet(p.Actor).Address()
 		}
 		s.payees = append(s.payees, uint64(p.Actor))
 	}
@@ -298,7 +298,7 @@ func (e *Engine) dust(ctx context.Context, at sched.Time, id population.ActorID,
 	if why != "" {
 		return shot{}, why, nil
 	}
-	w := e.co.wallet(id)
+	w := e.co.Wallet(id)
 	sp := build.Spend{Inputs: e.ledgerUtxos(w, coins), TTL: s.ttl}
 	b, err := e.builder.FanOut(ctx, w, sp, outs)
 	// A min-UTxO depends on the output's encoded size, which depends on
@@ -357,7 +357,7 @@ func (e *Engine) grab(ctx context.Context, at sched.Time, id population.ActorID,
 	if why != "" {
 		return shot{}, why, nil
 	}
-	w := e.co.wallet(id)
+	w := e.co.Wallet(id)
 	b, err := buildUnlock(ctx, e, w, build.Spend{Inputs: e.ledgerUtxos(w, coins), TTL: s.ttl, Tip: step.Tip}, &s.rec)
 	if err != nil {
 		return shot{}, "", err
@@ -375,7 +375,7 @@ func (e *Engine) malformed(ctx context.Context, at sched.Time, id population.Act
 	if why != "" {
 		return shot{}, why, nil
 	}
-	w := e.co.wallet(id)
+	w := e.co.Wallet(id)
 	base, err := e.builder.Pay(ctx, w, build.Payment{Inputs: e.ledgerUtxos(w, coins), TTL: s.ttl, To: w.Address(), Amount: minPayment})
 	if err != nil {
 		return shot{}, "", err
@@ -435,9 +435,9 @@ func (e *Engine) race(ctx context.Context, at sched.Time, id population.ActorID,
 	if why != "" {
 		return shot{}, why, nil
 	}
-	w := e.co.wallet(id)
+	w := e.co.Wallet(id)
 	for _, p := range step.Payees {
-		b, err := e.builder.Pay(ctx, w, build.Payment{Inputs: e.ledgerUtxos(w, coins), TTL: s.ttl, To: e.co.wallet(p.Actor).Address(), Amount: minPayment})
+		b, err := e.builder.Pay(ctx, w, build.Payment{Inputs: e.ledgerUtxos(w, coins), TTL: s.ttl, To: e.co.Wallet(p.Actor).Address(), Amount: minPayment})
 		if err != nil {
 			return shot{}, "", err
 		}
@@ -462,7 +462,7 @@ func (e *Engine) gap(ctx context.Context, at sched.Time, id population.ActorID, 
 	if why != "" {
 		return shot{}, why, nil
 	}
-	w := e.co.wallet(id)
+	w := e.co.Wallet(id)
 	b, err := e.builder.Plutus().Mint(ctx, w, build.Mint{
 		Spend: build.Spend{Inputs: e.ledgerUtxos(w, coins), TTL: s.ttl}, Policy: build.Burn(build.BurnSize(step.Memory)),
 		Name: gapToken, Quantity: 1, Redeemer: unitDatum(), Collateral: adversary.GapCollateral,
@@ -583,9 +583,9 @@ func (e *Engine) lockOwner(d *common.Datum) (population.ActorID, bool) {
 	if d == nil {
 		return 0, false
 	}
-	if len(e.owners) != len(e.co.ids()) {
-		e.owners = make(map[string]population.ActorID, len(e.co.ids()))
-		for _, id := range e.co.ids() {
+	if len(e.owners) != len(e.co.IDs()) {
+		e.owners = make(map[string]population.ActorID, len(e.co.IDs()))
+		for _, id := range e.co.IDs() {
 			e.owners[string(datumKey(actorDatum(id)))] = id
 		}
 	}
@@ -596,8 +596,8 @@ func (e *Engine) lockOwner(d *common.Datum) (population.ActorID, bool) {
 // Payees implements adversary.Sight: the honest wallets not abandoned.
 func (v view) Payees() []population.ActorID {
 	var out []population.ActorID
-	for _, id := range v.e.co.ids() {
-		if v.e.isAdversary(id) || v.e.abandoned(id) || v.e.co.rec(id).prof.Kind != profile.Wallet {
+	for _, id := range v.e.co.IDs() {
+		if v.e.isAdversary(id) || v.e.abandoned(id) || v.e.co.Rec(id).Prof.Kind != profile.Wallet {
 			continue
 		}
 		out = append(out, id)

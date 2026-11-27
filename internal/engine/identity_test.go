@@ -38,7 +38,7 @@ func TestActorRowsCarryPublicIdentity(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		w := e.co.wallet(population.ActorID(r.ID))
+		w := e.co.Wallet(population.ActorID(r.ID))
 		if id.PaymentAddr != w.Address().String() || id.StakeAddr != w.StakeAddress().String() {
 			t.Errorf("actor %d addresses %q %q", r.ID, id.PaymentAddr, id.StakeAddr)
 		}

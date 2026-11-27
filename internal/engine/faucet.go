@@ -95,21 +95,21 @@ func (e *Engine) refilling() bool {
 func (e *Engine) needy() ([]build.Output, []uint64, []uint64) {
 	var outs []build.Output
 	var to, amounts []uint64
-	for _, id := range e.co.ids() {
+	for _, id := range e.co.IDs() {
 		if len(outs) == maxRefillOutputs {
 			break
 		}
 		// An adversary spends its own budget, never the faucet's.
-		if a, _ := e.co.get(id); a.State == population.Abandoned || e.isAdversary(id) {
+		if a, _ := e.co.Get(id); a.State == population.Abandoned || e.isAdversary(id) {
 			continue
 		}
-		st := e.co.rec(id)
-		budget := uint64(st.prof.Budget)
+		st := e.co.Rec(id)
+		budget := uint64(st.Prof.Budget)
 		held := sumUtxos(e.led.Available(id, plan.IntentID(e.nextID+1), plan.Opts{Chain: true}))
 		if held >= budget/2 {
 			continue
 		}
-		outs = append(outs, build.Output{To: st.wallet.Address(), Amount: budget - held})
+		outs = append(outs, build.Output{To: st.Wallet.Address(), Amount: budget - held})
 		to, amounts = append(to, uint64(id)), append(amounts, budget-held)
 	}
 	return outs, to, amounts

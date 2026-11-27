@@ -11,6 +11,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	evclock "github.com/chrisguiney/cardano-continuum/internal/engine/internal/clock"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/cohort"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/window"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
@@ -30,17 +31,17 @@ func (e *Engine) Snapshot() ([]byte, error) {
 	sv := e.win.Saved()
 	s := snapshot{Version: snapshotVersion, Now: e.clk.Now(), NextIntent: e.nextID, Conf: sv.Conf, Fees: sv.Fees, Foreign: sv.Foreign, RefillAt: e.refillAt, Deposits: e.deposits, Market: e.market, Lost: e.lost,
 		Contracts: e.contracts, DeployAt: e.deployAt, DeployN: e.deployN}
-	for _, id := range e.co.ids() {
-		a, _ := e.co.get(id)
-		st := e.co.rec(id)
+	for _, id := range e.co.IDs() {
+		a, _ := e.co.Get(id)
+		st := e.co.Rec(id)
 		s.Actors = append(s.Actors, actorRec{
 			ID: uint64(id), Profile: a.Profile, State: string(a.State), Born: a.Born, Changed: a.Changed,
-			Frustration: a.Frustration, Competence: a.Competence, HazardAt: st.hazardAt, HazardTo: string(st.hazardTo), ActAt: st.actAt, Draws: st.draws, Booting: st.booting,
-			Owed: st.owed, Paid: idList(st.paid), FollowUp: st.followUp, Waits: st.waits,
+			Frustration: a.Frustration, Competence: a.Competence, HazardAt: st.HazardAt, HazardTo: string(st.HazardTo), ActAt: st.ActAt, Draws: st.Draws, Booting: st.Booting,
+			Owed: st.Owed, Paid: idList(st.Paid), FollowUp: st.FollowUp, Waits: st.Waits,
 		})
 	}
-	for i := range e.co.births.len() {
-		name, at, n := e.co.births.stream(i)
+	for i := range e.co.Births.Len() {
+		name, at, n := e.co.Births.Stream(i)
 		s.Births = append(s.Births, birthRec{Profile: name, At: at, N: n})
 	}
 	s.Window = e.win.Volatile()
@@ -135,14 +136,14 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 			return nil, err
 		}
 	}
-	if len(s.Births) != e.co.births.len() {
-		return nil, fmt.Errorf("engine: snapshot has %d birth streams, config %d", len(s.Births), e.co.births.len())
+	if len(s.Births) != e.co.Births.Len() {
+		return nil, fmt.Errorf("engine: snapshot has %d birth streams, config %d", len(s.Births), e.co.Births.Len())
 	}
 	for i, r := range s.Births {
-		if name, _, _ := e.co.births.stream(i); r.Profile != name {
+		if name, _, _ := e.co.Births.Stream(i); r.Profile != name {
 			return nil, fmt.Errorf("engine: snapshot birth stream %q, config %q", r.Profile, name)
 		}
-		e.co.births.resume(i, r.At, r.N)
+		e.co.Births.Resume(i, r.At, r.N)
 	}
 	if cfg.Faucet > 0 {
 		e.refillAt = s.RefillAt
@@ -214,32 +215,32 @@ func (e *Engine) restoreActor(r actorRec) error {
 	if !ok {
 		return fmt.Errorf("engine: snapshot actor %d has unknown profile %q", r.ID, r.Profile)
 	}
-	a := e.co.revive(p, r.Born)
+	a := e.co.Revive(p, r.Born)
 	if uint64(a.ID) != r.ID {
 		return fmt.Errorf("engine: snapshot actor %d out of order (got %d)", r.ID, a.ID)
 	}
-	if err := e.co.life.walk(a, population.State(r.State), r.Changed); err != nil {
+	if err := e.co.Life.Walk(a, population.State(r.State), r.Changed); err != nil {
 		return err
 	}
-	if err := e.co.pop().SetFrustration(a.ID, r.Frustration); err != nil {
+	if err := e.co.Pop().SetFrustration(a.ID, r.Frustration); err != nil {
 		return err
 	}
-	if err := e.co.pop().SetCompetence(a.ID, r.Competence); err != nil {
+	if err := e.co.Pop().SetCompetence(a.ID, r.Competence); err != nil {
 		return err
 	}
-	st := e.co.register(a, p)
-	st.hazardAt, st.hazardTo, st.actAt, st.draws = r.HazardAt, population.State(r.HazardTo), r.ActAt, r.Draws
-	st.booting = r.Booting
-	st.owed = r.Owed
-	st.followUp, st.waits = r.FollowUp, r.Waits
+	st := e.co.Register(a, p)
+	st.HazardAt, st.HazardTo, st.ActAt, st.Draws = r.HazardAt, population.State(r.HazardTo), r.ActAt, r.Draws
+	st.Booting = r.Booting
+	st.Owed = r.Owed
+	st.FollowUp, st.Waits = r.FollowUp, r.Waits
 	for _, id := range r.Paid {
-		st.paid = append(st.paid, population.ActorID(id))
+		st.Paid = append(st.Paid, population.ActorID(id))
 	}
-	if st.hazardAt != population.Never {
-		st.hazardH = e.clk.Push(st.hazardAt, evclock.Event{Kind: evclock.Hazard, Actor: a.ID})
+	if st.HazardAt != population.Never {
+		st.HazardH = e.clk.Push(st.HazardAt, evclock.Event{Kind: evclock.Hazard, Actor: a.ID})
 	}
-	if st.actAt != population.Never {
-		st.actH = e.clk.Push(st.actAt, evclock.Event{Kind: evclock.Act, Actor: a.ID})
+	if st.ActAt != population.Never {
+		st.ActH = e.clk.Push(st.ActAt, evclock.Event{Kind: evclock.Act, Actor: a.ID})
 	}
 	return nil
 }
@@ -375,7 +376,7 @@ func (e *Engine) Supply() uint64 {
 func (e *Engine) Reservations() (store.Blob, error) { return e.led.Blob() }
 
 // Actors is the number of actors ever spawned.
-func (e *Engine) Actors() int { return e.co.pop().Len() }
+func (e *Engine) Actors() int { return e.co.Pop().Len() }
 
 // IntentOf is the intent an unfinished attempt belongs to.
 func (e *Engine) IntentOf(tx TxID) (uint64, bool) {
@@ -416,14 +417,18 @@ func (e *Engine) InFlight() []Submission {
 	return out
 }
 
+// ActorKinds returns every role an actor row can report: the profile kinds
+// plus the proposer and adversary refinements.
+func ActorKinds() []string { return cohort.ActorKinds() }
+
 // ActorRows is the read model the store pages for the UI. Each row carries
 // the actor's public identity, holdings and delegation.
 func (e *Engine) ActorRows() []store.ActorRow {
 	hs := e.holdings()
-	out := make([]store.ActorRow, 0, len(e.co.ids()))
-	for _, id := range e.co.ids() {
-		a, _ := e.co.get(id)
-		ident, err := e.co.idents.identityOf(a, e.co.rec(id), hs).Encode()
+	out := make([]store.ActorRow, 0, len(e.co.IDs()))
+	for _, id := range e.co.IDs() {
+		a, _ := e.co.Get(id)
+		ident, err := e.co.Idents.Identity(a, e.co.Rec(id), hs).Encode()
 		if err != nil {
 			// Identity is a struct of plain fields; encoding cannot fail.
 			panic(fmt.Sprintf("engine: actor %d identity: %v", id, err))
@@ -435,22 +440,22 @@ func (e *Engine) ActorRows() []store.ActorRow {
 
 // holdings reads every actor's holdings in one pass over the ledger, the
 // unfinished payments and the view's outputs.
-func (e *Engine) holdings() map[population.ActorID]*holding {
-	out := map[population.ActorID]*holding{}
-	of := func(id population.ActorID) *holding {
+func (e *Engine) holdings() map[population.ActorID]*cohort.Holding {
+	out := map[population.ActorID]*cohort.Holding{}
+	of := func(id population.ActorID) *cohort.Holding {
 		h := out[id]
 		if h == nil {
-			h = &holding{}
+			h = &cohort.Holding{}
 			out[id] = h
 		}
 		return h
 	}
 	for _, u := range e.led.Settled() {
 		h := of(u.Owner)
-		h.settled += u.Lovelace
-		h.utxos++
+		h.Settled += u.Lovelace
+		h.UTxOs++
 		if _, held := e.led.Holder(u.Ref); held {
-			h.reserved += u.Lovelace
+			h.Reserved += u.Lovelace
 		}
 	}
 	for _, p := range e.pending {
@@ -458,12 +463,12 @@ func (e *Engine) holdings() map[population.ActorID]*holding {
 			continue
 		}
 		h := of(population.ActorID(p.Actor))
-		h.inflight++
-		h.unconfirmed += p.Amount
+		h.InFlight++
+		h.Unconfirmed += p.Amount
 	}
 	for id, us := range e.win.View().Owned() {
 		for _, u := range us {
-			of(id).addTokens(u)
+			of(id).AddTokens(u)
 		}
 	}
 	return out

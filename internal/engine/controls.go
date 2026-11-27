@@ -129,7 +129,7 @@ func (e *Engine) injectSPOProbe(ctx context.Context, at sched.Time) (string, err
 		return err.Error(), nil
 	}
 	id, ok := e.richest(func(id population.ActorID) bool {
-		_, pool := e.co.ring.poolOf(id)
+		_, pool := e.co.Ring.PoolOf(id)
 		return pool && e.win.View().PoolRegistered(id)
 	})
 	if !ok {
@@ -149,12 +149,12 @@ func (e *Engine) injectGoDark(at sched.Time, arg string) string {
 		}
 		pool = population.ActorID(n)
 	}
-	for _, id := range e.co.ring.poolIDs() {
+	for _, id := range e.co.Ring.PoolIDs() {
 		if pool == 0 && !e.dark[id] {
 			pool = id
 		}
 	}
-	if _, ok := e.co.ring.poolOf(pool); !ok {
+	if _, ok := e.co.Ring.PoolOf(pool); !ok {
 		return "no such pool actor"
 	}
 	in := agenda.Intent{Kind: agenda.GoDark, Actor: pool}
@@ -184,8 +184,8 @@ func (e *Engine) injectHotKeys(ctx context.Context, at sched.Time) (string, erro
 func (e *Engine) richest(ok func(population.ActorID) bool) (population.ActorID, bool) {
 	var best population.ActorID
 	var most uint64
-	for _, id := range e.co.ids() {
-		if a, _ := e.co.get(id); a.State == population.Abandoned || !ok(id) {
+	for _, id := range e.co.IDs() {
+		if a, _ := e.co.Get(id); a.State == population.Abandoned || !ok(id) {
 			continue
 		}
 		if s := e.Spendable(uint64(id)); s > most {
@@ -212,11 +212,11 @@ func (e *Engine) startWave(at sched.Time, arg string) string {
 		return err.Error()
 	}
 	var pools []upgrade.Pool
-	for _, id := range e.co.ring.poolIDs() {
-		if a, _ := e.co.get(id); a.State == population.Retired {
+	for _, id := range e.co.Ring.PoolIDs() {
+		if a, _ := e.co.Get(id); a.State == population.Retired {
 			continue
 		}
-		pools = append(pools, upgrade.Pool{ID: strconv.FormatUint(uint64(id), 10), Eagerness: e.co.rec(id).prof.Eager()})
+		pools = append(pools, upgrade.Pool{ID: strconv.FormatUint(uint64(id), 10), Eagerness: e.co.Rec(id).Prof.Eager()})
 	}
 	e.waves++
 	src := e.cfg.Seed.Derive("upgrade", strconv.FormatUint(e.waves, 10)).Rand()
@@ -264,7 +264,7 @@ func mapKeys[V any](m map[population.ActorID]V) func(func(population.ActorID) bo
 const hotKind = "authorize_hot"
 
 func buildHot(ctx context.Context, e *Engine, w keys.Wallet, sp build.Spend, p *pendingRec) (build.Built, error) {
-	cold, hot := e.co.ring.committee(uint32(p.To))
+	cold, hot := e.co.Ring.Committee(uint32(p.To))
 	return e.builder.Gov().AuthorizeHot(ctx, w, build.HotAuth{Spend: sp, Cold: cold, Hot: hot.KeyHash()})
 }
 
@@ -284,9 +284,9 @@ type PoolPlan struct {
 // from it; the fake has nothing to patch.
 func (e *Engine) Pools() []PoolPlan {
 	var out []PoolPlan
-	for _, id := range e.co.ring.poolIDs() {
+	for _, id := range e.co.Ring.PoolIDs() {
 		p := PoolPlan{Actor: uint64(id), Genesis: -1, Dark: e.dark[id], Image: e.images[id]}
-		if g, ok := e.co.ring.gen.of(id); ok {
+		if g, ok := e.co.Ring.Gen.Of(id); ok {
 			p.Genesis = g.Index
 		}
 		out = append(out, p)

@@ -13,6 +13,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	evclock "github.com/chrisguiney/cardano-continuum/internal/engine/internal/clock"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/cohort"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/journal"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/window"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
@@ -78,7 +79,7 @@ type Engine struct {
 
 	clk evclock.Clock
 	jr  journal.Journal
-	co  *cohort
+	co  *cohort.Cohort
 
 	// win folds the same blocks as led.
 	win *window.Window
@@ -151,7 +152,7 @@ func New(cfg Config) (*Engine, error) {
 	for _, co := range cfg.Cohorts {
 		p, _ := cfg.Profiles.Get(co.Profile)
 		for range co.Count {
-			owners = append(owners, e.co.life.spawn(p, 0).ID)
+			owners = append(owners, e.co.Life.Spawn(p, 0).ID)
 		}
 	}
 	if cfg.Faucet > 0 {
@@ -176,19 +177,19 @@ func New(cfg Config) (*Engine, error) {
 	for i, f := range funds {
 		gs.Utxos = append(gs.Utxos, window.Utxo(f.Address, Ref{Tx: TxID(genesis[i].Ref.Tx)}, f.Lovelace))
 	}
-	if err := e.co.ring.gen.seed(&gs, window.Utxo); err != nil {
+	if err := e.co.Ring.Gen.Seed(&gs, window.Utxo); err != nil {
 		return nil, err
 	}
-	for _, g := range e.co.ring.gen.pools {
+	for _, g := range e.co.Ring.Gen.Pools {
 		// A genesis pool is registered by the genesis itself.
-		if err := e.co.pop().Apply(population.Transition{ID: g.Actor, To: population.Active, Cause: population.Confirmed{Tx: "genesis"}}); err != nil {
+		if err := e.co.Pop().Apply(population.Transition{ID: g.Actor, To: population.Active, Cause: population.Confirmed{Tx: "genesis"}}); err != nil {
 			return nil, fmt.Errorf("engine: genesis pool actor %d: %w", g.Actor, err)
 		}
 	}
 	if err = e.win.Open(gs, window.Saved{}); err != nil {
 		return nil, fmt.Errorf("engine: view: %w", err)
 	}
-	e.co.births.start(0)
+	e.co.Births.Start(0)
 	if e.deployRate() > 0 {
 		e.scheduleDeploy(0)
 	}
@@ -246,23 +247,23 @@ func newEmpty(cfg Config) (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
-	e.co = newCohort(cohortSpec{seed: cfg.Seed, census: cfg.Seed.Derive(censusStream), slots: cfg.Slots, proposer: proposerName,
-		actorKeys: ks, rootKeys: rootKeys, pools: gpools, poolStake: cfg.GenesisPoolStake},
-		env{sched: evsched{&e.clk}, emit: &e.jr, view: e.win, att: hooks{e}, pace: hooks{e}})
-	if err := e.co.ring.gen.book(); err != nil {
+	e.co = cohort.New(cohort.Spec{Seed: cfg.Seed, Census: cfg.Seed.Derive(censusStream), Slots: cfg.Slots, Proposer: proposerName,
+		ActorKeys: ks, RootKeys: rootKeys, Pools: gpools, PoolStake: cfg.GenesisPoolStake},
+		cohort.Env{Sched: evsched{&e.clk}, Emit: &e.jr, Chain: e.win, Att: hooks{e}, Pace: hooks{e}})
+	if err := e.co.Ring.Gen.Book(); err != nil {
 		return nil, err
 	}
 	for _, n := range cfg.Profiles.Names() {
 		p, _ := cfg.Profiles.Get(n)
 		if p.Hazards.Birth > 0 {
-			e.co.births.add(p)
+			e.co.Births.Add(p)
 		}
 	}
 	if cfg.Faucet > 0 {
 		if e.faucet, err = faucetWallet(&cfg); err != nil {
 			return nil, err
 		}
-		if err := e.co.bindFaucet(e.faucet); err != nil {
+		if err := e.co.BindFaucet(e.faucet); err != nil {
 			return nil, err
 		}
 	}
@@ -357,9 +358,9 @@ func (e *Engine) tick(ctx context.Context, t sched.Time) error {
 func (e *Engine) run(ctx context.Context, at sched.Time, ev evclock.Event) error {
 	switch ev.Kind {
 	case evclock.Birth:
-		e.co.births.run(at, ev.Birth)
+		e.co.Births.Run(at, ev.Birth)
 	case evclock.Hazard:
-		return e.co.life.hazard(at, ev.Actor)
+		return e.co.Life.Hazard(at, ev.Actor)
 	case evclock.Act:
 		return e.act(ctx, at, ev.Actor)
 	case evclock.Retry:
@@ -374,84 +375,84 @@ func (e *Engine) run(ctx context.Context, at sched.Time, ev evclock.Event) error
 }
 
 func (e *Engine) nextAct(a population.Actor, st *actor, now sched.Time) {
-	if st.boot != "" {
+	if st.Boot != "" {
 		e.nextClock(a, st, now)
 		return
 	}
-	rate := st.rate * a.Traits.RateMult * float64(max(e.rateK, 1))
-	if rate <= 0 || st.policy == nil {
-		st.actAt = population.Never
+	rate := st.Rate * a.Traits.RateMult * float64(max(e.rateK, 1))
+	if rate <= 0 || st.Policy == nil {
+		st.ActAt = population.Never
 		return
 	}
 	var mod sched.Modulation
-	if d := st.prof.Rates.Diurnal; d > 0 {
+	if d := st.Prof.Rates.Diurnal; d > 0 {
 		mod = sched.Daily{Amplitude: d}
 	}
-	if h := st.prof.Rates.Hawkes; h.Alpha > 0 {
+	if h := st.Prof.Rates.Hawkes; h.Alpha > 0 {
 		// The Hawkes process in its branching form: owed follow-ups come
 		// one at a time, each a decay wait after the last act, racing the
 		// base-rate arrivals (immigrants), which Poisson's memorylessness
 		// lets the race redraw. The base rate is cut so the clusters
 		// average rate: mean = mu / (1 - alpha/beta).
 		b := sched.Branching{Ratio: h.Alpha / h.Beta, Beta: h.Beta}
-		r := st.draw(a, "arrival")
-		st.actAt, st.followUp = sched.NextArrival(r, rate*(1-b.Ratio), mod, now), false
-		if st.owed > 0 {
-			if at := now + b.Delay(r); at < st.actAt {
-				st.actAt, st.followUp = at, true
+		r := st.Draw(a, "arrival")
+		st.ActAt, st.FollowUp = sched.NextArrival(r, rate*(1-b.Ratio), mod, now), false
+		if st.Owed > 0 {
+			if at := now + b.Delay(r); at < st.ActAt {
+				st.ActAt, st.FollowUp = at, true
 			}
 		}
-		st.actH = e.clk.Push(st.actAt, evclock.Event{Kind: evclock.Act, Actor: a.ID})
+		st.ActH = e.clk.Push(st.ActAt, evclock.Event{Kind: evclock.Act, Actor: a.ID})
 		return
 	}
-	st.actAt = sched.NextArrival(st.draw(a, "arrival"), rate, mod, now)
-	st.actH = e.clk.Push(st.actAt, evclock.Event{Kind: evclock.Act, Actor: a.ID})
+	st.ActAt = sched.NextArrival(st.Draw(a, "arrival"), rate, mod, now)
+	st.ActH = e.clk.Push(st.ActAt, evclock.Event{Kind: evclock.Act, Actor: a.ID})
 }
 
 func (e *Engine) act(ctx context.Context, at sched.Time, id population.ActorID) error {
-	a, _ := e.co.get(id)
-	st := e.co.rec(id)
+	a, _ := e.co.Get(id)
+	st := e.co.Rec(id)
 	if e.paused {
 		e.nextAct(a, st, at)
 		return nil
 	}
-	r := st.draw(a, "act")
+	r := st.Draw(a, "act")
 	var d agenda.Decision
 	var gov build.ActionType
 	switch {
-	case st.boot != "":
+	case st.Boot != "":
 		d, gov = e.decideClock(a, st, r)
-	case st.followUp:
+	case st.FollowUp:
 		// A burst is follow-up activity: a follow-up does something. A
 		// burst of idle wake-ups would leave transactions as spread out
 		// as without it.
-		w := maps.Clone(e.weightsOf(st.prof))
+		w := maps.Clone(e.weightsOf(st.Prof))
 		if w == nil {
 			w = map[profile.IntentKind]float64{}
 		}
 		w[agenda.Idle] = 0
-		d = agenda.Decide(a, r, view{e: e}, st.policy, w)
+		d = agenda.Decide(a, r, view{e: e}, st.Policy, w)
 	default:
-		d = agenda.Decide(a, r, view{e: e}, st.policy, e.weightsOf(st.prof))
+		d = agenda.Decide(a, r, view{e: e}, st.Policy, e.weightsOf(st.Prof))
 	}
 	e.jr.Emit(at, KindIntentChosen, id, d)
-	if st.followUp && d.Intent.Kind == agenda.Idle && st.waits < maxFollowWaits {
+	if st.FollowUp && d.Intent.Kind == agenda.Idle && st.Waits < maxFollowWaits {
 		// Nothing to do yet, most often because the actor's coins are in
 		// the attempt this follows: the planner offers only settled
 		// outputs, so the change takes K blocks. The follow-up waits a
 		// block at a time instead of being lost, or a burst could never
 		// be more than one transaction.
-		st.waits++
-		st.actAt = at + e.blockMs()
-		st.actH = e.clk.Push(st.actAt, evclock.Event{Kind: evclock.Act, Actor: a.ID})
+		st.Waits++
+		st.ActAt = at + e.blockMs()
+		st.ActH = e.clk.Push(st.ActAt, evclock.Event{Kind: evclock.Act, Actor: a.ID})
 		return nil
 	}
-	st.waits = 0
-	if st.followUp {
-		st.owed--
+	st.Waits = 0
+	if st.FollowUp {
+		st.Owed--
 	}
-	if h := st.prof.Rates.Hawkes; h.Alpha > 0 && d.Intent.Kind != agenda.Idle {
-		st.owed += uint32(sched.Branching{Ratio: h.Alpha / h.Beta}.Children(r))
+	if h := st.Prof.Rates.Hawkes; h.Alpha > 0 && d.Intent.Kind != agenda.Idle {
+		st.Owed += uint32(sched.Branching{Ratio: h.Alpha / h.Beta}.Children(r))
 	}
 	switch {
 	case d.Intent.Kind == agenda.Idle:
@@ -649,7 +650,7 @@ func (e *Engine) applyBlock(ctx context.Context, at sched.Time, b blockRec) erro
 	was := e.cfg.Slots.EpochOfSlot(e.win.Confirmed().Slot)
 	e.win.Confirm(e.co)
 	if ep := e.cfg.Slots.EpochOfSlot(e.win.Confirmed().Slot); ep > was {
-		if err := e.co.life.epochApplied(at, ep); err != nil {
+		if err := e.co.Life.EpochApplied(at, ep); err != nil {
 			return err
 		}
 	}
