@@ -11,6 +11,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/flagx"
 	"github.com/chrisguiney/cardano-continuum/internal/tla"
 )
 
@@ -73,7 +74,7 @@ func (f *tlaFlags) resolve(cmd string) (tla.Tools, func(), error) {
 func cmdHarvest(ctx context.Context, args []string, out io.Writer) error {
 	fs := flag.NewFlagSet("harvest", flag.ContinueOnError)
 	var f tlaFlags
-	var fams listFlag
+	var fams flagx.ListFlag
 	f.register(fs)
 	fs.Var(&fams, "family", "limit to this specs/<family>; repeatable")
 	if err := fs.Parse(args); err != nil {
@@ -109,7 +110,7 @@ func cmdHarvest(ctx context.Context, args []string, out io.Writer) error {
 func cmdVectors(ctx context.Context, args []string, out io.Writer) error {
 	fs := flag.NewFlagSet("vectors", flag.ContinueOnError)
 	var f tlaFlags
-	var eras listFlag
+	var eras flagx.ListFlag
 	f.register(fs)
 	fs.Var(&eras, "era", "limit to this era (Shelley, Allegra, Mary, Alonzo, Babbage); repeatable")
 	if err := fs.Parse(args); err != nil {

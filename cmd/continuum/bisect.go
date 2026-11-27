@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/chrisguiney/cardano-continuum/internal/bisect"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/flagx"
 	"github.com/chrisguiney/cardano-continuum/internal/devbuild"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/image"
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
@@ -55,7 +56,7 @@ func parseBisect(args []string) (bisectArgs, error) {
 	fs.StringVar(&a.reg, "registry", "", "developer registry host[:port][/path] (default $"+image.EnvRegistry+")")
 	fs.StringVar(&a.arch, "arch", runtime.GOARCH, "GOARCH of the cluster nodes")
 	insecure := fs.Bool("registry-insecure", false, "the registry speaks plain HTTP (default $"+image.EnvInsecure+")")
-	pos, err := parseInterleaved(fs, args)
+	pos, err := flagx.ParseInterleaved(fs, args)
 	if err != nil {
 		return a, err
 	}
@@ -127,7 +128,7 @@ func cmdBisect(ctx context.Context, args []string, out io.Writer) error {
 		if err != nil {
 			return "", err
 		}
-		return repoOf(got.Ref) + "@" + got.Digest, nil
+		return flagx.RepoOf(got.Ref) + "@" + got.Digest, nil
 	}
 	if a.kind != "" {
 		return fmt.Errorf("bisect: --check %s needs a finding source: a live devnet run per commit is not wired to this command yet; check with a command that runs it", a.kind)

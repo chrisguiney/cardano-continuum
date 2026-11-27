@@ -41,6 +41,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
 	"github.com/chrisguiney/cardano-continuum/internal/build"
+	clibuild "github.com/chrisguiney/cardano-continuum/internal/cli/build"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/export"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/profiles"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
@@ -90,7 +91,7 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 	case "profiles":
 		return profiles.Run(ctx, args[1:], out)
 	case "build":
-		return cmdBuild(ctx, args[1:], out)
+		return clibuild.Run(ctx, args[1:], out)
 	case "bisect":
 		return cmdBisect(ctx, args[1:], out)
 	case "serve":

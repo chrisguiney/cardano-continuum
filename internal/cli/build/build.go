@@ -1,4 +1,4 @@
-package main
+package build
 
 import (
 	"context"
@@ -12,16 +12,12 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/flagx"
 	"github.com/chrisguiney/cardano-continuum/internal/devbuild"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/image"
 )
 
-// listFlag collects a repeatable string flag.
-type listFlag []string
-
-func (l *listFlag) String() string     { return strings.Join(*l, ",") }
-func (l *listFlag) Set(v string) error { *l = append(*l, v); return nil }
-
+// flagx.ListFlag collects a repeatable string flag.
 var shaRe = regexp.MustCompile(`^[0-9a-f]{7,40}$`)
 
 // parseOverlays reads --with module=path|sha and --fork module=gomodule.
@@ -59,9 +55,11 @@ func parseOverlays(with, forks []string) ([]devbuild.Overlay, error) {
 	return out, nil
 }
 
-func cmdBuild(ctx context.Context, args []string, out io.Writer) error {
+// Run builds a Dingo image with module overlays and pushes it to the
+// developer registry.
+func Run(ctx context.Context, args []string, out io.Writer) error {
 	fs := flag.NewFlagSet("build", flag.ContinueOnError)
-	var with, forks listFlag
+	var with, forks flagx.ListFlag
 	dingo := fs.String("dingo", "", "dingo checkout")
 	ref := fs.String("ref", "", "dingo commit for repro mode (default: the checkout's HEAD)")
 	mode := fs.String("mode", string(devbuild.Fast), "fast (uncommitted changes allowed) or repro (committed refs, dingo's Dockerfile)")
@@ -98,16 +96,6 @@ func cmdBuild(ctx context.Context, args []string, out io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("build: %w", err)
 	}
-	_, err = fmt.Fprintf(out, "%s@%s\n", repoOf(got.Ref), got.Digest)
+	_, err = fmt.Fprintf(out, "%s@%s\n", flagx.RepoOf(got.Ref), got.Digest)
 	return err
-}
-
-// repoOf drops the tag from ref. The tag is after the last colon only when
-// that colon follows the last slash; an earlier one is a registry port.
-func repoOf(ref string) string {
-	slash := strings.LastIndex(ref, "/")
-	if colon := strings.LastIndex(ref, ":"); colon > slash {
-		return ref[:colon]
-	}
-	return ref
 }

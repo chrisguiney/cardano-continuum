@@ -1,4 +1,4 @@
-package main
+package build
 
 import (
 	"reflect"
@@ -32,17 +32,5 @@ func TestParseOverlays(t *testing.T) {
 	}
 	if _, err := parseOverlays(nil, []string{"plutigo=x"}); err == nil {
 		t.Error("fork without overlay: want error")
-	}
-}
-
-func TestRepoOf(t *testing.T) {
-	for in, want := range map[string]string{
-		"localhost:5001/continuum/dingo:dev-d1": "localhost:5001/continuum/dingo",
-		"localhost:5001/continuum/dingo":        "localhost:5001/continuum/dingo",
-		"ghcr.io/x/dingo:main":                  "ghcr.io/x/dingo",
-	} {
-		if got := repoOf(in); got != want {
-			t.Errorf("repoOf(%q) = %q, want %q", in, got, want)
-		}
 	}
 }

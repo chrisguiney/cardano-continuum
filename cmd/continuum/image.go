@@ -8,6 +8,7 @@ import (
 	"io"
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
+	"github.com/chrisguiney/cardano-continuum/internal/cli/shared/flagx"
 	"github.com/chrisguiney/cardano-continuum/internal/imageset"
 )
 
@@ -36,7 +37,7 @@ func cmdImage(ctx context.Context, args []string, out io.Writer, open openCluste
 	poolID := fs.String("pool", "", "patch every pool with this PoolID instead of the network default")
 	tier := fs.String("tier", "", "patch pools of this tier: forging, validating or logical")
 	dry := fs.Bool("dry-run", false, "print what would change and change nothing")
-	pos, err := parseInterleaved(fs, args[1:])
+	pos, err := flagx.ParseInterleaved(fs, args[1:])
 	if err != nil {
 		return err
 	}
@@ -77,20 +78,4 @@ func cmdImage(ctx context.Context, args []string, out io.Writer, open openCluste
 		}
 	}
 	return imageset.Write(out, changes, *dry)
-}
-
-// parseInterleaved parses flags that may come before or after positional
-// arguments, which the flag package alone stops at.
-func parseInterleaved(fs *flag.FlagSet, args []string) ([]string, error) {
-	var pos []string
-	for {
-		if err := fs.Parse(args); err != nil {
-			return nil, err
-		}
-		if fs.NArg() == 0 {
-			return pos, nil
-		}
-		pos = append(pos, fs.Arg(0))
-		args = fs.Args()[1:]
-	}
 }
