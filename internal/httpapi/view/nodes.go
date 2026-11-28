@@ -43,6 +43,13 @@ type NodeRow struct {
 	// StakePool is the pool id (hex) whose keys the node runs (NodeKeys);
 	// empty for a node without keys or one that has not forged yet.
 	StakePool string `json:"stake_pool,omitempty"`
+	// Forged counts the blocks on the selected chain, up to the node's tip,
+	// that its stake pool keys issued; 0 for a node without keys. Nil when
+	// the tip height or the chain index is unknown.
+	Forged *uint64 `json:"forged"`
+	// Verified counts the other blocks on the chain up to the node's tip:
+	// those it validated and adopted from other producers. Nil as Forged.
+	Verified *uint64 `json:"verified"`
 	// Findings counts the oracle findings that involve the node, and
 	// KnownFindings those a known upstream issue explains.
 	Findings      int `json:"findings"`

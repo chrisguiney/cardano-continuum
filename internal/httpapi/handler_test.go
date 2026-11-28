@@ -124,7 +124,7 @@ func (f *fakeSource) Controls(context.Context) (ControlState, error) {
 func (f *fakeSource) Nodes(context.Context) (NodesView, error) {
 	return NodesView{
 		Nodes: []NodeRow{{Name: "p3", Label: "continuum-pool-3", Impl: "dingo", Tier: "forging", Phase: "Forging", Tip: Point{Slot: 100, Hash: "aa"},
-			LastBlock: &Point{Slot: 95, Hash: "bb", Height: 19}, StakePool: strings.Repeat("0a", 28), Findings: 2, KnownFindings: 1}},
+			LastBlock: &Point{Slot: 95, Hash: "bb", Height: 19}, StakePool: strings.Repeat("0a", 28), Forged: new(uint64(4)), Verified: new(uint64(15)), Findings: 2, KnownFindings: 1}},
 		Tips:  []ImplTip{{Impl: "dingo", Slot: 100, Hash: "aa", Nodes: 1}},
 		Forks: []Fork{}, Topology: Topology{Mode: "mesh", Nodes: []Node{{ID: "p3", Impl: "dingo", Tier: "forging", Phase: "Forging"}}, Edges: []Edge{}},
 	}, nil

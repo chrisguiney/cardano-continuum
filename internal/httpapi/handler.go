@@ -225,14 +225,15 @@ func (a *api) adversaries(w http.ResponseWriter, r *http.Request) {
 }
 
 // nodesView is the Nodes view, with the explorer resolving the keys of
-// the nodes the source could not.
+// the nodes the source could not, and counting the blocks each forged and
+// verified on the explorer's chain.
 func (a *api) nodesView(r *http.Request) (view.NodesView, error) {
 	v, err := a.Source.Nodes(r.Context())
 	if err != nil {
 		return view.NodesView{}, err
 	}
 	if a.Explorer != nil {
-		v = withKeys(a.Explorer.idx, v)
+		v = view.WithCounts(withKeys(a.Explorer.idx, v), a.Explorer.idx.Counts)
 	}
 	return v, nil
 }

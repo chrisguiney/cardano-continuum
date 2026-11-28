@@ -3,6 +3,7 @@ package explorer
 import (
 	"encoding/hex"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -211,4 +212,18 @@ func parsePool(s string) ([28]byte, error) {
 	}
 	copy(h[:], b)
 	return h, nil
+}
+
+// counts is Index.Counts. Heights rise along metas and along each issuer's
+// list, so both counts are binary searches.
+func (st *state) counts(pool string, height uint64) (blocks, issued uint64) {
+	blocks = uint64(sort.Search(len(st.metas), func(i int) bool { return st.metas[i].height > height }))
+
+	raw, err := hex.DecodeString(pool)
+	if err != nil || len(raw) != 28 {
+		return blocks, 0
+	}
+	list := st.byIssuer[[28]byte(raw)]
+	issued = uint64(sort.Search(len(list), func(i int) bool { return st.metas[list[i]].height > height }))
+	return blocks, issued
 }

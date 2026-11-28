@@ -19,6 +19,8 @@
         "height": 19
       },
       "stake_pool": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a",
+      "forged": 4,
+      "verified": 15,
       "findings": 2,
       "known_findings": 1
     }

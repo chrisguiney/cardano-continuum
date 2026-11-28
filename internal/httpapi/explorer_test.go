@@ -401,3 +401,29 @@ func TestNodesAndStakePoolsCrossLink(t *testing.T) {
 		t.Fatalf("keys from the index: %d %+v", code, nv.Nodes)
 	}
 }
+
+// TestNodesCountForgedAndVerified: a node counts the chain's blocks its keys
+// issued as forged and the rest, up to its tip, as verified; a node without
+// keys has forged none, and one with no known tip height has neither count.
+func TestNodesCountForgedAndVerified(t *testing.T) {
+	ex, _, cfg := forgingRig(t)
+	tips := cfg.Tips.(exTips)
+	own := tips["p1"][0]
+	tips["p3"] = []chain.Mark{own}
+	tips["p1"] = []chain.Mark{{Height: 2, Point: chain.Point{Slot: own.Slot - 1}}}
+	srv := httptest.NewServer(NewHandler(Config{Source: NewLogSource(cfg), Explorer: ex}))
+	t.Cleanup(srv.Close)
+	r := &explorerRig{t: t, srv: srv}
+
+	var nv NodesView
+	if code := r.get("/api/nodes", &nv); code != 200 || len(nv.Nodes) != 2 {
+		t.Fatalf("nodes %d %+v", code, nv)
+	}
+	p1, p3 := nv.Nodes[0], nv.Nodes[1]
+	if p1.Forged == nil || *p1.Forged != 0 || *p1.Verified != 2 {
+		t.Fatalf("p1 (no keys, tip 2) %v %v", p1.Forged, p1.Verified)
+	}
+	if p3.Forged == nil || *p3.Forged != 3 || *p3.Verified != 0 {
+		t.Fatalf("p3 (all three blocks) %v %v", p3.Forged, p3.Verified)
+	}
+}

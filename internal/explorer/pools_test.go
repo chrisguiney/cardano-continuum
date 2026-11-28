@@ -81,3 +81,40 @@ func TestPoolsFromCertificatesAndIssuers(t *testing.T) {
 		t.Fatalf("issuer after rollback %+v", issuer)
 	}
 }
+
+// TestCountsUpToHeight: Counts gives the blocks on the chain and the pool's
+// own among them up to a height, so a node behind the tip is measured at its
+// own tip; a rollback drops the blocks above the point.
+func TestCountsUpToHeight(t *testing.T) {
+	g := newGen(t, 7)
+	x := newIndex(t, 10)
+	pool := hex.EncodeToString(g.issuer.Hash().Bytes())
+	for range 4 {
+		mustAdd(t, x, g.next())
+	}
+
+	for _, c := range []struct {
+		id     string
+		height uint64
+		blocks uint64
+		issued uint64
+	}{
+		{pool, 4, 4, 4},
+		{pool, 2, 2, 2},
+		{pool, 99, 4, 4},
+		{pool, 0, 0, 0},
+		{hex.EncodeToString(fill(0x55, 28)), 4, 4, 0},
+		{"zz", 4, 4, 0},
+	} {
+		if b, n := x.Counts(c.id, c.height); b != c.blocks || n != c.issued {
+			t.Fatalf("Counts(%.6s, %d) = %d, %d; want %d, %d", c.id, c.height, b, n, c.blocks, c.issued)
+		}
+	}
+
+	if err := x.Rollback(g.slotOf(1), g.hash(1)); err != nil {
+		t.Fatal(err)
+	}
+	if b, n := x.Counts(pool, 99); b != 2 || n != 2 {
+		t.Fatalf("after rollback %d, %d", b, n)
+	}
+}

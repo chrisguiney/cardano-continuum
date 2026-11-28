@@ -153,3 +153,14 @@ func (x *Index) Pools() []PoolStat {
 	defer x.mu.Unlock()
 	return x.st.pools.stats(x.st.byIssuer)
 }
+
+// Counts is how many blocks the chain holds up to and including height, and
+// how many of them the pool (hex id) issued. The index keeps every block's
+// header facts for the life of the chain, whatever it has evicted of the
+// contents, and a rollback removes blocks above its point, so both counts
+// are for the selected chain only. An id that is not a pool id issued none.
+func (x *Index) Counts(pool string, height uint64) (blocks, issued uint64) {
+	x.mu.Lock()
+	defer x.mu.Unlock()
+	return x.st.counts(pool, height)
+}
