@@ -7,6 +7,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/internal/genesis"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
+	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 	"github.com/chrisguiney/cardano-continuum/internal/rng"
 )
 
@@ -71,6 +72,10 @@ func TestParseShelleyGenesis(t *testing.T) {
 	if err := Guard(want, got); err != nil {
 		t.Fatal(err)
 	}
+	if got.Version != (protocol.Version{Major: s.ProtocolVersion[0], Minor: s.ProtocolVersion[1]}) {
+		t.Errorf("protocol version %v, want the spec's %v", got.Version, s.ProtocolVersion)
+	}
+
 	if w := uint64(3 * float64(s.SecurityParam) / s.ActiveSlotsCoeff); got.StabilityWindow() != w {
 		t.Errorf("stability window %d, want 3k/f = %d", got.StabilityWindow(), w)
 	}

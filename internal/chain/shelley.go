@@ -7,6 +7,8 @@ import (
 	"math/big"
 	"slices"
 	"time"
+
+	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 )
 
 // Guard errors.
@@ -35,6 +37,10 @@ type Genesis struct {
 	// ActiveSlots is the active slot coefficient f; zero when unknown.
 	// Guard does not compare it: the query does not return it.
 	ActiveSlots float64
+	// Version is protocolParams.protocolVersion, the version the chain
+	// starts at; zero when the file has none. Guard does not compare it:
+	// a hard fork moves the node's away from it.
+	Version protocol.Version
 }
 
 // StabilityWindow is 3k/f slots: how far past its tip a node can translate
@@ -80,6 +86,9 @@ func ParseShelleyGenesis(raw []byte) (Genesis, error) {
 		SecurityParam uint64      `json:"securityParam"`
 		SlotLength    json.Number `json:"slotLength"`
 		ActiveSlots   float64     `json:"activeSlotsCoeff"`
+		Params        struct {
+			Version protocol.Version `json:"protocolVersion"`
+		} `json:"protocolParams"`
 	}
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return Genesis{}, fmt.Errorf("chain: shelley genesis: %w", err)
@@ -99,5 +108,6 @@ func ParseShelleyGenesis(raw []byte) (Genesis, error) {
 	return Genesis{
 		Magic: doc.NetworkMagic, Start: doc.SystemStart.UTC(), EpochLength: doc.EpochLength,
 		SecurityParam: doc.SecurityParam, SlotLength: time.Duration(ns.Num().Int64()), ActiveSlots: doc.ActiveSlots,
+		Version: doc.Params.Version,
 	}, nil
 }
