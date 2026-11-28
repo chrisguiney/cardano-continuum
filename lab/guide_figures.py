@@ -491,3 +491,88 @@ def show_drawdown_split(depth: float = -0.3, seed: int = 5) -> None:
     ax.set_ylabel("wallets")
     ax.set_title(f"{100 * depth:.0f}% under water, twenty decisions each")
     plt.show()
+
+
+TIER_COLOURS = {"low": BLUE, "mid": ORANGE, "high": GREEN, "whale": PURPLE}
+
+
+def show_wallets_per_human(seed: int = 7, scale: float = 1.0) -> None:
+    """How many wallets humans keep, from the shipped tiers: overall, and
+    the mean by tier."""
+    counts, tiers = guide_lib.wallets_per_human(seed, 2000, scale=scale)
+    fig, (left, right) = plt.subplots(1, 2, figsize=(10, 3.2))
+    values, n = np.unique(counts, return_counts=True)
+    left.bar(values, n / n.sum(), color=BLUE)
+    left.set_xlabel("wallets one human keeps")
+    left.set_ylabel("share of humans")
+    left.set_title(f"2000 humans: {counts.mean():.2f} wallets each on average")
+    names = [t["name"] for t in guide_lib.humans_params()["tiers"]]
+    means = [counts[np.array(tiers) == t].mean() for t in names]
+    right.bar(names, means, color=[TIER_COLOURS.get(t, GREY) for t in names])
+    right.set_ylabel("mean wallets")
+    right.set_title("richer humans keep more wallets")
+    fig.tight_layout()
+    plt.show()
+
+
+def show_household(share: float = 0.2, layoff: float = 0.02, seed: int = 3, months: int = 24) -> None:
+    """A typical human of each tier for two years: its fiat in months of
+    its own pay, and what it has invested so far."""
+    p = guide_lib.humans_params()
+    fig, (left, right) = plt.subplots(1, 2, figsize=(10, 3.4))
+    for t in p["tiers"]:
+        pay, ratio, fiat = guide_lib.tier_means(t)
+        b = guide_lib.budget_of({**t, "layoff": layoff}, p["invest"], pay, ratio, share)
+        h = guide_lib.household(seed, b, fiat, months)
+        x = np.arange(1, months + 1)
+        c = TIER_COLOURS.get(t["name"], GREY)
+        left.plot(x, h["fiat"] / pay, color=c, label=t["name"])
+        out = h["employed"] == 0
+        left.scatter(x[out], h["fiat"][out] / pay, color=c, marker="x")
+        right.plot(x, np.cumsum(h["invested"]) / pay, color=c, label=t["name"])
+    left.axhline(p["invest"]["buffer"], color=GREY, ls="--", lw=1)
+    left.set_xlabel("month")
+    left.set_ylabel("fiat, in months of pay")
+    left.set_title("fiat (x: a month out of work; dashed: the buffer)")
+    right.set_xlabel("month")
+    right.set_ylabel("invested so far, in months of pay")
+    right.set_title(f"investing {100 * share:.0f}% of what is left")
+    right.legend()
+    fig.tight_layout()
+    plt.show()
+
+
+def fig_run_humans(summary: dict):
+    """A fake run's humans: fiat per tier over time, wallets per human, and
+    ADA bought from income against the ADA price."""
+    fig, axes = plt.subplots(1, 3, figsize=(15, 3.6))
+    fiat_ax, wallets_ax, buys_ax = axes
+    for tier, points in sorted(summary["fiat_months"].items()):
+        pts = np.array(points)
+        fiat_ax.plot(pts[:, 0] / 60_000, pts[:, 1], color=TIER_COLOURS.get(tier, GREY), label=tier)
+    fiat_ax.set_xlabel("simulated minutes")
+    fiat_ax.set_ylabel("median fiat, in months of pay")
+    fiat_ax.set_title("savings grow, tier by tier")
+    fiat_ax.legend()
+
+    ks = sorted(summary["wallets_per_human"], key=int)
+    wallets_ax.bar(ks, [summary["wallets_per_human"][k] for k in ks], color=BLUE)
+    wallets_ax.set_xlabel("wallets one human owns")
+    wallets_ax.set_ylabel("humans")
+    wallets_ax.set_title(f"{summary['humans']} humans")
+
+    b = np.array(summary["bought"])
+    width = summary["bin_ms"] / 60_000 * 0.4
+    minutes = b[:, 0] / 60_000
+    buys_ax.bar(minutes - width / 2, b[:, 1], width=width, color=GREEN, label="from income (DCA)")
+    buys_ax.bar(minutes + width / 2, b[:, 2], width=width, color=LIGHT_BLUE, label="by the agendas")
+    buys_ax.set_xlabel("simulated minutes")
+    buys_ax.set_ylabel("ADA bought per five minutes")
+    buys_ax.legend(loc="upper left")
+    price = np.array(summary["price"])
+    twin = buys_ax.twinx()
+    twin.plot(price[:, 0] / 60_000, price[:, 1], color=RED)
+    twin.set_ylabel("ADA/USD", color=RED)
+    buys_ax.set_title("DCA buys steadily; the price moves")
+    fig.tight_layout()
+    return fig

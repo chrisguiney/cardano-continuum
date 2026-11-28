@@ -44,7 +44,15 @@ preview transactions.
 The [guide notebook](guide.ipynb) explains the ideas behind all of this with
 sliders, the real preview and preprod fits side by side, and a placeholder for
 mainnet that fills in when `profiles/mainnet.yaml` exists. `make lab-test`
-runs it top to bottom on the fixtures; to run it on real data too:
+runs it top to bottom on the fixtures. Its section 10, *Humans and their
+wallets*, teaches the human and wallet model step by step: what a human is
+beside a wallet, why one person keeps several wallets and what that means
+for reading chain data, the household money loop with a worked example,
+charts from a fake run, and exercises that change a profile and re-run.
+The run charts read `tests/fixtures/humans/run.json`, the seed-7 fake
+mainnet run summarised by `humans_run.py`; set `GUIDE_RUN` to a run
+directory (its `events.log` and `store.db`) to draw your own. To run the
+notebook on real data too:
 
 ```sh
 docker run --rm -v $PWD/lab:/work/lab -v $PWD/profiles:/work/profiles:ro \
@@ -75,6 +83,7 @@ has a comment saying why that value and how sensitive results are to it.
 | `actor_stats.py` | DuckDB SQL for pool, DRep, vote, proposal and contract rows |
 | `actor_fit.py` | those rows to the non-wallet populations (head counts, rates, distributions), pure |
 | `export_guide_data.py` | one small JSON per network for the guide pages (`docs/guide-data/`) |
+| `humans_run.py` | a fake run's humans (log and store) to one small JSON for the guide; standard library only |
 | `profile_yaml.py` | fitted numbers to profile YAML and target JSON, pure |
 | `cluster.py` | segments, Gaussian mixture, BIC, elbow, names, pure |
 | `compare.py` | KS distance, total variation, pass bounds, pure |

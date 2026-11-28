@@ -590,3 +590,150 @@ def drawdown_split(seed: int, wallets: int = 300, depth: float = -0.3, hodl_shar
         s = sell_score(depth, rng.beta(4, 3), rng.lognormal(0.5, 0.8), False)
         out["sold" if (rng.random(decisions) < s / (s + 1)).any() else "held"] += 1
     return out
+
+
+# --- humans: who owns the wallets --------------------------------------------
+#
+# A toy copy of internal/household and of how internal/engine/internal/cohort
+# groups wallets under humans, with the parameters of profiles/m1.yaml's
+# humans section (every default spelled out there). Like the market toy, it
+# matches a run in shape, not draw for draw. Every number is synthetic.
+
+# Cents in one unit of a currency, as internal/household counts money.
+CENTS = 100
+
+
+def humans_params() -> dict:
+    """The humans section of the shipped m1 profile, with each distribution
+    parsed into (name, positional args)."""
+    with open(os.path.join(profiles_dir(), "m1.yaml")) as f:
+        h = yaml.safe_load(f)["humans"]
+    dist = lambda s: parse_dist(s)[:2]  # noqa: E731
+    h["spread"] = dist(h["spread"])
+    h["invest"] = {**h["invest"], "share": dist(h["invest"]["share"])}
+    h["tiers"] = [{**t, **{k: dist(t[k]) for k in ("income", "expenses", "fiat")}} for t in h["tiers"]]
+    return h
+
+
+def draw(rng: np.random.Generator, d: tuple[str, list[float]]) -> float:
+    """One draw of a parsed distribution."""
+    name, args = d
+    if name == "lognormal":
+        return float(rng.lognormal(args[0], args[1]))
+    if name == "beta":
+        return float(rng.beta(args[0], args[1]))
+    if name == "const":
+        return float(args[0])
+    raise ValueError(f"no toy draw for {name}")
+
+
+def wallets_per_human(seed: int, humans: int, params: dict | None = None, scale: float = 1.0) -> tuple[np.ndarray, list[str]]:
+    """How many wallets each of humans means to keep, and its tier: one,
+    plus a Poisson count of extras whose mean is the tier's wallets times
+    scale, capped at max_wallets (cohort People.found)."""
+    p = params or humans_params()
+    rng = np.random.default_rng(seed)
+    tiers = p["tiers"]
+    shares = np.array([t["share"] for t in tiers])
+    picks = rng.choice(len(tiers), size=humans, p=shares / shares.sum())
+    counts = np.array([min(1 + rng.poisson(tiers[i]["wallets"] * scale), p["max_wallets"]) for i in picks])
+    return counts, [tiers[i]["name"] for i in picks]
+
+
+@dataclass
+class Budget:
+    """A human's household (household.Budget), in cents a month."""
+    income: float
+    ratio: float
+    benefit: float
+    layoff: float
+    hire: float
+    share: float
+    steps: int
+    buffer: float
+
+
+def budget_of(tier: dict, invest: dict, income: float, ratio: float, share: float) -> Budget:
+    """The budget of a human of tier with the given monthly pay, bills ratio
+    and invested share."""
+    return Budget(income, ratio, tier["benefit"], tier["layoff"], tier["hire"], share, max(1, round(1 / invest["every"])), invest["buffer"])
+
+
+def household(seed: int, b: Budget, fiat: float, months: int, min_trade: float = 0.0) -> dict[str, np.ndarray]:
+    """A human's money month by month (household.Month, Accrue): employment
+    moves, pay arrives, bills are paid from what fiat holds and never below
+    zero, then each of the month's steps puts its tranche aside and buys
+    once what is put aside is worth min_trade cents and fiat above the
+    buffer allows. Returns per month: fiat after it, cents invested, unpaid
+    bills, and whether the human was employed."""
+    rng = np.random.default_rng(seed)
+    out = {k: np.zeros(months) for k in ("fiat", "invested", "short", "employed")}
+    employed, carry = True, 0.0
+    for m in range(months):
+        u = rng.random()
+        employed = u >= b.layoff if employed else u < b.hire
+        pay = b.income * (1 if employed else b.benefit)
+        bills = b.income * b.ratio
+        paid = min(bills, max(fiat + pay, 0))
+        fiat += pay - paid
+        disposable = max(pay - bills, 0)
+        bought = 0.0
+        for _ in range(b.steps):
+            carry = min(carry + b.share * disposable / b.steps, b.share * disposable)
+            buy = max(min(carry, fiat - b.buffer * bills), 0)
+            if buy > 0 and buy >= min_trade:
+                fiat, carry, bought = fiat - buy, carry - buy, bought + buy
+        out["fiat"][m], out["invested"][m], out["short"][m], out["employed"][m] = fiat, bought, bills - paid, employed
+    return out
+
+
+def tier_means(tier: dict) -> tuple[float, float, float]:
+    """A tier's typical human: median monthly pay and starting fiat in
+    dollars (a log-normal's median is exp(mu)) and mean bills ratio."""
+    (_, inc), (_, exp), (_, fiat) = tier["income"], tier["expenses"], tier["fiat"]
+    return float(np.exp(inc[0])), exp[0] / (exp[0] + exp[1]), float(np.exp(fiat[0]))
+
+
+def worked_example(tier_name: str = "mid", ada_usd: float = 0.15) -> dict[str, float]:
+    """The guide's worked month for a typical human of a tier, in dollars:
+    pay, bills, what is left, the invested share of it, each of the month's
+    purchases and the ADA it buys at ada_usd."""
+    p = humans_params()
+    tier = next(t for t in p["tiers"] if t["name"] == tier_name)
+    pay, ratio, fiat = tier_means(tier)
+    (_, (a, b)) = p["invest"]["share"]
+    share = a / (a + b)
+    steps = max(1, round(1 / p["invest"]["every"]))
+    bills = pay * ratio
+    left = pay - bills
+    each = share * left / steps
+    return {
+        "pay": pay, "bills": bills, "left": left, "share": share, "invested": share * left,
+        "steps": steps, "each": each, "ada_each": each / ada_usd, "fiat": fiat, "buffer": p["invest"]["buffer"] * bills,
+    }
+
+
+def print_worked_example(tier_name: str = "mid", ada_usd: float = 0.15) -> None:
+    """The worked example in words, from the shipped defaults."""
+    w = worked_example(tier_name, ada_usd)
+    print(f"A typical {tier_name}-tier human earns ${w['pay']:,.0f} a month and owes ${w['bills']:,.0f} in bills "
+          f"({100 * w['bills'] / w['pay']:.0f}% of pay).")
+    print(f"Left over after bills (disposable income): ${w['left']:,.0f}.")
+    print(f"It invests {100 * w['share']:.0f}% of that: ${w['invested']:,.2f} a month, "
+          f"in {w['steps']} purchases of ${w['each']:,.2f}.")
+    print(f"At ${ada_usd} per ADA, each purchase buys {w['ada_each']:,.0f} ADA.")
+    print(f"But first it keeps a buffer of one month of bills, ${w['buffer']:,.0f}, in fiat; "
+          f"it starts with about ${w['fiat']:,.0f}, so it buys only once its savings pass the buffer.")
+
+
+def humans_run(paths: "DataPaths | None" = None) -> tuple[dict, str]:
+    """The humans summary of a fake run (humans_run.summarise) and where it
+    came from: GUIDE_RUN, a run directory, when set; else the committed
+    summary of the seed-7 mainnet run."""
+    run = os.environ.get("GUIDE_RUN")
+    if run:
+        import humans_run as hr
+        return hr.summarise(run), run
+    path = os.path.join(HERE, "tests", "fixtures", "humans", "run.json")
+    with open(path) as f:
+        return json.load(f), "the committed summary of the seed-7 fake mainnet run (tests/fixtures/humans/run.json)"
