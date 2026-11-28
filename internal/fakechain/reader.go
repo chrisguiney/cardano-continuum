@@ -133,6 +133,14 @@ func (rd reader) Deposits() uint64 {
 	return rd.w.certs.deposits()
 }
 
+// Treasury returns the treasury's lovelace and the lovelace in reward
+// accounts, as of the confirmed tip.
+func (rd reader) Treasury() (treasury, rewards uint64) {
+	rd.w.mu.Lock()
+	defer rd.w.mu.Unlock()
+	return rd.w.certs.treasury, held(rd.w.certs) - rd.w.certs.treasury
+}
+
 // Params returns the protocol parameters with every enacted parameter
 // change applied, as a node's current-parameters query answers.
 func (rd reader) Params() conway.ConwayProtocolParameters {

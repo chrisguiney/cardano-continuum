@@ -100,8 +100,41 @@ func ratify(s *certState, ep uint64, stake map[common.Blake2b224]uint64) {
 			if ratifyFork(s, id, a, ep, stake) {
 				return
 			}
+		case *common.TreasuryWithdrawalGovAction:
+			ratifyWithdrawal(s, id, a, ep, stake)
 		}
 	}
+}
+
+// ratifyWithdrawal enacts the treasury withdrawal id when the committee
+// and the DReps accept it (Ratify.lagda.md threshold: TreasuryWdrl is CC
+// and P6; pools do not vote) and the treasury covers it with every
+// withdrawal already enacted and not yet paid (Enact.lagda.md Enact-Wdrl:
+// the sum of newWdrls is at most the treasury). The next boundary pays it
+// (pay). The fake has no guardrail script, so the policy hash is not
+// checked.
+func ratifyWithdrawal(s *certState, id common.GovActionId, w *common.TreasuryWithdrawalGovAction, ep uint64, stake map[common.Blake2b224]uint64) {
+	if !committeeTally(s, id, ep).meets(committeeQuorum) || !drepTally(s, id, stake).meets(s.enact.params.DRepVotingThresholds.TreasuryWithdrawal.Rat) {
+		return
+	}
+
+	total := pending(s)
+	for _, n := range w.Withdrawals {
+		total += n
+	}
+	if total > s.treasury {
+		return
+	}
+
+	if s.payout == nil {
+		s.payout = map[credKey]uint64{}
+	}
+	for addr, n := range w.Withdrawals {
+		s.payout[rewardKey(addr)] += n
+	}
+	p := s.proposals[id]
+	p.enacted, p.enactedAt = true, ep
+	s.proposals[id] = p
 }
 
 // priority is govActionPriority for the actions the fake ratifies; every
@@ -112,8 +145,10 @@ func priority(p proposal) int {
 		return 3
 	case *conway.ConwayParameterChangeGovAction:
 		return 4
+	case *common.TreasuryWithdrawalGovAction:
+		return 5
 	}
-	return 5
+	return 6
 }
 
 // enactFork moves the protocol version to the pending hard fork's once its

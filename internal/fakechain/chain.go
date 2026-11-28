@@ -30,10 +30,13 @@
 // fake's delegation and governance state (see certState), which accepted
 // transactions update. At epoch boundaries the stake snapshots rotate,
 // retiring pools retire, and parameter changes and hard forks are ratified
-// and enacted (epoch.go, ratify.go); no rewards accrue. Treasury donations, the
+// and enacted (epoch.go, ratify.go), as are treasury withdrawals, which the
+// next boundary pays from the configured treasury into reward accounts
+// (Config.Treasury); no staking rewards accrue. Treasury donations, the
 // current-treasury-value field and phase-2-invalid transactions are refused
 // with ErrUnsupported, so the supply invariant is exactly: unspent lovelace +
-// collected fees + deposits held = genesis lovelace.
+// collected fees + deposits held + treasury + reward balances = genesis
+// lovelace + the genesis treasury.
 package fakechain
 
 import (
@@ -86,6 +89,9 @@ type Config struct {
 	// pools are registered and the delegators' stake credentials
 	// registered and delegated, all with no deposit.
 	Staking []GenesisStake
+	// Treasury is the treasury's lovelace at genesis, which enacted
+	// treasury withdrawals pay out of. No reserves or fees flow into it.
+	Treasury uint64
 }
 
 // GenesisStake is one genesis pool and the stake credentials delegated to
@@ -203,6 +209,7 @@ func New(cfg Config) (*Chain, error) {
 		certs:     newCertState(cfg.Committee, *cfg.Params),
 	}
 	w.certs.stake(cfg.Staking)
+	w.certs.treasury, w.supply = cfg.Treasury, cfg.Treasury
 	if w.capBytes == 0 {
 		w.capBytes = 2 * uint64(cfg.Params.MaxBlockBodySize)
 	}

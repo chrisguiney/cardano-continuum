@@ -60,14 +60,16 @@ func (v *ledgerView) IsRewardAccountRegistered(c common.Credential) bool {
 	return v.IsStakeCredentialRegistered(c)
 }
 
-// RewardAccountBalance implements common.RewardState: zero for every
-// registered account, since the fake pays no rewards.
+// RewardAccountBalance implements common.RewardState: what enacted
+// treasury withdrawals paid the account, less its withdrawals; the fake
+// pays no staking rewards.
 func (v *ledgerView) RewardAccountBalance(c common.Credential) (*uint64, error) {
-	if !v.IsStakeCredentialRegistered(c) {
+	a, ok := v.account(c)
+	if !ok {
 		return nil, nil
 	}
-	var zero uint64
-	return &zero, nil
+	n := a.reward
+	return &n, nil
 }
 
 // DRepDelegation implements common.DRepDelegationState.

@@ -154,3 +154,63 @@ func TestEnactedChangeRemovedAtNextBoundary(t *testing.T) {
 		t.Fatalf("epoch 2: root %v, want the change", g.s.enact.root)
 	}
 }
+
+// rewardAddr is the key-hash reward address of stake credential h(b).
+func rewardAddr(t *testing.T, b byte) *common.Address {
+	t.Helper()
+	a, err := common.NewAddressFromParts(common.AddressTypeNoneKey, 0, nil, h(b).Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &a
+}
+
+// withdraw adds a treasury withdrawal paying pays, voted on by the DRep
+// and by yes of the committee's hot keys.
+func (g govWorld) withdraw(tx byte, pays map[*common.Address]uint64, drepYes bool, yes int) common.GovActionId {
+	id := common.GovActionId{TransactionId: common.Blake2b256{tx}}
+	act := &common.TreasuryWithdrawalGovAction{Type: uint(common.GovActionTypeTreasuryWithdrawal), Withdrawals: pays}
+	g.s.proposals[id] = proposal{state: common.GovActionState{ActionId: id, Action: act}, expires: 10}
+	if drepYes {
+		g.s.votes[voteKey{id, common.VoterTypeDRepKeyHash, h(20)}] = common.GovVoteYes
+	}
+	for i := range yes {
+		g.s.votes[voteKey{id, common.VoterTypeConstitutionalCommitteeHotKeyHash, h(byte(41 + i))}] = common.GovVoteYes
+	}
+	return id
+}
+
+// A treasury withdrawal the committee and the DReps accept is enacted at
+// the boundary that ratifies it and paid at the next one
+// (formal-ledger-specifications f8059737f1db, Enact.lagda.md Enact-Wdrl;
+// Epoch.lagda.md payout, refunds, unclaimed): a registered reward account
+// is credited, an unregistered one's share stays in the treasury.
+// Withdrawals ratified at one boundary together never exceed the
+// treasury, a larger ask is enacted once the treasury covers it, and one
+// short of the DReps' threshold is not enacted.
+func TestTreasuryWithdrawalEnactsThenPays(t *testing.T) {
+	g := newGovWorld()
+	g.s.treasury = 1000
+	g.s.accounts[cred(2)] = &account{}
+	newEpoch(g.s, 0, true, g.stake)
+
+	paid := g.withdraw(1, map[*common.Address]uint64{rewardAddr(t, 2): 300, rewardAddr(t, 3): 100}, true, 2)
+	over := g.withdraw(2, map[*common.Address]uint64{rewardAddr(t, 2): 700}, true, 2)
+	unvoted := g.withdraw(3, map[*common.Address]uint64{rewardAddr(t, 2): 10}, false, 3)
+	newEpoch(g.s, 1, false, g.stake)
+	if !g.s.proposals[paid].enacted || g.s.proposals[over].enacted || g.s.proposals[unvoted].enacted {
+		t.Fatalf("enacted: paid %v, over the treasury %v, without the DReps %v", g.s.proposals[paid].enacted, g.s.proposals[over].enacted, g.s.proposals[unvoted].enacted)
+	}
+	if g.s.treasury != 1000 || g.s.accounts[cred(2)].reward != 0 {
+		t.Fatalf("epoch 1: treasury %d, reward %d; nothing is paid until the next boundary", g.s.treasury, g.s.accounts[cred(2)].reward)
+	}
+
+	newEpoch(g.s, 2, false, g.stake)
+	if g.s.treasury != 700 || g.s.accounts[cred(2)].reward != 300 {
+		t.Fatalf("epoch 2: treasury %d, reward %d; want 700, 300", g.s.treasury, g.s.accounts[cred(2)].reward)
+	}
+	// Paid out, the treasury now covers the larger ask, which stayed open.
+	if !g.s.proposals[over].enacted || pending(g.s) != 700 {
+		t.Fatalf("epoch 2: the 700 ask enacted %v, pending %d", g.s.proposals[over].enacted, pending(g.s))
+	}
+}

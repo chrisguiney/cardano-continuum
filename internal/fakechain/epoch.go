@@ -59,6 +59,7 @@ func newEpoch(s *certState, ep uint64, first bool, stake map[common.Blake2b224]u
 		e.label = ep
 		reap(s, ep)
 		prune(s, ep)
+		pay(s)
 		ratify(s, ep, stake)
 	}
 }
@@ -113,6 +114,20 @@ func prune(s *certState, ep uint64) {
 			}
 		}
 	}
+}
+
+// pay pays the withdrawals enacted at the boundary before out of the
+// treasury: a registered reward account is credited, and a share for one
+// that is not stays in the treasury (formal-ledger-specifications
+// f8059737f1db, Epoch.lagda.md: payout, refunds, unclaimed, acnt”).
+func pay(s *certState) {
+	for k, n := range s.payout {
+		if a, ok := s.accounts[k]; ok {
+			a.reward += n
+			s.treasury -= n
+		}
+	}
+	s.payout = nil
 }
 
 // Account is a registered stake credential and what it is delegated to.

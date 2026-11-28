@@ -23,10 +23,22 @@ type credKey struct {
 
 func keyOf(c common.Credential) credKey { return credKey{c.CredType, c.Credential} }
 
+// rewardKey is the stake credential of a reward address.
+func rewardKey(a *common.Address) credKey {
+	kind := uint(common.CredentialTypeAddrKeyHash)
+	if a.Type() == common.AddressTypeNoneScript {
+		kind = common.CredentialTypeScriptHash
+	}
+	return credKey{kind, a.StakeKeyHash()}
+}
+
 type account struct {
 	deposit uint64
 	drep    *common.Drep
 	pool    *common.PoolKeyHash
+	// reward is the account's reward balance: what enacted treasury
+	// withdrawals paid it, less what it withdrew.
+	reward uint64
 }
 
 type pool struct {
@@ -62,6 +74,12 @@ type certState struct {
 	votes     map[voteKey]uint8
 	epoch     epochState
 	enact     enactment
+	// treasury is the treasury's lovelace: the configured start less the
+	// enacted withdrawals paid out of it.
+	treasury uint64
+	// payout are the withdrawals enacted at the last boundary, by reward
+	// account, which the next boundary pays (Epoch.lagda.md payout).
+	payout map[credKey]uint64
 }
 
 type voteKey struct {
@@ -121,6 +139,8 @@ func (s *certState) clone() *certState {
 		votes:     maps.Clone(s.votes),
 		epoch:     s.epoch.clone(),
 		enact:     s.enact,
+		treasury:  s.treasury,
+		payout:    maps.Clone(s.payout),
 	}
 	for k, a := range s.accounts {
 		c := *a
@@ -158,6 +178,27 @@ func (s *certState) deposits() uint64 {
 	return sum + s.epoch.refunded
 }
 
+// held is the lovelace s holds outside the UTxO set, fees and deposits:
+// the treasury and the reward balances. Withdrawals enacted but not yet
+// paid are still in the treasury.
+func held(s *certState) uint64 {
+	sum := s.treasury
+	for _, a := range s.accounts {
+		sum += a.reward
+	}
+	return sum
+}
+
+// pending is the lovelace enacted withdrawals will pay at the next
+// boundary.
+func pending(s *certState) uint64 {
+	var sum uint64
+	for _, n := range s.payout {
+		sum += n
+	}
+	return sum
+}
+
 // effects gives apply what it needs from the protocol parameters and clock.
 type effects struct {
 	pp *conway.ConwayProtocolParameters
@@ -171,6 +212,12 @@ type effects struct {
 // apply folds an accepted, phase-2-valid tx into s. Validation has already
 // passed, so every certificate is applicable.
 func (s *certState) apply(tx common.Transaction, slot uint64, r effects) {
+	for addr, n := range tx.Withdrawals() {
+		// The withdrawal rule held each amount to the whole balance.
+		if a, ok := s.accounts[rewardKey(addr)]; ok && n != nil {
+			a.reward -= min(a.reward, n.Uint64())
+		}
+	}
 	for _, c := range tx.Certificates() {
 		s.applyCert(c, r)
 	}

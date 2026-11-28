@@ -119,7 +119,7 @@ func (p producer) conserved() bool {
 	for _, u := range w.utxo {
 		sum += u.Output.Amount().Uint64()
 	}
-	return sum+w.fees+w.certs.deposits() == w.supply
+	return sum+w.fees+w.certs.deposits()+held(w.certs) == w.supply
 }
 
 // rollback removes the last depth blocks. It refuses, changing nothing, a
