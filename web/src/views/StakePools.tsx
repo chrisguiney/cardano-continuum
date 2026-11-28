@@ -1,10 +1,10 @@
-import { VIEW_BLURB } from "../lib/help";
+import { FIELD_HELP, VIEW_BLURB } from "../lib/help";
 import { nodeLink, poolBlocksLink, poolLink } from "../lib/explorer";
 import { ada, count, short } from "../lib/format";
 import { usePoll } from "../lib/hooks";
 import type { GovernanceView, StakePoolRow, StakePoolsView } from "../lib/types";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Blurb } from "./fields";
+import { Blurb, HelpTip } from "./fields";
 import { EmptyRow, ErrorNote, Facts, Heading, Link, Mono, Muted, Note, Panel, Subheading, TableFrame, Title } from "./common";
 import { VoteTable } from "./Governance";
 
@@ -34,6 +34,14 @@ function Operator({ p }: { p: StakePoolRow }) {
 
 const NOT_INDEXED = "the server has no explorer index, so the chain's view is unknown";
 
+/** POOL_COLUMNS are the stake pool table's columns, each explained by its FIELD_HELP entry. */
+const POOL_COLUMNS: { help: string; num?: boolean }[] = [
+  { help: "pool_id" }, { help: "pool_operator" }, { help: "pool_status" },
+  { help: "pledge", num: true }, { help: "margin", num: true }, { help: "pool_cost", num: true },
+  { help: "pool_delegators", num: true }, { help: "pool_delegated", num: true },
+  { help: "pool_blocks", num: true }, { help: "pool_votes", num: true }, { help: "pool_node" },
+];
+
 /** StakePoolTable lists the on-chain pools; each row links the pool, its operator and the nodes running it. */
 export function StakePoolTable({ rows }: { rows: StakePoolRow[] }) {
   return (
@@ -41,10 +49,12 @@ export function StakePoolTable({ rows }: { rows: StakePoolRow[] }) {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Pool</TableHead><TableHead>Operator</TableHead><TableHead>Status</TableHead>
-            <TableHead className="text-right">Pledge</TableHead><TableHead className="text-right">Margin</TableHead><TableHead className="text-right">Cost</TableHead>
-            <TableHead className="text-right">Delegators</TableHead><TableHead className="text-right">Delegated</TableHead>
-            <TableHead className="text-right">Blocks</TableHead><TableHead className="text-right">Votes</TableHead><TableHead>Node</TableHead>
+            {POOL_COLUMNS.map((c) => (
+              <TableHead key={c.help} className={c.num ? "text-right" : undefined}>
+                {FIELD_HELP[c.help]!.label}
+                <HelpTip id={`ph-${c.help}`} label={FIELD_HELP[c.help]!.label} text={FIELD_HELP[c.help]!.help} />
+              </TableHead>
+            ))}
           </TableRow>
         </TableHeader>
         <TableBody>

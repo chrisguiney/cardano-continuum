@@ -91,4 +91,16 @@ describe("stake pools view", () => {
     const html = render(<StakePoolDetail p={pool({})} />);
     for (const t of [POOL, "pool1pg9q5", "pool-7", "Fixed cost", "no node (logical)", "none (no ticker or name)"]) expect(html).toContain(t);
   });
+
+  it("explains every stake pool column with a tooltip", () => {
+    const html = render(<StakePoolTable rows={[pool({})]} />);
+    for (const k of ["pool_id", "pool_operator", "pool_status", "pledge", "margin", "pool_cost", "pool_delegators", "pool_delegated", "pool_blocks", "pool_votes", "pool_node"]) {
+      expect(FIELD_HELP[k], k).toBeTruthy();
+      expect(html, k).toContain(`id="ph-${k}"`);
+    }
+    expect(FIELD_HELP.pledge!.help).toMatch(/promise/);
+    expect(FIELD_HELP.margin!.help).toMatch(/after its fixed cost/);
+    expect(FIELD_HELP.delegated!.label).toBe("Delegated");
+  });
 });
+
