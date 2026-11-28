@@ -117,25 +117,34 @@ func (ch *Chooser) Prepare(at sched.Time, a population.Actor, in agenda.Intent, 
 	case profile.IntentRetirePool:
 		p.Epoch = ch.spec.Slots.EpochAt(at) + 1
 	case profile.IntentWithdraw:
-		// The view takes a withdrawal out of the balance only once a block
-		// holds it: a second one sent beside one in flight withdraws the
-		// same balance, which the ledger's mempool already took
-		// (WithdrawalsNotInRewards).
-		if ch.env.Flight.Has(a.ID, string(profile.IntentWithdraw)) {
-			return nil, "withdrawal in flight"
+		if why := prepareWithdraw(ch, a.ID, p); why != "" {
+			return nil, why
 		}
-
-		// Conway refuses a withdrawal from an account with no vote
-		// delegation (ConwayWdrlNotDelegatedToDRep).
-		if !ch.env.Chain.View().VoteDelegated(a.ID) {
-			return nil, "withdrawal needs a vote delegation"
-		}
-		ch.prepareAward(a.ID, p)
 	}
 	if _, ok := specs[p.KindOf()]; !ok {
 		return nil, "no builder for " + string(in.Kind)
 	}
 	return p, ""
+}
+
+// prepareWithdraw fills in a reward withdrawal, or says why the actor
+// cannot make one now.
+func prepareWithdraw(ch *Chooser, id population.ActorID, p *wire.Pending) string {
+	// The view takes a withdrawal out of the balance only once a block
+	// holds it: a second one sent beside one in flight withdraws the
+	// same balance, which the ledger's mempool already took
+	// (WithdrawalsNotInRewards).
+	if ch.env.Flight.Has(id, string(profile.IntentWithdraw)) {
+		return "withdrawal in flight"
+	}
+
+	// Conway refuses a withdrawal from an account with no vote
+	// delegation (ConwayWdrlNotDelegatedToDRep).
+	if !ch.env.Chain.View().VoteDelegated(id) {
+		return "withdrawal needs a vote delegation"
+	}
+	ch.prepareAward(id, p)
+	return ""
 }
 
 // registering reports whether an unfinished intent of the actor registers
