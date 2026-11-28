@@ -14,7 +14,20 @@ import (
 // nothing here locks.
 type state struct {
 	cfg Config
-	// metas is the chain, oldest first; the other maps hold indexes into it.
+	// blockIndex is the chain and the indexes into it.
+	blockIndex
+	utxos *utxoSet
+	hist  *history
+	eps   *epochs
+	gov   *govBook
+	// pools keeps the chain's pool certificates.
+	pools *poolBook
+}
+
+// blockIndex is the chain, oldest first, and the indexes into it. It has
+// no methods of its own: state reads and updates it.
+type blockIndex struct {
+	// metas is the chain, oldest first; the maps hold indexes into it.
 	metas    []*meta
 	byHash   map[[32]byte]int
 	byHeight map[uint64]int
@@ -22,12 +35,6 @@ type state struct {
 	txs      map[[32]byte]txLoc
 	// oldest is the first block that still has its full contents.
 	oldest int
-	utxos  *utxoSet
-	hist   *history
-	eps    *epochs
-	gov    *govBook
-	// pools keeps the chain's pool certificates.
-	pools *poolBook
 }
 
 // txLoc is where a transaction sits: its block's position and its index.
@@ -37,8 +44,14 @@ type txLoc struct {
 
 func newState(cfg Config) *state {
 	return &state{
-		cfg: cfg, byHash: map[[32]byte]int{}, byHeight: map[uint64]int{}, byIssuer: map[[28]byte][]int{},
-		txs: map[[32]byte]txLoc{}, utxos: newUtxoSet(), hist: newHistory(), eps: newEpochs(), gov: newGovBook(), pools: newPoolBook(),
+		cfg: cfg,
+		blockIndex: blockIndex{
+			byHash:   map[[32]byte]int{},
+			byHeight: map[uint64]int{},
+			byIssuer: map[[28]byte][]int{},
+			txs:      map[[32]byte]txLoc{},
+		},
+		utxos: newUtxoSet(), hist: newHistory(), eps: newEpochs(), gov: newGovBook(), pools: newPoolBook(),
 	}
 }
 
