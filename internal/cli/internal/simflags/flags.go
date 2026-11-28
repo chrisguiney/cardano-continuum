@@ -13,6 +13,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 	"github.com/chrisguiney/cardano-continuum/internal/policy"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
+	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 )
 
 // Version goes into the log header; a log replays only under the binary
@@ -60,6 +61,10 @@ func (f *Flags) Config() (engine.Config, error) {
 	bp := build.ParamsFromConway(&pp, 0)
 	// The fake chain's slot 0 is the Unix epoch.
 	bp.SystemStart, bp.SlotLength = time.UnixMilli(0).UTC(), time.Duration(f.SlotMs)*time.Millisecond
+	fork, err := f.HardForkSchedule(bp.Protocol)
+	if err != nil {
+		return engine.Config{}, err
+	}
 	cfg := engine.Config{
 		Seed: engine.SeedFromInt(f.Seed), Profiles: reg, Fitted: fitted, Scale: f.Scale, Cohorts: cohorts, Slots: slots,
 		K: f.K, BlockEvery: f.BlockEvery, TTL: f.TTL, BinaryVersion: Version, Build: bp, ChainParams: &pp,
@@ -68,7 +73,7 @@ func (f *Flags) Config() (engine.Config, error) {
 		// The fake chain's genesis registers a pool for every operator and
 		// seats internal/genesis's committee, as a devnet's does.
 		GenesisPools: f.Pools, GenesisPoolStake: genesis.Default().PoolStake, Committee: genesis.Default().Committee,
-		Mistakes: mistakes, Run: f.Oracle(mistakes),
+		Mistakes: mistakes, HardFork: fork, Run: f.Oracle(mistakes, fork),
 	}
 	if err := engine.Populate(&cfg, file); err != nil {
 		return engine.Config{}, err
@@ -89,7 +94,7 @@ func (f *Flags) Config() (engine.Config, error) {
 // writes it, and every flag that fixes the configuration, so the command
 // replays it from the run's directory. It is built from the parsed values,
 // so run and replay give the same one however the flags were spelled.
-func (f *Flags) Oracle(mistakes bool) oracle.Run {
+func (f *Flags) Oracle(mistakes bool, fork protocol.Schedule) oracle.Run {
 	onOff := map[bool]string{true: "on", false: "off"}
 	flags := []string{
 		"--wallets=" + strconv.Itoa(f.Wallets), "--profiles=" + f.Profiles,
@@ -97,6 +102,7 @@ func (f *Flags) Oracle(mistakes bool) oracle.Run {
 		"--epoch-slots=" + strconv.FormatUint(f.EpochSlots, 10), "--k=" + strconv.FormatUint(f.K, 10),
 		"--block-every=" + strconv.FormatUint(f.BlockEvery, 10), "--ttl=" + strconv.FormatUint(f.TTL, 10),
 		"--floor=" + strconv.FormatUint(f.Floor, 10), "--pools=" + strconv.Itoa(f.Pools), "--mistakes=" + onOff[mistakes],
+		"--hard-fork=" + fork.String(),
 	}
 	if f.Attacks != "" {
 		flags = append(flags, "--attack="+f.Attacks)

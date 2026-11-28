@@ -19,7 +19,9 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 )
 
-var attackFlags = []string{"--seed", "7", "--wallets", "20", "--epoch-slots", "60", "--profiles", "m3"}
+// The goldens pin a run with no hard fork: its hot-key authorisations and
+// proposal would move every log position the goldens name.
+var attackFlags = []string{"--seed", "7", "--wallets", "20", "--epoch-slots", "60", "--profiles", "m3", "--hard-fork", "none"}
 
 // attackedRun makes a control run and an attack run (every tier-1 attack)
 // on one seed and returns both output directories.

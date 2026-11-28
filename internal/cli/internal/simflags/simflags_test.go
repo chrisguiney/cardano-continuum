@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
+	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 	"github.com/chrisguiney/cardano-continuum/profiles"
 )
 
@@ -130,4 +131,63 @@ func TestWeightedCohorts(t *testing.T) {
 	if _, err := CohortsFor(doc("    weight: 0.5\n", ""), 4); err == nil {
 		t.Error("mixed weighted and unweighted accepted")
 	}
+}
+
+// --hard-fork unset is the default schedule, a fork to 11.0 at epoch 3,
+// where the genesis version can follow it; "none" turns it off, and the
+// resolved schedule is in the run's identity and its replay flags.
+func TestHardForkFlag(t *testing.T) {
+	t.Parallel()
+	cfg := func(args ...string) (Flags, engineHeader) {
+		t.Helper()
+		var sf Flags
+		fs := flag.NewFlagSet("t", flag.ContinueOnError)
+		sf.Register(fs)
+		if err := fs.Parse(append([]string{"--profiles", "preprod", "--wallets", "10"}, args...)); err != nil {
+			t.Fatal(err)
+		}
+		c, err := sf.Config()
+		if err != nil {
+			t.Fatal(err)
+		}
+		h, err := c.Header()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return sf, engineHeader{sched: c.HardFork.String(), genesis: h.GenesisHash}
+	}
+	defSF, def := cfg()
+	_, none := cfg("--hard-fork", "none")
+	_, late := cfg("--hard-fork", "11.0@epoch:5")
+	if def.sched != "11.0@epoch:3" || none.sched != "none" || late.sched != "11.0@epoch:5" {
+		t.Fatalf("schedules %q, %q, %q", def.sched, none.sched, late.sched)
+	}
+
+	if bytes.Equal(def.genesis, none.genesis) || bytes.Equal(def.genesis, late.genesis) {
+		t.Fatal("the schedule is not in the genesis hash")
+	}
+
+	if got := strings.Join(defSF.Oracle(false, protocol.Schedule{To: protocol.Version{Major: 11}, Epoch: 3}).Flags, " "); !strings.Contains(got, "--hard-fork=11.0@epoch:3") {
+		t.Fatalf("replay flags %q omit the schedule", got)
+	}
+
+	if s, err := defSF.HardForkSchedule(protocol.Version{Major: 11}); err != nil || s.On() {
+		t.Fatalf("default from 11.0: %v, %v; want none, the fork is already in force", s, err)
+	}
+
+	var bad Flags
+	fs := flag.NewFlagSet("t", flag.ContinueOnError)
+	bad.Register(fs)
+	if err := fs.Parse([]string{"--hard-fork", "banana"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := bad.HardForkSchedule(protocol.Version{Major: 10}); err == nil {
+		t.Fatal("banana parsed")
+	}
+}
+
+type engineHeader struct {
+	sched   string
+	genesis []byte
 }

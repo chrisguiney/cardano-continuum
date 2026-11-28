@@ -115,6 +115,11 @@ func liveConfig(sf simflags.Flags, lf Flags, g chain.Genesis, np nodeParams, see
 		return engine.Config{}, err
 	}
 
+	fork, err := sf.HardForkSchedule(bp.Protocol)
+	if err != nil {
+		return engine.Config{}, err
+	}
+
 	gpools, err := genesisOperated(sf.Pools+populationPools(file), lf.GPools)
 	if err != nil {
 		return engine.Config{}, err
@@ -124,7 +129,7 @@ func liveConfig(sf simflags.Flags, lf Flags, g chain.Genesis, np nodeParams, see
 		Build: bp, BinaryVersion: simflags.Version, Faucet: lf.Faucet, RefillEvery: lf.RefillEvery,
 		NOpt: np.nOpt, GovLifetime: np.govLifetime, GenesisPoolStake: lf.PoolStake, GenesisPools: gpools,
 		Floor: policy.Config{Floor: sf.Floor, Margin: 1}, Committee: genesis.Default().Committee,
-		Mistakes: mistakes, Horizon: g.StabilityWindow(), Run: sf.Oracle(mistakes),
+		Mistakes: mistakes, Horizon: g.StabilityWindow(), HardFork: fork, Run: sf.Oracle(mistakes, fork),
 	}
 	// A live devnet's genesis pools are its own; a fitted file's pools
 	// register themselves.
