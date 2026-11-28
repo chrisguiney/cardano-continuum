@@ -215,6 +215,9 @@ func (m *mutant) make(k Kind) error {
 	case WrongNetwork:
 		return m.readdress(func(a []byte) { a[0] ^= 1 })
 	case WrongAddress:
+		if _, ok := m.wits.get(witRedeemers); ok {
+			return fmt.Errorf("%w: a script spend validates its outputs", ErrNotApplicable)
+		}
 		return m.readdress(func(a []byte) {
 			h := common.Blake2b224Hash(a[1:29])
 			copy(a[1:29], h[:])

@@ -127,3 +127,16 @@ func TestUnderDeclaredWithheld(t *testing.T) {
 		t.Fatalf("fake chain answered %v; when it models collateral collection, lift the withholding", err)
 	}
 }
+
+// A script spend validates its outputs, so sending its first output to a
+// stranger fails the script (ValidationTagMismatch) rather than losing
+// funds quietly; wrong_address is not made on a transaction with redeemers.
+func TestWrongAddressNotOnScriptSpend(t *testing.T) {
+	t.Parallel()
+	wd, _ := fakeWorld(t)
+	wd.prepare(t)
+	b := wd.base(t, ExUnitsOverDeclared)
+	if _, _, err := Inject(b.Tx, Of(WrongAddress), wd.ctx(t)); !errors.Is(err, ErrNotApplicable) {
+		t.Fatalf("wrong_address on a script spend: %v, want not applicable", err)
+	}
+}

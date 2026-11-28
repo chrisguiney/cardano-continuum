@@ -219,8 +219,8 @@ func TestInjectNotApplicable(t *testing.T) {
 		t.Errorf("Applicable(payment) = %v", got)
 	}
 	unlock := wd.base(t, ExUnitsLow)
-	if got := Applicable(unlock.Tx, wd.ctx(t)); got != Of(Kinds()...) {
-		t.Errorf("Applicable(unlock) = %v, want every kind", got)
+	if got := Applicable(unlock.Tx, wd.ctx(t)); got != Of(Kinds()...)&^Of(WrongAddress) {
+		t.Errorf("Applicable(unlock) = %v, want every kind but wrong_address", got)
 	}
 	if _, _, err := Inject([]byte{0x80}, Of(FeeTooSmall), wd.ctx(t)); err == nil {
 		t.Error("garbage accepted")
