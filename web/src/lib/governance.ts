@@ -1,5 +1,15 @@
 import { ada } from "./format";
-import type { GovernanceView, ProposalRow, Tally, VoteRow } from "./types";
+import type { GovernanceView, PendingFork, ProposalRow, ProtocolVersion, Tally, VoteRow } from "./types";
+
+/** versionText renders a protocol version as major.minor, "unknown" when absent. */
+export function versionText(v?: ProtocolVersion): string {
+  return v ? `${v.major}.${v.minor}` : "unknown";
+}
+
+/** forkLine says what hard fork is on its way: ratified and enacting at an epoch, or none. */
+export function forkLine(f?: PendingFork): string {
+  return f ? `hard fork to ${versionText(f.version)} ratified, in force from epoch ${f.at}` : "no hard fork pending";
+}
 
 /** The voter classes, in the order the view shows them. */
 export const CLASSES = ["drep", "spo", "committee"] as const;

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Feed, appendDecision, type EventSourceLike, type FeedState } from "../lib/feed";
 import { ada, count, short, simTime } from "../lib/format";
-import { CLASSES, choiceLine, filterGov, sortProposals, yesShare, type GovFilter } from "../lib/governance";
+import { CLASSES, choiceLine, filterGov, forkLine, sortProposals, versionText, yesShare, type GovFilter } from "../lib/governance";
 import { govPath } from "../lib/govdetail";
 import { GOV_HELP } from "../lib/govhelp";
 import { FIELD_HELP, VIEW_BLURB } from "../lib/help";
@@ -96,7 +96,7 @@ export function ProposalTable({ proposals }: { proposals: ProposalRow[] }) {
               <TableCell><Actor id={p.proposer} profile={p.profile} /></TableCell>
               <TableCell className="text-right tabular-nums">{ada(p.deposit_lovelace)}</TableCell>
               <TableCell className="text-right tabular-nums">{p.expires_epoch === undefined ? "–" : `epoch ${p.expires_epoch}`}</TableCell>
-              <TableCell><Badge variant={p.status === "open" || p.status === "ratified" ? "ok" : "warn"}>{p.status}</Badge></TableCell>
+              <TableCell><Badge variant={p.status === "open" || p.status === "ratified" || p.status === "enacted" ? "ok" : "warn"}>{p.status}</Badge></TableCell>
               {CLASSES.map((c) => {
                 const t = p.tally[c];
                 if (c === "spo" && !p.spo_may_vote) return <TableCell key={c} className="text-muted-foreground" title="the ledger does not let stake pools vote on this action">not eligible</TableCell>;
@@ -138,6 +138,7 @@ function Summary({ g }: { g: GovernanceView }) {
       <Stat label="Proposals" value={count(g.proposals.length)} sub={`${count(open)} open${g.epoch !== undefined ? `, epoch ${g.epoch}` : ""}`} />
       {CLASSES.map((c) => <Stat key={c} label={`${CLASS_LABEL[c]} votes`} value={count(byClass(c))} />)}
       <Stat label="Lifetime" value={`${g.lifetime_epochs} epochs`} sub="a proposal stays open this long" />
+      <Stat label="Protocol version" value={versionText(g.protocol_version)} sub={forkLine(g.pending_fork)} />
     </Stats>
   );
 }

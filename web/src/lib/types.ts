@@ -23,6 +23,19 @@ export interface Snapshot {
   txs: { submitted: number; confirmed: number; retries: number; refused: number; released: number; gave_up: number; skipped: number };
   population: { total: number; by_profile: Record<string, number>; by_state: Record<string, number> };
   invariants: Invariant[];
+  /** protocol_version is the version in force at the tip; absent before the engine logs one. */
+  protocol_version?: ProtocolVersion;
+}
+/** ProtocolVersion is a Cardano protocol version. */
+export interface ProtocolVersion {
+  major: number;
+  minor: number;
+}
+/** PendingFork is a ratified hard fork: its proposal, the version it moves to and the first epoch at that version. */
+export interface PendingFork {
+  proposal: string;
+  version: ProtocolVersion;
+  at: number;
 }
 export interface ActorRow {
   id: number;
@@ -328,6 +341,10 @@ export interface GovernanceView {
   proposals: ProposalRow[];
   votes: VoteRow[];
   pools: PoolVotes[];
+  /** protocol_version is the version in force at the tip; absent before the engine logs one. */
+  protocol_version?: ProtocolVersion;
+  /** pending_fork is a ratified hard fork waiting for the boundary that enacts it. */
+  pending_fork?: PendingFork;
 }
 
 /** GovParam is one protocol parameter a parameter-change action sets. */

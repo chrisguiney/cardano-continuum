@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { feedUrl } from "../src/lib/feed";
-import { choiceLine, filterGov, poolVotes, sortProposals, yesShare } from "../src/lib/governance";
+import { choiceLine, filterGov, forkLine, poolVotes, sortProposals, versionText, yesShare } from "../src/lib/governance";
 import { FIELD_HELP, VIEW_BLURB } from "../src/lib/help";
 import { parseRoute } from "../src/lib/router";
 import type { GovernanceView, ProposalRow, Tally } from "../src/lib/types";
@@ -32,6 +32,13 @@ describe("governance view", () => {
     expect(yesShare(tally({ yes: 1, no: 3 }))).toBeCloseTo(0.25);
     expect(yesShare(tally({ abstain: 2, abstain_power: 50 }))).toBeNull();
     expect(yesShare(tally())).toBeNull();
+  });
+
+  it("renders the protocol version and the hard fork on its way", () => {
+    expect(versionText({ major: 11, minor: 0 })).toBe("11.0");
+    expect(versionText(undefined)).toBe("unknown");
+    expect(forkLine(undefined)).toBe("no hard fork pending");
+    expect(forkLine({ proposal: "ab#0", version: { major: 11, minor: 0 }, at: 7 })).toBe("hard fork to 11.0 ratified, in force from epoch 7");
   });
 
   it("renders a tally as counts with their power", () => {
