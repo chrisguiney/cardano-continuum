@@ -44,7 +44,7 @@ function Summary({ p, source }: { p: Pipeline; source: string }) {
               <TableCell className="whitespace-nowrap">{i + 1}. {r.phase} <Tip k={PHASE_HELP[r.phase]!} id={`ph-${i}`} /></TableCell>
               <TableCell>{r.form}</TableCell>
               <TableCell className="whitespace-nowrap tabular-nums">{r.unit === "bytes" ? bytes(r.size) : `${r.size.toLocaleString("en-US")} characters`}</TableCell>
-              <TableCell>{r.change}</TableCell>
+              <TableCell className="min-w-64 whitespace-normal">{r.change}</TableCell>
             </TableRow>
           ))}
         </TableBody>
