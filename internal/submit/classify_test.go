@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/blinklabs-io/gouroboros/cbor"
 	"github.com/blinklabs-io/gouroboros/ledger"
@@ -117,5 +118,26 @@ func TestClassifyMempoolFailure(t *testing.T) {
 	if o.Verdict != Rejected || len(o.Failures) != 1 || o.Failures[0].Class != MempoolFailure ||
 		!strings.Contains(o.Failures[0].Detail, "All inputs are spent.") {
 		t.Fatalf("outcome = %+v", o)
+	}
+}
+
+// badText is a ledger failure whose text is not valid UTF-8, as a node's
+// free-text or raw-bytes payload can be.
+type badText struct{}
+
+func (badText) Error() string { return "mempool says \xff\xfe here" }
+
+// A node's rejection text reaches the event log, which is JSON and refuses
+// invalid UTF-8: an unescaped byte there stopped the engine. The text keeps
+// every byte, escaped, so it stays diagnosable.
+func TestRejectionTextIsValidUTF8(t *testing.T) {
+	t.Parallel()
+	fs, ok := ledgerRejection(localtxsubmission.TransactionRejectedError{Reason: badText{}})
+	if !ok || len(fs) != 1 {
+		t.Fatalf("failures %+v ok %v", fs, ok)
+	}
+
+	if d := fs[0].Detail; !utf8.ValidString(d) || !strings.Contains(d, `\xff\xfe`) {
+		t.Fatalf("detail %q: want valid UTF-8 with the bad bytes escaped", d)
 	}
 }

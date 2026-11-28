@@ -25,7 +25,7 @@ func fakeRejection(err error) ([]Failure, bool) {
 		return fs, true
 	}
 	if errors.Is(err, fakechain.ErrDecode) {
-		return []Failure{{Class: Undecodable, Detail: err.Error()}}, true
+		return printable([]Failure{{Class: Undecodable, Detail: err.Error()}}), true
 	}
 	return nil, false
 }

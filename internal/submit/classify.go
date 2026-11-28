@@ -3,6 +3,8 @@ package submit
 import (
 	"errors"
 	"fmt"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/blinklabs-io/gouroboros/cbor"
 	"github.com/blinklabs-io/gouroboros/ledger"
@@ -29,9 +31,46 @@ func ledgerRejection(err error) ([]Failure, bool) {
 		return nil, false
 	}
 	if rej.Reason == nil {
-		return []Failure{{Class: Unknown, Detail: rej.Error()}}, true
+		return printable([]Failure{{Class: Unknown, Detail: rej.Error()}}), true
 	}
-	return walk(rej.Reason), true
+	return printable(walk(rej.Reason)), true
+}
+
+// printable escapes, as \xNN, every byte of the failures' text that is not
+// valid UTF-8. A node's text can carry raw bytes (a MEMPOOL failure's free
+// text, a decoded payload), and the text goes into the event log, whose JSON
+// refuses invalid UTF-8: one such byte stopped the engine. Escaping keeps
+// every byte, so the text stays diagnosable.
+func printable(fs []Failure) []Failure {
+	for i := range fs {
+		fs[i].Detail = escapeInvalidUTF8(fs[i].Detail)
+	}
+
+	return fs
+}
+
+// escapeInvalidUTF8 is s with each byte that does not start a valid UTF-8
+// sequence written as \xNN; valid text is returned unchanged.
+func escapeInvalidUTF8(s string) string {
+	if utf8.ValidString(s) {
+		return s
+	}
+
+	var b strings.Builder
+	for i := 0; i < len(s); {
+		r, n := utf8.DecodeRuneInString(s[i:])
+		if r == utf8.RuneError && n <= 1 {
+			fmt.Fprintf(&b, "\\x%02x", s[i])
+			i++
+
+			continue
+		}
+
+		b.WriteString(s[i : i+n])
+		i += n
+	}
+
+	return b.String()
 }
 
 // walk flattens a decoded rejection tree into one Failure per leaf. The
