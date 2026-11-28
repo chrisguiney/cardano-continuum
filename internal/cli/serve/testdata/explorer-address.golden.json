@@ -1,16 +1,10 @@
 {
   "address": "addr_test1qzh7qmcfvrl6cr6vuguga07xv0zta6xdex644l0fma53usmaqs2f3rtg3gykcsf94wfdux5zqg4huplsm45mzs5qzpxqqwg5u9",
   "assets": [],
-  "balance": 35944269,
+  "balance": 24824195,
   "history": [
     {
-      "block": "8aeac880c5f9e59ed0eed2d7b066debb25407749818cec76f366e3c5a59b00d2",
-      "hash": "edafc3b1299b5828db9af15de1ef6b7770352fe27215ed949efba72dfab769eb",
-      "height": 1,
-      "slot": 10
-    },
-    {
-      "block": "8aeac880c5f9e59ed0eed2d7b066debb25407749818cec76f366e3c5a59b00d2",
+      "block": "04f120dc0b98fc11a4c6e2fb288eb8a94180fa325fd5fb77e31d8f31536b7a38",
       "hash": "4252586f71a22a168b75050368b605874d25d7c6409f72aef1340d71b99c8d38",
       "height": 1,
       "slot": 10
@@ -19,20 +13,14 @@
   "limit": 25,
   "offset": 0,
   "stake": "stake_test1up7sg9yc345g5ztvgyj6hyk7r2pqy2m7qlcd66d3g2qpqnqnhxrdg",
-  "tx_count": 2,
-  "utxo_total": 2,
+  "tx_count": 1,
+  "utxo_total": 1,
   "utxos": [
     {
       "address": "addr_test1qzh7qmcfvrl6cr6vuguga07xv0zta6xdex644l0fma53usmaqs2f3rtg3gykcsf94wfdux5zqg4huplsm45mzs5qzpxqqwg5u9",
       "index": 0,
       "lovelace": 24824195,
       "tx": "4252586f71a22a168b75050368b605874d25d7c6409f72aef1340d71b99c8d38"
-    },
-    {
-      "address": "addr_test1qzh7qmcfvrl6cr6vuguga07xv0zta6xdex644l0fma53usmaqs2f3rtg3gykcsf94wfdux5zqg4huplsm45mzs5qzpxqqwg5u9",
-      "index": 0,
-      "lovelace": 11120074,
-      "tx": "edafc3b1299b5828db9af15de1ef6b7770352fe27215ed949efba72dfab769eb"
     }
   ]
 }

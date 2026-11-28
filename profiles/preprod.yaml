@@ -259,3 +259,10 @@ markets:
   # return over window), clamped; a hodl wallet takes that to the power
   # hodl, so it holds on. An abandoning wallet sells its ADA first.
   deaths: {beta: 3, window: 1800, min: 0.5, max: 4, hodl: 0.5}
+# humans: hand-added (refitting does not write it). The people who own the
+# wallets: each wallet above is one on-chain unit, and a human groups one
+# or more of them under one owner with a wealth tier, a household budget
+# and an investment strategy. Every value is synthetic, not fitted from
+# chain data; this section takes the defaults written out in profiles/m1.yaml.
+humans:
+  month: 300

@@ -121,3 +121,27 @@ markets:
   # return over window), clamped; a hodl wallet takes that to the power
   # hodl, so it holds on. An abandoning wallet sells its ADA first.
   deaths: {beta: 3, window: 1800, min: 0.5, max: 4, hodl: 0.5}
+# The people who own the wallets (profile.Humans). A wallet profile above
+# supplies a wallet's mechanics; a human is the person behind one or more
+# wallets: its motivation (the agenda of the wallet that founded it), wealth
+# tier, how many wallets it keeps, and its household money. Every value is
+# synthetic, chosen to be plausible, not fitted from chain data; a field
+# left out takes this value, its default.
+humans:
+  # Simulated seconds per month: compressed so a short run sees paydays.
+  month: 300
+  max_wallets: 12
+  # How strongly an owner spreads its wallets over different pools.
+  spread: beta(2, 2)
+  # share: of humans; wallets: mean extra wallets beyond the first;
+  # income: monthly pay in USD; expenses: monthly bills as a share of
+  # income; fiat: starting savings in USD; layoff and hire: monthly chances
+  # of losing and finding a job; benefit: the share of pay while unemployed.
+  tiers:
+    - {name: low, share: 0.45, wallets: 0.2, income: "lognormal(7.3, 0.35)", expenses: "beta(19, 1)", fiat: "lognormal(5.5, 1)", layoff: 0.04, hire: 0.25, benefit: 0.3}
+    - {name: mid, share: 0.35, wallets: 0.6, income: "lognormal(8.2, 0.3)", expenses: "beta(17, 3)", fiat: "lognormal(7.5, 1)", layoff: 0.02, hire: 0.3, benefit: 0.3}
+    - {name: high, share: 0.15, wallets: 1.5, income: "lognormal(9.2, 0.3)", expenses: "beta(7, 3)", fiat: "lognormal(9.5, 1)", layoff: 0.01, hire: 0.4, benefit: 0.3}
+    - {name: whale, share: 0.05, wallets: 3, income: "lognormal(10.5, 0.5)", expenses: "beta(3, 7)", fiat: "lognormal(12, 1)", layoff: 0.005, hire: 0.5, benefit: 0.5}
+  # The share of disposable income (income less expenses) put into ADA,
+  # every quarter month, once a month of expenses is kept in fiat.
+  invest: {share: "beta(2, 8)", every: 0.25, buffer: 1}

@@ -11,43 +11,43 @@
       "epoch": 1,
       "ex_mem": 0,
       "ex_steps": 0,
-      "fees": 336722,
-      "hash": "727e54cf87718587569e05330038460c905bddbc182bc27c412000d44cacd2b0",
+      "fees": 168361,
+      "hash": "1befb29696f47b6c6b2a36b6262a8742e4feccec6b109438ce9a17ac4ce2f0dc",
       "height": 6,
       "issuer": "f9dca21a6c826ec8acb4cf395cbc24351937bfe6560b2683ab8b415f",
-      "prev": "0a4d793566f559760ab52d54f475f3d05dda1b1c0d3fd04ce380a1cdd8b21c48",
-      "size": 1441,
+      "prev": "57461cef753567e366c0bb591a24ad5b0962bc0da184c4323b42561f7cfb4579",
+      "size": 1148,
       "slot": 60,
       "time_ms": 60000,
-      "txs": 2
+      "txs": 1
     },
     {
       "epoch": 0,
       "ex_mem": 0,
       "ex_steps": 0,
-      "fees": 0,
-      "hash": "0a4d793566f559760ab52d54f475f3d05dda1b1c0d3fd04ce380a1cdd8b21c48",
+      "fees": 168361,
+      "hash": "57461cef753567e366c0bb591a24ad5b0962bc0da184c4323b42561f7cfb4579",
       "height": 5,
       "issuer": "f9dca21a6c826ec8acb4cf395cbc24351937bfe6560b2683ab8b415f",
-      "prev": "9489e7ccabaf77fea6017edd4cc85f86bbedd9906a5b8a3dc5c97b37b6db9c7c",
-      "size": 853,
+      "prev": "97eab9bf04a0d4fec57bd2bf9730958d3c88c6561b0a98839be436d40782ab72",
+      "size": 1148,
       "slot": 50,
       "time_ms": 50000,
-      "txs": 0
+      "txs": 1
     },
     {
       "epoch": 0,
       "ex_mem": 0,
       "ex_steps": 0,
-      "fees": 0,
-      "hash": "9489e7ccabaf77fea6017edd4cc85f86bbedd9906a5b8a3dc5c97b37b6db9c7c",
+      "fees": 168537,
+      "hash": "97eab9bf04a0d4fec57bd2bf9730958d3c88c6561b0a98839be436d40782ab72",
       "height": 4,
       "issuer": "f9dca21a6c826ec8acb4cf395cbc24351937bfe6560b2683ab8b415f",
-      "prev": "2684a8fd2bda6c75ff6672387102ecad93cf1b4765b3442694e7f0577a598cf6",
-      "size": 853,
+      "prev": "c9d7eba1acb4a5385f7dd4b6457b2fc9eaa5d954556ea6e0bdd97260e4e64d6c",
+      "size": 1152,
       "slot": 40,
       "time_ms": 40000,
-      "txs": 0
+      "txs": 1
     }
   ],
   "total": 6

@@ -26,8 +26,8 @@
       },
       "metric": {
         "name": "utxo_growth",
-        "value": 58,
-        "control": 9
+        "value": 56,
+        "control": 5
       },
       "attempted": 2,
       "landed": 2,
@@ -42,9 +42,9 @@
           "txs": 1
         },
         {
-          "seq": 1302,
+          "seq": 1303,
           "at": 61092,
-          "intent": 30,
+          "intent": 29,
           "cost": 26423417,
           "txs": 1
         }
@@ -81,9 +81,9 @@
       "rejected": 0,
       "recent": [
         {
-          "seq": 2260,
-          "at": 110121,
-          "intent": 51,
+          "seq": 1654,
+          "at": 77274,
+          "intent": 45,
           "cost": 180106,
           "value": 5000000,
           "txs": 1
@@ -125,15 +125,15 @@
       "rejected": 11,
       "recent": [
         {
-          "seq": 225,
+          "seq": 227,
           "at": 8045,
-          "intent": 15,
+          "intent": 14,
           "mutation": "non-canonical",
           "cost": 168537,
           "txs": 1
         },
         {
-          "seq": 625,
+          "seq": 629,
           "at": 27757,
           "intent": 23,
           "mutation": "trailing",
@@ -141,7 +141,7 @@
           "txs": 1
         },
         {
-          "seq": 750,
+          "seq": 760,
           "at": 34130,
           "intent": 24,
           "mutation": "body-count",
@@ -149,7 +149,7 @@
           "txs": 1
         },
         {
-          "seq": 838,
+          "seq": 852,
           "at": 38075,
           "intent": 26,
           "mutation": "body-count",
@@ -157,7 +157,7 @@
           "txs": 1
         },
         {
-          "seq": 901,
+          "seq": 915,
           "at": 41518,
           "intent": 27,
           "mutation": "body-count",
@@ -165,7 +165,7 @@
           "txs": 1
         },
         {
-          "seq": 1338,
+          "seq": 1342,
           "at": 63049,
           "intent": 33,
           "mutation": "body-count",
@@ -173,33 +173,33 @@
           "txs": 1
         },
         {
-          "seq": 1502,
+          "seq": 1512,
           "at": 70572,
-          "intent": 37,
+          "intent": 38,
           "mutation": "truncate",
           "cost": 168537,
           "txs": 1
         },
         {
-          "seq": 2101,
+          "seq": 2120,
           "at": 102463,
-          "intent": 45,
+          "intent": 48,
           "mutation": "non-canonical",
           "cost": 168537,
           "txs": 1
         },
         {
-          "seq": 2217,
+          "seq": 2232,
           "at": 107730,
-          "intent": 49,
+          "intent": 51,
           "mutation": "non-canonical",
           "cost": 168537,
           "txs": 1
         },
         {
-          "seq": 2247,
+          "seq": 2264,
           "at": 109600,
-          "intent": 50,
+          "intent": 52,
           "mutation": "non-canonical",
           "cost": 168537,
           "txs": 1
@@ -267,16 +267,16 @@
       "rejected": 2,
       "recent": [
         {
-          "seq": 104,
+          "seq": 100,
           "at": 3185,
-          "intent": 8,
+          "intent": 6,
           "cost": 2168537,
           "txs": 3
         },
         {
-          "seq": 1454,
+          "seq": 1461,
           "at": 69082,
-          "intent": 35,
+          "intent": 36,
           "cost": 2168537,
           "txs": 2
         }
@@ -299,21 +299,21 @@
     },
     {
       "metric": "honest_latency_p50_s",
-      "value": 57.622,
-      "control": 57.125,
-      "delta": 0.4969999999999999
+      "value": 56.716,
+      "control": 58.186,
+      "delta": -1.4699999999999989
     },
     {
       "metric": "honest_latency_p99_s",
       "value": 66.182,
-      "control": 59.786,
-      "delta": 6.396000000000001
+      "control": 88.253,
+      "delta": -22.070999999999998
     },
     {
       "metric": "honest_retries",
-      "value": 4,
-      "control": 2,
-      "delta": 2
+      "value": 5,
+      "control": 6,
+      "delta": -1
     },
     {
       "metric": "honest_value_grabbed_ada",
@@ -323,15 +323,15 @@
     },
     {
       "metric": "utxo_growth",
-      "value": 58,
-      "control": 9,
-      "delta": 49
+      "value": 56,
+      "control": 5,
+      "delta": 51
     },
     {
       "metric": "node_rejections",
-      "value": 18,
-      "control": 4,
-      "delta": 14
+      "value": 19,
+      "control": 6,
+      "delta": 13
     },
     {
       "metric": "findings",
