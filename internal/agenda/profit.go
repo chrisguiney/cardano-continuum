@@ -31,7 +31,7 @@ func profitScores(a population.Actor, v View) []Score {
 }
 
 func profitMove(a population.Actor, v View, bal purse) Score {
-	ps := v.Pools()
+	ps := spreadPools(a, v, v.Pools())
 	cur, delegated := v.DelegatedTo(a.ID)
 	var best PoolInfo
 	bestROI, curROI := -1.0, 0.0

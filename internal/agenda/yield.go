@@ -26,7 +26,8 @@ func yieldScores(a population.Actor, v View) []Score {
 }
 
 func delegateScore(a population.Actor, v View, bal purse) Score {
-	best, ok := bestPool(v.Pools())
+	ps := spreadPools(a, v, v.Pools())
+	best, ok := bestPool(ps)
 	if !ok {
 		return off(profile.IntentDelegate, "no pools")
 	}
@@ -36,7 +37,7 @@ func delegateScore(a population.Actor, v View, bal purse) Score {
 		s.Target = best.ID
 		return vetMove(v, s, a.ID, 0)
 	}
-	curROI := poolROI(v.Pools(), cur)
+	curROI := poolROI(ps, cur)
 	gap, patience := best.ROI-curROI, a.Traits.Patience
 	if best.ID == cur || gap <= patience {
 		return off(profile.IntentDelegate, fmt.Sprintf("gap %.4f within patience %.4f", gap, patience))
