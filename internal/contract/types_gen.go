@@ -10,6 +10,77 @@ import (
 	"github.com/blinklabs-io/plutigo/data"
 )
 
+// DisbursementDatum is the blueprint type continuum/types/DisbursementDatum.
+//
+// A treasury award drawn down in milestones: from `next` (POSIX ms) the
+//
+//	beneficiary draws `tranche` lovelace with the administrator's
+//	signature, and the rest stays locked until `next + period`.
+type DisbursementDatum struct {
+	// Beneficiary is the beneficiary field (aiken/crypto/VerificationKeyHash).
+	Beneficiary []byte
+	// Administrator is the administrator field (aiken/crypto/VerificationKeyHash).
+	Administrator []byte
+	// Next is the next field (Int).
+	Next int64
+	// Period is the period field (Int).
+	Period int64
+	// Tranche is the tranche field (Int).
+	Tranche int64
+}
+
+// Data encodes v as the validator reads it: Constr 0 with its fields in order.
+func (v DisbursementDatum) Data() data.PlutusData {
+	return data.NewConstr(0,
+		data.NewByteString(bytes.Clone(v.Beneficiary)),
+		data.NewByteString(bytes.Clone(v.Administrator)),
+		data.NewInteger(big.NewInt(v.Next)),
+		data.NewInteger(big.NewInt(v.Period)),
+		data.NewInteger(big.NewInt(v.Tranche)),
+	)
+}
+
+// ParseDisbursementDatum decodes the validator's encoding of DisbursementDatum.
+func ParseDisbursementDatum(d data.PlutusData) (DisbursementDatum, bool) {
+	fs, ok := record(d, 5)
+	if !ok {
+		return DisbursementDatum{}, false
+	}
+
+	f0, ok := bytesField(fs[0])
+	if !ok {
+		return DisbursementDatum{}, false
+	}
+
+	f1, ok := bytesField(fs[1])
+	if !ok {
+		return DisbursementDatum{}, false
+	}
+
+	f2, ok := intField(fs[2])
+	if !ok {
+		return DisbursementDatum{}, false
+	}
+
+	f3, ok := intField(fs[3])
+	if !ok {
+		return DisbursementDatum{}, false
+	}
+
+	f4, ok := intField(fs[4])
+	if !ok {
+		return DisbursementDatum{}, false
+	}
+
+	return DisbursementDatum{
+		Beneficiary:   f0,
+		Administrator: f1,
+		Next:          f2,
+		Period:        f3,
+		Tranche:       f4,
+	}, true
+}
+
 // EscrowAction is the blueprint type continuum/types/EscrowAction.
 //
 // What an escrow spend does: Release is Constr 0, Refund Constr 1.

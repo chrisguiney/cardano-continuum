@@ -47,6 +47,11 @@ type Unlock struct {
 	// reads as its validity range's lower bound. Zero leaves it open:
 	// Apollo writes no validity start of 0, so slot 0 cannot be a bound.
 	From uint64
+	// Rest is lovelace of Locked paid back to Script with RestDatum
+	// inline: what a disbursement draw leaves locked. Zero pays nothing
+	// back.
+	Rest      uint64
+	RestDatum common.Datum
 }
 
 // Mint mints Quantity of Name under Policy into the change output; a
@@ -117,6 +122,9 @@ func (f Plutus) unlockSpec(u Unlock, budget *common.ExUnits) (spec, error) {
 			}
 			if u.From > 0 {
 				a = a.SetValidityStart(int64(u.From))
+			}
+			if u.Rest > 0 {
+				a = a.PayToContract(u.Script.Address(f.b.params.NetworkID), &u.RestDatum, int64(u.Rest))
 			}
 			return a.AttachScript(u.Script.Witness()).CollectFrom(u.Locked, u.Redeemer, eu).AddCollateral(col).SetCollateralAmount(collateralAmount), nil
 		},

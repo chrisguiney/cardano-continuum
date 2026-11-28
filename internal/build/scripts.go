@@ -43,7 +43,15 @@ var (
 	AlwaysSucceeds = mustValidator("always_succeeds")
 	// FreeMint is a minting policy anyone can mint or burn under.
 	FreeMint = mustValidator("free_mint")
+	// Disbursement is the one disbursement instance (nonce 0): treasury
+	// awards locked for milestone draws.
+	Disbursement = mustInstance("disbursement", 0)
 )
+
+// DisburseContract is the contract index Contract and Template give the
+// Disbursement instance: far above any deployment a run makes, so the
+// deployed contracts 0, 1, 2, ... never reach it.
+const DisburseContract uint64 = 1 << 32
 
 // known maps every script the builder has made, by hash, so a script run
 // names its validator and instance (Lookup).
@@ -70,6 +78,20 @@ func mustValidator(name string) Script {
 	}
 
 	s, err := fromValidator(v, name)
+	if err != nil {
+		panic("build: " + err.Error())
+	}
+	return remember(s)
+}
+
+// mustInstance is registry validator name applied to nonce.
+func mustInstance(name string, nonce int64) Script {
+	v, ok := contract.Named(name)
+	if !ok {
+		panic("build: no validator " + name + " in the contract registry")
+	}
+
+	s, err := fromValidator(v, name, data.NewInteger(big.NewInt(nonce)))
 	if err != nil {
 		panic("build: " + err.Error())
 	}
@@ -148,6 +170,8 @@ var contracts sync.Map // uint64 -> Script
 // beyond the first calls both.
 func Template(i uint64) string {
 	switch {
+	case i == DisburseContract:
+		return Disbursement.Validator
 	case i == 0:
 		return AlwaysSucceeds.Validator
 	case i%2 == 1:
@@ -156,12 +180,16 @@ func Template(i uint64) string {
 	return "escrow"
 }
 
-// Contract returns deployed contract i: AlwaysSucceeds for 0, and for
+// Contract returns deployed contract i: AlwaysSucceeds for 0,
+// Disbursement for DisburseContract, and for
 // every other index its template applied to the nonce i, so each has its
 // own hash and address. A run deploys contracts 0, 1, 2, ... in order.
 func Contract(i uint64) Script {
-	if i == 0 {
+	switch i {
+	case 0:
 		return AlwaysSucceeds
+	case DisburseContract:
+		return Disbursement
 	}
 
 	if s, ok := contracts.Load(i); ok {

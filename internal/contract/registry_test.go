@@ -96,6 +96,7 @@ func TestRegistryEntries(t *testing.T) {
 	t.Parallel()
 	want := map[string][]Purpose{
 		"always_succeeds": {Spend},
+		"disbursement":    {Spend},
 		"escrow":          {Spend},
 		"free_mint":       {Mint},
 		"vesting":         {Spend},

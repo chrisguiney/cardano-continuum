@@ -68,6 +68,17 @@ type Proposal struct {
 	Change *ParamChange
 	// Fork is what a hard fork proposes; it is required for one.
 	Fork *HardFork
+	// Payees are what a treasury withdrawal pays; without any it asks
+	// treasuryAsk for the wallet's own reward account.
+	Payees []Payee
+}
+
+// Payee is one reward account a treasury withdrawal pays, and how much.
+type Payee struct {
+	// To is the reward (stake) address.
+	To common.Address
+	// Amount is the lovelace.
+	Amount uint64
 }
 
 // HardFork is a hard fork's move and the hard fork it follows: the last
@@ -109,8 +120,8 @@ const (
 	ActionHardFork            ActionType = "hard_fork_initiation"
 )
 
-// treasuryAsk is what a treasury withdrawal proposal asks for. The
-// proposal is never enacted, so the amount only has to be positive
+// treasuryAsk is what a treasury withdrawal proposal without payees asks
+// for its proposer: the amount only has to be positive
 // (ZeroTreasuryWithdrawals rejects zero).
 const treasuryAsk = 1_000_000
 
@@ -248,9 +259,17 @@ func (f Gov) govAction(w keys.Wallet, p Proposal) (conway.ConwayGovAction, error
 			Type: uint(common.GovActionTypeUpdateCommittee), CredEpochs: map[*common.Credential]uint64{}, Quorum: cbor.Rat{Rat: big.NewRat(2, 3)},
 		}}, nil
 	case ActionTreasuryWithdrawals:
-		to := w.StakeAddress()
+		pays := map[*common.Address]uint64{}
+		for _, py := range p.Payees {
+			to := py.To
+			pays[&to] += py.Amount
+		}
+		if len(pays) == 0 {
+			to := w.StakeAddress()
+			pays[&to] = treasuryAsk
+		}
 		return conway.ConwayGovAction{Type: uint(common.GovActionTypeTreasuryWithdrawal), Action: &common.TreasuryWithdrawalGovAction{
-			Type: uint(common.GovActionTypeTreasuryWithdrawal), Withdrawals: map[*common.Address]uint64{&to: treasuryAsk},
+			Type: uint(common.GovActionTypeTreasuryWithdrawal), Withdrawals: pays,
 		}}, nil
 	case ActionNoConfidence:
 		return conway.ConwayGovAction{Type: uint(common.GovActionTypeNoConfidence), Action: &common.NoConfidenceGovAction{

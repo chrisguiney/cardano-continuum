@@ -24,3 +24,14 @@ pub type EscrowAction {
   Release
   Refund
 }
+
+/// A treasury award drawn down in milestones: from `next` (POSIX ms) the
+/// beneficiary draws `tranche` lovelace with the administrator's
+/// signature, and the rest stays locked until `next + period`.
+pub type DisbursementDatum {
+  beneficiary: VerificationKeyHash,
+  administrator: VerificationKeyHash,
+  next: Int,
+  period: Int,
+  tranche: Int,
+}

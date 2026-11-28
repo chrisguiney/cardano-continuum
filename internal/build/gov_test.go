@@ -298,3 +298,32 @@ func TestProposeHardFork(t *testing.T) {
 		t.Fatal("a hard fork with no version built")
 	}
 }
+
+// A treasury withdrawal pays the payees it is given, each its amount;
+// without any it asks for the proposer's own reward account.
+func TestProposeTreasuryPayees(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.registerStake()
+	bob := h.store.Wallet(2)
+	payees := []Payee{{To: h.alice.StakeAddress(), Amount: 7_000_000}, {To: bob.StakeAddress(), Amount: 3_000_000}}
+	got, err := h.b.Gov().Propose(ctx, h.alice, Proposal{Spend: h.spend(), Action: ActionTreasuryWithdrawals, Payees: payees})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := conway.NewConwayTransactionFromCbor(got.Tx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tw, ok := tx.ProposalProcedures()[0].GovAction().(*common.TreasuryWithdrawalGovAction)
+	if !ok || len(tw.Withdrawals) != 2 {
+		t.Fatalf("action %+v", tx.ProposalProcedures()[0].GovAction())
+	}
+	paid := map[string]uint64{}
+	for a, n := range tw.Withdrawals {
+		paid[a.String()] = n
+	}
+	if paid[h.alice.StakeAddress().String()] != 7_000_000 || paid[bob.StakeAddress().String()] != 3_000_000 {
+		t.Fatalf("paid %v", paid)
+	}
+}

@@ -214,3 +214,107 @@ func TestRunsReportAnUnderBudget(t *testing.T) {
 		t.Fatalf("runs %+v", runs)
 	}
 }
+
+// disbursementLock locks amount at the disbursement contract for alice,
+// overseen by admin, drawable from next in tranches.
+func disbursementLock(h *harness, amount uint64, admin keys.Wallet, next int64, tranche int64) (common.Utxo, contract.DisbursementDatum) {
+	h.t.Helper()
+	me, ad := h.alice.PaymentKeyHash(), admin.PaymentKeyHash()
+	d := contract.DisbursementDatum{Beneficiary: me[:], Administrator: ad[:], Next: next, Period: 10_000, Tranche: tranche}
+	got, err := h.b.Plutus().Lock(ctx, h.alice, Lock{Spend: h.spend(), Script: Disbursement, Amount: amount, Datum: common.Datum{Data: d.Data()}})
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	h.commit(got)
+	for _, u := range h.chain.UtxosAt(Disbursement.Address(0)) {
+		if u.Id.Id() == got.ID {
+			return u, d
+		}
+	}
+	h.t.Fatal("disbursement output not found")
+	return common.Utxo{}, d
+}
+
+// The beneficiary draws a tranche with the administrator's signature,
+// paying the rest back with the next milestone, then the last tranche
+// with nothing paid back; a draw without moving the milestone, or before
+// it, does not build.
+func TestDisbursementDraws(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	admin := h.store.Wallet(2)
+	co := []keys.Signer{admin.PaymentSigner()}
+	me := []common.Blake2b224{common.Blake2b224(h.alice.PaymentKeyHash())}
+	// Slot 0 cannot be a validity start (Unlock.From).
+	if err := h.chain.AdvanceTo(10); err != nil {
+		t.Fatal(err)
+	}
+	now := h.chain.Slot()
+	locked, d := disbursementLock(h, 12_000_000, admin, h.b.SlotTime(now), 6_000_000)
+
+	next := d
+	next.Next += d.Period
+	early := Unlock{Spend: h.spend(), Script: Disbursement, Locked: locked, Redeemer: unitDatum(), Signers: me, CoSigners: co, From: now - 1,
+		Rest: 6_000_000, RestDatum: common.Datum{Data: next.Data()}}
+	if _, err := h.b.Plutus().Unlock(ctx, h.alice, early); err == nil {
+		t.Fatal("built a draw before its milestone")
+	}
+	stale := Unlock{Spend: h.spend(), Script: Disbursement, Locked: locked, Redeemer: unitDatum(), Signers: me, CoSigners: co, From: now,
+		Rest: 6_000_000, RestDatum: common.Datum{Data: d.Data()}}
+	if _, err := h.b.Plutus().Unlock(ctx, h.alice, stale); err == nil {
+		t.Fatal("built a draw that leaves the milestone where it was")
+	}
+
+	draw := Unlock{Spend: h.spend(), Script: Disbursement, Locked: locked, Redeemer: unitDatum(), Signers: me, CoSigners: co, From: now,
+		Rest: 6_000_000, RestDatum: common.Datum{Data: next.Data()}}
+	got, err := h.b.Plutus().Unlock(ctx, h.alice, draw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.commit(got)
+
+	rest := h.chain.UtxosAt(Disbursement.Address(0))
+	if len(rest) != 1 || rest[0].Output.Amount().Uint64() != 6_000_000 {
+		t.Fatalf("after the first draw %d outputs at the contract", len(rest))
+	}
+	if err := h.chain.AdvanceTo(h.chain.Slot() + 12); err != nil {
+		t.Fatal(err)
+	}
+	last := Unlock{Spend: h.spend(), Script: Disbursement, Locked: rest[0], Redeemer: unitDatum(), Signers: me, CoSigners: co, From: h.chain.Slot()}
+	got, err = h.b.Plutus().Unlock(ctx, h.alice, last)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.commit(got)
+	if n := len(h.chain.UtxosAt(Disbursement.Address(0))); n != 0 {
+		t.Fatalf("%d outputs left after the last draw", n)
+	}
+}
+
+// A withdrawal can pay the reward straight into a script output: the
+// award lands at the disbursement contract with its datum, and the
+// change pays only the fee.
+func TestWithdrawalIntoAScript(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	me := h.alice.PaymentKeyHash()
+	d := contract.DisbursementDatum{Beneficiary: me[:], Administrator: me[:], Next: 1, Period: 1, Tranche: 1}
+	sp := h.spend()
+	wd := Withdrawal{Spend: sp, Amount: 50_000_000, Into: &Disbursement, Datum: common.Datum{Data: d.Data()}}
+	got, err := h.b.Stake().Withdraw(ctx, h.alice, wd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx := h.check(got, sp.Inputs, want{signers: []keys.Credential{h.alice.PaymentKeyHash(), h.alice.StakeKeyHash()}},
+		func() (Built, error) { return h.b.Stake().Withdraw(ctx, h.alice, wd) })
+
+	var at int
+	for _, o := range tx.Outputs() {
+		if o.Address().String() == Disbursement.Address(0).String() && o.Amount().Uint64() == 50_000_000 && o.Datum() != nil {
+			at++
+		}
+	}
+	if at != 1 {
+		t.Fatalf("%d award outputs at the disbursement contract", at)
+	}
+}

@@ -34,6 +34,11 @@ type VoteDelegation struct {
 type Withdrawal struct {
 	Spend
 	Amount uint64
+	// Into is a script the withdrawn lovelace is paid to, with Datum
+	// inline, instead of the change: a treasury award locked for
+	// milestone draws. Nil pays the change.
+	Into  *Script
+	Datum common.Datum
 }
 
 func stakeCred(w keys.Wallet) common.Credential {
@@ -101,7 +106,11 @@ func (f Stake) Withdraw(ctx context.Context, w keys.Wallet, wd Withdrawal) (Buil
 	return f.b.finish(ctx, w, spec{
 		sp: wd.Spend, signers: []keys.Signer{w.StakeSigner()},
 		add: func(a *apollo.Apollo) (*apollo.Apollo, error) {
-			return a.AddWithdrawal(w.StakeAddress(), wd.Amount, nil, nil), nil
+			a = a.AddWithdrawal(w.StakeAddress(), wd.Amount, nil, nil)
+			if wd.Into != nil {
+				a = a.PayToContract(wd.Into.Address(f.b.params.NetworkID), &wd.Datum, int64(wd.Amount))
+			}
+			return a, nil
 		},
 	})
 }

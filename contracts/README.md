@@ -12,6 +12,7 @@ Aiken validators the engine deploys and calls. The compiled blueprint
 | `always_succeeds` | spend | nothing | contract 0, the shared lock adversaries race for |
 | `vesting(nonce)` | spend | the datum's owner signs, and the validity range starts at or after `lock_until` | odd contracts (1, 3, ...) |
 | `escrow(nonce)` | spend | the depositor signs; Release: an output pays the beneficiary at least the escrowed lovelace. Refund: the validity range starts at or after the deadline | even contracts (2, 4, ...): a script user locks for another script user, who submits the release with the depositor's signature; a disputed escrow (one in four) is refunded from its deadline |
+| `disbursement(nonce)` | spend | the beneficiary and the administrator sign, the validity range starts at or after `next`, one award is spent, and unless at most one `tranche` is left an output pays the rest back with `next` moved on by `period` | the one instance `build.Disbursement`: a treasury recipient that draws in milestones withdraws its award straight into it, and draws a tranche each `period` with the governance administrator's signature |
 | `free_mint` | mint | nothing | every `mint` and `burn` |
 
 Datum and redeemer types are in `templates/lib/continuum/types.ak`; their
