@@ -224,7 +224,54 @@ export interface Decision {
   scores?: Score[];
   // clock is the intent kind whose fitted clock fired, for pools and DReps.
   clock?: string;
+  // position is the market position the scores read, for a market wallet.
+  position?: Position;
   body?: unknown;
+}
+/** MarketHolding is a wallet's currencies, cost basis per ADA in its primary currency, and last exchange. */
+export interface MarketHolding {
+  primary: string;
+  extra?: string[];
+  basis: number;
+  units: number;
+  venue?: string;
+}
+/** Position is the market position a decision's scores read. */
+export interface Position {
+  currency: string;
+  gain: number;
+  trend: number;
+}
+/** MarketPoint is one Quote record: ADA/USD, each currency's mid, each venue's bid and ask by "exchange/currency". */
+export interface MarketPoint {
+  at: number;
+  ada: number;
+  mids: Record<string, number>;
+  venues: Record<string, [number, number]>;
+}
+export interface MarketFlow {
+  exchange: string;
+  currency: string;
+  side: string;
+  trades: number;
+  lovelace: number;
+  fiat: number;
+}
+export interface Drawdown {
+  peak_at: number;
+  trough_at: number;
+  high: number;
+  low: number;
+  depth: number;
+  hodlers: number;
+  sellers: number;
+}
+/** MarketsView is /api/markets. */
+export interface MarketsView {
+  quotes: MarketPoint[] | null;
+  flows: MarketFlow[] | null;
+  births: Record<string, number>;
+  drawdown: Drawdown;
 }
 export interface Receipt {
   seq: number;
@@ -255,7 +302,9 @@ export interface ActorDetail {
   holdings: { settled_lovelace: number; reserved_lovelace: number; unconfirmed_lovelace: number; utxos: number; in_flight: number; tokens: Token[] };
   delegation: { stake_registered: boolean; pool?: string; pool_actor?: number; drep?: string };
   lifecycle: { state: string; born_ms: number; changed_ms: number; frustration: number; hazard: number };
-  traits: { competence: number; care: number; patience: number; learning_rate: number };
+  traits: { competence: number; care: number; patience: number; learning_rate: number; loss_aversion?: number };
+  /** market is a market wallet's currencies and cost basis. */
+  market?: MarketHolding;
   activity: {
     intents: number; submitted: number; confirmed: number; refused: number; released: number; gave_up: number; retries: number;
     last_ms: number; lost_lovelace: number; recent: Decision[];

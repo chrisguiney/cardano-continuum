@@ -14,6 +14,7 @@ const BASE: NavItem[] = [
 
 const TAIL: NavItem[] = [
   ["/governance", "Governance"],
+  ["/markets", "Markets"],
   ["/decisions", "Decisions"],
   ["/findings", "Findings"],
   ["/adversaries", "Adversaries"],

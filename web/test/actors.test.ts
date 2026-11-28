@@ -55,6 +55,17 @@ describe("actor detail sections", () => {
   it("has the sections in reading order", () => {
     expect(detailSections(detail).map((s) => s.id)).toEqual(["identity", "wallet", "holdings", "delegation", "lifecycle", "traits", "activity", "findings"]);
   });
+  it("shows a market wallet's currencies and cost basis after its holdings", () => {
+    const m = { ...detail, traits: { ...detail.traits, loss_aversion: 0.7 }, market: { primary: "EUR", extra: ["USD"], basis: 0.52, units: 100_000_000, venue: "north" } };
+    const s = detailSections(m);
+    expect(s.map((x) => x.id).slice(0, 4)).toEqual(["identity", "wallet", "holdings", "market"]);
+    const rows = Object.fromEntries(s.find((x) => x.id === "market")!.rows.map((r) => [r.label, r.value]));
+    expect(rows["Primary currency"]).toBe("EUR");
+    expect(rows["Other currencies"]).toBe("USD");
+    expect(rows["Cost basis per ADA"]).toBe("0.5200 EUR");
+    expect(rows["Last exchange"]).toBe("north");
+    expect(s.find((x) => x.id === "traits")!.rows.map((r) => r.label)).toContain("Loss aversion");
+  });
   it("marks addresses and ids copyable and never invents secrets", () => {
     const wallet = detailSections(detail).find((s) => s.id === "wallet")!;
     const copyable = wallet.rows.filter((r) => r.copy).map((r) => r.value);

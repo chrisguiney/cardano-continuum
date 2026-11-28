@@ -1,12 +1,12 @@
 export type Route =
-  | { name: "overview" | "actors" | "pools" | "nodes" | "governance" | "decisions" | "findings" | "adversaries" | "controls" | "help" | "explorer" | "notfound" }
+  | { name: "overview" | "actors" | "pools" | "nodes" | "governance" | "markets" | "decisions" | "findings" | "adversaries" | "controls" | "help" | "explorer" | "notfound" }
   | { name: "pool" | "node"; key: string }
   | { name: "actor"; id: number }
   | { name: "govaction"; tx: string; index: number }
   | { name: "xblock" | "xtx" | "xaddr" | "xpool"; key: string }
   | { name: "xepoch"; n: number };
 
-const simple = new Set(["actors", "pools", "nodes", "governance", "decisions", "findings", "adversaries", "controls", "help", "explorer"]);
+const simple = new Set(["actors", "pools", "nodes", "governance", "markets", "decisions", "findings", "adversaries", "controls", "help", "explorer"]);
 
 const reHash = /^[0-9a-fA-F]{64}$/;
 const reKey = /^(?:[0-9a-fA-F]{64}|\d{1,18})$/;

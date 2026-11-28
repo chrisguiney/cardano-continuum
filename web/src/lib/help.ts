@@ -58,6 +58,7 @@ export const VIEW_BLURB: Record<string, string> = {
   actor: "One participant in full: wallet, holdings, delegation, behaviour, findings and timeline.",
   pools: "The stake pools registered on the chain: who operates each, its terms, delegators, blocks and votes, and which node (if any) runs its keys.",
   nodes: "The node processes the run manages: which program and tier each runs, whether they agree on the tip, and which stake pool's keys a forging node holds.",
+  markets: "The ADA market the wallets trade in: each currency's rate, each exchange's bid, the trades that settled, the wallets born per currency, and who sold or held in the largest drawdown.",
   governance: "Governance proposals on the chain, how DReps, stake pools and the committee voted on each, and a live feed of vote decisions.",
   decisions: "Live feed of what actors decide to do, with the scores that explain each choice.",
   findings: "Disagreements and rule breaks the checkers found between node programs and expected results.",

@@ -10,7 +10,7 @@ Non-visual code.
 - Routing: `router.ts` (`parseRoute` validates each route's argument), `nav.ts`.
 - Per-view logic: `actorcols.ts`, `actordetail.ts`, `adversaries.ts`,
   `chance.ts`, `explorer.ts`, `findings.ts`, `forks.ts`, `governance.ts`,
-  `govdetail.ts`.
+  `govdetail.ts`, `markets.ts`.
 - Help text: `help.ts`, `advhelp.ts`, `govhelp.ts` (field help and glossaries).
 - Utilities: `format.ts`, `colors.ts`, `layout.ts`, `clipboard.ts`, `utils.ts`
   (`cn`, which shadcn/ui components import from `@/lib/utils`).

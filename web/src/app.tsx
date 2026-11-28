@@ -24,6 +24,7 @@ const ExTx = lazy(() => import("./views/ExTx").then((m) => ({ default: m.ExTx })
 const Explorer = lazy(() => import("./views/Explorer").then((m) => ({ default: m.Explorer })));
 const Findings = lazy(() => import("./views/Findings").then((m) => ({ default: m.Findings })));
 const GovAction = lazy(() => import("./views/GovAction").then((m) => ({ default: m.GovAction })));
+const Markets = lazy(() => import("./views/Markets").then((m) => ({ default: m.Markets })));
 const Governance = lazy(() => import("./views/Governance").then((m) => ({ default: m.Governance })));
 const Help = lazy(() => import("./views/Help").then((m) => ({ default: m.Help })));
 const Nodes = lazy(() => import("./views/Nodes").then((m) => ({ default: m.Nodes })));
@@ -125,6 +126,7 @@ function Shell() {
           {route.name === "pools" && <StakePools />}
           {route.name === "pool" && <StakePools id={route.key} />}
           {route.name === "governance" && <Governance />}
+          {route.name === "markets" && <Markets />}
           {route.name === "govaction" && <GovAction tx={route.tx} index={route.index} />}
           {route.name === "decisions" && <Decisions />}
           {route.name === "findings" && <Findings />}

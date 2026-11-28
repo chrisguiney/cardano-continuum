@@ -78,6 +78,7 @@ export function detailSections(d: ActorDetail): Section[] {
         { label: "Care", value: pct(d.traits.care) },
         { label: "Patience", value: pct(d.traits.patience) },
         { label: "Learning rate", value: pct(d.traits.learning_rate) },
+        ...(d.market ? [{ label: "Loss aversion", value: pct(d.traits.loss_aversion ?? 0) }] : []),
       ],
     },
     {
@@ -106,6 +107,20 @@ export function detailSections(d: ActorDetail): Section[] {
         { label: "Cost spent", value: ada(d.adversary.spent) },
         { label: "Ceiling per epoch", value: ada(d.adversary.ceiling) },
         { label: "Success metric", value: d.adversary.metric || "unset" },
+      ],
+    });
+  }
+  if (d.market) {
+    const m = d.market;
+    out.splice(3, 0, {
+      id: "market", title: "Market",
+      note: "Cost basis is the average price paid per ADA in the primary currency, as of the last checkpoint.",
+      rows: [
+        { label: "Primary currency", value: m.primary },
+        { label: "Other currencies", value: m.extra?.length ? m.extra.join(", ") : none },
+        { label: "Cost basis per ADA", value: `${m.basis.toPrecision(4)} ${m.primary}` },
+        { label: "ADA the basis covers", value: ada(m.units) },
+        { label: "Last exchange", value: m.venue || none },
       ],
     });
   }
