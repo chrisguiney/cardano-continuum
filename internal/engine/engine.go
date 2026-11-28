@@ -154,7 +154,7 @@ func New(cfg Config) (*Engine, error) {
 	}
 	e.co.Births.Start(0)
 	e.in.Begin(0)
-	e.armFork(0)
+	armFork(e, 0)
 	e.jr.Drop() // genesis spawns are configuration, not decisions
 	return e, nil
 }
@@ -404,7 +404,7 @@ func (e *Engine) run(ctx context.Context, at sched.Time, ev clock.Event) error {
 	case clock.Deploy:
 		return e.in.Deploy(at)
 	case clock.Fork:
-		return e.forkStep(ctx, at)
+		return steer.ForkStep(ctx, at, e.cfg.HardFork, forkEnv{scenarioRoute{e}})
 	case clock.Quote:
 		e.co.Market.Quote(at)
 	}

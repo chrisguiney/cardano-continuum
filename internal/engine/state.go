@@ -59,7 +59,7 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 
 	// Between inputs the last Tick's time is the clock.
 	e.clk.Load(s.Now)
-	e.armFork(s.Now)
+	armFork(e, s.Now)
 	e.pc.Load(s.Market)
 	if err := e.in.Load(s.Contracts); err != nil {
 		return nil, err

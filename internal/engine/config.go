@@ -136,7 +136,7 @@ type Chain struct {
 	// zero means no bound.
 	Horizon uint64
 	// HardFork is the hard fork the network proposer proposes by itself
-	// (forkauto.go); the zero value schedules none. It is part of the log
+	// (internal/engine/internal/steer ForkStep); the zero value schedules none. It is part of the log
 	// header.
 	HardFork protocol.Schedule
 }

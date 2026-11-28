@@ -257,3 +257,48 @@ func (r steerRing) Eager(id population.ActorID) float64 { return r.e.co.Rec(id).
 
 // Dark implements steer.Roster.
 func (r steerRing) Dark(id population.ActorID) bool { return r.e.fl.Dark(id) }
+
+// armFork schedules the run's next fork step at the first epoch boundary
+// after from; it does nothing without a schedule. New arms from time zero
+// and Restore from the restored clock, so the step needs no snapshot field.
+func armFork(e *Engine, from sched.Time) {
+	if e.cfg.HardFork.On() {
+		evsched{&e.clk}.Fork(e.cfg.Slots.NextEpochStart(from))
+	}
+}
+
+// forkEnv is the engine's side of a fork step (steer.ForkEnv): the chain
+// view, and the hard_fork and hot_keys scenarios scenarioRoute carries.
+type forkEnv struct{ scenarioRoute }
+
+// Epoch implements steer.ForkEnv.
+func (f forkEnv) Epoch() uint64 { return f.e.win.View().Epoch() }
+
+// Version implements steer.ForkEnv.
+func (f forkEnv) Version() protocol.Version {
+	v := f.e.win.View()
+	return v.VersionAt(v.Epoch())
+}
+
+// CommitteeReady implements steer.ForkEnv.
+func (f forkEnv) CommitteeReady() bool {
+	for i := range f.e.cfg.Committee {
+		if !f.e.win.View().HotAuthorized(i) {
+			return false
+		}
+	}
+	return true
+}
+
+// PoolsReady implements steer.ForkEnv.
+func (f forkEnv) PoolsReady() bool {
+	for _, p := range f.e.win.View().Pools() {
+		if p.Stake > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// Arm implements steer.ForkEnv.
+func (f forkEnv) Arm(at sched.Time) { armFork(f.e, at) }

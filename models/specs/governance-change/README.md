@@ -315,8 +315,8 @@ holds the ledger side to the same rules.
 
 ### The run's own schedule
 
-A run proposes its hard fork by itself (`internal/engine/forkauto.go`,
-`Config.HardFork`): at each epoch boundary the network proposer authorises
+A run proposes its hard fork by itself (`steer.ForkStep` in
+`internal/engine/internal/steer/fork.go`, `Config.HardFork`): at each epoch boundary the network proposer authorises
 the committee's hot keys and, from the scheduled epoch on and once pools hold
 stake, calls `scenarioRoute.HardFork`. That is `ProposeFork`, the same
 action with the same guard, so rule 3 covers it (`HardForkNoPendingGuardBug`
@@ -327,7 +327,7 @@ second `ProposeFork` once nothing is open, in flight or pending, which
 `MaxForks = 2` and `HardForkLife2` already reach. So no action, variable or
 config was added. The progress claim, that the scheduled fork is eventually
 enacted, depends on how the voters vote and is not modelled; it is tested in
-`TestScheduledHardForkNeedsNoInject` (`internal/engine/autofork_test.go`).
+`TestScheduledHardForkNeedsNoInject` (`internal/engine/gov_test.go`).
 
 ### Code map
 
