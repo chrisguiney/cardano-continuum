@@ -129,6 +129,8 @@ type Submitted struct {
 	// Validator names the script a lock pays to or a script call runs
 	// ("vesting#3", "free_mint"); empty for a transaction without one.
 	Validator string `json:"validator,omitempty"`
+	// Call is what a lock or unlock does with its contract (Args.Call).
+	Call string `json:"call,omitempty"`
 	// Scripts are the attempt's script runs, one per redeemer, as the
 	// engine's evaluation of the submitted bytes gave them.
 	Scripts []contract.Run `json:"scripts,omitempty"`

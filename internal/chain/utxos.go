@@ -57,6 +57,20 @@ func (s *utxos) UtxosAt(a common.Address) []common.Utxo {
 	return out
 }
 
+// UtxosOf returns the tracked outputs the actor owns, sorted by
+// reference. It sorts only the actor's outputs, so it is cheaper than
+// UtxosAt for an owner of few outputs among many.
+func (s *utxos) UtxosOf(id population.ActorID) []common.Utxo {
+	var out []common.Utxo
+	for r, o := range s.owner {
+		if o == id {
+			out = append(out, s.utxo[r])
+		}
+	}
+	slices.SortFunc(out, func(a, b common.Utxo) int { return RefOf(a.Id).Compare(RefOf(b.Id)) })
+	return out
+}
+
 // Balance is the lovelace in the actor's tracked outputs.
 func (s *utxos) Balance(id population.ActorID) profile.Lovelace {
 	return profile.Lovelace(s.balance[id])

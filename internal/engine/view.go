@@ -35,6 +35,7 @@ var (
 	_ agenda.Deposits   = view{}
 	_ agenda.Committee  = view{}
 	_ agenda.Trading    = view{}
+	_ agenda.Positions  = view{}
 	_ adversary.View    = view{}
 )
 
@@ -75,6 +76,9 @@ func (v view) Position(id population.ActorID) (agenda.Position, bool) {
 	pos.Dry = ok && v.e.co.Desk.Dry(id, now, func(x population.ActorID) uint64 { return v.e.pay.Spendable(uint64(x)) }, intent.MinTrade+feeHeadroom)
 	return pos, ok
 }
+
+// Calls implements agenda.Positions.
+func (v view) Calls(id population.ActorID) string { return v.e.in.Calls(id) }
 
 // Burst implements agenda.Market.
 func (v view) Burst() float64 { return v.e.pc.Burst(v.e.clk.Now()) }

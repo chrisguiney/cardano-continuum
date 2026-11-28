@@ -1,12 +1,14 @@
 package build
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 
 	"github.com/chrisguiney/cardano-continuum/internal/contract"
+	"github.com/chrisguiney/cardano-continuum/internal/keys"
 )
 
 // The builder's scripts come from the Aiken registry: the same bytes and
@@ -112,30 +114,81 @@ func TestVestingClaim(t *testing.T) {
 	h.commit(got)
 }
 
-func TestEscrowReleaseAndRefund(t *testing.T) {
+// escrowLock locks amount at contract 2 from alice for beneficiary,
+// refundable from deadline.
+func (h *harness) escrowLock(amount uint64, beneficiary keys.Wallet, deadline int64) common.Utxo {
+	h.t.Helper()
+	c := Contract(2)
+	dep, ben := h.alice.PaymentKeyHash(), beneficiary.PaymentKeyHash()
+	d := contract.EscrowDatum{Depositor: dep[:], Beneficiary: ben[:], Deadline: deadline}
+	got, err := h.b.Plutus().Lock(ctx, h.alice, Lock{Spend: h.spend(), Script: c, Amount: amount, Datum: common.Datum{Data: d.Data()}})
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	h.commit(got)
+	for _, u := range h.chain.UtxosAt(c.Address(0)) {
+		if u.Id.Id() == got.ID {
+			return u
+		}
+	}
+	h.t.Fatal("escrow output not found")
+	return common.Utxo{}
+}
+
+// fund pays w amount from alice and returns w's spend.
+func (h *harness) fund(w keys.Wallet, amount uint64) Spend {
+	h.t.Helper()
+	got, err := h.b.Pay(ctx, h.alice, Payment{Inputs: h.spend().Inputs, TTL: h.chain.Slot() + 1000, To: w.Address(), Amount: amount})
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	h.commit(got)
+	return Spend{Inputs: h.chain.UtxosAt(w.Address()), TTL: h.chain.Slot() + 1000}
+}
+
+// Two parties: bob claims a release alice approves by co-signing; alice
+// takes back a deposit only from its deadline.
+func TestEscrowTwoParties(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	pkh := h.alice.PaymentKeyHash()
-	me := pkh[:]
-	for _, act := range []contract.EscrowAction{contract.Release, contract.Refund} {
-		c := Contract(2)
-		d := contract.EscrowDatum{Depositor: me, Beneficiary: me}
-		lock, err := h.b.Plutus().Lock(ctx, h.alice, Lock{Spend: h.spend(), Script: c, Amount: 5_000_000, Datum: common.Datum{Data: d.Data()}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		h.commit(lock)
-		locked := h.chain.UtxosAt(c.Address(0))[0]
+	bob := h.store.Wallet(2)
+	bobSpend := h.fund(bob, 40_000_000)
+	alice := h.alice.PaymentSigner()
+	release := common.Datum{Data: contract.Release.Data()}
 
-		sp := h.spend()
-		un := Unlock{Spend: sp, Script: c, Locked: locked, Redeemer: common.Datum{Data: act.Data()}, Signers: []common.Blake2b224{common.Blake2b224(me)}}
-		got, err := h.b.Plutus().Unlock(ctx, h.alice, un)
-		if err != nil {
-			t.Fatalf("%s: %v", act, err)
-		}
-		h.checkExUnits(got, append(append([]common.Utxo(nil), sp.Inputs...), locked))
-		h.commit(got)
+	locked := h.escrowLock(5_000_000, bob, h.b.SlotTime(h.chain.Slot()+1000))
+	alone := Unlock{Spend: bobSpend, Script: Contract(2), Locked: locked, Redeemer: release}
+	if _, err := h.b.Plutus().Unlock(ctx, bob, alone); err == nil {
+		t.Fatal("built a release the depositor does not sign")
 	}
+
+	claim := Unlock{Spend: bobSpend, Script: Contract(2), Locked: locked, Redeemer: release, CoSigners: []keys.Signer{alice}}
+	got, err := h.b.Plutus().Unlock(ctx, bob, claim)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.checkExUnits(got, append(append([]common.Utxo(nil), bobSpend.Inputs...), locked))
+	if !slices.Contains(got.Signers, alice.KeyHash()) {
+		t.Fatalf("release signers %x lack the depositor", got.Signers)
+	}
+	h.commit(got)
+
+	now := h.chain.Slot()
+	locked = h.escrowLock(5_000_000, bob, h.b.SlotTime(now+20))
+	refund := common.Datum{Data: contract.Refund.Data()}
+	me := []common.Blake2b224{common.Blake2b224(h.alice.PaymentKeyHash())}
+	early := Unlock{Spend: h.spend(), Script: Contract(2), Locked: locked, Redeemer: refund, Signers: me, From: now + 19}
+	if _, err := h.b.Plutus().Unlock(ctx, h.alice, early); err == nil {
+		t.Fatal("built a refund before the deadline")
+	}
+	if err := h.chain.AdvanceTo(now + 21); err != nil {
+		t.Fatal(err)
+	}
+	back, err := h.b.Plutus().Unlock(ctx, h.alice, Unlock{Spend: h.spend(), Script: Contract(2), Locked: locked, Redeemer: refund, Signers: me, From: now + 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.commit(back)
 }
 
 // A redeemer declaring fewer units than its script spends is a failed

@@ -13,7 +13,9 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/contract"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
+	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
@@ -109,7 +111,7 @@ func (ch *Chooser) Prepare(at sched.Time, a population.Actor, in agenda.Intent, 
 			return nil, "DRep not registered or retiring"
 		}
 	case profile.IntentScriptCall:
-		ch.prepareScript(a.ID, p, r)
+		ch.prepareScript(a, p, r)
 	case profile.IntentRetirePool:
 		p.Epoch = ch.spec.Slots.EpochAt(at) + 1
 	case profile.IntentWithdraw:
@@ -240,11 +242,66 @@ func (ch *Chooser) payee(a population.Actor, targets []population.ActorID, r *ra
 	return targets[r.IntN(len(targets))]
 }
 
-// prepareScript unlocks the actor's oldest claimable locked output not
-// already being unlocked, contract by contract, or locks a new one at a
-// contract drawn by usage (Contracts.pick). A vesting position not yet
-// due is not claimable, so its owner locks again instead of idling.
-func (ch *Chooser) prepareScript(id population.ActorID, p *wire.Pending, r *rand.Rand) {
+// prepareScript makes the call the actor's role allows on the oldest
+// locked output not already being unlocked (unlockable), or locks
+// a new one at a contract drawn by usage (Contracts.pick). A vesting
+// position not yet due, or an escrow paid to the actor that its depositor
+// disputes, offers no call, so the actor locks again instead of idling.
+// An escrow lock pays another script user (beneficiary).
+func (ch *Chooser) prepareScript(a population.Actor, p *wire.Pending, r *rand.Rand) {
+	if u, ok := ch.unlockable(a.ID); ok {
+		p.Kind, p.Locked, p.Amount, p.Contract, p.Call, p.To = UnlockKind, &u.ref, u.amount, u.contract, u.call, uint64(u.to)
+		return
+	}
+
+	p.Kind, p.Amount, p.Contract, p.Call = LockKind, lockAmount, ch.ct.pick(r), callLock
+	if build.Template(p.Contract) != "escrow" {
+		return
+	}
+
+	to, ok := ch.beneficiary(a, r)
+	if !ok {
+		// No other script user to pay: the shared lock instead.
+		p.Contract = 0
+		return
+	}
+	p.To = uint64(to)
+}
+
+// callPhrases describe each unlock call for an actor's why box.
+var callPhrases = map[string]string{
+	callClaim:   "claim a position of its own",
+	callRelease: "release an escrow paid to it",
+	callRefund:  "refund its escrow past the deadline",
+}
+
+// Calls describes the unlock a script call by actor id would make now,
+// empty when it would lock (agenda.Positions).
+func (ch *Chooser) Calls(id population.ActorID) string {
+	u, ok := ch.unlockable(id)
+	if !ok {
+		return ""
+	}
+	return callPhrases[u.call] + " at " + build.Contract(u.contract).Name
+}
+
+// unlock is a call an actor may make on a locked output.
+type unlock struct {
+	// ref is the locked output and amount its lovelace.
+	ref    wire.Ref
+	amount uint64
+	// contract is the contract it is locked at.
+	contract uint64
+	// call is what the actor does with it.
+	call string
+	// to is a release's depositor, who co-signs it; zero otherwise.
+	to population.ActorID
+}
+
+// unlockable is the first call actor id may make, contract by contract
+// and oldest output first, on an output no honest unlock in flight
+// spends.
+func (ch *Chooser) unlockable(id population.ActorID) (unlock, bool) {
 	busy := map[wire.Ref]bool{}
 	for q := range ch.env.Flight.All() {
 		// An honest actor knows its own unlocks, not an adversary's.
@@ -252,20 +309,74 @@ func (ch *Chooser) prepareScript(id population.ActorID, p *wire.Pending, r *rand
 			busy[*q.Locked] = true
 		}
 	}
-	owner := ch.env.Roster.Wallet(id).PaymentKeyHash()
-	now := ch.spec.Builder.SlotTime(ch.env.Chain.Tip().Slot)
+
+	// Every contract address is booked to the script owner, so one walk
+	// of its outputs, grouped by contract, finds them all.
+	at := map[common.Blake2b224][]common.Utxo{}
+	for _, u := range ch.env.Chain.View().UtxosOf(ch.spec.Script) {
+		h := u.Output.Address().PaymentKeyHash()
+		at[h] = append(at[h], u)
+	}
+
 	for i := range ch.ct.n {
-		template := build.Template(i)
-		for _, u := range ch.env.Chain.View().UtxosAt(build.Contract(i).Address(ch.spec.NetworkID)) {
+		for _, u := range at[build.Contract(i).Hash()] {
 			ref := wire.Ref{Tx: wire.TxID(u.Id.Id()), Index: u.Id.Index()}
-			if busy[ref] || !claimable(template, u.Output.Datum(), id, owner, now) {
+			if busy[ref] {
 				continue
 			}
-			p.Kind, p.Locked, p.Amount, p.Contract = UnlockKind, &ref, u.Output.Amount().Uint64(), uint64(i)
-			return
+
+			if c, ok := ch.callOn(id, i, u, ref); ok {
+				return c, true
+			}
 		}
 	}
-	p.Kind, p.Amount, p.Contract = LockKind, lockAmount, ch.ct.pick(r)
+	return unlock{}, false
+}
+
+// callOn is the call actor id may make on u, an output at contract i.
+func (ch *Chooser) callOn(id population.ActorID, i uint64, u common.Utxo, ref wire.Ref) (unlock, bool) {
+	owner := ch.env.Roster.Wallet(id).PaymentKeyHash()
+	now := ch.spec.Builder.SlotTime(ch.env.Chain.Tip().Slot)
+	call := callFor(build.Template(i), u.Output.Datum(), id, owner, now, approved(ref))
+	if call == "" {
+		return unlock{}, false
+	}
+
+	var dep population.ActorID
+	if call == callRelease {
+		e, _ := contract.ParseEscrowDatum(u.Output.Datum().Data)
+		var ok bool
+		if dep, ok = ch.env.Roster.Holder(keys.Credential(e.Depositor)); !ok {
+			return unlock{}, false
+		}
+	}
+	return unlock{ref: ref, amount: u.Output.Amount().Uint64(), contract: i, call: call, to: dep}, true
+}
+
+// beneficiary picks whom an escrow of actor a pays: another script user
+// (a profile that makes script calls, so it will claim), not an adversary
+// and not abandoned, chosen as a payee is (payee).
+func (ch *Chooser) beneficiary(a population.Actor, r *rand.Rand) (population.ActorID, bool) {
+	var users []population.ActorID
+	for _, id := range ch.env.Roster.IDs() {
+		if id == a.ID || ch.env.Spend.Adversary(id) || !scriptUser(ch.env.Roster.Profile(id)) {
+			continue
+		}
+
+		if t, _ := ch.env.Roster.Get(id); t.State != population.Abandoned {
+			users = append(users, id)
+		}
+	}
+
+	if len(users) == 0 {
+		return 0, false
+	}
+	return ch.payee(a, users, r), true
+}
+
+// scriptUser reports a profile that makes script calls.
+func scriptUser(p *profile.Profile) bool {
+	return p != nil && (p.Weights[profile.IntentScriptCall] > 0 || p.Rates.Base[profile.IntentScriptCall] > 0)
 }
 
 // tokens is the quantity of the mint token the actor holds at the tip.

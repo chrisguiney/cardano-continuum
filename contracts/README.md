@@ -11,7 +11,7 @@ Aiken validators the engine deploys and calls. The compiled blueprint
 | --- | --- | --- | --- |
 | `always_succeeds` | spend | nothing | contract 0, the shared lock adversaries race for |
 | `vesting(nonce)` | spend | the datum's owner signs, and the validity range starts at or after `lock_until` | odd contracts (1, 3, ...) |
-| `escrow(nonce)` | spend | Release: depositor signs and an output pays the beneficiary at least the escrowed lovelace. Refund: beneficiary signs | even contracts (2, 4, ...) |
+| `escrow(nonce)` | spend | the depositor signs; Release: an output pays the beneficiary at least the escrowed lovelace. Refund: the validity range starts at or after the deadline | even contracts (2, 4, ...): a script user locks for another script user, who submits the release with the depositor's signature; a disputed escrow (one in four) is refunded from its deadline |
 | `free_mint` | mint | nothing | every `mint` and `burn` |
 
 Datum and redeemer types are in `templates/lib/continuum/types.ak`; their
@@ -44,6 +44,10 @@ library by commit (`dfdf5ffc`, tag v4.0.0, the version v1.1.24 scaffolds).
 arm64, Linux x86_64 or arm64) into `.tools/aiken/`, refuses a checksum
 mismatch, and checks the binary's version. An `aiken` on `PATH` is never
 used.
+
+`aiken check` runs the unit tests beside each validator and property tests
+(`prop_*`) whose inputs come from `aiken-lang/fuzz`, pinned by commit in
+`templates/aiken.toml`; validators never import it.
 
 ## Building
 

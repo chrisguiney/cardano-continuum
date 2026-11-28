@@ -3,6 +3,7 @@ package agenda
 import (
 	"bytes"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/chrisguiney/cardano-continuum/internal/population"
@@ -117,6 +118,36 @@ func TestDappCallsScriptsAtBaseline(t *testing.T) {
 	if v := value(poor, profile.IntentScriptCall); v != 0 {
 		t.Errorf("script call below its cost scored %v", v)
 	}
+}
+
+// positioned is a view whose actor may call locked script outputs.
+type positioned struct {
+	fakeView
+	calls string
+}
+
+func (p positioned) Calls(population.ActorID) string { return p.calls }
+
+// The why box says what a script call would do: unlock what the actor's
+// role allows, else lock. The score stays the standing one, so the fitted
+// weights still set the mix.
+func TestDappWhyNamesTheCall(t *testing.T) {
+	v := fakeView{balance: 100 * ada}
+	plain := mustFor(t, "dapp").Score(actor(profile.Wallet, 0), v)
+	held := mustFor(t, "dapp").Score(actor(profile.Wallet, 0), positioned{fakeView: v, calls: "release an escrow paid to it"})
+	if value(plain, profile.IntentScriptCall) != value(held, profile.IntentScriptCall) {
+		t.Fatal("a held position changed the script call's score")
+	}
+	if w := why(held, profile.IntentScriptCall); !strings.Contains(w, "release an escrow paid to it") {
+		t.Fatalf("why %q does not name the call", w)
+	}
+	if w := why(positioned{fakeView: v}.scores(t), profile.IntentScriptCall); !strings.Contains(w, "locks") {
+		t.Fatalf("why %q without a position does not say it locks", w)
+	}
+}
+
+func (p positioned) scores(t *testing.T) []Score {
+	return mustFor(t, "dapp").Score(actor(profile.Wallet, 0), p)
 }
 
 func TestIntentsUnknown(t *testing.T) {

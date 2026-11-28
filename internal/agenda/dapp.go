@@ -20,7 +20,18 @@ func dappScores(a population.Actor, v View) []Score {
 	return append([]Score{
 		{Kind: Idle, Value: 1, Why: "script user waits"},
 		pick(profile.IntentSend, dappScore, bal, "pays"),
-		pick(profile.IntentScriptCall, dappScore, bal, "locks or unlocks a script output"),
+		pick(profile.IntentScriptCall, dappScore, bal, scriptWhy(a, v)),
 		pick(profile.IntentMint, dappScore, bal, "mints"),
 	}, trade(a, v, bal, false)...)
+}
+
+// scriptWhy says what a script call does: the unlock the actor's position
+// allows (Positions), else a lock at a contract.
+func scriptWhy(a population.Actor, v View) string {
+	if p, ok := v.(Positions); ok {
+		if c := p.Calls(a.ID); c != "" {
+			return "unlocks: " + c
+		}
+	}
+	return "locks a script output; nothing of its own to unlock"
 }

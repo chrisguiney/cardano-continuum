@@ -45,12 +45,17 @@ func ParseEscrowAction(d data.PlutusData) (EscrowAction, bool) {
 
 // EscrowDatum is the blueprint type continuum/types/EscrowDatum.
 //
-// An escrow: `depositor` releases to `beneficiary`, who may refund.
+// An escrow between two parties: `depositor` pays `beneficiary` once it
+//
+//	approves (Release), or takes the deposit back from `deadline` (POSIX
+//	ms) on (Refund).
 type EscrowDatum struct {
 	// Depositor is the depositor field (aiken/crypto/VerificationKeyHash).
 	Depositor []byte
 	// Beneficiary is the beneficiary field (aiken/crypto/VerificationKeyHash).
 	Beneficiary []byte
+	// Deadline is the deadline field (Int).
+	Deadline int64
 }
 
 // Data encodes v as the validator reads it: Constr 0 with its fields in order.
@@ -58,12 +63,13 @@ func (v EscrowDatum) Data() data.PlutusData {
 	return data.NewConstr(0,
 		data.NewByteString(bytes.Clone(v.Depositor)),
 		data.NewByteString(bytes.Clone(v.Beneficiary)),
+		data.NewInteger(big.NewInt(v.Deadline)),
 	)
 }
 
 // ParseEscrowDatum decodes the validator's encoding of EscrowDatum.
 func ParseEscrowDatum(d data.PlutusData) (EscrowDatum, bool) {
-	fs, ok := record(d, 2)
+	fs, ok := record(d, 3)
 	if !ok {
 		return EscrowDatum{}, false
 	}
@@ -78,9 +84,15 @@ func ParseEscrowDatum(d data.PlutusData) (EscrowDatum, bool) {
 		return EscrowDatum{}, false
 	}
 
+	f2, ok := intField(fs[2])
+	if !ok {
+		return EscrowDatum{}, false
+	}
+
 	return EscrowDatum{
 		Depositor:   f0,
 		Beneficiary: f1,
+		Deadline:    f2,
 	}, true
 }
 

@@ -81,6 +81,14 @@ type Committee interface {
 	JointAuth() bool
 }
 
+// Positions are the locked script outputs an actor may call, as a script
+// user sees them.
+type Positions interface {
+	// Calls describes what the actor may do now with outputs locked at
+	// contracts ("release an escrow paid to it"); empty when nothing.
+	Calls(actor population.ActorID) string
+}
+
 // Market is a signal of how busy the chain is.
 type Market interface {
 	// Burst is the recent transaction rate over its long-run baseline: 1 is

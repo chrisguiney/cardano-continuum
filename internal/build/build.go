@@ -239,6 +239,25 @@ func (a walletAdapter) SignTxBody(h common.Blake2b256) (common.VkeyWitness, erro
 	return common.VkeyWitness{Vkey: wit.VKey, Signature: wit.Signature}, nil
 }
 
+// coSigners give Apollo the evaluation witnesses of the keys a spec signs
+// with beside the wallet's, for required signers that are not the wallet:
+// Apollo refuses to evaluate a transaction whose required signers lack a
+// witness. Like the wallet's, these witnesses never reach the transaction;
+// sign adds the real ones.
+type coSigners []keys.Signer
+
+// EvaluationWitnesses signs h with each key whose hash is in required.
+func (cs coSigners) EvaluationWitnesses(h common.Blake2b256, required []common.Blake2b224) ([]common.VkeyWitness, error) {
+	var out []common.VkeyWitness
+	for _, k := range cs {
+		if slices.Contains(required, common.Blake2b224(k.KeyHash())) {
+			wit := k.SignHash(h)
+			out = append(out, common.VkeyWitness{Vkey: wit.VKey, Signature: wit.Signature})
+		}
+	}
+	return out, nil
+}
+
 // apollo returns a fresh Apollo for s, with an optional forced fee.
 func (b *Builder) apollo(w keys.Wallet, s spec, fee int64) (*apollo.Apollo, error) {
 	if s.sp.TTL > 1<<62 {
@@ -248,6 +267,10 @@ func (b *Builder) apollo(w keys.Wallet, s spec, fee int64) (*apollo.Apollo, erro
 		SetWallet(walletAdapter{w}).
 		SetChangeAddress(w.Address()).
 		SetTtl(int64(s.sp.TTL))
+	if len(s.signers) > 0 {
+		a = a.AddEvaluationWitnessProvider(coSigners(s.signers))
+	}
+
 	for _, u := range s.sp.Inputs {
 		a = a.AddInput(u)
 	}

@@ -60,8 +60,8 @@ func TestOverDeclaredRetried(t *testing.T) {
 // actor's retries and patience take over, and nothing is filed.
 func TestOverDeclaredInGapNeverForged(t *testing.T) {
 	t.Parallel()
-	base := clumsyConfig(t, 3)
-	gap := gapConfig(t, 3)
+	base := clumsyConfig(t, 6)
+	gap := gapConfig(t, 6)
 	base.ChainParams, base.Build = gap.ChainParams, gap.Build
 	w := newWorld(t, base)
 	p := cleanRun(t, w, base.Slots.EpochStart(2))

@@ -2,14 +2,19 @@ package engine
 
 import (
 	"bytes"
+	"encoding/hex"
 	"math"
 	"strings"
 	"testing"
 
+	"github.com/blinklabs-io/plutigo/data"
+
 	"github.com/chrisguiney/cardano-continuum/internal/build"
+	"github.com/chrisguiney/cardano-continuum/internal/contract"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
 	"github.com/chrisguiney/cardano-continuum/internal/market"
+	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 )
@@ -461,5 +466,79 @@ func TestMarketsAbandonSellsOut(t *testing.T) {
 	}
 	if quits < 5 {
 		t.Fatalf("only %d wallets abandoned", quits)
+	}
+}
+
+// escrowCalls are the escrow releases and refunds a run submitted, each
+// with the escrow datum its script run read and the actor that sent it.
+type escrowCall struct {
+	call  string
+	actor population.ActorID
+	datum contract.EscrowDatum
+	ok    bool
+}
+
+func escrowCalls(t *testing.T, r eventlog.Reader) []escrowCall {
+	t.Helper()
+	var out []escrowCall
+	for _, rec := range logRecords(t, r) {
+		var s Submitted
+		if rec.Kind != KindSubmitted || eventlog.Decode(rec.Body, &s) != nil || (s.Call != "release" && s.Call != "refund") {
+			continue
+		}
+		if len(s.Scripts) != 1 {
+			t.Fatalf("escrow %s with %d script runs", s.Call, len(s.Scripts))
+		}
+		raw, err := hex.DecodeString(s.Scripts[0].Datum)
+		if err != nil {
+			t.Fatal(err)
+		}
+		d, err := data.Decode(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		e, ok := contract.ParseEscrowDatum(d)
+		if !ok {
+			t.Fatalf("escrow %s read datum %s", s.Call, s.Scripts[0].DatumJSON)
+		}
+		out = append(out, escrowCall{call: s.Call, actor: population.ActorID(rec.Actor), datum: e, ok: s.Scripts[0].OK})
+	}
+	return out
+}
+
+// Escrows are between two script users: the beneficiary claims a release
+// its depositor co-signs, the depositor refunds a disputed one after its
+// deadline, every script run passes, and value is conserved.
+func TestEscrowTwoParties(t *testing.T) {
+	t.Parallel()
+	f := populationFile(t, populationYAML)
+	cfg := populationConfig(t, 4, f)
+	w := newWorld(t, cfg)
+	p := cleanRun(t, w, 6*3600*1000)
+	e := p.r.Engine()
+
+	calls := escrowCalls(t, p.log)
+	n := map[string]int{}
+	for _, c := range calls {
+		key := e.co.Wallet(c.actor).PaymentKeyHash()
+		party := c.datum.Depositor
+		if c.call == "release" {
+			party = c.datum.Beneficiary
+		}
+		if !bytes.Equal(party, key[:]) || bytes.Equal(c.datum.Depositor, c.datum.Beneficiary) || !c.ok {
+			t.Fatalf("%s by actor %d of escrow %x -> %x (run ok %v)", c.call, c.actor, c.datum.Depositor[:4], c.datum.Beneficiary[:4], c.ok)
+		}
+		n[c.call]++
+	}
+	if n["release"] == 0 || n["refund"] == 0 {
+		t.Fatalf("escrow calls %v, want releases and refunds", n)
+	}
+	t.Logf("escrow calls %v", n)
+
+	if s, g := e.Summary().Supply, genesisTotal(t, cfg); s != g {
+		t.Errorf("supply %d, genesis %d", s, g)
+	}
+	if fs := findings(t, p.log); len(fs) > 0 {
+		t.Errorf("%d oracle findings, the first %+v", len(fs), fs[0])
 	}
 }

@@ -39,6 +39,10 @@ type Unlock struct {
 	// reads from its context (extra_signatories). The wallet signs with its
 	// payment key only, so each must be that key's hash.
 	Signers []common.Blake2b224
+	// CoSigners are other parties' keys that sign beside the wallet and
+	// are listed as required signers: an escrow depositor approving the
+	// release its beneficiary submits.
+	CoSigners []keys.Signer
 	// From is the slot the transaction is valid from, which a validator
 	// reads as its validity range's lower bound. Zero leaves it open:
 	// Apollo writes no validity start of 0, so slot 0 cannot be a bound.
@@ -98,7 +102,7 @@ func (f Plutus) unlockSpec(u Unlock, budget *common.ExUnits) (spec, error) {
 		return spec{}, err
 	}
 	return spec{
-		sp: u.Spend, known: []common.Utxo{u.Locked},
+		sp: u.Spend, known: []common.Utxo{u.Locked}, signers: u.CoSigners,
 		add: func(a *apollo.Apollo) (*apollo.Apollo, error) {
 			var eu common.ExUnits
 			if budget != nil {
@@ -107,6 +111,9 @@ func (f Plutus) unlockSpec(u Unlock, budget *common.ExUnits) (spec, error) {
 			}
 			for _, k := range u.Signers {
 				a = a.AddRequiredSigner(k)
+			}
+			for _, k := range u.CoSigners {
+				a = a.AddRequiredSigner(common.Blake2b224(k.KeyHash()))
 			}
 			if u.From > 0 {
 				a = a.SetValidityStart(int64(u.From))

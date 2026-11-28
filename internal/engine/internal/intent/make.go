@@ -35,7 +35,7 @@ func (m *Maker) Submitted(at sched.Time, p *wire.Pending, built build.Built, inp
 	s := wire.Submitted{
 		Intent: p.ID, ID: wire.TxID(built.ID), To: p.To, Amount: p.Amount, Fee: built.Fee, TTL: p.TTL, Inputs: inputs, Tx: built.Tx, Kind: p.Kind,
 		Mistakes: p.Carried, Attack: attack, Action: p.GovType, Contract: p.Contract,
-		Validator: m.validator(p), Scripts: m.runs(built),
+		Validator: m.validator(p), Call: p.Call, Scripts: m.runs(built),
 	}
 	if (p.Kind == string(profile.IntentVote) || p.Kind == string(agenda.CommitteeVote)) && p.Action != nil {
 		_, s.Voter = Voter(m.env.Ring, population.ActorID(p.Actor))

@@ -84,6 +84,9 @@ type Args struct {
 	Locked *Ref `json:"locked,omitzero"`
 	// Contract is the contract a lock or unlock calls.
 	Contract uint64 `json:"contract,omitzero"`
+	// Call is what a lock or unlock does with its contract: lock, claim,
+	// or an escrow's release or refund.
+	Call string `json:"call,omitempty"`
 	// Epoch is the epoch a retirement takes effect.
 	Epoch uint64 `json:"epoch,omitzero"`
 	// Register makes a delegation also register the stake key.

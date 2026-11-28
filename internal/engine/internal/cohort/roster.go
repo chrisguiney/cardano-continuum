@@ -21,6 +21,9 @@ type Roster struct {
 	actors map[population.ActorID]*Actor
 	order  []population.ActorID // ascending
 	byAddr map[string]population.ActorID
+	// byKey indexes the actors by their wallets' payment key hashes, which
+	// script datums name parties by.
+	byKey map[keys.Credential]population.ActorID
 	// seed is the census's stream root.
 	seed rng.Seed
 	// Ring holds the actors' keys and the genesis pools.
@@ -30,7 +33,7 @@ type Roster struct {
 }
 
 func newRoster(seed rng.Seed, ring *Keyring, v Env) *Roster {
-	return &Roster{actors: map[population.ActorID]*Actor{}, byAddr: map[string]population.ActorID{}, seed: seed, Ring: ring, env: v}
+	return &Roster{actors: map[population.ActorID]*Actor{}, byAddr: map[string]population.ActorID{}, byKey: map[keys.Credential]population.ActorID{}, seed: seed, Ring: ring, env: v}
 }
 
 // Get is the census entry of an actor.
@@ -48,6 +51,12 @@ func (r *Roster) Pop() *population.Census { return &r.census }
 // Owner is the actor whose address is addr, or the faucet.
 func (r *Roster) Owner(addr []byte) (population.ActorID, bool) {
 	id, ok := r.byAddr[string(addr)]
+	return id, ok
+}
+
+// Holder is the actor whose wallet's payment key hash is key.
+func (r *Roster) Holder(key keys.Credential) (population.ActorID, bool) {
+	id, ok := r.byKey[key]
 	return id, ok
 }
 
@@ -92,6 +101,7 @@ func (r *Roster) Register(a population.Actor, p profile.Profile) *Actor {
 	st.Clocks, st.Boot = r.env.Pace.Clocks(a, p)
 	r.actors[a.ID] = st
 	r.order = append(r.order, a.ID)
+	r.byKey[st.Wallet.PaymentKeyHash()] = a.ID
 	if addr, err := st.Wallet.Address().Bytes(); err == nil {
 		r.byAddr[string(addr)] = a.ID
 	}

@@ -273,28 +273,44 @@ func buildMint(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, p *w
 }
 
 // buildLock locks at contract p.Contract with the datum its template
-// takes; a vesting position opens vestDelay slots after the tip.
+// takes: a vesting position opens vestDelay slots after the tip, and an
+// escrow pays p.To, refundable escrowWindow slots after the tip.
 func buildLock(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, p *wire.Pending) (build.Built, error) {
-	until := c.spec.Builder.SlotTime(c.env.Chain.Tip().Slot + vestDelay)
-	d := lockDatum(build.Template(p.Contract), population.ActorID(p.Actor), w.PaymentKeyHash(), until)
+	template, tip := build.Template(p.Contract), c.env.Chain.Tip().Slot
+	until := c.spec.Builder.SlotTime(tip + vestDelay)
+
+	var counterparty keys.Credential
+	if template == "escrow" {
+		until = c.spec.Builder.SlotTime(tip + escrowWindow)
+		counterparty = c.env.Roster.Wallet(population.ActorID(p.To)).PaymentKeyHash()
+	}
+
+	d := lockDatum(template, population.ActorID(p.Actor), w.PaymentKeyHash(), counterparty, until)
 	return c.spec.Builder.Plutus().Lock(ctx, w, build.Lock{Spend: sp, Script: build.Contract(p.Contract), Amount: p.Amount, Datum: d})
 }
 
-// buildUnlock claims p.Locked as its contract's template requires.
+// buildUnlock makes p.Call on p.Locked as its contract's template
+// requires; a release carries the signature of its depositor, p.To.
 func buildUnlock(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, p *wire.Pending) (build.Built, error) {
 	u, ok := c.env.Chain.View().Utxo(chain.Ref{Tx: chain.TxID(p.Locked.Tx), Index: p.Locked.Index})
 	if !ok {
 		return build.Built{}, fmt.Errorf("locked output %x#%d not in the view", p.Locked.Tx[:4], p.Locked.Index)
 	}
 
-	cl := claimArgs(build.Template(p.Contract), w.PaymentKeyHash(), p.ID, c.env.Chain.Tip().Slot)
+	cl := claimArgs(build.Template(p.Contract), p.Call, w.PaymentKeyHash(), c.env.Chain.Tip().Slot)
+
+	var co []keys.Signer
+	if p.Call == callRelease {
+		co = []keys.Signer{c.env.Roster.Wallet(population.ActorID(p.To)).PaymentSigner()}
+	}
 	return c.spec.Builder.Plutus().Unlock(ctx, w, build.Unlock{
-		Spend:    sp,
-		Script:   build.Contract(p.Contract),
-		Locked:   u,
-		Redeemer: cl.redeemer,
-		Signers:  cl.signers,
-		From:     cl.from,
+		Spend:     sp,
+		Script:    build.Contract(p.Contract),
+		Locked:    u,
+		Redeemer:  cl.redeemer,
+		Signers:   cl.signers,
+		CoSigners: co,
+		From:      cl.from,
 	})
 }
 

@@ -37,6 +37,8 @@ type Roster interface {
 	Profile(id population.ActorID) *profile.Profile
 	// Paid are the actor's payees, most recent last.
 	Paid(id population.ActorID) []population.ActorID
+	// Holder is the actor whose wallet's payment key hash is key.
+	Holder(key keys.Credential) (population.ActorID, bool)
 }
 
 // Ring is the keys of the actors that hold pools and DRep credentials.

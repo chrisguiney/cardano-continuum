@@ -42,6 +42,9 @@ func TestApplyCreatesAndSpends(t *testing.T) {
 	if v.Balance(1) != 39 || v.Balance(2) != 60 {
 		t.Errorf("balances = %d, %d; want 39, 60", v.Balance(1), v.Balance(2))
 	}
+	if got := v.UtxosOf(1); len(got) != 1 || got[0].Output.Amount().Uint64() != 39 || len(v.UtxosOf(3)) != 0 {
+		t.Errorf("UtxosOf(1) = %v", got)
+	}
 	if v.Tip() != b.Point {
 		t.Errorf("tip = %v, want %v", v.Tip(), b.Point)
 	}

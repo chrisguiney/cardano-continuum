@@ -33,6 +33,7 @@ func TestPendingRoundTrip(t *testing.T) {
 			Amount:   7,
 			Locked:   &ref,
 			Contract: 11,
+			Call:     "release",
 			Epoch:    9,
 			Register: true,
 			Update:   true,

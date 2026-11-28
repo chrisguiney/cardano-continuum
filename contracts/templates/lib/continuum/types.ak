@@ -10,10 +10,13 @@ pub type VestingDatum {
   lock_until: Int,
 }
 
-/// An escrow: `depositor` releases to `beneficiary`, who may refund.
+/// An escrow between two parties: `depositor` pays `beneficiary` once it
+/// approves (Release), or takes the deposit back from `deadline` (POSIX
+/// ms) on (Refund).
 pub type EscrowDatum {
   depositor: VerificationKeyHash,
   beneficiary: VerificationKeyHash,
+  deadline: Int,
 }
 
 /// What an escrow spend does: Release is Constr 0, Refund Constr 1.
