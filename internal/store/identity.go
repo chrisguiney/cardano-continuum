@@ -36,6 +36,51 @@ type Identity struct {
 	// Market is a market wallet's currencies and cost basis; nil for every
 	// other actor.
 	Market *Market `json:"market,omitempty"`
+	// Owner is the human that owns the wallet, in a run with humans; nil
+	// otherwise.
+	Owner *Owner `json:"owner,omitempty"`
+}
+
+// Owner is the human behind a wallet as of the checkpoint: who it is, what
+// the wallet is for to it, and the household money it holds off chain.
+// Amounts are cents of the human's currency.
+type Owner struct {
+	// Human is the owner's ID and Purpose what the wallet is for.
+	Human   uint64 `json:"human"`
+	Purpose string `json:"purpose"`
+	// Motivation is the agenda the owner's wallets score with; Tier its
+	// wealth tier; Target the wallets it means to keep; Spread how far it
+	// spreads its wallets' delegations.
+	Motivation string  `json:"motivation"`
+	Tier       string  `json:"tier"`
+	Target     int     `json:"target"`
+	Spread     float64 `json:"spread"`
+	// Wallets are every wallet the human ever owned, ascending.
+	Wallets []uint64 `json:"wallets"`
+	// Gone marks a human with no wallet left.
+	Gone bool `json:"gone,omitempty"`
+	// Money is the household; nil without a market.
+	Money *Money `json:"money,omitempty"`
+}
+
+// Money is a human's household money at the checkpoint, in cents.
+type Money struct {
+	Currency string `json:"currency"`
+	// Fiat is what it holds, Held what its open buys hold of that, Fiat0
+	// what it started with.
+	Fiat  int64 `json:"fiat"`
+	Held  int64 `json:"held"`
+	Fiat0 int64 `json:"fiat0"`
+	// Income is the monthly pay while employed; Ratio the bills over it;
+	// Share the part of the rest invested, Steps times a month, timed by
+	// Style; Buffer the months of bills kept back.
+	Income   int64   `json:"income"`
+	Ratio    float64 `json:"ratio"`
+	Share    float64 `json:"share"`
+	Steps    int     `json:"steps"`
+	Style    string  `json:"style"`
+	Buffer   float64 `json:"buffer"`
+	Employed bool    `json:"employed"`
 }
 
 // Market is a wallet's place in the ADA market.

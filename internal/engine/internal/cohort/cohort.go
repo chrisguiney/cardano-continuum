@@ -144,7 +144,7 @@ func New(sp Spec, v Env) *Cohort {
 		Roster: r,
 		Life:   l,
 		Births: &Births{life: l, seed: sp.Seed, sched: v.Sched, emit: v.Emit},
-		Idents: &Idents{r: r, proposer: sp.Proposer, att: v.Att, chain: v.Chain, desk: desk},
+		Idents: &Idents{r: r, proposer: sp.Proposer, att: v.Att, chain: v.Chain, desk: desk, money: mo},
 		Market: m,
 		Desk:   desk,
 	}

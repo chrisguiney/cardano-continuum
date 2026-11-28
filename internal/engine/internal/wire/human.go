@@ -61,10 +61,11 @@ type Employment struct {
 }
 
 // Invested is the body of an Invested decision: a human's purchase of ADA
-// from its income into one of its wallets; the buy then flows as a
-// Submitted and, once settled, a Traded record. Trend is the market's log
+// from its income into one of its wallets, recorded once the buy Intent is
+// submitted; once settled it has a Traded record. Trend is the market's log
 // return the style read.
 type Invested struct {
+	Intent uint64  `json:"intent"`
 	Human  uint64  `json:"human"`
 	Wallet uint64  `json:"wallet"`
 	Cents  int64   `json:"cents"`

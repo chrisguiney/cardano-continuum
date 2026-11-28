@@ -114,6 +114,21 @@ type Decision struct {
 	// Position is the actor's market position the scores read; nil
 	// without a market.
 	Position *Position `json:"position,omitempty"`
+	// Owner is the human behind the wallet, in a run with humans: whose
+	// motivation scored the intents and what the wallet is for.
+	Owner *OwnerNote `json:"owner,omitempty"`
+}
+
+// OwnerNote is the human behind a deciding wallet. Fiat and Held are cents
+// of Currency: what the owner holds and what its open buys hold of it.
+type OwnerNote struct {
+	Human      uint64 `json:"human"`
+	Motivation string `json:"motivation"`
+	Purpose    string `json:"purpose"`
+	Tier       string `json:"tier"`
+	Currency   string `json:"currency,omitempty"`
+	Fiat       int64  `json:"fiat,omitzero"`
+	Held       int64  `json:"held,omitzero"`
 }
 
 // Policy scores the intents available to an actor. It must be a pure function

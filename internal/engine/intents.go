@@ -159,7 +159,7 @@ func (s starter) money(ctx context.Context, at sched.Time, h population.HumanID)
 
 // trade starts a human's purchase of cents of ADA into wallet id, or its
 // forced sale of ADA from wallet id to raise cents. A purchase records an
-// Invested decision first. The order holds its cents (Money.Fund's rule)
+// Invested decision once it is submitted. The order holds its cents (Money.Fund's rule)
 // and is sized at the venue's price, within what the venue (a buy) or the
 // wallet (a sale) can pay.
 func (s starter) trade(ctx context.Context, at sched.Time, h population.HumanID, id population.ActorID, cents int64, buy bool, trend float64) error {
@@ -175,15 +175,15 @@ func (s starter) trade(ctx context.Context, at sched.Time, h population.HumanID,
 		why = sizeTrade(e, p, h, cents, buy)
 	}
 
-	if why == "" && buy {
-		e.jr.Emit(at, KindInvested, id, Invested{Human: uint64(h), Wallet: uint64(id), Cents: p.Order.Cents, Style: string(e.co.People.Get(h).Purse.Budget.Style), Trend: trend})
-	}
-
 	if why == "" {
 		var err error
 		if why, err = s.start(ctx, at, p); err != nil {
 			return err
 		}
+	}
+
+	if why == "" && buy {
+		e.jr.Emit(at, KindInvested, id, Invested{Intent: p.ID, Human: uint64(h), Wallet: uint64(id), Cents: p.Order.Cents, Style: string(e.co.People.Get(h).Purse.Budget.Style), Trend: trend})
 	}
 
 	if why != "" {

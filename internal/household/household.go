@@ -18,6 +18,9 @@ const (
 	Momentum Style = "momentum"
 )
 
+// Styles lists every investment style, sorted.
+func Styles() []Style { return []Style{DCA, Dip, Momentum} }
+
 // styles is the style each motivation invests with: holders and stakers
 // average in, traders chase the trend, dapp users buy the dips.
 var styles = map[profile.AgendaName]Style{

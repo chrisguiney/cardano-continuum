@@ -6,12 +6,14 @@ import (
 	"math/rand/v2"
 	"strconv"
 
+	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/check"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/household"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
+	"github.com/chrisguiney/cardano-continuum/internal/store"
 )
 
 // Flight is the unfinished intents, which carry the open orders' holds.
@@ -348,4 +350,65 @@ func (mo *Money) Totals() (now, start int64) {
 		}
 	}
 	return now, start
+}
+
+// owner is the wallet's owner as its identity row shows it, nil for an
+// ownerless actor or without humans.
+func (mo *Money) owner(a population.Actor) *store.Owner {
+	pp := mo.pp
+	h := pp.Get(a.Owner)
+	if !pp.On() || h == nil {
+		return nil
+	}
+
+	ids := walletsOf(pp.r, h.ID)
+	ws := make([]uint64, len(ids))
+	for i, id := range ids {
+		ws[i] = uint64(id)
+	}
+
+	var money *store.Money
+	if pu := h.Purse; pu != nil {
+		b := pu.Budget
+		money = &store.Money{
+			Currency: pp.m.Code(h.Trader.Primary),
+			Fiat:     pu.Fiat,
+			Held:     mo.Held(h.ID),
+			Fiat0:    h.Fiat0,
+			Income:   b.Income,
+			Ratio:    b.Ratio,
+			Share:    b.Share,
+			Steps:    b.Steps,
+			Style:    string(b.Style),
+			Buffer:   b.Buffer,
+			Employed: pu.State.Employed,
+		}
+	}
+
+	return &store.Owner{
+		Human:      uint64(h.ID),
+		Purpose:    string(a.Purpose),
+		Motivation: string(h.Motivation),
+		Tier:       pp.spec.Tiers[h.Tier].Name,
+		Target:     h.Target,
+		Spread:     h.Spread,
+		Wallets:    ws,
+		Gone:       h.Gone,
+		Money:      money,
+	}
+}
+
+// Note is the wallet's owner as a decision shows it, nil for an ownerless
+// actor or without humans.
+func (mo *Money) Note(a population.Actor) *agenda.OwnerNote {
+	o := mo.owner(a)
+	if o == nil {
+		return nil
+	}
+
+	n := &agenda.OwnerNote{Human: o.Human, Motivation: o.Motivation, Purpose: o.Purpose, Tier: o.Tier}
+	if m := o.Money; m != nil {
+		n.Currency, n.Fiat, n.Held = m.Currency, m.Fiat, m.Held
+	}
+	return n
 }

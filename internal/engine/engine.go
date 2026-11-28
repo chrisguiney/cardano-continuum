@@ -456,6 +456,7 @@ func (e *Engine) act(ctx context.Context, at sched.Time, id population.ActorID) 
 	default:
 		d = agenda.Decide(a, r, viewOf(e), st.Policy, e.pc.Weights(st.Prof))
 	}
+	d.Owner = e.co.Money.Note(a)
 	e.jr.Emit(at, KindIntentChosen, id, d)
 	if e.pc.Wait(a, subject(st), at, d) {
 		return nil

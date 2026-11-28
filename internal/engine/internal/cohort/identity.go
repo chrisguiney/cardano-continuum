@@ -130,6 +130,8 @@ type Idents struct {
 	chain    Chain
 	// desk reads a market wallet's position.
 	desk *Desk
+	// money reads a wallet's owner and its household.
+	money *Money
 }
 
 // kindOf names an actor's role for the UI: a profile kind, refined for the
@@ -230,6 +232,7 @@ func (n *Idents) Identity(a population.Actor, st *Actor, hs map[population.Actor
 		Delegation: n.delegationOf(a.ID),
 		Adversary:  adv,
 		Market:     n.desk.holding(a.ID),
+		Owner:      n.money.owner(a),
 	}
 }
 
