@@ -9,6 +9,8 @@
 //	Births    the per-profile birth streams
 //	Keyring   wallets, DRep and pool keys, and the genesis pools (Genesis)
 //	Idents    the identity rows
+//	People    the humans who own the wallets, and which wallet is whose
+//	Money     each human's household money: its clock, fiat and holds
 //
 // The composite orders every call and emit: a Cohort method never starts
 // work on its own, so the order of RNG draws (each actor's Draws counter)
