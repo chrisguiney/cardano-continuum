@@ -33,6 +33,7 @@ const GovAction = lazy(() => import("./views/GovAction").then((m) => ({ default:
 const Markets = lazy(() => import("./views/Markets").then((m) => ({ default: m.Markets })));
 const Governance = lazy(() => import("./views/Governance").then((m) => ({ default: m.Governance })));
 const Help = lazy(() => import("./views/Help").then((m) => ({ default: m.Help })));
+const People = lazy(() => import("./views/People").then((m) => ({ default: m.People })));
 const Nodes = lazy(() => import("./views/Nodes").then((m) => ({ default: m.Nodes })));
 const StakePools = lazy(() => import("./views/StakePools").then((m) => ({ default: m.StakePools })));
 
@@ -114,6 +115,7 @@ function Shell() {
               {route.name === "overview" && <Overview />}
               {route.name === "actors" && <Actors />}
               {route.name === "actor" && <Actor id={route.id} />}
+              {route.name === "people" && <People id={route.id} />}
               {route.name === "nodes" && <Nodes />}
               {route.name === "node" && <Nodes name={route.key} />}
               {route.name === "pools" && <StakePools />}

@@ -1,11 +1,12 @@
 import { ADV_GLOSSARY } from "../lib/advhelp";
 import { GOV_GLOSSARY } from "../lib/govhelp";
+import { HUMAN_GLOSSARY } from "../lib/humanhelp";
 import { FIELD_HELP, GLOSSARY, VIEW_BLURB, type Term } from "../lib/help";
 import { Facts, Heading, Note, Panel, Title } from "./common";
 import { Blurb } from "./fields";
 
 const VIEWS: [string, string][] = [
-  ["Overview", "overview"], ["Actors", "actors"], ["Pools", "pools"], ["Explorer", "explorer"], ["Contracts", "contracts"], ["Governance", "governance"], ["Decisions", "decisions"],
+  ["Overview", "overview"], ["Actors", "actors"], ["People", "people"], ["Pools", "pools"], ["Explorer", "explorer"], ["Contracts", "contracts"], ["Governance", "governance"], ["Decisions", "decisions"],
   ["Findings", "findings"], ["Adversaries", "adversaries"], ["Controls", "controls"],
 ];
 
@@ -31,6 +32,7 @@ export function Help() {
         <Facts rows={VIEWS.map(([name, key]) => [name, VIEW_BLURB[key]])} />
       </Panel>
       <Glossary id="h-gloss" title="Glossary" terms={GLOSSARY} />
+      <Glossary id="h-people" title="People and money" terms={HUMAN_GLOSSARY} />
       <Glossary id="h-gov" title="Governance" terms={GOV_GLOSSARY} />
       <Glossary id="h-adv" title="Adversaries" terms={ADV_GLOSSARY} />
       <Panel aria-labelledby="h-ctl">

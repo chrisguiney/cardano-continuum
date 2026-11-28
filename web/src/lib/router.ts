@@ -2,6 +2,7 @@ export type Route =
   | { name: "overview" | "actors" | "pools" | "nodes" | "governance" | "markets" | "decisions" | "findings" | "adversaries" | "controls" | "help" | "explorer" | "contracts" | "notfound" }
   | { name: "pool" | "node"; key: string }
   | { name: "actor"; id: number }
+  | { name: "people"; id?: number }
   | { name: "contract"; key: string; instance?: number }
   | { name: "govaction"; tx: string; index: number }
   | { name: "xblock" | "xtx" | "xaddr" | "xpool"; key: string }
@@ -32,6 +33,8 @@ export function parseRoute(path: string): Route {
   if (parts.length === 0) return { name: "overview" };
   if (parts.length === 1 && head && simple.has(head)) return { name: head as "actors" };
   if (parts.length === 2 && head === "actors" && arg && /^\d+$/.test(arg)) return { name: "actor", id: Number(arg) };
+  if (parts.length === 1 && head === "people") return { name: "people" };
+  if (parts.length === 2 && head === "people" && arg) return /^\d{1,18}$/.test(arg) ? { name: "people", id: Number(arg) } : { name: "notfound" };
   if (parts.length === 2 && head === "pools" && arg) return rePool.test(arg) ? { name: "pool", key: arg } : { name: "notfound" };
   if (parts.length === 2 && head === "nodes" && arg) return reNode.test(arg) ? { name: "node", key: arg } : { name: "notfound" };
   if (head === "contracts" && (parts.length === 2 || parts.length === 3) && arg) return contractRoute(arg, key);

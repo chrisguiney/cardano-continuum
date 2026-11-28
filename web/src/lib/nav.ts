@@ -28,7 +28,7 @@ export function navGroups(caps: Capabilities): NavGroup[] {
     { label: "Network", items: [item("/nodes", "Nodes"), item("/pools", "Stake pools"), ...(caps.explorer ? [item("/explorer", "Explorer")] : [])] },
     {
       label: "Activity",
-      items: [item("/actors", "Actors"), item("/decisions", "Decisions"), item("/markets", "Markets"), ...(caps.explorer ? [item("/contracts", "Contracts")] : []), item("/governance", "Governance")],
+      items: [item("/actors", "Actors"), item("/people", "People"), item("/decisions", "Decisions"), item("/markets", "Markets"), ...(caps.explorer ? [item("/contracts", "Contracts")] : []), item("/governance", "Governance")],
     },
     { label: "Testing", items: [item("/findings", "Findings"), item("/adversaries", "Adversaries")] },
     { label: "Run", items: caps.controls ? [item("/controls", "Controls")] : [] },

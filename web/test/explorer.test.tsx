@@ -46,7 +46,7 @@ describe("sidebar menu", () => {
     const heads = navGroups({ controls: true, explorer: true }).filter((g) => g.label).map((g) => [g.label, g.items.map((i) => i.label)]);
     expect(heads).toEqual([
       ["Network", ["Nodes", "Stake pools", "Explorer"]],
-      ["Activity", ["Actors", "Decisions", "Markets", "Contracts", "Governance"]],
+      ["Activity", ["Actors", "People", "Decisions", "Markets", "Contracts", "Governance"]],
       ["Testing", ["Findings", "Adversaries"]],
       ["Run", ["Controls"]],
     ]);

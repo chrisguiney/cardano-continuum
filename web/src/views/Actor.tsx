@@ -5,7 +5,10 @@ import type { ActorDetail } from "../lib/types";
 import { VIEW_BLURB } from "../lib/help";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CopyButton, EmptyRow, ErrorNote, Facts, FindingList, Grid, Heading, Link, Mono, Muted, Note, Panel, TableFrame, Title } from "./common";
-import { Blurb } from "./fields";
+import { Blurb, HelpTip } from "./fields";
+import { HUMAN_HELP } from "../lib/humanhelp";
+import { money } from "../lib/people";
+import type { ReactNode } from "react";
 
 export function Actor({ id }: { id: number }) {
   const { data: d, error } = usePoll<ActorDetail>(`/api/actors/${id}`, 3000);
@@ -44,6 +47,7 @@ function Detail({ d }: { d: ActorDetail }) {
             {s.id === "holdings" && <Tokens d={d} />}
           </Panel>
         ))}
+        {d.owner && <OwnerCard d={d} />}
       </Grid>
       <Panel aria-labelledby="h-findings">
         <Heading id="h-findings">Findings</Heading>
@@ -82,6 +86,27 @@ function Detail({ d }: { d: ActorDetail }) {
         {d.timeline.length === 0 && <li className="p-4 text-center text-muted-foreground">No events yet.</li>}
       </ol>
     </>
+  );
+}
+
+/** OwnerCard is the human behind the wallet: who it is and its other wallets. */
+function OwnerCard({ d }: { d: ActorDetail }) {
+  const o = d.owner!;
+  const others = o.wallets.filter((w) => w !== d.id);
+  const help = (k: string) => <HelpTip id={`ao-${k}`} label={HUMAN_HELP[k]!.label} text={HUMAN_HELP[k]!.help} />;
+  return (
+    <Panel aria-labelledby="h-owner">
+      <Heading id="h-owner">Owner</Heading>
+      <Note>The wallet belongs to a simulated person. The person's motivation scores this wallet's choices, filtered by what the wallet is for.</Note>
+      <Facts muted rows={[
+        [<>Human {help("human")}</>, <Link to={`/people/${o.human}`}>human {o.human}{o.gone ? " (gone)" : ""}</Link>],
+        [<>Motivation {help("motivation")}</>, o.motivation],
+        [<>Purpose {help("purpose")}</>, o.purpose],
+        [<>Tier {help("wealth_tier")}</>, o.tier],
+        ["Other wallets", others.length ? <>{others.map((w, i) => <span key={w}>{i ? ", " : ""}<Link to={`/actors/${w}`}>{w}</Link></span>)}</> : "none"],
+        ...(o.money ? [[<>Fiat {help("fiat")}</>, money(o.money.fiat, o.money.currency)] as [ReactNode, ReactNode]] : []),
+      ]} />
+    </Panel>
   );
 }
 

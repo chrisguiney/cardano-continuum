@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Feed, foldDecisions, type EventSourceLike, type FeedFilter, type FeedRow, type FeedState, type IdleMode, type IdleRun } from "../lib/feed";
 import { chances, clamp, percent } from "../lib/chance";
 import { positionLine } from "../lib/markets";
+import { ownerLine } from "../lib/people";
 import { contractPath, decisionScripts, unitsText, type DecisionScripts } from "../lib/contracts";
 import { simTime } from "../lib/format";
 import { FIELD_HELP, VIEW_BLURB } from "../lib/help";
@@ -86,6 +87,7 @@ export function Why({ d }: { d: Decision }) {
               Chance = score x weight / total; idle scores 1 as the baseline.
               {d.clock ? ` Chosen among ${d.clock} options after its fitted clock fired.` : ""}
               {d.position ? ` ${positionLine(d.position)}` : ""}
+              {d.owner ? ` ${ownerLine(d.owner)}` : ""}
             </TableCaption>
             <TableHeader>
               <TableRow>

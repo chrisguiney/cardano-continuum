@@ -3,10 +3,12 @@ import { ada, count, simTime } from "../lib/format";
 import { VIEW_BLURB } from "../lib/help";
 import { usePoll } from "../lib/hooks";
 import { bids, bounds, currencies, dashFor, flowRows, indexed, linePath, splitShare, type Series } from "../lib/markets";
-import type { MarketsView } from "../lib/types";
+import type { MarketsView, PeopleView } from "../lib/types";
+import { flowCurrencies, flowSeries, outShare } from "../lib/people";
+import { HUMAN_HELP } from "../lib/humanhelp";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmptyRow, ErrorNote, Heading, Muted, Note, Stat, Stats, TableFrame, Title } from "./common";
-import { Blurb } from "./fields";
+import { Blurb, HelpTip } from "./fields";
 
 const W = 720;
 const H = 200;
@@ -43,6 +45,34 @@ function Chart({ series, label, shade }: { series: Series[]; label: string; shad
         </span>
       </figcaption>
     </figure>
+  );
+}
+
+/** FiatFlows is the humans' money moving into and out of ADA, per currency. */
+function FiatFlows() {
+  const { data } = usePoll<PeopleView>("/api/people", 5000);
+  const fs = useMemo(() => data?.flows ?? [], [data]);
+  const codes = useMemo(() => flowCurrencies(fs), [fs]);
+  const [cur, setCur] = useState("");
+  if (codes.length === 0) return null;
+  const shown = codes.includes(cur) ? cur : codes[0]!;
+  const out = outShare(fs, shown);
+  return (
+    <>
+      <Heading>Fiat flows <HelpTip id="mk-fiat" label="fiat flows" text={HUMAN_HELP.fiat!.help} /></Heading>
+      <Muted>
+        The humans' own money in {shown}, per five minutes: pay in, bills out, and what went into ADA, split between purchases from
+        income and buys the wallets' agendas chose, against what sales brought back.
+        {out === null ? "" : ` ${(100 * out).toFixed(0)}% of paydays were out of work.`}
+      </Muted>
+      <label className="block text-sm">
+        Currency{" "}
+        <select className="rounded-md border bg-background px-2 py-1" value={shown} onChange={(e) => setCur(e.target.value)}>
+          {codes.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </label>
+      <Chart series={flowSeries(fs, shown)} label={`Fiat flows in ${shown}`} />
+    </>
   );
 }
 
@@ -108,6 +138,8 @@ export function Markets() {
           </TableBody>
         </Table>
       </TableFrame>
+
+      <FiatFlows />
 
       <Heading>Births by currency</Heading>
       <TableFrame>

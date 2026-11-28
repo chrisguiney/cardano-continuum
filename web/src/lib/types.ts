@@ -65,6 +65,8 @@ export interface ActorRow {
   delegated: boolean;
   pool: string;
   drep: string;
+  /** owner is the wallet's human and what the wallet is for, in a run with humans. */
+  owner?: { human: number; purpose: string };
 }
 export interface ActorPage {
   total: number;
@@ -256,7 +258,116 @@ export interface Decision {
   clock?: string;
   // position is the market position the scores read, for a market wallet.
   position?: Position;
+  // owner is the human behind a wallet's decision, in a run with humans.
+  owner?: OwnerNote;
   body?: unknown;
+}
+/** OwnerNote is the human behind a deciding wallet; fiat and held are cents of currency. */
+export interface OwnerNote {
+  human: number;
+  motivation: string;
+  purpose: string;
+  tier: string;
+  currency?: string;
+  fiat?: number;
+  held?: number;
+}
+/** HumanMoney is a human's household at the last checkpoint, in cents of its currency. */
+export interface HumanMoney {
+  currency: string;
+  fiat: number;
+  held: number;
+  fiat0: number;
+  income: number;
+  ratio: number;
+  share: number;
+  steps: number;
+  style: string;
+  buffer: number;
+  employed: boolean;
+}
+/** Owner is the human that owns a wallet, as the wallet's identity row shows it. */
+export interface Owner {
+  human: number;
+  purpose: string;
+  motivation: string;
+  tier: string;
+  target: number;
+  spread: number;
+  wallets: number[];
+  gone?: boolean;
+  money?: HumanMoney;
+}
+/** HumanRow is one row of /api/people; money in cents of currency. */
+export interface HumanRow {
+  id: number;
+  motivation: string;
+  tier: string;
+  currency?: string;
+  employed: boolean;
+  income: number;
+  bills: number;
+  fiat: number;
+  held: number;
+  share: number;
+  style?: string;
+  wallets: number;
+  lovelace: number;
+  purchases: number;
+  invested: number;
+  gone?: boolean;
+}
+/** FiatFlow is one currency's fiat flows in one five-minute bucket, in cents. */
+export interface FiatFlow {
+  currency: string;
+  at: number;
+  income: number;
+  bills: number;
+  invested: number;
+  scored: number;
+  sold: number;
+  paydays: number;
+  out: number;
+}
+/** PeopleView is /api/people. */
+export interface PeopleView {
+  humans: HumanRow[];
+  flows: FiatFlow[];
+  unemployed: number;
+}
+export interface MoneyEvent {
+  seq: number;
+  at: number;
+  kind: string;
+  cents: number;
+  detail?: string;
+  wallet?: number;
+}
+export interface HumanWallet {
+  id: number;
+  purpose: string;
+  profile?: string;
+  state?: string;
+  lovelace: number;
+  pool?: string;
+  drep?: string;
+}
+/** Person is /api/people/{id}. */
+export interface Person extends HumanRow {
+  target: number;
+  spread: number;
+  buffer: number;
+  steps: number;
+  fiat0: number;
+  months: number;
+  out: number;
+  short: number;
+  paid: number;
+  earned: number;
+  bought: number;
+  sold: number;
+  wallet_list: HumanWallet[];
+  events: MoneyEvent[];
 }
 /** MarketHolding is a wallet's currencies, cost basis per ADA in its primary currency, and last exchange. */
 export interface MarketHolding {
@@ -337,6 +448,8 @@ export interface ActorDetail {
   traits: { competence: number; care: number; patience: number; learning_rate: number; loss_aversion?: number };
   /** market is a market wallet's currencies and cost basis. */
   market?: MarketHolding;
+  /** owner is the human that owns the wallet, in a run with humans. */
+  owner?: Owner;
   activity: {
     intents: number; submitted: number; confirmed: number; refused: number; released: number; gave_up: number; retries: number;
     last_ms: number; lost_lovelace: number; recent: Decision[];
