@@ -76,6 +76,7 @@ AIKEN_PROJECTS := contracts/templates
 contracts: ## Build the Aiken contracts and regenerate the Go registry (downloads the pinned Aiken)
 	@set -e; aiken=$$(contracts/scripts/install-aiken.sh); \
 	for p in $(AIKEN_PROJECTS); do (cd $$p && $$aiken check --deny >/dev/null && $$aiken build --trace-level silent --deny); done
+	go generate ./internal/contract
 
 # Rebuilding from source must leave the committed blueprint and the
 # generated registry byte-identical: the reproducibility check.
