@@ -1,0 +1,7 @@
+config	verdict	property	distinct	depth	secs
+Dex.cfg	pass	-	285376	25	2
+DexFreshCoinsBug.cfg	fails	PaidOnce	-	-	1
+DexKeepReservationBug.cfg	fails	NoLeak	-	-	0
+DexLive.cfg	pass	-	285376	25	10
+DexNarrowExpectBug.cfg	fails	OracleSound	-	-	1
+DexStaleDatumBug.cfg	fails	CollateralSafe	-	-	0

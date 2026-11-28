@@ -6,6 +6,7 @@ One directory per TLA+ model, each with its `.tla` modules and `.cfg` files;
 | Directory | Models |
 |---|---|
 | `hello` | a toy keep-alive protocol for learning the tools |
+| [`dex-contention`](dex-contention/README.md) | trades racing for the one market output |
 | [`engine-recovery`](engine-recovery/README.md) | engine crash, restart and rollback recovery |
 | [`governance-change`](governance-change/README.md) | the proposer's parameter-change chain, the votes on it and hard forks |
 | [`planner-reservations`](planner-reservations/README.md) | which outputs the planner may spend (reservations) |
