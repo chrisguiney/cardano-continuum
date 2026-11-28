@@ -121,14 +121,15 @@ func New(sp Spec, v Env) *Cohort {
 	ring := newKeyring(sp.ActorKeys, sp.RootKeys, &Genesis{Pools: sp.Pools, stake: sp.PoolStake, chain: v.Chain})
 	r := newRoster(sp.Census, ring, v)
 	m := newMarket(sp, r)
+	desk := &Desk{m: m}
 	l := &Life{r: r, slots: sp.Slots, market: m}
 	return &Cohort{
 		Roster: r,
 		Life:   l,
 		Births: &Births{life: l, seed: sp.Seed, sched: v.Sched, emit: v.Emit},
-		Idents: &Idents{r: r, proposer: sp.Proposer, att: v.Att, chain: v.Chain},
+		Idents: &Idents{r: r, proposer: sp.Proposer, att: v.Att, chain: v.Chain, desk: desk},
 		Market: m,
-		Desk:   &Desk{m: m},
+		Desk:   desk,
 	}
 }
 

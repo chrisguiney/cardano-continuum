@@ -41,7 +41,8 @@
     "competence": 0.9,
     "care": 0,
     "patience": 0,
-    "learning_rate": 0
+    "learning_rate": 0,
+    "loss_aversion": 0
   },
   "activity": {
     "intents": 4,

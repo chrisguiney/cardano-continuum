@@ -33,7 +33,8 @@
     "competence": 0.9999844680759102,
     "care": 1,
     "patience": 1,
-    "learning_rate": 0
+    "learning_rate": 0,
+    "loss_aversion": 0.5
   },
   "activity": {
     "intents": 17,

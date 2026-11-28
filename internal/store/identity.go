@@ -33,6 +33,22 @@ type Identity struct {
 	Delegation
 	// Adversary is an adversary profile's accounting; zero otherwise.
 	Adversary
+	// Market is a market wallet's currencies and cost basis; nil for every
+	// other actor.
+	Market *Market `json:"market,omitempty"`
+}
+
+// Market is a wallet's place in the ADA market.
+type Market struct {
+	// Primary is the currency it thinks in; Extra its other preferred ones.
+	Primary string   `json:"primary"`
+	Extra   []string `json:"extra,omitempty"`
+	// Basis is its average price per ADA in Primary; Units the lovelace
+	// the basis covers.
+	Basis float64 `json:"basis"`
+	Units uint64  `json:"units"`
+	// Venue is the exchange it last traded on.
+	Venue string `json:"venue,omitempty"`
 }
 
 // Keys are an actor's public addresses and identifiers, bech32 or hex.
@@ -65,6 +81,8 @@ type Traits struct {
 	Frustration float64 `json:"frustration"`
 	// Hazard is the per-second dormancy onset rate at the checkpoint.
 	Hazard float64 `json:"hazard"`
+	// LossAversion is the actor's loss-aversion trait.
+	LossAversion float64 `json:"loss_aversion"`
 }
 
 // Holdings are the planner ledger's view of an actor's funds.

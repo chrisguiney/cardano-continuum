@@ -1,6 +1,7 @@
 package view
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 
@@ -24,6 +25,8 @@ type totals struct {
 	// ctl folds the controls the engine applied: run-wide state, kept
 	// here so Projection stays within its member budget.
 	ctl *controlFold
+	// mkt folds the market records, for the same reason.
+	mkt *engine.Tape
 }
 
 // Projection is the read model built by folding event log records in order.
@@ -51,7 +54,7 @@ func (p *Projection) Observe(f func(eventlog.Record)) {
 
 // NewProjection returns an empty projection.
 func NewProjection() *Projection {
-	return &Projection{actors: newActorIndex(), findings: oracle.NewSet(), meter: engine.NewMeter(), gov: newGovFold(), tot: totals{ctl: newControlFold()}}
+	return &Projection{actors: newActorIndex(), findings: oracle.NewSet(), meter: engine.NewMeter(), gov: newGovFold(), tot: totals{ctl: newControlFold(), mkt: &engine.Tape{}}}
 }
 
 // Apply folds one record. A body that does not decode is counted, shown as a
@@ -75,7 +78,7 @@ func (p *Projection) Apply(r eventlog.Record) {
 	case eventlog.Input:
 		err = foldInput(p, r)
 	case eventlog.Decision:
-		err = foldDecision(p, r)
+		err = errors.Join(foldDecision(p, r), p.tot.mkt.Add(r))
 	}
 	if err != nil {
 		p.tot.bodyErrors++
@@ -96,6 +99,16 @@ func foldControl(p *Projection, r eventlog.Record) error {
 		return p.tot.ctl.answer(r)
 	}
 	return nil
+}
+
+// MarketsView is /api/markets: the run's market as the log recorded it.
+type MarketsView = engine.MarketSummary
+
+// marketsOf is the Markets view; a function for the member budget too.
+func marketsOf(p *Projection) MarketsView {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.tot.mkt.Summary()
 }
 
 // controlsOf is the steering the engine has applied. A function, not a

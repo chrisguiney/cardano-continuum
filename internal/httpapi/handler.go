@@ -56,6 +56,7 @@ type api struct {
 //	GET  /api/pools
 //	GET  /api/governance
 //	GET  /api/governance/{tx}/{index}
+//	GET  /api/markets
 //	GET  /api/findings?limit&offset&known=true|false&kind&severity
 //	GET  /api/findings/{id}
 //	GET  /api/decisions?actor&profile&kind&intent&vote&last_event_id   (SSE)
@@ -91,6 +92,14 @@ func NewHandler(cfg Config) http.Handler {
 	mux.HandleFunc("GET /api/nodes", a.nodes)
 	mux.HandleFunc("GET /api/pools", a.stakePools)
 	mux.HandleFunc("GET /api/governance", a.governance)
+	mux.HandleFunc("GET /api/markets", func(w http.ResponseWriter, r *http.Request) {
+		m, err := a.Source.Markets(r.Context())
+		if err != nil {
+			a.fail(w, err)
+			return
+		}
+		a.json(w, http.StatusOK, m)
+	})
 	mux.HandleFunc("GET /api/findings", a.findings)
 	mux.HandleFunc("GET /api/findings/{id}", func(w http.ResponseWriter, _ *http.Request) {
 		a.fail(w, fmt.Errorf("%w: finding", view.ErrNotFound))

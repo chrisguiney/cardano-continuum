@@ -144,3 +144,22 @@ func TestSystemRecordsAreNotActors(t *testing.T) {
 		t.Fatalf("rows %+v: want only the faucet, labelled %q", rows, FaucetProfile)
 	}
 }
+
+// The Markets view is the projection's fold of the market records: Quote
+// points, Traded flows, births by currency. A Quote is no actor's.
+func TestMarketsView(t *testing.T) {
+	p := NewProjection()
+	add := func(seq uint64, kind string, actor uint64, body any) {
+		p.Apply(eventlog.Record{Seq: seq, At: 60_000, Class: eventlog.Decision, Kind: kind, Actor: eventlog.ActorID(actor), Body: mustEncode(t, body)})
+	}
+	add(1, engine.KindQuote, 0, engine.Quote{ADA: 0.5, Mids: []engine.Mid{{Currency: "USD", Mid: 0.5}}})
+	add(2, engine.KindSpawned, 3, engine.Spawned{Profile: "p", Currency: "USD"})
+	add(3, engine.KindTraded, 3, engine.Traded{Side: "buy", Exchange: "north", Currency: "USD", Lovelace: 5, Fiat: 2.5})
+	m := marketsOf(p)
+	if len(m.Quotes) != 1 || m.Births["USD"] != 1 || len(m.Flows) != 1 || m.Flows[0].Fiat != 2.5 {
+		t.Fatalf("markets view %+v", m)
+	}
+	if n := p.Snapshot(nil).Population.Total; n != 1 {
+		t.Fatalf("population %d: a Quote made an actor", n)
+	}
+}

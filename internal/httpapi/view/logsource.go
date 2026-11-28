@@ -147,6 +147,11 @@ func (s *LogSource) Proposal(ctx context.Context, id string) (ProposalDetail, er
 	return s.cfg.Projection.Proposal(id, s.cfg.Slots, s.cfg.GovLifetime, func(a uint64) string { return n[a].Profile })
 }
 
+// Markets implements Source.
+func (s *LogSource) Markets(context.Context) (MarketsView, error) {
+	return marketsOf(s.cfg.Projection), nil
+}
+
 // Controls implements Source.
 func (s *LogSource) Controls(context.Context) (ControlState, error) {
 	return controlsOf(s.cfg.Projection), nil
@@ -381,7 +386,8 @@ func (s *LogSource) ActorDetail(ctx context.Context, id uint64) (ActorDetail, er
 		d.Holdings.Tokens = []store.Token{}
 	}
 	d.Delegation = Delegation{in.StakeRegistered, in.DelegatedPool, in.DelegatedActor, in.DelegatedDRep}
-	d.Traits = Traits{in.Competence, in.Care, in.Patience, in.LearningRate}
+	d.Traits = Traits{in.Competence, in.Care, in.Patience, in.LearningRate, in.LossAversion}
+	d.Market = in.Market
 	d.Lifecycle = Lifecycle{State: l.info.state, BornMs: l.info.born, ChangedMs: l.info.changed, Frustration: in.Frustration, Hazard: in.Hazard}
 	i := l.info
 	d.Activity = Activity{Intents: i.intents, Submitted: i.txs, Confirmed: i.confirmed, Refused: i.refused, Released: i.released,

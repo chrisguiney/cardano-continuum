@@ -31,7 +31,7 @@ type Trading interface {
 // Trade scores against idle's 1. A wallet buys and sells now and then,
 // about as often as a holder pays; the trend over the market window scales
 // its buying (rallies draw buyers), a gain past takeGain draws profit
-// taking, and a loss past lossGain is where traits split sellers from
+// taking, and a loss past LossGain is where traits split sellers from
 // holders: the sale grows with loss aversion, impatience and the depth of
 // the loss, while a hodl wallet holds for the recovery.
 const (
@@ -42,7 +42,7 @@ const (
 	trendCeil  = 4.0
 	takeGain   = 0.15
 	takeScore  = 0.02
-	lossGain   = 0.1
+	LossGain   = 0.1
 	panicScore = 0.2
 	// patienceScale is the patience at which half the impatience is gone:
 	// impatience is patienceScale / (patienceScale + patience).
@@ -78,14 +78,14 @@ func sell(a population.Actor, pos Position, bal purse, hodl bool) Score {
 	switch {
 	case pos.Gain >= takeGain:
 		return pick(profile.IntentSellADA, takeScore*(1+pos.Gain), bal, fmt.Sprintf("up %.0f%% on cost in %s: takes profit", pct, pos.Currency))
-	case pos.Gain > -lossGain:
+	case pos.Gain > -LossGain:
 		return pick(profile.IntentSellADA, sellScore, bal, fmt.Sprintf("%+.0f%% on cost in %s: sells now and then", pct, pos.Currency))
 	case hodl:
 		return off(profile.IntentSellADA, fmt.Sprintf("down %.0f%% in %s: hodl, holds for the recovery", -pct, pos.Currency))
 	}
 	averse := min(1, max(0, a.Traits.LossAversion))
 	impatience := patienceScale / (patienceScale + max(0, a.Traits.Patience))
-	value := panicScore * averse * impatience * -pos.Gain / lossGain
+	value := panicScore * averse * impatience * -pos.Gain / LossGain
 	return pick(profile.IntentSellADA, value, bal,
 		fmt.Sprintf("down %.0f%% in %s: loss aversion %.2f, impatience %.2f: sells", -pct, pos.Currency, averse, impatience))
 }

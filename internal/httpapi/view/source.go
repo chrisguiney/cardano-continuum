@@ -33,6 +33,9 @@ type Source interface {
 	// Proposal is one governance action's row with all its current votes,
 	// or ErrNotFound; id is "txhash#index".
 	Proposal(ctx context.Context, id string) (ProposalDetail, error)
+	// Markets is the Markets view: quotes, trade flows, births by
+	// currency and the largest drawdown's sell-or-hodl split.
+	Markets(ctx context.Context) (MarketsView, error)
 	// Findings pages oracle findings; none exist before the oracle lands.
 	Findings(ctx context.Context, p Page) (FindingPage, error)
 	// Subscribe joins the decision feed. after is the client's

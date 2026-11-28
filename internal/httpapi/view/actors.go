@@ -57,6 +57,7 @@ type Traits struct {
 	Care         float64 `json:"care"`
 	Patience     float64 `json:"patience"`
 	LearningRate float64 `json:"learning_rate"`
+	LossAversion float64 `json:"loss_aversion"`
 }
 
 // Activity counts an actor's intents and outcomes.
@@ -94,21 +95,23 @@ type AdversaryCost struct {
 // supplies the wallet, holdings, delegation and traits; the rest comes from
 // the log.
 type ActorDetail struct {
-	ID          uint64          `json:"id"`
-	Name        string          `json:"name"`
-	Profile     string          `json:"profile"`
-	Kind        string          `json:"kind"`
-	Agenda      string          `json:"agenda"`
-	HasIdentity bool            `json:"has_identity"`
-	Wallet      WalletIDs       `json:"wallet"`
-	Holdings    Holdings        `json:"holdings"`
-	Delegation  Delegation      `json:"delegation"`
-	Lifecycle   Lifecycle       `json:"lifecycle"`
-	Traits      Traits          `json:"traits"`
-	Activity    Activity        `json:"activity"`
-	Findings    []ActorFinding  `json:"findings"`
-	Adversary   *AdversaryCost  `json:"adversary,omitempty"`
-	Timeline    []TimelineEntry `json:"timeline"`
+	ID          uint64         `json:"id"`
+	Name        string         `json:"name"`
+	Profile     string         `json:"profile"`
+	Kind        string         `json:"kind"`
+	Agenda      string         `json:"agenda"`
+	HasIdentity bool           `json:"has_identity"`
+	Wallet      WalletIDs      `json:"wallet"`
+	Holdings    Holdings       `json:"holdings"`
+	Delegation  Delegation     `json:"delegation"`
+	Lifecycle   Lifecycle      `json:"lifecycle"`
+	Traits      Traits         `json:"traits"`
+	Activity    Activity       `json:"activity"`
+	Findings    []ActorFinding `json:"findings"`
+	Adversary   *AdversaryCost `json:"adversary,omitempty"`
+	// Market is a market wallet's currencies and cost basis.
+	Market   *store.Market   `json:"market,omitempty"`
+	Timeline []TimelineEntry `json:"timeline"`
 }
 
 // shortAddr keeps the prefix and the tail of an address, enough to tell

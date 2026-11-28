@@ -65,6 +65,11 @@ func summarize(out io.Writer, cfg engine.Config, r *engine.Runner, chain *fakech
 		return err
 	}
 	w.Printf("%s", gov.line())
+	ml, err := marketLine(context.Background(), cfg, mem)
+	if err != nil {
+		return err
+	}
+	w.Printf("%s", ml)
 	if err := attack.Summarize(context.Background(), w, mem); err != nil {
 		return err
 	}

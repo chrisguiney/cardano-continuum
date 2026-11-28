@@ -39,6 +39,7 @@ type (
 	ProposalDigest  = wire.ProposalDigest
 	Fork            = wire.Fork
 	Quote           = wire.Quote
+	Mid             = wire.Mid
 	Traded          = wire.Traded
 	Ref             = wire.Ref
 	Refill          = wire.Refill

@@ -5,6 +5,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/meter"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/tape"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 )
 
@@ -17,6 +18,12 @@ type (
 	AttackStep = meter.AttackStep
 	CostPoint  = meter.CostPoint
 	AttackStat = meter.AttackStat
+	// Tape folds the market records (internal/engine/internal/tape).
+	Tape          = tape.Tape
+	MarketSummary = tape.Summary
+	MarketFlow    = tape.Flow
+	Drawdown      = tape.Drawdown
+	MarketPoint   = tape.Point
 )
 
 // Measure folds a run's log into the metrics adversary.Compare reads; see

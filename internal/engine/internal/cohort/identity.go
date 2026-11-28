@@ -128,6 +128,8 @@ type Idents struct {
 	proposer string
 	att      Adversaries
 	chain    Chain
+	// desk reads a market wallet's position.
+	desk *Desk
 }
 
 // kindOf names an actor's role for the UI: a profile kind, refined for the
@@ -222,10 +224,12 @@ func (n *Idents) Identity(a population.Actor, st *Actor, hs map[population.Actor
 			LearningRate: a.Traits.LearningRate,
 			Frustration:  a.Frustration,
 			Hazard:       hazard,
+			LossAversion: a.Traits.LossAversion,
 		},
 		Holdings:   hold,
 		Delegation: n.delegationOf(a.ID),
 		Adversary:  adv,
+		Market:     n.desk.holding(a.ID),
 	}
 }
 

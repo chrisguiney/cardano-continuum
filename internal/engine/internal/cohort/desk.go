@@ -9,6 +9,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
+	"github.com/chrisguiney/cardano-continuum/internal/store"
 )
 
 // Desk is the wallets' side of the market: their positions, the orders
@@ -94,4 +95,24 @@ func (d *Desk) restore(st *Actor, r wire.ActorRec) {
 		return
 	}
 	st.Trader.Basis, st.Trader.Units, st.Trader.Venue = r.Basis, r.Units, venueOf(d.m.path.Params(), r.Venue)
+}
+
+// holding is a market wallet's identity row part, nil for other actors.
+func (d *Desk) holding(id population.ActorID) *store.Market {
+	st := d.m.r.Rec(id)
+	if !d.m.On() || st == nil || st.Trader == nil {
+		return nil
+	}
+	tr := st.Trader
+	extra := make([]string, len(tr.Extra))
+	for i, c := range tr.Extra {
+		extra[i] = d.m.Code(c)
+	}
+	return &store.Market{
+		Primary: d.m.Code(tr.Primary),
+		Extra:   extra,
+		Basis:   tr.Basis,
+		Units:   tr.Units,
+		Venue:   venueName(d.m.path.Params(), tr.Venue),
+	}
 }

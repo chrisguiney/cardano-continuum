@@ -244,7 +244,9 @@ type Decision struct {
 	// Clock is the intent kind whose fitted clock fired, for a population
 	// actor's decision; the scores are that kind's alone.
 	Clock string `json:"clock,omitempty"`
-	Body  any    `json:"body,omitempty"`
+	// Position is the market position a market wallet's scores read.
+	Position *agenda.Position `json:"position,omitempty"`
+	Body     any              `json:"body,omitempty"`
 }
 
 // Filter selects decisions on the feed. Every set field must match.

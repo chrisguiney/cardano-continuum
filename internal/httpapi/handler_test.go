@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/httpapi/view"
 	"github.com/chrisguiney/cardano-continuum/internal/store"
 )
@@ -147,6 +148,10 @@ func (f *fakeSource) Governance(context.Context) (GovernanceView, error) {
 			Tally: map[string]Tally{"drep": {}, "spo": {Yes: 1, YesPower: 5000}, "committee": {}}}},
 		Votes: []VoteRow{vote}, Pools: []PoolVotes{{Actor: 7, Profile: "pools", Votes: []VoteRow{vote}}},
 	}, nil
+}
+
+func (f *fakeSource) Markets(context.Context) (view.MarketsView, error) {
+	return view.MarketsView{Births: map[string]int{"EUR": 2}, Flows: []engine.MarketFlow{{Exchange: "north", Currency: "EUR", Side: "buy", Trades: 1}}}, nil
 }
 
 func (f *fakeSource) Proposal(context.Context, string) (ProposalDetail, error) {
@@ -552,5 +557,16 @@ func TestUIServedBesideAPI(t *testing.T) {
 	}
 	if code, _ := get(t, srv.URL+"/api/overview"); code != 200 {
 		t.Errorf("overview: %d", code)
+	}
+}
+
+// GET /api/markets serves the source's Markets view.
+func TestMarketsRoute(t *testing.T) {
+	srv := httptest.NewServer(NewHandler(Config{Source: &fakeSource{hub: NewHub(8, 4, 8)}}))
+	defer srv.Close()
+	code, body := get(t, srv.URL+"/api/markets")
+	var m view.MarketsView
+	if err := json.Unmarshal(body, &m); code != http.StatusOK || err != nil || m.Births["EUR"] != 2 || len(m.Flows) != 1 {
+		t.Fatalf("markets %d %s %v", code, body, err)
 	}
 }
