@@ -31,6 +31,9 @@ type Actor struct {
 	// computed on first use.
 	Ident   store.Identity
 	IdentOK bool
+	// Trader is a wallet's place in the market; nil without one, and for
+	// the exchanges' actors.
+	Trader *Trader
 }
 
 // Draw returns a fresh stream for the actor's next random decision. Each

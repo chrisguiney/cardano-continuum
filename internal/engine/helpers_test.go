@@ -344,3 +344,15 @@ func (m *memStore) SaveCheckpoint(_ context.Context, c store.Checkpoint) error {
 func (m *memStore) Recover(context.Context) (store.Recovery, error) {
 	return store.Recovery{Checkpoint: m.cp}, nil
 }
+
+// marketsConfig is testConfig with the default market: three exchanges,
+// each an actor Populate writes and the genesis funds.
+func marketsConfig(t testing.TB, seed uint64, wallets int) Config {
+	t.Helper()
+	cfg := testConfig(t, seed, wallets)
+	m := profile.DefaultMarkets()
+	if err := Populate(&cfg, profile.File{Markets: &m}); err != nil {
+		t.Fatal(err)
+	}
+	return cfg
+}

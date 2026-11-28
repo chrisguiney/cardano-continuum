@@ -75,6 +75,9 @@ func foldDecision(p *Projection, r eventlog.Record) error {
 	switch r.Kind {
 	case oracle.KindFinding:
 		return p.findings.Load(r)
+	case engine.KindQuote:
+		// A Quote is the market's, not an actor's.
+		return nil
 	case engine.KindSpawned:
 		var s engine.Spawned
 		if err := eventlog.Decode(r.Body, &s); err != nil {

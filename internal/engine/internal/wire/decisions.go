@@ -83,6 +83,8 @@ type Incident struct {
 // Spawned is the body of a Spawned decision.
 type Spawned struct {
 	Profile string `json:"profile"`
+	// Currency is a wallet's primary currency when the run has a market.
+	Currency string `json:"currency,omitempty"`
 }
 
 // Transition is the body of a Transition decision.

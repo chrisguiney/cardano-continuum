@@ -44,6 +44,8 @@ type Scheduler interface {
 	Act(at sched.Time, id population.ActorID) sched.Handle
 	// Birth schedules a birth stream's next birth.
 	Birth(at sched.Time, idx int) sched.Handle
+	// Quote schedules the market's next Quote record.
+	Quote(at sched.Time)
 	// Cancel removes a scheduled event.
 	Cancel(h sched.Handle)
 }
@@ -98,6 +100,8 @@ type Spec struct {
 	RootKeys  *keys.Store
 	Pools     []GenesisPool
 	PoolStake uint64
+	// Markets is the run's ADA market; nil means none.
+	Markets *profile.Markets
 }
 
 // Cohort is the population and its parts.
@@ -106,16 +110,23 @@ type Cohort struct {
 	Life   *Life
 	Births *Births
 	Idents *Idents
+	// Market is the ADA market the wallets trade in.
+	Market *Market
 }
 
 // New returns an empty cohort.
 func New(sp Spec, v Env) *Cohort {
 	ring := newKeyring(sp.ActorKeys, sp.RootKeys, &Genesis{Pools: sp.Pools, stake: sp.PoolStake, chain: v.Chain})
 	r := newRoster(sp.Census, ring, v)
-	l := &Life{r: r, slots: sp.Slots}
-	return &Cohort{Roster: r, Life: l,
+	m := newMarket(sp, r)
+	l := &Life{r: r, slots: sp.Slots, market: m}
+	return &Cohort{
+		Roster: r,
+		Life:   l,
 		Births: &Births{life: l, seed: sp.Seed, sched: v.Sched, emit: v.Emit},
-		Idents: &Idents{r: r, proposer: sp.Proposer, att: v.Att, chain: v.Chain}}
+		Idents: &Idents{r: r, proposer: sp.Proposer, att: v.Att, chain: v.Chain},
+		Market: m,
+	}
 }
 
 // Profiles looks a profile up by name.
@@ -134,10 +145,14 @@ func (c *Cohort) Save() ([]wire.ActorRec, []wire.BirthRec) {
 		for i, p := range st.Paid {
 			paid[i] = uint64(p)
 		}
+		var currency string
+		if st.Trader != nil {
+			currency = c.Market.Code(st.Trader.Primary)
+		}
 		actors = append(actors, wire.ActorRec{
 			ID: uint64(id), Profile: a.Profile, State: string(a.State), Born: a.Born, Changed: a.Changed,
 			Frustration: a.Frustration, Competence: a.Competence, HazardAt: st.HazardAt, HazardTo: string(st.HazardTo), ActAt: st.ActAt, Draws: st.Draws, Booting: st.Booting,
-			Owed: st.Owed, Paid: paid, FollowUp: st.FollowUp, Waits: st.Waits,
+			Owed: st.Owed, Paid: paid, FollowUp: st.FollowUp, Waits: st.Waits, Currency: currency,
 		})
 	}
 	var births []wire.BirthRec
@@ -167,6 +182,7 @@ func (c *Cohort) Load(ps Profiles, actors []wire.ActorRec, births []wire.BirthRe
 		}
 		c.Births.Resume(i, r.At, r.N)
 	}
+	c.Market.Bind()
 	return nil
 }
 
@@ -189,6 +205,7 @@ func (c *Cohort) revive(ps Profiles, r wire.ActorRec) error {
 		return err
 	}
 	st := c.Register(a, p)
+	c.Market.Join(a, st, c.Market.currencyOf(r.Currency))
 	st.HazardAt, st.HazardTo, st.ActAt, st.Draws = r.HazardAt, population.State(r.HazardTo), r.ActAt, r.Draws
 	st.Booting = r.Booting
 	st.Owed = r.Owed

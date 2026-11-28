@@ -17,12 +17,16 @@ import (
 type Life struct {
 	r     *Roster
 	slots sched.Slots
+	// market gives each new wallet its currencies.
+	market *Market
 }
 
-// Spawn adds an actor and schedules its first hazard.
-func (l *Life) Spawn(p profile.Profile, at sched.Time) population.Actor {
+// Spawn adds an actor and schedules its first hazard. A wallet's primary
+// currency is currency, or drawn by share when currency is negative.
+func (l *Life) Spawn(p profile.Profile, at sched.Time, currency int) population.Actor {
 	a := l.r.census.Spawn(p, l.r.seed, at)
 	st := l.r.Register(a, p)
+	l.market.Join(a, st, currency)
 	l.NextHazard(a, st, at)
 	// Pools and DReps have no hazard clock to wake them: they act from
 	// birth, registering first.

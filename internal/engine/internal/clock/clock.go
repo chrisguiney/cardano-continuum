@@ -31,6 +31,9 @@ const (
 	Adopt
 	// Deploy opens the next contract.
 	Deploy
+	// Quote records the market. It runs last at its time, so a record
+	// reads the market every other same-time event saw.
+	Quote
 )
 
 // Event is one scheduled event. Same-time events run sorted by (Kind,

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
+	"github.com/chrisguiney/cardano-continuum/internal/market"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 )
 
@@ -226,5 +227,49 @@ func TestDeterminismSnapshotSections(t *testing.T) {
 		if !slices.Contains(keys, k) {
 			t.Fatalf("section %q missing from %v", k, keys)
 		}
+	}
+}
+
+// A markets run quotes the market every QuoteEvery seconds from the path
+// the run seed fixes, and stays deterministic through replay and a crash.
+func TestDeterminismMarkets(t *testing.T) {
+	t.Parallel()
+	const until sched.Time = 200_000
+	cfg := marketsConfig(t, 21, 8)
+	ref := newWorld(t, cfg)
+	ref.mem = &memStore{log: ref.log}
+	hooks := 0
+	ref.run(until, 15, func(int) bool { hooks++; return false })
+	want := ref.logBytes()
+
+	path := market.New(cfg.Seed, *cfg.Markets)
+	var quotes []sched.Time
+	for _, rec := range logRecords(t, ref.log) {
+		if rec.Kind != KindQuote {
+			continue
+		}
+		var q Quote
+		if err := eventlog.Decode(rec.Body, &q); err != nil {
+			t.Fatal(err)
+		}
+		if q.ADA != path.ADA(rec.At) || len(q.Mids) != len(cfg.Markets.Currencies) || len(q.Venues) < len(cfg.Markets.Exchanges) {
+			t.Fatalf("quote at %d: %+v", rec.At, q)
+		}
+		quotes = append(quotes, rec.At)
+	}
+	if !slices.Equal(quotes, []sched.Time{60_000, 120_000, 180_000}) {
+		t.Fatalf("quotes at %v, want every 60s", quotes)
+	}
+
+	w := newWorld(t, cfg)
+	w.mem = &memStore{log: w.log}
+	if c := w.run(until, 15, func(n int) bool { return n == hooks/2 }); c != 1 {
+		t.Fatalf("%d crashes", c)
+	}
+	if !bytes.Equal(w.logBytes(), want) {
+		t.Fatal("a crash mid-run changes a markets run's log")
+	}
+	if !bytes.Equal(w.finalSnapshot(), ref.finalSnapshot()) {
+		t.Fatal("a crash mid-run changes a markets run's state")
 	}
 }

@@ -64,6 +64,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/cohort"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
+	"github.com/chrisguiney/cardano-continuum/internal/market"
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 	"github.com/chrisguiney/cardano-continuum/internal/policy"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
@@ -194,6 +195,9 @@ type Guard struct {
 type World struct {
 	Populations []profile.Population
 	Network     profile.Network
+	// Markets is the ADA market the wallets trade in (internal/market);
+	// nil means none. Populate writes an actor for each exchange.
+	Markets *profile.Markets
 	// Adversaries is the proof (adversary.Clear) that the node is on the
 	// run's devnet. Without it New refuses any adversary actor.
 	Adversaries adversary.Clearance
@@ -318,12 +322,12 @@ func (c *Config) fileHash() ([32]byte, error) {
 	}
 	var ps []profile.Profile
 	for _, p := range profilesIn(reg) {
-		if _, written := c.population(p.Name); written || (p.Name == proposerName && len(c.Network.Proposals) > 0) {
+		if _, written := c.population(p.Name); written || (p.Name == proposerName && len(c.Network.Proposals) > 0) || c.exchange(p.Name) {
 			continue
 		}
 		ps = append(ps, p)
 	}
-	return FileHash(profile.File{Profiles: ps, Populations: c.Populations, Network: c.Network})
+	return FileHash(profile.File{Profiles: ps, Populations: c.Populations, Network: c.Network, Markets: c.Markets})
 }
 
 // Header returns the log header for this config: fingerprints of the seed,
@@ -491,6 +495,20 @@ func (c *World) population(name string) (profile.Population, bool) {
 		}
 	}
 	return profile.Population{}, false
+}
+
+// exchange reports whether the named profile is an exchange's actor, which
+// Populate writes from the markets section.
+func (c *World) exchange(name string) bool {
+	if c.Markets == nil {
+		return false
+	}
+	for _, x := range c.Markets.Exchanges {
+		if market.ProfileName(x.Name) == name {
+			return true
+		}
+	}
+	return false
 }
 
 // contractParams is the file's contract population, if it has one.

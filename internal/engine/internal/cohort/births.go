@@ -42,8 +42,12 @@ func (bs *Births) Start(now sched.Time) {
 // schedules the stream's next.
 func (bs *Births) Run(at sched.Time, idx int) {
 	b := bs.list[idx]
-	a := bs.life.Spawn(b.prof, at)
-	bs.emit.Emit(at, wire.KindSpawned, a.ID, wire.Spawned{Profile: b.prof.Name})
+	a := bs.life.Spawn(b.prof, at, -1)
+	var currency string
+	if tr := bs.life.r.Rec(a.ID).Trader; tr != nil {
+		currency = bs.life.market.Code(tr.Primary)
+	}
+	bs.emit.Emit(at, wire.KindSpawned, a.ID, wire.Spawned{Profile: b.prof.Name, Currency: currency})
 	bs.schedule(b, at)
 }
 

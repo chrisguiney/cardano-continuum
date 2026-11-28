@@ -36,6 +36,8 @@ type ActorRec struct {
 	FollowUp bool `json:"follow_up,omitzero"`
 	// Waits is the blocks the pending follow-up has waited.
 	Waits uint8 `json:"waits,omitzero"`
+	// Currency is a wallet's primary currency when the run has a market.
+	Currency string `json:"currency,omitempty"`
 }
 
 // BirthRec is one birth stream: its profile, next birth and draw count.

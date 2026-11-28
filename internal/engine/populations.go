@@ -7,6 +7,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/cohort"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/pace"
+	"github.com/chrisguiney/cardano-continuum/internal/market"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 )
 
@@ -39,8 +40,8 @@ const (
 // gives the deposits the budgets cover. A file with no populations leaves
 // cfg as it was.
 func Populate(cfg *Config, f profile.File) error {
-	cfg.Populations, cfg.Network = f.Populations, f.Network
-	extra := populationProfiles(f, cfg.Build)
+	cfg.Populations, cfg.Network, cfg.Markets = f.Populations, f.Network, f.Markets
+	extra := append(populationProfiles(f, cfg.Build), exchangeProfiles(f)...)
 	if len(extra) == 0 {
 		return nil
 	}
@@ -143,6 +144,32 @@ func populationProfiles(f profile.File, bp build.Params) []profile.Profile {
 	return out
 }
 
+// exchangeProfiles writes the profile of each exchange's actor: a wallet
+// that never acts on its own, holds its float as its budget and never goes
+// dormant or leaves. Its payments are the withdrawals wallets buy.
+func exchangeProfiles(f profile.File) []profile.Profile {
+	if f.Markets == nil {
+		return nil
+	}
+	traits := profile.Traits{
+		Competence:   profile.Beta{A: 1, B: 0},
+		Patience:     profile.Const{V: 5},
+		LearningRate: profile.Const{V: 0},
+		Care:         profile.Const{V: 1},
+	}
+	var out []profile.Profile
+	for _, x := range f.Markets.Exchanges {
+		out = append(out, profile.Profile{
+			Name:   market.ProfileName(x.Name),
+			Kind:   profile.Wallet,
+			Agenda: "hodl",
+			Traits: traits,
+			Budget: profile.Lovelace(x.Float),
+		})
+	}
+	return out
+}
+
 // perSecond converts per-day rates, dropping zeros so a population that
 // never retires has no retirement clock.
 func perSecond(daily map[profile.IntentKind]float64) map[profile.IntentKind]float64 {
@@ -173,7 +200,7 @@ func deployRate(c *Config) float64 {
 	}
 	wallets := 0
 	for _, co := range c.Cohorts {
-		if p, _ := c.Profiles.Get(co.Profile); p.Kind == profile.Wallet && co.Profile != proposerName {
+		if p, _ := c.Profiles.Get(co.Profile); p.Kind == profile.Wallet && co.Profile != proposerName && !c.exchange(co.Profile) {
 			wallets += co.Count
 		}
 	}

@@ -106,11 +106,13 @@ func TestServeOverFinishedRun(t *testing.T) {
 		LastSeq    uint64 `json:"last_seq"`
 		Population struct{ Total int }
 	}
-	if code := srv.getJSON(t, "/api/overview", &snap); code != 200 || snap.LastSeq == 0 || snap.Population.Total != 20 {
+	// The 20 wallets, and m1's three exchanges.
+	const actors = 23
+	if code := srv.getJSON(t, "/api/overview", &snap); code != 200 || snap.LastSeq == 0 || snap.Population.Total != actors {
 		t.Fatalf("overview %d %+v", code, snap)
 	}
 	var page struct{ Total int }
-	if code := srv.getJSON(t, "/api/actors?limit=5&sort=txs&dir=desc", &page); code != 200 || page.Total != 20 {
+	if code := srv.getJSON(t, "/api/actors?limit=5&sort=txs&dir=desc", &page); code != 200 || page.Total != actors {
 		t.Fatalf("actors %d %+v", code, page)
 	}
 	var e struct{ Error string }

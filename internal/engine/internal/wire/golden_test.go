@@ -36,6 +36,7 @@ func bodies() map[string]any {
 		KindControlled:     &Controlled{},
 		KindImageChange:    &ImageChange{},
 		KindDeployed:       &Deployed{},
+		KindQuote:          &Quote{},
 		KindAttack:         &Attack{},
 		KindProtocol:       &Protocol{},
 		oracle.KindFinding: &oracle.Finding{},

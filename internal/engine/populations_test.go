@@ -8,6 +8,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
+	"github.com/chrisguiney/cardano-continuum/internal/market"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 )
@@ -279,4 +280,60 @@ func TestPopulationClocksStartAfterRegistering(t *testing.T) {
 	if kinds["register_drep"] == 0 || kinds["register_pool"] == 0 {
 		t.Fatalf("submitted %v: population actors did not register", kinds)
 	}
+}
+
+// Each exchange is a wallet actor of its own profile, funded at genesis with
+// its float; ordinary wallets get a currency, exchanges none.
+func TestMarketsExchangesAreFundedActors(t *testing.T) {
+	cfg := marketsConfig(t, 1, 40)
+	e, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := cfg.Markets
+	funds, err := cfg.Genesis()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for xi, x := range m.Exchanges {
+		id := e.co.Market.Venue(xi)
+		a, ok := e.co.Get(id)
+		if !ok || a.Profile != market.ProfileName(x.Name) {
+			t.Fatalf("exchange %s: actor %d profile %q", x.Name, id, a.Profile)
+		}
+		if f := funds[id-1]; f.Actor != uint64(id) || f.Lovelace != x.Float {
+			t.Fatalf("exchange %s funded %+v, want its float %d", x.Name, f, x.Float)
+		}
+		if e.co.Rec(id).Trader != nil {
+			t.Fatalf("exchange %s has currencies", x.Name)
+		}
+	}
+	seen := map[int]int{}
+	for _, id := range e.co.IDs() {
+		if _, ok := e.co.Market.Exchange(id); ok {
+			continue
+		}
+		tr := e.co.Rec(id).Trader
+		if tr == nil {
+			t.Fatalf("wallet %d has no currency", id)
+		}
+		seen[tr.Primary]++
+	}
+	if len(seen) < 3 {
+		t.Fatalf("40 wallets hold only %d primary currencies", len(seen))
+	}
+	if h, err := cfg.fileHash(); err != nil {
+		t.Fatal(err)
+	} else if plain := testConfig(t, 1, 40); h == mustHash(t, &plain) {
+		t.Fatal("the markets section does not reach the profile hash")
+	}
+}
+
+func mustHash(t *testing.T, c *Config) [32]byte {
+	t.Helper()
+	h, err := c.fileHash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return h
 }

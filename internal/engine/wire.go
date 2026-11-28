@@ -38,6 +38,7 @@ type (
 	Protocol        = wire.Protocol
 	ProposalDigest  = wire.ProposalDigest
 	Fork            = wire.Fork
+	Quote           = wire.Quote
 	Ref             = wire.Ref
 	Refill          = wire.Refill
 	Refused         = wire.Refused
@@ -69,6 +70,7 @@ const (
 	KindIntentChosen = wire.KindIntentChosen
 	KindPoolTier     = wire.KindPoolTier
 	KindProtocol     = wire.KindProtocol
+	KindQuote        = wire.KindQuote
 	KindRefill       = wire.KindRefill
 	KindRefused      = wire.KindRefused
 	KindReleased     = wire.KindReleased
@@ -90,12 +92,12 @@ func DecisionKinds() []string { return wire.DecisionKinds() }
 func Digest(blockCbor []byte) ([]byte, error) { return wire.Digest(blockCbor) }
 
 // snapshotVersion is bumped whenever snapshot's shape changes.
-const snapshotVersion = 10
+const snapshotVersion = 11
 
 // logFormat is the version of the engine's input and decision bodies. It is
 // part of the log header's genesis fingerprint, so a log written in another
 // format is refused at the header rather than failing on its first body.
-const logFormat = 8
+const logFormat = 9
 
 // snapshot is the engine state in canonical form, every slice sorted so
 // equal states encode to equal bytes. It is one section per component, in
@@ -133,6 +135,8 @@ type cohortRec struct {
 	Actors []wire.ActorRec `json:"actors"`
 	// Births are the birth streams in the order they were added.
 	Births []wire.BirthRec `json:"births"`
+	// Quote is the market's next Quote record; zero without a market.
+	Quote sched.Time `json:"quote_at,omitzero"`
 }
 
 // attackRec is the adversaries' section of the snapshot.

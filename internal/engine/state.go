@@ -69,6 +69,7 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 	if err := e.co.Load(cfg.Profiles, s.Cohort.Actors, s.Cohort.Births); err != nil {
 		return nil, err
 	}
+	e.co.Market.Load(s.Cohort.Quote)
 
 	if cfg.Faucet > 0 {
 		e.fc.Load(s.RefillAt)
@@ -168,6 +169,9 @@ func (c evsched) Refill(at sched.Time) { c.Push(at, clock.Event{Kind: clock.Refi
 
 // Deploy implements intent.Clock.
 func (c evsched) Deploy(at sched.Time) { c.Push(at, clock.Event{Kind: clock.Deploy}) }
+
+// Quote implements cohort.Scheduler.
+func (c evsched) Quote(at sched.Time) { c.Push(at, clock.Event{Kind: clock.Quote}) }
 
 func (c evsched) Birth(at sched.Time, idx int) sched.Handle {
 	return c.Push(at, clock.Event{Kind: clock.Birth, Birth: idx})

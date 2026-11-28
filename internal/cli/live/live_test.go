@@ -2,12 +2,14 @@ package live
 
 import (
 	"flag"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/internal/simflags"
+	"github.com/chrisguiney/cardano-continuum/internal/market"
 	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 	"github.com/chrisguiney/cardano-continuum/internal/rng"
 )
@@ -45,12 +47,16 @@ func TestLiveConfig(t *testing.T) {
 	if cfg.Build.SystemStart != g.Start || cfg.Build.SlotLength != g.SlotLength {
 		t.Fatalf("build slot timing %v %v", cfg.Build.SystemStart, cfg.Build.SlotLength)
 	}
-	n := 0
+	n, exchanges := 0, 0
 	for _, c := range cfg.Cohorts {
+		if strings.HasPrefix(c.Profile, market.ProfilePrefix) {
+			exchanges += c.Count
+			continue
+		}
 		n += c.Count
 	}
-	if n != 20 {
-		t.Fatalf("%d wallets", n)
+	if n != 20 || exchanges != len(cfg.Markets.Exchanges) {
+		t.Fatalf("%d wallets, %d exchanges", n, exchanges)
 	}
 	if _, err := cfg.Header(); err != nil {
 		t.Fatal(err)

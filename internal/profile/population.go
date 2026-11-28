@@ -111,6 +111,8 @@ type File struct {
 	Profiles    []Profile
 	Populations []Population
 	Network     Network
+	// Markets is the ADA market the wallets trade in; nil means none.
+	Markets *Markets
 }
 
 var actionTypes = map[string]bool{

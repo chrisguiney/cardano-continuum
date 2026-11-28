@@ -113,9 +113,11 @@ func New(cfg Config) (*Engine, error) {
 	for _, co := range cfg.Cohorts {
 		p, _ := cfg.Profiles.Get(co.Profile)
 		for range co.Count {
-			owners = append(owners, e.co.Life.Spawn(p, 0).ID)
+			owners = append(owners, e.co.Life.Spawn(p, 0, -1).ID)
 		}
 	}
+	e.co.Market.Bind()
+	e.co.Market.Start()
 	if cfg.Faucet > 0 {
 		owners = []population.ActorID{faucetActor}
 		e.fc.Start()
@@ -210,7 +212,7 @@ func newEmpty(cfg Config) (*Engine, error) {
 	e.pc = pace.New(pace.Spec{Proposer: proposerName, Proposals: cfg.Network.Proposals, Population: e.cfg.population, Slots: cfg.Slots, BlockEvery: cfg.BlockEvery, GovLifetime: cfg.GovLifetime, Committee: cfg.Committee},
 		pace.Env{Sched: evsched{&e.clk}, Knobs: hooks{e}, Chain: e.win, Flight: hooks{e}, Agenda: hooks{e}})
 	e.co = cohort.New(cohort.Spec{Seed: cfg.Seed, Census: cfg.Seed.Derive(censusStream), Slots: cfg.Slots, Proposer: proposerName,
-		ActorKeys: ks, RootKeys: rootKeys, Pools: gpools, PoolStake: cfg.GenesisPoolStake},
+		ActorKeys: ks, RootKeys: rootKeys, Pools: gpools, PoolStake: cfg.GenesisPoolStake, Markets: cfg.Markets},
 		cohort.Env{Sched: evsched{&e.clk}, Emit: &e.jr, Chain: e.win, Att: hooks{e}, Pace: hooks{e}})
 	e.jd = judge.New(judgeSpec(e, genesis), judgeEnv(e))
 	e.in = intent.New(intentSpec(e), intentEnv(e))
@@ -255,7 +257,7 @@ func (e *Engine) Snapshot() ([]byte, error) {
 		Contracts: e.in.Save(),
 		Steer:     e.st.Save(),
 		Floor:     e.fl.Save(),
-		Cohort:    cohortRec{Actors: actors, Births: births},
+		Cohort:    cohortRec{Actors: actors, Births: births, Quote: e.co.Market.Save()},
 		RefillAt:  e.fc.Save(),
 		Attack:    attackRec{Charges: charges, Contested: contested},
 		Pay:       ps,
@@ -392,6 +394,8 @@ func (e *Engine) run(ctx context.Context, at sched.Time, ev clock.Event) error {
 		e.st.Adopt(at, ev.Intent)
 	case clock.Deploy:
 		return e.in.Deploy(at)
+	case clock.Quote:
+		e.co.Market.Quote(at)
 	}
 	return nil
 }
