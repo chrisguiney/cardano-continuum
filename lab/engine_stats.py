@@ -77,6 +77,11 @@ ASOF JOIN chosen c ON s.actor = c.actor AND s.seq >= c.seq
 GROUP BY c.intent_kind ORDER BY c.intent_kind
 """
 
+# Market trades are synthetic flows (their rates and sizes follow the
+# markets section, not the fitted chain data), so the payment statistics
+# leave them out; the fitted behaviour is what the target describes.
+ORGANIC_SQL = "coalesce(kind, '') NOT IN ('buy_ada', 'sell_ada')"
+
 AMOUNT_SQL = "SELECT amount FROM submission WHERE amount > 0"
 
 # A mint's or burn's amount is a token quantity, not lovelace. Exports
@@ -171,7 +176,10 @@ def _open_export(root: str, actors: set[int] | None) -> duckdb.DuckDBPyConnectio
         only_actors = f" WHERE actor IN ({ids})"
     for table in ("submission", "decision"):
         files = sql_text(table_glob(root, table))
-        con.execute(f"CREATE TEMP VIEW {table} AS SELECT * FROM read_parquet({files}){only_actors}")
+        view = "raw_submission" if table == "submission" else table
+        con.execute(f"CREATE TEMP VIEW {view} AS SELECT * FROM read_parquet({files}){only_actors}")
+    organic = f" WHERE {ORGANIC_SQL}" if _has_column(con, "raw_submission", "kind") else ""
+    con.execute(f"CREATE TEMP VIEW submission AS SELECT * FROM raw_submission{organic}")
     return con
 
 

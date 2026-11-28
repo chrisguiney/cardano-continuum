@@ -131,3 +131,19 @@ def test_output_value_leaves_out_token_quantities(tmp_path):
     con = engine_stats._open_export(root, None)
     values = sorted(engine_stats._column(con, engine_stats.LOVELACE_AMOUNT_SQL))
     assert list(values) == [2000000, 5000000]
+
+
+def test_market_trades_are_not_payments_of_the_fitted_behaviour(tmp_path):
+    """buy_ada and sell_ada are synthetic market flows, not behaviour fitted
+    from chain data, so the payment statistics leave them out."""
+    root = str(tmp_path / "run" / "export")
+    os.makedirs(os.path.dirname(root))
+    write_export(root, [(1000, 5, "lock", "NULL", "NULL")], deployed=[], actors={5: "w"})
+    con = duckdb.connect()
+    con.execute(f"""COPY (SELECT * FROM (VALUES (0, 1000, 5, 0, 1, 'send', 5000000),
+                    (1, 2000, 5, 1, 1, 'buy_ada', 7000000), (2, 3000, 5, 2, 1, 'sell_ada', 9000000),
+                    (3, 4000, 5, 3, 1, NULL, 2000000)) t(seq, "at", actor, intent_id, attempt, kind, amount))
+                    TO '{root}/submission/part-0.parquet' (FORMAT parquet)""")
+    con = engine_stats._open_export(root, None)
+    values = sorted(engine_stats._column(con, engine_stats.LOVELACE_AMOUNT_SQL))
+    assert list(values) == [2000000, 5000000]
