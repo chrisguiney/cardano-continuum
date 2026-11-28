@@ -5,6 +5,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
+	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 )
 
 // view adapts the engine's components to agenda.View and its optional
@@ -114,6 +115,13 @@ func (v govView) CommitteeVoted(seat int, p agenda.ProposalID) bool {
 
 // HotAuthorized implements agenda.Committee.
 func (v govView) HotAuthorized(seat int) bool { return v.e.win.View().HotAuthorized(seat) }
+
+// JointAuth implements agenda.Committee from the protocol version in force
+// at the tip.
+func (v govView) JointAuth() bool {
+	cv := v.e.win.View()
+	return cv.VersionAt(cv.Epoch()).Major >= protocol.VanRossem
+}
 
 // advView is the adversaries' side of the view: adversary.Sight and the
 // cost ceiling left.

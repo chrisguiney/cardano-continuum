@@ -35,6 +35,7 @@ type (
 	MonitorSnapshot = wire.MonitorSnapshot
 	PoolStatus      = wire.PoolStatus
 	PoolTier        = wire.PoolTier
+	Protocol        = wire.Protocol
 	ProposalDigest  = wire.ProposalDigest
 	Ref             = wire.Ref
 	Refill          = wire.Refill
@@ -66,6 +67,7 @@ const (
 	KindIncident     = wire.KindIncident
 	KindIntentChosen = wire.KindIntentChosen
 	KindPoolTier     = wire.KindPoolTier
+	KindProtocol     = wire.KindProtocol
 	KindRefill       = wire.KindRefill
 	KindRefused      = wire.KindRefused
 	KindReleased     = wire.KindReleased
@@ -87,12 +89,12 @@ func DecisionKinds() []string { return wire.DecisionKinds() }
 func Digest(blockCbor []byte) ([]byte, error) { return wire.Digest(blockCbor) }
 
 // snapshotVersion is bumped whenever snapshot's shape changes.
-const snapshotVersion = 9
+const snapshotVersion = 10
 
 // logFormat is the version of the engine's input and decision bodies. It is
 // part of the log header's genesis fingerprint, so a log written in another
 // format is refused at the header rather than failing on its first body.
-const logFormat = 7
+const logFormat = 8
 
 // snapshot is the engine state in canonical form, every slice sorted so
 // equal states encode to equal bytes. It is one section per component, in

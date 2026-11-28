@@ -81,6 +81,13 @@ func (j *Monitors) Snapshot(at sched.Time, from eventlog.ChainPoint, m wire.Moni
 	}
 	for i := range m.Views {
 		m.Views[i].At, m.Views[i].Engine = conf, bal
+		if m.Views[i].Version == nil {
+			continue
+		}
+
+		if v, ok := j.env.Forks.VersionAt(m.Views[i].Epoch); ok {
+			m.Views[i].Want = &v
+		}
 	}
 	return j.Watch(at, from, m.Views, m.Tips)
 }

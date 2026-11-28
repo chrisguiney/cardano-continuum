@@ -123,6 +123,7 @@ func loadLedger(e *Engine, s snapshot) error {
 			return fmt.Errorf("engine: snapshot window: %w", err)
 		}
 	}
+	e.builder.Fork(forkState(e.win.View()).Version)
 	return nil
 }
 

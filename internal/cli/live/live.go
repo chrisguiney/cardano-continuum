@@ -33,6 +33,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 	"github.com/chrisguiney/cardano-continuum/internal/policy"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
+	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 	"github.com/chrisguiney/cardano-continuum/internal/rng"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/store"
@@ -103,6 +104,12 @@ func liveConfig(sf simflags.Flags, lf Flags, g chain.Genesis, np nodeParams, see
 		return engine.Config{}, err
 	}
 	bp.SystemStart, bp.SlotLength = g.Start, g.SlotLength
+	// The run starts at the genesis version, whatever the node is at now:
+	// the version is in the log header, which a restart after a hard fork
+	// must match, and the view's fork history starts from it.
+	if g.Version != (protocol.Version{}) {
+		bp.Protocol = g.Version
+	}
 	mistakes, err := sf.MistakesOn(fitted)
 	if err != nil {
 		return engine.Config{}, err
@@ -323,13 +330,44 @@ type liveViewer struct {
 	node oracle.Node
 }
 
-// View implements engine.Viewer.
+// View implements engine.Viewer. Beside the UTxOs it reports the node's
+// protocol version at its tip, for the protocol monitor, when the epoch
+// stood still across the query: across a boundary the version could be
+// either epoch's.
 func (v liveViewer) View(ctx context.Context, at chain.Point, addrs []common.Address) (engine.ViewAnswer, error) {
 	us, err := v.q.UtxosAtPoint(ctx, at, addrs)
 	if err != nil {
 		return engine.ViewAnswer{}, err
 	}
-	return engine.ViewAnswer{Node: v.node, At: at, Utxos: us}, nil
+
+	ver, ep, ok := nodeVersion(ctx, v.q)
+	if !ok {
+		return engine.ViewAnswer{Node: v.node, At: at, Utxos: us}, nil
+	}
+	return engine.ViewAnswer{Node: v.node, At: at, Utxos: us, Version: &ver, Epoch: ep}, nil
+}
+
+// nodeVersion is the node's protocol version in force and the epoch it is
+// for; ok is false when a query failed or an epoch boundary passed
+// between them. The version is optional evidence, so a failure only
+// leaves it out.
+func nodeVersion(ctx context.Context, q *node.Querier) (protocol.Version, uint64, bool) {
+	before, err := q.Epoch(ctx)
+	if err != nil {
+		return protocol.Version{}, 0, false
+	}
+
+	pp, err := q.Params(ctx)
+	if err != nil {
+		return protocol.Version{}, 0, false
+	}
+
+	after, err := q.Epoch(ctx)
+	cp, conway := pp.(*conway.ConwayProtocolParameters)
+	if err != nil || after != before || !conway {
+		return protocol.Version{}, 0, false
+	}
+	return protocol.Version{Major: cp.ProtocolVersion.Major, Minor: cp.ProtocolVersion.Minor}, after, true
 }
 
 // follow runs the loop in report-sized stretches, logging progress after

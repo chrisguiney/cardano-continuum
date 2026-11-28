@@ -34,6 +34,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 	"github.com/chrisguiney/cardano-continuum/internal/policy"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
+	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/submit"
 )
@@ -92,6 +93,17 @@ type Env struct {
 	Ledger  Ledger
 	Floor   Floor
 	Race    Race
+	// Forks is the chain view's protocol-version history.
+	Forks Forks
+}
+
+// Forks is the chain view's protocol-version history, as the protocol
+// monitor judges a node's version with it.
+type Forks interface {
+	// VersionAt is the version the ratified hard forks put in force in
+	// epoch ep; ok is false when the view has not reached ep, so a fork
+	// ratified meanwhile could still move it.
+	VersionAt(ep uint64) (v protocol.Version, ok bool)
 }
 
 // Spec is what a Judge is built from.

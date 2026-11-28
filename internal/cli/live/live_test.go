@@ -8,6 +8,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/cli/internal/simflags"
+	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 	"github.com/chrisguiney/cardano-continuum/internal/rng"
 )
 
@@ -17,15 +18,20 @@ import (
 func TestLiveConfig(t *testing.T) {
 	t.Parallel()
 	g := chain.Genesis{Magic: 42, Start: time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC),
-		EpochLength: 500, SecurityParam: 5, SlotLength: time.Second}
+		EpochLength: 500, SecurityParam: 5, SlotLength: time.Second, Version: protocol.Version{Major: 10}}
 	var seed rng.Seed
 	seed[0] = 7
 	sf := simflags.Flags{Population: simflags.Population{Wallets: 20, Scale: 1}, Chain: simflags.Chain{TTL: 120}}
 	lf := Flags{Faucet: 1_000_000, RefillEvery: 20}
-	bp := nodeParams{build: build.Params{MinFeeA: 44, MinFeeB: 155381, CoinsPerUtxoByte: 4310, MaxTxSize: 16384}, nOpt: 3, govLifetime: 6}
+	bp := nodeParams{build: build.Params{MinFeeA: 44, MinFeeB: 155381, CoinsPerUtxoByte: 4310, MaxTxSize: 16384, Protocol: protocol.Version{Major: 11}}, nOpt: 3, govLifetime: 6}
 	cfg, err := liveConfig(sf, lf, g, bp, seed)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// The genesis version, not the node's: a restart after a hard fork
+	// must give the same log header, and the view's history starts there.
+	if cfg.Build.Protocol != g.Version {
+		t.Fatalf("builder at protocol %v, want the genesis %v", cfg.Build.Protocol, g.Version)
 	}
 	if cfg.Seed != seed || cfg.K != 5 || cfg.Slots.EpochStart(1) != 500_000 || cfg.Slots.SlotStart(1) != 1000 {
 		t.Fatalf("config %+v", cfg)

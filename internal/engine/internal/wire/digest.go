@@ -37,6 +37,7 @@ func DigestOf(b chain.Block) ([]byte, error) {
 				Deposit:  p.Deposit,
 				Prev:     prev,
 				GovGroup: p.GovGroup,
+				Version:  p.Version,
 			})
 		}
 		if u := tx.Units; u.Memory != 0 || u.Steps != 0 {

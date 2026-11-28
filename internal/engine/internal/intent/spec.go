@@ -18,6 +18,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
+	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/submit"
 )
@@ -196,11 +197,24 @@ func buildVote(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, p *w
 }
 
 // buildCommitteeVote casts seat p.To's vote with its hot key, which an
-// earlier committee_auth has authorised.
+// earlier committee_auth has authorised, or, with p.Auth, which the vote
+// authorises itself (from protocol version 11).
 func buildCommitteeVote(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, p *wire.Pending) (build.Built, error) {
 	act := common.GovActionId{TransactionId: common.Blake2b256(p.Action.Tx), GovActionIdx: p.Action.Index}
-	_, hot := c.env.Ring.Committee(uint32(p.To))
-	return c.spec.Builder.Gov().Vote(ctx, w, build.Vote{Spend: sp, Voter: hot, Role: build.RoleCommittee, Action: act, Choice: p.Choice})
+	cold, hot := c.env.Ring.Committee(uint32(p.To))
+
+	var auth *keys.Signer
+	if p.Auth {
+		auth = &cold
+	}
+	return c.spec.Builder.Gov().Vote(ctx, w, build.Vote{
+		Spend:  sp,
+		Voter:  hot,
+		Auth:   auth,
+		Role:   build.RoleCommittee,
+		Action: act,
+		Choice: p.Choice,
+	})
 }
 
 // buildCommitteeAuth authorises seat p.To's hot key with its cold key.
@@ -213,6 +227,9 @@ func buildCommitteeAuth(ctx context.Context, c *core, w keys.Wallet, sp build.Sp
 // plan gives (planParams), or none while one is open.
 func buildPropose(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, p *wire.Pending) (build.Built, error) {
 	prop := build.Proposal{Spend: sp, Action: build.ActionType(p.GovType)}
+	if prop.Action == build.ActionHardFork {
+		prop.Fork = hardFork(c.env.Chain.View(), p.Fork)
+	}
 	if prop.Action == build.ActionParameterChange {
 		pc, ok := planParams(paramLinks(c.env.Chain.View()))
 		if !ok {
@@ -224,6 +241,23 @@ func buildPropose(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, p
 		}
 	}
 	return c.spec.Builder.Gov().Propose(ctx, w, prop)
+}
+
+// hardFork is the hard fork to version to (nil: none, which the builder
+// refuses) from the view's version in force, after the view's hard-fork
+// root, the last fork it ratified (models/specs/governance-change
+// HardFork.tla, ProposeFork).
+func hardFork(v *chain.View, to *protocol.Version) *build.HardFork {
+	if to == nil {
+		return nil
+	}
+
+	h := &build.HardFork{From: v.VersionAt(v.Epoch()), To: *to}
+	if fs := v.Forks(); len(fs) > 0 {
+		last := fs[len(fs)-1].ID
+		h.Prev = &common.GovActionId{TransactionId: common.Blake2b256(last.Tx), GovActionIdx: last.Index}
+	}
+	return h
 }
 
 func buildMint(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, p *wire.Pending) (build.Built, error) {

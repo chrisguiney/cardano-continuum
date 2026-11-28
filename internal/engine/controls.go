@@ -15,6 +15,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
+	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 )
 
@@ -118,6 +119,64 @@ func (r scenarioRoute) HotKeys(ctx context.Context, at sched.Time) (string, erro
 		}
 	}
 	return "", nil
+}
+
+// HardFork implements steer.Scenarios: the richest actor with a
+// registered stake key proposes a hard fork from the version in force to
+// arg (the next major when empty). It keeps one hard fork at a time, open,
+// being proposed or ratified and not yet enacted (models/specs/
+// governance-change HardFork.tla, rule 3; HardForkNoPendingGuardBug): a
+// second would name a root and a version the ledger refuses.
+func (r scenarioRoute) HardFork(ctx context.Context, at sched.Time, arg string) (string, error) {
+	e := r.e
+	v := e.win.View()
+	ep := v.Epoch()
+	cur := v.VersionAt(ep)
+	to := cur.Next()
+	if arg != "" {
+		p, err := protocol.Parse(arg)
+		if err != nil {
+			return err.Error(), nil
+		}
+		to = p
+	}
+
+	if why := forkBlocked(e, cur, to); why != "" {
+		return why, nil
+	}
+
+	id, ok := r.richest(func(id population.ActorID) bool { return v.StakeRegistered(id) })
+	if !ok {
+		return "no actor with a registered stake key", nil
+	}
+	gov := wire.Gov{GovType: string(build.ActionHardFork), Fork: &to}
+	return starter{e}.start(ctx, at, &wire.Pending{Actor: uint64(id), Args: wire.Args{Kind: string(profile.IntentPropose)}, Gov: gov})
+}
+
+// forkBlocked says why a hard fork from cur to to may not be proposed now,
+// empty when it may.
+func forkBlocked(e *Engine, cur, to protocol.Version) string {
+	v := e.win.View()
+	if !protocol.CanFollow(to, cur) {
+		return "protocol version " + to.String() + " cannot follow " + cur.String()
+	}
+
+	if f, ok := v.PendingAt(v.Epoch()); ok {
+		return "hard fork " + f.ID.String() + " is ratified and not yet enacted"
+	}
+
+	for _, p := range v.OpenProposals() {
+		if p.Type == string(build.ActionHardFork) {
+			return "hard fork " + string(p.ID) + " is open"
+		}
+	}
+
+	for q := range e.pay.All() {
+		if q.GovType == string(build.ActionHardFork) {
+			return "a hard fork is being proposed"
+		}
+	}
+	return ""
 }
 
 // richest is the wallet or pool actor with the most to spend that passes

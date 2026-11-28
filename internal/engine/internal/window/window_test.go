@@ -11,6 +11,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
+	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 )
 
@@ -131,6 +132,49 @@ func TestDigestKeepsParameterChange(t *testing.T) {
 	got := tx.Proposals[0]
 	if got.ID != want.ID || got.Type != want.Type || got.Prev == nil || *got.Prev != prev || !got.GovGroup {
 		t.Fatalf("proposal %+v after the digest, want %+v", got, want)
+	}
+}
+
+// A hard fork's predecessor and version survive the digest, so the view
+// ratifies it from a replayed log, and a snapshot keeps the forks it
+// ratified.
+func TestDigestKeepsHardFork(t *testing.T) {
+	t.Parallel()
+	prev := chain.GovID{Tx: chain.TxID{7}}
+	to := protocol.Version{Major: 12}
+	want := chain.Proposal{ID: chain.GovID{Tx: chain.TxID{9}}, Type: "hard_fork_initiation", Pools: true, Prev: &prev, Version: &to}
+	raw, err := wire.DigestOf(chain.Block{Txs: []chain.Tx{{Hash: want.ID.Tx, Proposals: []chain.Proposal{want}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var c wire.BlockContent
+	if err := eventlog.Decode(raw, &c); err != nil {
+		t.Fatal(err)
+	}
+
+	tx, err := viewTx(c.Txs[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := tx.Proposals[0]; got.Prev == nil || *got.Prev != prev || got.Version == nil || *got.Version != to {
+		t.Fatalf("proposal %+v after the digest, want %+v", got, want)
+	}
+
+	s := chain.State{Forks: []chain.Fork{{ID: want.ID, Version: to, At: 4}}}
+	r, err := encodeView(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	back, err := decodeView(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(back.Forks) != 1 || back.Forks[0] != s.Forks[0] {
+		t.Fatalf("forks %+v after the snapshot record, want %+v", back.Forks, s.Forks)
 	}
 }
 

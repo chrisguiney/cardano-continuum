@@ -5,16 +5,24 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/blinklabs-io/gouroboros/ledger/common"
 	"github.com/blinklabs-io/gouroboros/ledger/conway"
 
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
+	"github.com/chrisguiney/cardano-continuum/internal/build"
+	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/intent"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/steer"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
+	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
+	"github.com/chrisguiney/cardano-continuum/internal/population"
+	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/submit"
 )
@@ -497,5 +505,156 @@ func TestPopulationDecisionRecordsClock(t *testing.T) {
 	}
 	if clocked == 0 {
 		t.Fatal("no decision recorded a clock")
+	}
+}
+
+// chainVersion answers view queries with the fake chain's protocol version
+// at its tip. It answers at the tip, not at the point asked for, so the
+// balance comparison (which needs the same point) is not made.
+type chainVersion struct {
+	c     *fakechain.Chain
+	slots sched.Slots
+	seen  *[]protocol.Version
+}
+
+func (v chainVersion) View(_ context.Context, _ chain.Point, _ []common.Address) (ViewAnswer, error) {
+	pv := v.c.Params().ProtocolVersion
+	ver := protocol.Version{Major: pv.Major, Minor: pv.Minor}
+	*v.seen = append(*v.seen, ver)
+	// A hash no block has keeps the answer apart from every settled point.
+	tip := chain.Point{Slot: v.c.Slot(), Hash: common.Blake2b256{0xff}}
+	return ViewAnswer{Node: oracle.Node{Impl: "fakechain", Pool: "fake"}, At: tip, Version: &ver, Epoch: v.slots.EpochOfSlot(v.c.Slot())}, nil
+}
+
+// protocolRecords are the run's Protocol decisions.
+func protocolRecords(t *testing.T, r eventlog.Reader) []Protocol {
+	t.Helper()
+	var out []Protocol
+	for _, rec := range logRecords(t, r) {
+		if rec.Kind != KindProtocol {
+			continue
+		}
+		var p Protocol
+		if err := eventlog.Decode(rec.Body, &p); err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+// The hard_fork scenario takes the devnet from 10.0 to 11.0 in process: the
+// proposal, the committee's, the DReps' and the pools' votes, the
+// ratification at a boundary and the enactment at the next, in the fake
+// chain and in the engine's view alike. The engine logs the pending fork
+// and the new version, the node it asks reports the version the view
+// expects (no protocol_version_mismatch), and after the fork the chain
+// takes a committee vote that authorises its own hot key, which it
+// refused before. A second hard_fork while the first is in flight is
+// refused (HardForkNoPendingGuardBug in models/specs/governance-change).
+func TestHardForkThroughFakeChain(t *testing.T) {
+	t.Parallel()
+	cfg := populationConfig(t, 4, populationFile(t, govYAML))
+	cfg.Committee = 3
+	w := newWorld(t, cfg)
+	var seen []protocol.Version
+	w.monitor = chainVersion{c: w.chain, slots: cfg.Slots, seen: &seen}
+	w.controls = &scriptControls{clock: w.clock, at: []sched.Time{3 * 3600 * 1000, 3*3600*1000 + 60_000}, cs: []control{
+		{RequestID: "fork", Op: "inject", Scenario: steer.ScenarioHardFork},
+		{RequestID: "again", Op: "inject", Scenario: steer.ScenarioHardFork + ":11.0"},
+	}}
+	w.run(10*3600*1000, 50, nil)
+
+	if acks := probeAcks(t, w.log); len(acks) != 2 || acks[0] != "" || acks[1] == "" {
+		t.Fatalf("hard_fork acknowledged %q, want the first taken and the second refused", acks)
+	}
+
+	p, err := w.start(nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := p.r.Engine().win.View()
+	want := protocol.Version{Major: 11}
+	if got := v.VersionAt(v.Epoch()); got != want {
+		t.Fatalf("view at %v in epoch %d, want %v (forks %+v)", got, v.Epoch(), want, v.Forks())
+	}
+
+	if pv := w.chain.Params().ProtocolVersion; pv.Major != 11 || pv.Minor != 0 {
+		t.Fatalf("fake chain at %d.%d, want 11.0", pv.Major, pv.Minor)
+	}
+
+	recs := protocolRecords(t, w.log)
+	if len(recs) < 2 || recs[0].Pending == nil || recs[len(recs)-1].Version != want || recs[len(recs)-1].Pending != nil {
+		t.Fatalf("protocol records %+v: want a pending fork, then 11.0", recs)
+	}
+
+	if fork := v.Forks()[0]; recs[len(recs)-1].Epoch != fork.At {
+		t.Fatalf("enacted in epoch %d, the view's fork says %d", recs[len(recs)-1].Epoch, fork.At)
+	}
+
+	if fs := findings(t, w.log); len(fs) > 0 {
+		t.Fatalf("%d findings, the first %+v", len(fs), fs[0])
+	}
+
+	if !slices.Contains(seen, want) {
+		t.Fatalf("the node never reported %v: %v", want, seen)
+	}
+	jointVote(t, w, p.r.Engine())
+}
+
+// From protocol version 11 the committee's votes carry their own hot-key
+// authorisation: a devnet starting at 11.0 sends no committee_auth, and
+// its committee votes still land, with no finding.
+func TestCommitteeVotesAuthoriseThemselvesFromV11(t *testing.T) {
+	t.Parallel()
+	cfg := populationConfig(t, 4, populationFile(t, govYAML))
+	cfg.Committee = 3
+	pp := fakechain.DefaultParams()
+	pp.ProtocolVersion.Major = 11
+	cfg.ChainParams = &pp
+	cfg.Build.Protocol = protocol.Version{Major: 11}
+	p := cleanRun(t, newWorld(t, cfg), 4*3600*1000)
+	kinds, _ := submittedKinds(t, p.log)
+	if g := readGov(t, p.log); kinds[string(agenda.CommitteeAuth)] != 0 || g.votes["committee"] == 0 {
+		t.Fatalf("kinds %v, committee votes %d: want votes and no separate authorisation", kinds, g.votes["committee"])
+	}
+
+	if fs := findings(t, p.log); len(fs) > 0 {
+		t.Fatalf("%d findings, the first %+v", len(fs), fs[0])
+	}
+}
+
+// jointVote has committee seat 0's cold key authorise a fresh hot key and
+// vote with it in one transaction, which the chain at 11.0 takes.
+func jointVote(t *testing.T, w *world, e *Engine) {
+	t.Helper()
+	root, err := keys.New(w.cfg.Seed, w.cfg.NetworkID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cold, _ := root.CommitteeSigners(0)
+	_, hot := root.CommitteeSigners(7)
+	open := e.win.View().OpenProposals()
+	if len(open) == 0 {
+		t.Fatal("no open proposal to vote on")
+	}
+
+	ref, err := intent.ParseProposal(open[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, _ := scenarioRoute{e}.richest(func(population.ActorID) bool { return true })
+	payer := e.co.Rec(id).Wallet
+	got, err := e.builder.Gov().Vote(context.Background(), payer, build.Vote{
+		Spend: build.Spend{Inputs: w.chain.UtxosAt(payer.Address()), TTL: w.chain.Slot() + 100},
+		Voter: hot, Auth: &cold, Role: build.RoleCommittee,
+		Action: common.GovActionId{TransactionId: common.Blake2b256(ref.Tx), GovActionIdx: ref.Index}, Choice: common.GovVoteYes,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := w.chain.Submit(context.Background(), fakechain.EraConway, got.Tx); err != nil {
+		t.Fatalf("a vote authorising its own hot key refused at 11.0: %v", err)
 	}
 }

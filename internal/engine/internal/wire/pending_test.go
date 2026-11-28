@@ -6,6 +6,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/mistake"
+	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 	"github.com/chrisguiney/cardano-continuum/internal/submit"
 )
 
@@ -42,6 +43,8 @@ func TestPendingRoundTrip(t *testing.T) {
 			GovType: "g",
 			Power:   12,
 			Probe:   true,
+			Fork:    &protocol.Version{Major: 11},
+			Auth:    true,
 		},
 		Faults: Faults{
 			Injected: mistake.Of(mistake.DoubleSubmit),

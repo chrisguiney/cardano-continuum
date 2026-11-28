@@ -5,6 +5,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/internal/mistake"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
+	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/submit"
 )
@@ -102,6 +103,11 @@ type Gov struct {
 	// Probe marks a vote the ledger must refuse (an SPO vote on an action
 	// pools may not vote on): its expected verdict is DisallowedVoters.
 	Probe bool `json:"probe,omitzero"`
+	// Fork is the protocol version a hard fork proposes.
+	Fork *protocol.Version `json:"fork,omitempty"`
+	// Auth makes a committee vote carry its hot key's authorisation, which
+	// a node takes from protocol version 11 (protocol.VanRossem).
+	Auth bool `json:"auth,omitzero"`
 }
 
 // Faults are the mistakes the intent's attempts carry.

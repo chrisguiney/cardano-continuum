@@ -2,6 +2,7 @@ package wire
 
 import (
 	"github.com/chrisguiney/cardano-continuum/internal/mistake"
+	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 )
 
@@ -19,6 +20,30 @@ type Controlled struct {
 	Op        string `json:"op"`
 	Scenario  string `json:"scenario,omitempty"`
 	Why       string `json:"why,omitempty"`
+}
+
+// Protocol is the body of a Protocol decision: a block or rollback changed
+// what the chain view has ratified of hard forks. Version is the protocol
+// version in force in epoch Epoch, the tip's; Pending is a ratified fork
+// still to be enacted, nil when none is.
+type Protocol struct {
+	// Epoch is the tip's epoch.
+	Epoch uint64 `json:"epoch"`
+	// Version is the protocol version in force in Epoch.
+	Version protocol.Version `json:"version"`
+	// Pending is the ratified hard fork waiting for its boundary.
+	Pending *Fork `json:"pending,omitempty"`
+}
+
+// Fork is a ratified hard fork: its proposal ("txhash#index"), the version
+// it moves to and the first epoch at that version.
+type Fork struct {
+	// Proposal is the HardForkInitiation's ID.
+	Proposal string `json:"proposal"`
+	// Version is the version it moves to.
+	Version protocol.Version `json:"version"`
+	// At is the first epoch at Version.
+	At uint64 `json:"at"`
 }
 
 // ImageChange is the body of an ImageChange decision: an upgrade wave gave

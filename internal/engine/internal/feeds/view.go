@@ -13,6 +13,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
+	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 )
 
@@ -24,11 +25,16 @@ type Viewer interface {
 }
 
 // Answer is a node's answer to a view query: who answered, at which
-// point, and the UTxOs.
+// point, and the UTxOs; and, when the node reports it, its protocol
+// version in force in epoch Epoch.
 type Answer struct {
 	Node  oracle.Node
 	At    chain.Point
 	Utxos []common.Utxo
+	// Version is the node's protocol version, nil when it gave none.
+	Version *protocol.Version
+	// Epoch is the epoch Version is the node's for.
+	Epoch uint64
 }
 
 // Settled is the engine's side of the view check.
@@ -87,6 +93,7 @@ func (v *View) Poll(ctx context.Context, l Loop) error {
 	}
 	body, err := eventlog.Encode(wire.MonitorSnapshot{Views: []oracle.ViewCheck{{
 		Node: ans.Node, NodeAt: ans.At, Chain: oracle.Balances(ans.Utxos, v.engine.Owner),
+		Version: ans.Version, Epoch: ans.Epoch,
 	}}})
 	if err != nil {
 		return err

@@ -75,6 +75,10 @@ type Committee interface {
 	// HotAuthorized reports that the chain has authorised seat's hot key,
 	// so the seat can vote.
 	HotAuthorized(seat int) bool
+	// JointAuth reports that the chain takes a vote whose hot key the same
+	// transaction authorises: from protocol version 11, where
+	// cardano-node drops its mempool check on unelected voters.
+	JointAuth() bool
 }
 
 // Market is a signal of how busy the chain is.

@@ -6,6 +6,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 	"github.com/chrisguiney/cardano-continuum/internal/policy"
+	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 )
 
@@ -21,7 +22,7 @@ func judgeSpec(e *Engine, genesis uint64) judge.Spec {
 
 // judgeEnv is the rest of the engine as the judge component reaches it.
 func judgeEnv(e *Engine) judge.Env {
-	return judge.Env{Roster: e.co, Ring: e.co.Ring, Chain: e.win, Journal: &e.jr, Ledger: jhooks{e}, Floor: jhooks{e}, Race: jhooks{e}}
+	return judge.Env{Roster: e.co, Ring: e.co.Ring, Chain: e.win, Journal: &e.jr, Ledger: jhooks{e}, Floor: jhooks{e}, Race: jhooks{e}, Forks: jhooks{e}}
 }
 
 // jhooks is the supply, the stake floor and the contested outputs as the
@@ -39,6 +40,12 @@ func (h jhooks) Holders() oracle.Holders { return h.e.pay.Reads() }
 
 // State implements judge.Floor.
 func (h jhooks) State(at sched.Time) policy.State { return h.e.fl.State(at) }
+
+// VersionAt implements judge.Forks.
+func (h jhooks) VersionAt(ep uint64) (protocol.Version, bool) {
+	v := h.e.win.View()
+	return v.VersionAt(ep), ep <= v.Epoch()
+}
 
 // Contested implements judge.Race.
 func (h jhooks) Contested(ref wire.Ref) bool { return h.e.adv.Contested(ref) }

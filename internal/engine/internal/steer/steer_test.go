@@ -40,11 +40,15 @@ func (r fakeRoster) Retired(population.ActorID) bool  { return false }
 func (r fakeRoster) Eager(population.ActorID) float64 { return 1 }
 func (r fakeRoster) Dark(id population.ActorID) bool  { return r.dark[id] }
 
-type fakeScenarios struct{ dark string }
+type fakeScenarios struct{ dark, fork string }
 
 func (fakeScenarios) Propose(context.Context, sched.Time) (string, error)  { return "", nil }
 func (fakeScenarios) SPOProbe(context.Context, sched.Time) (string, error) { return "", nil }
 func (fakeScenarios) HotKeys(context.Context, sched.Time) (string, error)  { return "", nil }
+func (s *fakeScenarios) HardFork(_ context.Context, _ sched.Time, arg string) (string, error) {
+	s.fork = arg
+	return "", nil
+}
 func (s *fakeScenarios) GoDark(_ sched.Time, arg string) string {
 	s.dark = arg
 	return "refused"
@@ -174,6 +178,21 @@ func TestWavePlansOneAdoptionPerPool(t *testing.T) {
 	s.Adopt(0, 0)
 	if n := len(j.got); n != 1+3 {
 		t.Fatalf("a repeated adoption emitted again: %d decisions", n)
+	}
+}
+
+// hard_fork routes its optional version argument to the scenario.
+func TestHardForkRoutesItsVersion(t *testing.T) {
+	t.Parallel()
+	for sc, want := range map[string]string{ScenarioHardFork: "", ScenarioHardFork + ":11.0": "11.0"} {
+		s, j, _, f := newSteer(t)
+		if err := s.Control(context.Background(), 0, wire.Control{Op: "inject", Scenario: sc}); err != nil {
+			t.Fatal(err)
+		}
+
+		if why := controlled(t, j).Why; why != "" || f.fork != want {
+			t.Errorf("%s: why %q, version %q; want %q", sc, why, f.fork, want)
+		}
 	}
 }
 

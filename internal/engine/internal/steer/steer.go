@@ -46,6 +46,10 @@ const (
 	// curve over that many epochs (one by default). An image reference
 	// holds colons of its own, so the epochs come first.
 	ScenarioUpgrade = "upgrade"
+	// ScenarioHardFork: "hard_fork" or "hard_fork:<major.minor>" has the
+	// richest registered actor propose a hard fork to that version, the
+	// next major by default.
+	ScenarioHardFork = "hard_fork"
 )
 
 // ScenarioInfo describes one scenario an inject control may name, for the
@@ -87,6 +91,13 @@ func Catalog() []ScenarioInfo {
 			Description: "The richest registered pool votes on an open proposal stake pools may not vote on. The ledger must refuse it (DisallowedVoters); a node that accepts it is a fatal finding.",
 		},
 		{
+			Name:        ScenarioHardFork,
+			Arg:         "protocol version major.minor",
+			Optional:    true,
+			Example:     "11.0",
+			Description: "The richest actor with a registered stake key proposes a hard fork to the version (the next major by default). The committee, the DReps and the pools vote; once ratified at an epoch boundary the network moves to the version at the next, and every node must follow. Refused while a hard fork is open or ratified and not yet enacted.",
+		},
+		{
 			Name:        ScenarioUpgrade,
 			Arg:         "[epochs:]image",
 			Example:     "2:ghcr.io/blinklabs-io/dingo:main",
@@ -109,6 +120,9 @@ type Scenarios interface {
 	GoDark(at sched.Time, arg string) string
 	// HotKeys has the richest actor authorise every committee hot key.
 	HotKeys(ctx context.Context, at sched.Time) (string, error)
+	// HardFork has the richest registered actor propose a hard fork to
+	// version arg ("major.minor"; empty for the next major).
+	HardFork(ctx context.Context, at sched.Time, arg string) (string, error)
 }
 
 // Roster is the pool actors as an upgrade wave and the pool plan read
@@ -229,6 +243,8 @@ func (s *Steer) inject(ctx context.Context, at sched.Time, sc string) (string, e
 		return s.env.Scenarios.SPOProbe(ctx, at)
 	case ScenarioUpgrade:
 		return s.startWave(at, arg), nil
+	case ScenarioHardFork:
+		return s.env.Scenarios.HardFork(ctx, at, arg)
 	}
 	return "unknown scenario", nil
 }

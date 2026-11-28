@@ -6,6 +6,7 @@ import (
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
+	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 )
 
 // VoteDigest is one voting procedure: the voter (common.VoterType* and
@@ -55,11 +56,14 @@ type ProposalDigest struct {
 	Type    string `json:"type,omitempty"`
 	Pools   bool   `json:"pools,omitzero"`
 	Deposit uint64 `json:"deposit,omitzero"`
-	// Prev is a parameter change's predecessor, absent for none.
+	// Prev is a parameter change's or a hard fork's predecessor, absent
+	// for none.
 	Prev *Ref `json:"prev,omitempty"`
 	// GovGroup reports that a parameter change touches the governance
 	// group (chain.Proposal).
 	GovGroup bool `json:"gov_group,omitzero"`
+	// Version is the protocol version a hard fork moves to.
+	Version *protocol.Version `json:"version,omitempty"`
 }
 
 // Block is an applied block as the engine keeps it: its point, its

@@ -19,6 +19,7 @@ const (
 	KindControlled   = "Controlled"
 	KindImageChange  = "ImageChange"
 	KindDeployed     = "Deployed"
+	KindProtocol     = "Protocol"
 )
 
 // DecisionKinds returns every decision kind the engine emits.
@@ -26,6 +27,6 @@ func DecisionKinds() []string {
 	return []string{
 		KindSpawned, KindTransition, KindIntentChosen, KindSubmitted, KindSkipped, KindReleased,
 		KindConfirmed, KindRefused, KindGaveUp, KindRefill, KindGuarded, KindPoolTier, KindRepair,
-		KindIncident, KindControlled, KindImageChange, KindDeployed,
+		KindIncident, KindControlled, KindImageChange, KindDeployed, KindProtocol,
 	}
 }

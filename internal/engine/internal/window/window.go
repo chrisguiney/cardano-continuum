@@ -374,6 +374,7 @@ func viewProposal(id chain.GovID, g wire.ProposalDigest) chain.Proposal {
 		Deposit:  g.Deposit,
 		Prev:     prev,
 		GovGroup: g.GovGroup,
+		Version:  g.Version,
 	}
 }
 

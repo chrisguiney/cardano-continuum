@@ -63,6 +63,8 @@ type ViewRec struct {
 	// Hot are the committee hot keys the view saw authorised; a record
 	// from before they were kept has none, and the engine authorises again.
 	Hot []common.Blake2b224 `json:"hot,omitempty"`
+	// Forks are the hard forks the view ratified, oldest first.
+	Forks []chain.Fork `json:"forks,omitempty"`
 }
 
 // UtxoRec is one output of the view, its CBOR as the block carried it.

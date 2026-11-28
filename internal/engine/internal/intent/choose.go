@@ -87,6 +87,9 @@ func (ch *Chooser) Prepare(at sched.Time, a population.Actor, in agenda.Intent, 
 			return nil, err.Error()
 		}
 		p.Action, p.Choice = &ref, voteChoice(r, voterCommittee, ref, ch.actionType(in.Proposal))
+		// The pace sends an unauthorised seat's vote only where the chain
+		// takes it with its authorisation (agenda.Committee JointAuth).
+		p.Auth = !ch.env.Chain.View().HotAuthorized(int(in.Target))
 	case profile.IntentMint:
 		p.Amount = mintQuantity
 	case profile.IntentBurn:
@@ -242,8 +245,9 @@ var (
 
 // alwaysFavoured are the action types every voter favours. The run's
 // parameter changes are the network's own maintenance (a change and its
-// revert), which a devnet must be able to enact.
-var alwaysFavoured = map[string]bool{"parameter_change": true}
+// revert), which a devnet must be able to enact; a hard fork comes only
+// from the operator's hard_fork scenario, the network's planned upgrade.
+var alwaysFavoured = map[string]bool{"parameter_change": true, "hard_fork_initiation": true}
 
 // neverFavoured are the action types every voter contests, so they never
 // enact. A no-confidence motion would remove the committee and with it

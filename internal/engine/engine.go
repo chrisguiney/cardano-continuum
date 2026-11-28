@@ -179,7 +179,8 @@ func newEmpty(cfg Config) (*Engine, error) {
 	e := &Engine{
 		cfg: cfg, builder: build.New(cfg.Build), sel: sel,
 		pay: pay.New(),
-		win: window.New(chain.Config{K: cfg.K, Slots: cfg.Slots, NOpt: cfg.NOpt, GovLifetime: cfg.GovLifetime}),
+		win: window.New(chain.Config{K: cfg.K, Slots: cfg.Slots, NOpt: cfg.NOpt, GovLifetime: cfg.GovLifetime,
+			Version: cfg.Build.Protocol}),
 	}
 	e.retry = pay.NewRetry(pay.Spec{Policy: cfg.retry(), Diagnoser: diag}, e.pay,
 		pay.Env{Actors: hooks{e}, Builder: hooks{e}, Journal: &e.jr, Sched: evsched{&e.clk}, Chain: e.win})
@@ -480,6 +481,7 @@ func (e *Engine) submitResult(ctx context.Context, at sched.Time, r SubmitResult
 // A block with K successors is settled: its fees and foreign outputs count,
 // and the ledger reports the payments it settled or killed.
 func (e *Engine) applyBlock(ctx context.Context, at sched.Time, b wire.Block) error {
+	before := forkState(e.win.View())
 	lb, vb, err := e.win.Blocks(b, e.co)
 	if err != nil {
 		return err
@@ -492,6 +494,7 @@ func (e *Engine) applyBlock(ctx context.Context, at sched.Time, b wire.Block) er
 	if err := e.win.Push(b, vb); err != nil {
 		return fmt.Errorf("engine: view: %w", err)
 	}
+	noteFork(e, at, before)
 	if err := e.retry.InBlock(ctx, at, b); err != nil {
 		return err
 	}
@@ -535,11 +538,38 @@ func (e *Engine) rollback(ctx context.Context, p eventlog.ChainPoint) error {
 	if _, err := e.pay.Advance(ctx, chain.Event{Kind: chain.Backward, Point: c.To()}); err != nil {
 		return fmt.Errorf("engine: ledger: %w", err)
 	}
+	before := forkState(e.win.View())
 	gone, err := e.win.Rollback(c)
 	if err != nil {
 		return fmt.Errorf("engine: view: %w", err)
 	}
+	noteFork(e, e.clk.Now(), before)
 	return e.retry.LeftView(ctx, e.clk.Now(), gone)
+}
+
+// forkState is what a Protocol decision reports of the view: the version
+// in force at the tip's epoch and the ratified fork still pending.
+func forkState(v *chain.View) wire.Protocol {
+	ep := v.Epoch()
+	p := wire.Protocol{Epoch: ep, Version: v.VersionAt(ep)}
+	if f, ok := v.PendingAt(ep); ok {
+		p.Pending = &wire.Fork{Proposal: f.ID.String(), Version: f.Version, At: f.At}
+	}
+	return p
+}
+
+// noteFork moves the builder to the protocol version in force and logs a
+// Protocol decision when the input moved it, or ratified or took back a
+// fork. Both are derived from the view, so a replay or a restart logs the
+// same records.
+func noteFork(e *Engine, at sched.Time, before wire.Protocol) {
+	now := forkState(e.win.View())
+	e.builder.Fork(now.Version)
+	if now.Version == before.Version && (now.Pending == nil) == (before.Pending == nil) &&
+		(now.Pending == nil || *now.Pending == *before.Pending) {
+		return
+	}
+	e.jr.Emit(at, KindProtocol, 0, now)
 }
 
 // poolStatus applies an observed pod state, then recovers.
