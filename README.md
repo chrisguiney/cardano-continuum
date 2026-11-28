@@ -228,6 +228,20 @@ The operator resolves dev images by digest itself. Inside its pod
 so give it a mirror the pod reaches (chart value `operator.registryMirror`,
 `localhost:<port>=<host the pod reaches>`).
 
+### Smart contracts
+
+`script_call`, `mint` and `burn` run Aiken validators: a shared lock,
+vesting, escrow and a free-mint policy, in `contracts/` (see
+[contracts/README.md](contracts/README.md)). Their compiled blueprint and
+the Go registry generated from it are committed, so Go builds need no
+Aiken. `make contracts` rebuilds them with the pinned compiler (downloaded,
+checksum-verified, into `.tools/aiken`); `make contracts-check` fails when
+the rebuild differs from what is committed, and runs in CI. Every
+submitted script transaction's event-log record carries each redeemer's
+run: validator, script hash, purpose, datum and redeemer, units declared
+and used, and the verdict. The web UI shows them on the transaction page
+and on the Contracts page.
+
 ### End-to-end tests
 
 `make e2e` (about 90 minutes on a small cluster, bounded by `E2E_TIMEOUT`,
