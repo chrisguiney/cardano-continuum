@@ -26,7 +26,11 @@ const (
 	OpResume     Op = "resume"
 	OpSetK       Op = "set_k"
 	OpSetWeights Op = "set_weights"
-	OpInject     Op = "inject"
+	// OpClearWeights drops the weight override, so the profiles' own
+	// weights apply again. set_weights cannot express it: it needs at
+	// least one entry.
+	OpClearWeights Op = "clear_weights"
+	OpInject       Op = "inject"
 )
 
 // Control bounds.
@@ -132,7 +136,7 @@ func (c Control) validate() error {
 		return nil
 	}
 	switch c.Op {
-	case OpPause, OpResume:
+	case OpPause, OpResume, OpClearWeights:
 		return extra(false, false, false)
 	case OpSetK:
 		if err := extra(true, false, false); err != nil {

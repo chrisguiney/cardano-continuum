@@ -19,6 +19,8 @@ type Source interface {
 	// Adversaries is the Adversaries view: each attacker's cost, counters
 	// and findings, and the run's impact on honest actors.
 	Adversaries(ctx context.Context) (AdversaryView, error)
+	// Controls is the steering the engine has applied.
+	Controls(ctx context.Context) (ControlState, error)
 	// Pools is the Pools view with its topology graph.
 	Pools(ctx context.Context) (PoolsView, error)
 	// Governance is the Governance view: proposals, their votes by voter

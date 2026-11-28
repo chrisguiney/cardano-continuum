@@ -19,6 +19,7 @@ type (
 	AdversaryRow    = view.AdversaryRow
 	AdversaryView   = view.AdversaryView
 	AttackStepRow   = view.AttackStepRow
+	ControlState    = view.ControlState
 	CostView        = view.CostView
 	Decision        = view.Decision
 	Delegation      = view.Delegation

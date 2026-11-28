@@ -36,6 +36,8 @@ type Projection struct {
 	// meter folds the attack steps and the metrics Measure reads.
 	meter *engine.Meter
 	gov   *govFold
+	// ctl folds the controls the engine applied.
+	ctl *controlFold
 }
 
 // Observe sets f to be called with every record after it is folded, under
@@ -48,7 +50,7 @@ func (p *Projection) Observe(f func(eventlog.Record)) {
 
 // NewProjection returns an empty projection.
 func NewProjection() *Projection {
-	return &Projection{actors: newActorIndex(), findings: oracle.NewSet(), meter: engine.NewMeter(), gov: newGovFold()}
+	return &Projection{actors: newActorIndex(), findings: oracle.NewSet(), meter: engine.NewMeter(), gov: newGovFold(), ctl: newControlFold()}
 }
 
 // Apply folds one record. A body that does not decode is counted, shown as a
@@ -63,6 +65,11 @@ func (p *Projection) Apply(r eventlog.Record) {
 	if merr := p.meter.Add(r); merr != nil {
 		p.tot.bodyErrors++
 	}
+
+	if cerr := p.foldControl(r); cerr != nil {
+		p.tot.bodyErrors++
+	}
+
 	switch r.Class {
 	case eventlog.Input:
 		err = foldInput(p, r)
@@ -75,6 +82,26 @@ func (p *Projection) Apply(r eventlog.Record) {
 	if p.obs != nil {
 		p.obs(r)
 	}
+}
+
+// foldControl folds a Control input or a Controlled decision; the other
+// folds still see the record, so the Controlled decision stays on actor 0's
+// timeline.
+func (p *Projection) foldControl(r eventlog.Record) error {
+	switch {
+	case r.Class == eventlog.Input && r.Kind == eventlog.KindControl:
+		return p.ctl.input(r)
+	case r.Class == eventlog.Decision && r.Kind == engine.KindControlled:
+		return p.ctl.answer(r)
+	}
+	return nil
+}
+
+// Controls is the steering the engine has applied.
+func (p *Projection) Controls() ControlState {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.ctl.view()
 }
 
 // Profile returns the profile an actor spawned with, or "".

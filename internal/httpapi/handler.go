@@ -47,6 +47,7 @@ type api struct {
 //	GET  /api/capabilities
 //	GET  /api/meta/enums
 //	GET  /api/overview
+//	GET  /api/controls
 //	GET  /api/actors?limit&offset&sort&dir&profile&state&role&kind&delegated
 //	GET  /api/actors/{id}
 //	GET  /api/adversaries
@@ -81,6 +82,7 @@ func NewHandler(cfg Config) http.Handler {
 		a.json(w, http.StatusOK, view.BuildEnums())
 	})
 	mux.HandleFunc("GET /api/overview", a.overview)
+	mux.HandleFunc("GET /api/controls", a.controls)
 	mux.HandleFunc("GET /api/actors", a.actors)
 	mux.HandleFunc("GET /api/actors/{id}/timeline", a.timeline)
 	mux.HandleFunc("GET /api/actors/{id}", a.actorDetail)
@@ -156,6 +158,17 @@ func (a *api) overview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.json(w, http.StatusOK, s)
+}
+
+// controls serves the applied steering whether or not this server takes
+// controls: a read-only server still shows how the run was steered.
+func (a *api) controls(w http.ResponseWriter, r *http.Request) {
+	v, err := a.Source.Controls(r.Context())
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	a.json(w, http.StatusOK, v)
 }
 
 func (a *api) actors(w http.ResponseWriter, r *http.Request) {

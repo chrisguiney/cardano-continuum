@@ -147,6 +147,11 @@ func (s *LogSource) Proposal(ctx context.Context, id string) (ProposalDetail, er
 	return s.cfg.Projection.Proposal(id, s.cfg.Slots, s.cfg.GovLifetime, func(a uint64) string { return n[a].Profile })
 }
 
+// Controls implements Source.
+func (s *LogSource) Controls(context.Context) (ControlState, error) {
+	return s.cfg.Projection.Controls(), nil
+}
+
 // Pools implements Source.
 func (s *LogSource) Pools(ctx context.Context) (PoolsView, error) {
 	if s.cfg.Kube == nil {

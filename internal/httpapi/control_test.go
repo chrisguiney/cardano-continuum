@@ -2,11 +2,17 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
+	"log/slog"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
+	"github.com/chrisguiney/cardano-continuum/internal/httpapi/view"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 )
 
@@ -21,6 +27,9 @@ func TestParseControl(t *testing.T) {
 		{"set k", `{"request_id":"r1","op":"set_k","k":4}`, true},
 		{"set weights", `{"request_id":"r1","op":"set_weights","weights":{"send":2.5,"idle":0}}`, true},
 		{"inject", `{"request_id":"r1","op":"inject","scenario":"fork-storm"}`, true},
+		{"clear weights", `{"request_id":"r1","op":"clear_weights"}`, true},
+		{"clear weights with weights", `{"request_id":"r1","op":"clear_weights","weights":{"send":1}}`, false},
+		{"clear weights with empty weights", `{"request_id":"r1","op":"clear_weights","weights":{}}`, false},
 		{"unknown field", `{"request_id":"r1","op":"pause","extra":1}`, false},
 		{"unknown op", `{"request_id":"r1","op":"reboot"}`, false},
 		{"no request id", `{"op":"pause"}`, false},
@@ -154,5 +163,51 @@ func TestLoggedControlIsEngineControl(t *testing.T) {
 	}
 	if want := `{"request_id":"r1","op":"set_weights","k":3,"weights":{"send":2},"scenario":"s"}`; string(body) != want {
 		t.Fatalf("body %s, want %s", body, want)
+	}
+}
+
+// TestControlsReadBackWhatTheEngineApplied: a control posted to the API
+// shows in GET /api/controls once the engine's answer is in the log, under
+// the seq its receipt gave.
+func TestControlsReadBackWhatTheEngineApplied(t *testing.T) {
+	ctx := context.Background()
+	log := &eventlog.MemLog{}
+	lc := newLogControls(t, log)
+	proj := view.NewProjection()
+	src := view.NewLogSource(view.LogSourceConfig{Projection: proj})
+	srv := httptest.NewServer(NewHandler(Config{Source: src, Controls: lc, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}))
+	t.Cleanup(srv.Close)
+
+	code, body := post(t, srv.URL+"/api/control", `{"request_id":"ui-1","op":"set_weights","weights":{"send":2}}`)
+	if code != 202 {
+		t.Fatalf("post: %d %s", code, body)
+	}
+	var rc Receipt
+	if err := json.Unmarshal(body, &rc); err != nil {
+		t.Fatal(err)
+	}
+
+	ans, err := eventlog.Encode(engine.Controlled{RequestID: "ui-1", Op: "set_weights"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := log.Append(ctx, eventlog.Record{At: 7, Class: eventlog.Decision, Kind: engine.KindControlled, Body: ans}); err != nil {
+		t.Fatal(err)
+	}
+	if err := log.Scan(ctx, 1, func(r eventlog.Record) error { proj.Apply(r); return nil }); err != nil {
+		t.Fatal(err)
+	}
+
+	code, body = get(t, srv.URL+"/api/controls")
+	if code != 200 {
+		t.Fatalf("get: %d %s", code, body)
+	}
+	var got ControlState
+	if err := json.Unmarshal(body, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.K != 1 || got.Paused || got.Weights["send"] != 2 || len(got.Weights) != 1 ||
+		got.Last == nil || got.Last.RequestID != "ui-1" || got.Last.Seq != rc.Seq || got.Last.At != 7 {
+		t.Fatalf("state %s, receipt seq %d", body, rc.Seq)
 	}
 }

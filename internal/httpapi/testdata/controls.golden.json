@@ -1,0 +1,13 @@
+{
+  "paused": true,
+  "k": 3,
+  "weights": {
+    "send": 2
+  },
+  "last": {
+    "request_id": "ui-1",
+    "op": "set_weights",
+    "seq": 40,
+    "at": 9000
+  }
+}

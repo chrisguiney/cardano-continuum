@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chrisguiney/cardano-continuum/internal/httpapi/view"
 	"github.com/chrisguiney/cardano-continuum/internal/store"
 )
 
@@ -116,6 +117,10 @@ func (f *fakeSource) Adversaries(context.Context) (AdversaryView, error) {
 	}}, Impact: []ImpactRow{{Metric: "fatal_findings", Value: 1, Control: &ctl, Delta: &delta}}}, nil
 }
 
+func (f *fakeSource) Controls(context.Context) (ControlState, error) {
+	return ControlState{Paused: true, K: 3, Weights: map[string]float64{"send": 2}, Last: &view.LastControl{RequestID: "ui-1", Op: "set_weights", Seq: 40, At: 9000}}, nil
+}
+
 func (f *fakeSource) Pools(context.Context) (PoolsView, error) {
 	return PoolsView{
 		Pools: []PoolRow{{ID: "a", PoolID: "p1", Impl: "dingo", Tier: "forging", Phase: "Forging", Tip: Point{Slot: 100, Hash: "aa"}}},
@@ -190,6 +195,7 @@ func TestRESTGoldens(t *testing.T) {
 		{"actors", "/api/actors?limit=2&sort=name&dir=desc&profile=hodl"},
 		{"timeline", "/api/actors/1/timeline"},
 		{"pools", "/api/pools"},
+		{"controls", "/api/controls"},
 		{"findings", "/api/findings"},
 	} {
 		code, body := get(t, srv.URL+tt.path)
