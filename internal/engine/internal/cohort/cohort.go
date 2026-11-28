@@ -102,6 +102,9 @@ type Spec struct {
 	PoolStake uint64
 	// Markets is the run's ADA market; nil means none.
 	Markets *profile.Markets
+	// Humans is the run's humans section; nil means each wallet is its own
+	// owner.
+	Humans *profile.Humans
 }
 
 // Cohort is the population and its parts.
@@ -114,6 +117,8 @@ type Cohort struct {
 	Market *Market
 	// Desk is the wallets' positions and trades on it.
 	Desk *Desk
+	// People is the humans who own the wallets.
+	People *People
 }
 
 // New returns an empty cohort.
@@ -122,8 +127,11 @@ func New(sp Spec, v Env) *Cohort {
 	r := newRoster(sp.Census, ring, v)
 	m := newMarket(sp, r)
 	desk := &Desk{m: m}
-	l := &Life{r: r, slots: sp.Slots, market: m}
+	pp := newPeople(sp, r, m)
+	m.people = pp
+	l := &Life{r: r, slots: sp.Slots, market: m, people: pp}
 	return &Cohort{
+		People: pp,
 		Roster: r,
 		Life:   l,
 		Births: &Births{life: l, seed: sp.Seed, sched: v.Sched, emit: v.Emit},
@@ -200,7 +208,7 @@ func (c *Cohort) revive(ps Profiles, r wire.ActorRec) error {
 	if !ok {
 		return fmt.Errorf("engine: snapshot actor %d has unknown profile %q", r.ID, r.Profile)
 	}
-	a := c.Revive(p, r.Born)
+	a := c.Revive(p, r.Born, c.People.owner(population.ActorID(r.ID)), c.People.On())
 	if uint64(a.ID) != r.ID {
 		return fmt.Errorf("engine: snapshot actor %d out of order (got %d)", r.ID, a.ID)
 	}

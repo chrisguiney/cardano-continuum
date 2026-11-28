@@ -83,8 +83,12 @@ func (r *Roster) BindFaucet(w keys.Wallet) error {
 	return nil
 }
 
-// Revive spawns the actor a snapshot recorded, so it gets the same traits.
-func (r *Roster) Revive(p profile.Profile, born sched.Time) population.Actor {
+// Revive spawns the actor a snapshot recorded, so it gets the same traits,
+// owned as recorded when the run has humans (explicit).
+func (r *Roster) Revive(p profile.Profile, born sched.Time, o population.Owner, explicit bool) population.Actor {
+	if explicit {
+		return r.census.SpawnOwned(p, r.seed, born, o)
+	}
 	return r.census.Spawn(p, r.seed, born)
 }
 
@@ -95,7 +99,7 @@ func (r *Roster) Register(a population.Actor, p profile.Profile) *Actor {
 	if err != nil {
 		pol = nil // the actor scores nothing and stays idle
 	}
-	pol = r.env.Att.Arm(a.ID, p, pol)
+	pol = r.env.Att.Arm(a.ID, p, agenda.Restrict(pol, a.Purpose))
 	st := &Actor{Prof: p, Policy: pol, Rate: baseRate(p), Wallet: r.Ring.actors.Wallet(keys.ActorID(a.ID))}
 	st.HazardAt, st.ActAt = population.Never, population.Never
 	st.Clocks, st.Boot = r.env.Pace.Clocks(a, p)

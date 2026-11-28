@@ -210,6 +210,9 @@ type World struct {
 	// Markets is the ADA market the wallets trade in (internal/market);
 	// nil means none. Populate writes an actor for each exchange.
 	Markets *profile.Markets
+	// Humans is the people who own the wallets; nil means every wallet is
+	// its own owner.
+	Humans *profile.Humans
 	// Adversaries is the proof (adversary.Clear) that the node is on the
 	// run's devnet. Without it New refuses any adversary actor.
 	Adversaries adversary.Clearance
@@ -355,7 +358,7 @@ func (c *Config) fileHash() ([32]byte, error) {
 		}
 		ps = append(ps, p)
 	}
-	return FileHash(profile.File{Profiles: ps, Populations: c.Populations, Network: c.Network, Markets: c.Markets})
+	return FileHash(profile.File{Profiles: ps, Populations: c.Populations, Network: c.Network, Markets: c.Markets, Humans: c.Humans})
 }
 
 // Header returns the log header for this config: fingerprints of the seed,

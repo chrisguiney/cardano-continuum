@@ -215,7 +215,7 @@ func newEmpty(cfg Config) (*Engine, error) {
 	e.pc = pace.New(pace.Spec{Proposer: proposerName, Proposals: cfg.Network.Proposals, Population: e.cfg.population, Slots: cfg.Slots, BlockEvery: cfg.BlockEvery, GovLifetime: cfg.GovLifetime, Committee: cfg.Committee},
 		pace.Env{Sched: evsched{&e.clk}, Knobs: hooks{e}, Chain: e.win, Flight: hooks{e}, Agenda: hooks{e}})
 	e.co = cohort.New(cohort.Spec{Seed: cfg.Seed, Census: cfg.Seed.Derive(censusStream), Slots: cfg.Slots, Proposer: proposerName,
-		ActorKeys: ks, RootKeys: rootKeys, Pools: gpools, PoolStake: cfg.GenesisPoolStake, Markets: cfg.Markets},
+		ActorKeys: ks, RootKeys: rootKeys, Pools: gpools, PoolStake: cfg.GenesisPoolStake, Markets: cfg.Markets, Humans: cfg.Humans},
 		cohort.Env{Sched: evsched{&e.clk}, Emit: &e.jr, Chain: e.win, Att: hooks{e}, Pace: hooks{e}})
 	e.jd = judge.New(judgeSpec(e, genesis), judgeEnv(e))
 	e.in = intent.New(intentSpec(e), intentEnv(e))
@@ -260,7 +260,7 @@ func (e *Engine) Snapshot() ([]byte, error) {
 		Contracts: e.in.Save(),
 		Steer:     e.st.Save(),
 		Floor:     e.fl.Save(),
-		Cohort:    cohortRec{Actors: actors, Births: births, Quote: e.co.Market.Save()},
+		Cohort:    cohortRec{Actors: actors, Births: births, Quote: e.co.Market.Save(), Humans: e.co.People.Save()},
 		RefillAt:  e.fc.Save(),
 		Attack:    attackRec{Charges: charges, Contested: contested},
 		Pay:       ps,
@@ -293,6 +293,9 @@ type Summary struct {
 	Pending int
 	// Actors is the number of actors ever spawned.
 	Actors int
+	// Wallets is how many wallets each human ever owned, by human ID; nil
+	// without a humans section.
+	Wallets []int
 }
 
 // Summary is the engine's state at a glance.
@@ -304,6 +307,7 @@ func (e *Engine) Summary() Summary {
 		Tip:     e.win.Tip(),
 		Pending: e.pay.Len(),
 		Actors:  e.co.Pop().Len(),
+		Wallets: e.co.People.Holdings(),
 	}
 }
 
@@ -397,10 +401,16 @@ func (e *Engine) run(ctx context.Context, at sched.Time, ev clock.Event) error {
 	case clock.Birth:
 		e.co.Births.Run(at, ev.Birth)
 	case clock.Hazard:
-		if e.co.Market.SellsOut(ev.Actor, e.co.Rec(ev.Actor).HazardTo) {
-			if err := (starter{e}).sellOut(ctx, at, ev.Actor); err != nil {
-				return err
-			}
+		to := e.co.Rec(ev.Actor).HazardTo
+		var err error
+		switch {
+		case e.co.Market.SellsOut(ev.Actor, to):
+			err = (starter{e}).sellOut(ctx, at, ev.Actor)
+		case to == population.Abandoned:
+			err = (starter{e}).sweep(ctx, at, ev.Actor)
+		}
+		if err != nil {
+			return err
 		}
 		return e.co.Life.Hazard(at, ev.Actor)
 	case clock.Act:

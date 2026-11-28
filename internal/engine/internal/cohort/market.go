@@ -43,6 +43,8 @@ type Market struct {
 	at sched.Time
 	// r is the roster the exchanges' actors live in.
 	r *Roster
+	// people owns the wallets: a human's wallets share one Trader.
+	people *People
 }
 
 func newMarket(sp Spec, r *Roster) *Market {
@@ -153,6 +155,12 @@ func (m *Market) Join(a population.Actor, st *Actor, primary int) {
 	if !m.On() || a.Kind != profile.Wallet || strings.HasPrefix(a.Profile, market.ProfilePrefix) {
 		return
 	}
+	h := m.people.Get(a.Owner)
+	if h != nil && h.Trader != nil {
+		m.share(a, st, h.Trader)
+		return
+	}
+
 	if primary < 0 {
 		primary = m.path.Primary(a.Stream("currency"))
 	}
@@ -163,6 +171,21 @@ func (m *Market) Join(a population.Actor, st *Actor, primary int) {
 		Units:   uint64(st.Prof.Budget),
 		Venue:   -1,
 	}
+	if h != nil && m.people.On() {
+		h.Trader, h.Currency = st.Trader, primary
+	}
+}
+
+// share makes a joining wallet trade as its owner, tr: its budget joins
+// the owner's units at the mid of its birth.
+func (m *Market) share(a population.Actor, st *Actor, tr *Trader) {
+	add := float64(st.Prof.Budget) / lovelace
+	held := float64(tr.Units) / lovelace
+	if held+add > 0 {
+		tr.Basis = (tr.Basis*held + m.path.Mid(tr.Primary, a.Born)*add) / (held + add)
+	}
+	tr.Units += uint64(st.Prof.Budget)
+	st.Trader = tr
 }
 
 // deaths is the death factor an opted-in wallet's hazards thin against,

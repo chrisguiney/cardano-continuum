@@ -104,6 +104,10 @@ type Spawned struct {
 	Profile string `json:"profile"`
 	// Currency is a wallet's primary currency when the run has a market.
 	Currency string `json:"currency,omitempty"`
+	// Owner is the human that owns the wallet and Purpose what it is for,
+	// in a run with a humans section.
+	Owner   uint64 `json:"owner,omitzero"`
+	Purpose string `json:"purpose,omitempty"`
 }
 
 // Transition is the body of a Transition decision.

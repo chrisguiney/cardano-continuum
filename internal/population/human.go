@@ -48,3 +48,11 @@ type Human struct {
 	// Wallets are the actors the human owns, in spawn order.
 	Wallets []ActorID
 }
+
+// Owner says who owns a wallet being spawned (Census.SpawnOwned).
+type Owner struct {
+	// Human is the owner; zero spawns an actor no person owns.
+	Human HumanID
+	// Purpose is what the wallet is for to its owner.
+	Purpose Purpose
+}

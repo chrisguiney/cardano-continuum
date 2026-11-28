@@ -41,6 +41,8 @@ func bodies() map[string]any {
 		KindAttack:         &Attack{},
 		KindProtocol:       &Protocol{},
 		KindTreasury:       &Treasury{},
+		KindHumanBorn:      &HumanBorn{},
+		KindHumanLeft:      &HumanLeft{},
 		oracle.KindFinding: &oracle.Finding{},
 
 		eventlog.KindHeader:          &eventlog.HeaderBody{},

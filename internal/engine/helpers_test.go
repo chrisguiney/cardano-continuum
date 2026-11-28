@@ -356,3 +356,15 @@ func marketsConfig(t testing.TB, seed uint64, wallets int) Config {
 	}
 	return cfg
 }
+
+// humansConfig is marketsConfig with the default humans section: the
+// wallets belong to people, several to some.
+func humansConfig(t testing.TB, seed uint64, wallets int) Config {
+	t.Helper()
+	cfg := testConfig(t, seed, wallets)
+	m, h := profile.DefaultMarkets(), profile.DefaultHumans()
+	if err := Populate(&cfg, profile.File{Markets: &m, Humans: &h}); err != nil {
+		t.Fatal(err)
+	}
+	return cfg
+}

@@ -101,6 +101,33 @@ func (s starter) sellOut(ctx context.Context, at sched.Time, id population.Actor
 	return nil
 }
 
+// sweep moves an abandoning wallet's ADA to a sibling its owner still
+// uses, so the person keeps it: the transfer of an owner retiring one of
+// its wallets. A wallet without a sibling, or without its owner, keeps
+// its ADA as before.
+func (s starter) sweep(ctx context.Context, at sched.Time, id population.ActorID) error {
+	e := s.e
+	sibs := e.co.People.Siblings(id)
+	if len(sibs) == 0 {
+		return nil
+	}
+
+	a, _ := e.co.Get(id)
+	r := e.co.Rec(id).Draw(a, "sweep")
+	p, why := e.in.Prepare(at, a, agenda.Intent{Kind: profile.IntentTransfer, Actor: id, Target: sibs[0]}, r)
+	if p != nil {
+		var err error
+		if why, err = s.start(ctx, at, p); err != nil {
+			return err
+		}
+	}
+
+	if why != "" {
+		e.jr.Emit(at, KindSkipped, id, Skipped{Kind: "sweep", Why: why})
+	}
+	return nil
+}
+
 // move starts a recovery move: the engine's own delegation of a stranded
 // wallet onto a forging pool. It needs no agenda and is never guarded.
 func (s starter) move(ctx context.Context, at sched.Time, mv policy.Intent) error {

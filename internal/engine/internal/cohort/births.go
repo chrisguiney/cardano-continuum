@@ -68,7 +68,11 @@ func (bs *Births) Run(at sched.Time, idx int) {
 	if tr := bs.life.r.Rec(a.ID).Trader; tr != nil {
 		currency = bs.life.market.Code(tr.Primary)
 	}
-	bs.emit.Emit(at, wire.KindSpawned, a.ID, wire.Spawned{Profile: b.prof.Name, Currency: currency})
+	sp := wire.Spawned{Profile: b.prof.Name, Currency: currency}
+	if bs.life.people.On() {
+		sp.Owner, sp.Purpose = uint64(a.Owner), string(a.Purpose)
+	}
+	bs.emit.Emit(at, wire.KindSpawned, a.ID, sp)
 	bs.schedule(b, at)
 }
 

@@ -52,7 +52,7 @@ var choiceNames = map[uint8]string{common.GovVoteNo: "no", common.GovVoteYes: "y
 func (ch *Chooser) Prepare(at sched.Time, a population.Actor, in agenda.Intent, r *rand.Rand) (*wire.Pending, string) {
 	p := &wire.Pending{Actor: uint64(a.ID), Args: wire.Args{Kind: string(in.Kind), To: uint64(in.Target)}}
 	switch in.Kind {
-	case profile.IntentSend, profile.IntentBuyADA, profile.IntentSellADA:
+	case profile.IntentSend, profile.IntentBuyADA, profile.IntentSellADA, profile.IntentTransfer:
 		return ch.preparePayment(at, a, p, r)
 	case profile.IntentRegisterStake:
 		// The view shows only registrations in blocks: a second one sent
@@ -161,8 +161,13 @@ func (ch *Chooser) registering(id population.ActorID) bool {
 func (ch *Chooser) prepareSend(a population.Actor, p *wire.Pending, r *rand.Rand) (*wire.Pending, string) {
 	var targets []population.ActorID
 	for _, id := range ch.env.Roster.IDs() {
-		// Nobody pays an adversary.
+		// Nobody pays an adversary, and a payment to a wallet of the same
+		// owner is a transfer, not a send.
 		if id == a.ID || ch.env.Spend.Adversary(id) {
+			continue
+		}
+
+		if t, _ := ch.env.Roster.Get(id); a.Owner != 0 && t.Owner == a.Owner {
 			continue
 		}
 		if t, _ := ch.env.Roster.Get(id); t.State != population.Abandoned {
@@ -179,11 +184,31 @@ func (ch *Chooser) prepareSend(a population.Actor, p *wire.Pending, r *rand.Rand
 	return p, ""
 }
 
-// preparePayment prepares the kinds that are plain payments: a send, or a
-// trade on an exchange.
+// prepareTransfer moves everything the wallet can spend to its sibling
+// in.Target; the owner's money clock lowers the amount when it moves less.
+func prepareTransfer(c *core, a population.Actor, p *wire.Pending) (*wire.Pending, string) {
+	to, ok := c.env.Roster.Get(population.ActorID(p.To))
+	if p.To == 0 || !ok || a.Owner == 0 || to.Owner != a.Owner {
+		return nil, "no sibling wallet to move to"
+	}
+
+	bal := c.env.Flight.Spendable(uint64(a.ID))
+	floor := c.spec.Builder.MinPayment(c.env.Roster.Wallet(population.ActorID(p.To)).Address())
+	if bal < floor+FeeHeadroom {
+		return nil, fmt.Sprintf("spendable %d below %d", bal, floor+FeeHeadroom)
+	}
+	p.Amount = bal - FeeHeadroom
+	return p, ""
+}
+
+// preparePayment prepares the kinds that are plain payments: a send, a
+// transfer between one owner's wallets, or a trade on an exchange.
 func (ch *Chooser) preparePayment(at sched.Time, a population.Actor, p *wire.Pending, r *rand.Rand) (*wire.Pending, string) {
-	if p.Kind == string(profile.IntentSend) {
+	switch p.Kind {
+	case string(profile.IntentSend):
 		return ch.prepareSend(a, p, r)
+	case string(profile.IntentTransfer):
+		return prepareTransfer(&ch.core, a, p)
 	}
 	return ch.prepareTrade(at, a, p, r)
 }

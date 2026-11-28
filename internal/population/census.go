@@ -75,6 +75,18 @@ func (c *Census) Len() int { return len(c.actors) }
 // actor never changes an existing one. Traits and the activity multiplier
 // draw from separate streams so adding a draw to one leaves the other fixed.
 func (c *Census) Spawn(p profile.Profile, root rng.Seed, now sched.Time) Actor {
+	var o Owner
+	if p.Kind == profile.Wallet {
+		o = Owner{Human: HumanID(len(c.actors) + 1), Purpose: General}
+	}
+	return c.SpawnOwned(p, root, now, o)
+}
+
+// SpawnOwned spawns an actor as Spawn does, owned by o.Human: the wallet
+// founds that human, which takes the wallet's traits as its own, when no
+// human has the ID yet, and joins it otherwise. A zero o.Human spawns an
+// actor no person owns.
+func (c *Census) SpawnOwned(p profile.Profile, root rng.Seed, now sched.Time, o Owner) Actor {
 	id := ActorID(len(c.actors) + 1)
 	seed := root.Derive("actor", strconv.FormatUint(uint64(id), 10))
 	traits := p.Traits.Sample(seed.Derive("traits").Rand())
@@ -84,12 +96,10 @@ func (c *Census) Spawn(p profile.Profile, root rng.Seed, now sched.Time) Actor {
 		Traits: Sampled{SampledTraits: traits, RateMult: rate},
 		Born:   now, Changed: now, Competence: traits.Competence, Seed: seed,
 	}
-	if p.Kind == profile.Wallet {
-		c.found(&a, HumanID(id), p.Agenda)
-	}
+	c.own(&a, o, p.Agenda)
 	c.actors = append(c.actors, a)
 	c.add(a)
-	return a
+	return c.owned(a)
 }
 
 // Get returns the actor with the given ID. A wallet carries its owner's
@@ -213,21 +223,30 @@ func (c *Census) Humans() []HumanID {
 	return ids
 }
 
-// found makes a the first wallet of a new human with ID id, which takes the
-// wallet's traits as its own.
-func (c *Census) found(a *Actor, id HumanID, motivation profile.AgendaName) {
+// own gives a to the human o names: a new one, which takes the wallet's
+// traits as its own, or an existing one. A zero o.Human leaves a ownerless.
+func (c *Census) own(a *Actor, o Owner, motivation profile.AgendaName) {
+	if o.Human == 0 {
+		return
+	}
+
+	a.Owner, a.Purpose = o.Human, o.Purpose
+	if h, ok := c.humans[o.Human]; ok {
+		h.Wallets = append(h.Wallets, a.ID)
+		return
+	}
+
 	if c.humans == nil {
 		c.humans = map[HumanID]*Human{}
 	}
-	c.humans[id] = &Human{
-		ID:         id,
+	c.humans[o.Human] = &Human{
+		ID:         o.Human,
 		Motivation: motivation,
 		Traits:     a.Traits.SampledTraits,
 		Competence: a.Competence,
 		Born:       a.Born,
 		Wallets:    []ActorID{a.ID},
 	}
-	a.Owner, a.Purpose = id, General
 }
 
 // owned is a with its owner's traits and competence.

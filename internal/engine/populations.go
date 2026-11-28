@@ -42,7 +42,7 @@ const (
 // gives the deposits the budgets cover. A file with no populations leaves
 // cfg as it was.
 func Populate(cfg *Config, f profile.File) error {
-	cfg.Populations, cfg.Network, cfg.Markets = f.Populations, f.Network, f.Markets
+	cfg.Populations, cfg.Network, cfg.Markets, cfg.Humans = f.Populations, f.Network, f.Markets, f.Humans
 	extra := append(populationProfiles(f, cfg.Build), exchangeProfiles(f)...)
 	if len(extra) == 0 {
 		return nil

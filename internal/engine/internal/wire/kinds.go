@@ -23,6 +23,10 @@ const (
 	KindQuote        = "Quote"
 	KindTraded       = "Traded"
 	KindTreasury     = "Treasury"
+	// KindHumanBorn and KindHumanLeft are a human's founding and leaving,
+	// in a run with a humans section.
+	KindHumanBorn = "HumanBorn"
+	KindHumanLeft = "HumanLeft"
 )
 
 // DecisionKinds returns every decision kind the engine emits.
@@ -31,6 +35,6 @@ func DecisionKinds() []string {
 		KindSpawned, KindTransition, KindIntentChosen, KindSubmitted, KindSkipped, KindReleased,
 		KindConfirmed, KindRefused, KindGaveUp, KindRefill, KindGuarded, KindPoolTier, KindRepair,
 		KindIncident, KindControlled, KindImageChange, KindDeployed, KindProtocol, KindQuote, KindTraded,
-		KindTreasury,
+		KindTreasury, KindHumanBorn, KindHumanLeft,
 	}
 }

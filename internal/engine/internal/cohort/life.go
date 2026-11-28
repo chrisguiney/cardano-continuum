@@ -19,14 +19,27 @@ type Life struct {
 	slots sched.Slots
 	// market gives each new wallet its currencies.
 	market *Market
+	// people decides whose each new wallet is.
+	people *People
 }
 
 // Spawn adds an actor and schedules its first hazard. A wallet's primary
 // currency is currency, or drawn by share when currency is negative.
 func (l *Life) Spawn(p profile.Profile, at sched.Time, currency int) population.Actor {
-	a := l.r.census.Spawn(p, l.r.seed, at)
+	var a population.Actor
+	o, founded := l.people.Place(p, currency)
+	if l.people.On() {
+		a = l.r.census.SpawnOwned(p, l.r.seed, at, o)
+	} else {
+		a = l.r.census.Spawn(p, l.r.seed, at)
+	}
+
 	st := l.r.Register(a, p)
 	l.market.Join(a, st, currency)
+	if founded {
+		l.people.Born(at, a)
+	}
+
 	l.NextHazard(a, st, at)
 	// Pools and DReps have no hazard clock to wake them: they act from
 	// birth, registering first.
@@ -56,6 +69,10 @@ func (l *Life) Hazard(at sched.Time, id population.ActorID) error {
 	}
 	l.r.env.Emit.Emit(at, wire.KindTransition, id, wire.Transition{From: string(from), To: string(to)})
 	a, _ = l.r.census.Get(id)
+	if to == population.Abandoned {
+		l.people.Abandoned(at, a)
+	}
+
 	switch {
 	case to == population.Active:
 		l.r.env.Pace.Wake(a, st, at)

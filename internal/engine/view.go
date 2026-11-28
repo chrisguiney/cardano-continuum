@@ -24,9 +24,12 @@ type view struct {
 	e *Engine
 	govView
 	advView
+	ownerView
 }
 
-func viewOf(e *Engine) view { return view{e: e, govView: govView{e}, advView: advView{e}} }
+func viewOf(e *Engine) view {
+	return view{e: e, govView: govView{e}, advView: advView{e}, ownerView: ownerView{e}}
+}
 
 var (
 	_ agenda.View       = view{}
@@ -39,6 +42,7 @@ var (
 	_ agenda.Trading    = view{}
 	_ agenda.Positions  = view{}
 	_ agenda.Awards     = view{}
+	_ agenda.Owners     = view{}
 	_ adversary.View    = view{}
 )
 
@@ -165,3 +169,19 @@ func (v advView) Victims() []adversary.Coin { return v.e.adv.Victims() }
 
 // Remaining implements adversary.View.
 func (v advView) Remaining(id population.ActorID) uint64 { return v.e.adv.Remaining(id) }
+
+// ownerView is the humans as the agendas read them.
+type ownerView struct{ e *Engine }
+
+// Siblings implements agenda.Owners.
+func (v ownerView) Siblings(id population.ActorID) []population.ActorID {
+	return v.e.co.People.Siblings(id)
+}
+
+// Spread implements agenda.Owners.
+func (v ownerView) Spread(id population.ActorID) float64 {
+	if h := v.e.co.People.Of(id); h != nil {
+		return h.Spread
+	}
+	return 0
+}

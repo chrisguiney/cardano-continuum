@@ -101,6 +101,8 @@ var specs = map[string]kind{
 	string(profile.IntentSend):    payment,
 	string(profile.IntentBuyADA):  payment,
 	string(profile.IntentSellADA): payment,
+	// A transfer is a payment between two wallets of one owner.
+	string(profile.IntentTransfer): payment,
 	string(profile.IntentRegisterStake): {need: func(c *core, _ *wire.Pending) uint64 { return c.spec.Build.KeyDeposit }, headroom: FeeHeadroom, again: againRegister,
 		deposit: func(c *core, _ *wire.Pending) int64 { return int64(c.spec.Build.KeyDeposit) },
 		build: func(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, _ *wire.Pending) (build.Built, error) {

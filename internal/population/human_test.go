@@ -71,3 +71,35 @@ func TestImplicitSpawnIsDeterministic(t *testing.T) {
 		t.Fatalf("humans %d, want 3", n)
 	}
 }
+
+// A wallet spawned for an existing human joins it: it reads the owner's
+// traits, keeps its own activity multiplier, and the human lists it.
+func TestSpawnOwnedJoinsHuman(t *testing.T) {
+	t.Parallel()
+	var c Census
+	first := c.SpawnOwned(kindProfile(profile.Wallet), seed(4), 1, Owner{Human: 9, Purpose: Spending})
+	second := c.SpawnOwned(kindProfile(profile.Wallet), seed(4), 2, Owner{Human: 9, Purpose: Savings})
+	alone := c.SpawnOwned(kindProfile(profile.Wallet), seed(4), 3, Owner{})
+
+	if first.Owner != 9 || second.Owner != 9 || second.Purpose != Savings {
+		t.Fatalf("owners %d %d purpose %q", first.Owner, second.Owner, second.Purpose)
+	}
+
+	if second.Traits.SampledTraits != first.Traits.SampledTraits || second.Competence != first.Competence {
+		t.Fatalf("joined wallet traits %+v, want the owner's %+v", second.Traits, first.Traits)
+	}
+
+	raw := c.actors[second.ID-1]
+	if raw.Traits.RateMult != second.Traits.RateMult || raw.Traits.SampledTraits == first.Traits.SampledTraits {
+		t.Fatal("the census stored the owner's traits over the wallet's own draw")
+	}
+
+	h, _ := c.Human(9)
+	if h.Born != 1 || len(h.Wallets) != 2 || h.Wallets[1] != second.ID {
+		t.Fatalf("human %+v", h)
+	}
+
+	if alone.Owner != 0 || alone.Purpose != "" || len(c.Humans()) != 1 {
+		t.Fatalf("an ownerless spawn got owner %d, humans %v", alone.Owner, c.Humans())
+	}
+}

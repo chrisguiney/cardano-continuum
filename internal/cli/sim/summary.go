@@ -81,6 +81,11 @@ func summarize(out io.Writer, cfg engine.Config, r *engine.Runner, chain *fakech
 		return err
 	}
 	w.Printf("%s", ml)
+	hl, err := humansLine(context.Background(), e.Wallets, mem)
+	if err != nil {
+		return err
+	}
+	w.Printf("%s", hl)
 	if err := attack.Summarize(context.Background(), w, mem); err != nil {
 		return err
 	}

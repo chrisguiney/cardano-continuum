@@ -10,6 +10,8 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/market"
+	"github.com/chrisguiney/cardano-continuum/internal/population"
+	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 )
 
@@ -334,4 +336,70 @@ func TestDeterminismMarketsTrades(t *testing.T) {
 		t.Fatalf("the oracle raised %d findings in a markets run", n)
 	}
 	t.Logf("trades %v of %d orders", sides, len(orders))
+}
+
+// A humans run gives every personal wallet an owner, some owners several
+// wallets, records the humans born after genesis, and stays deterministic
+// through a crash and a snapshot restore, owners included.
+func TestDeterminismHumans(t *testing.T) {
+	t.Parallel()
+	const until sched.Time = 200_000
+	cfg := humansConfig(t, 23, 30)
+	ref := newWorld(t, cfg)
+	ref.mem = &memStore{log: ref.log}
+	hooks := 0
+	ref.run(until, 15, func(int) bool { hooks++; return false })
+	want := ref.logBytes()
+
+	w := newWorld(t, cfg)
+	w.mem = &memStore{log: w.log}
+	if c := w.run(until, 15, func(n int) bool { return n == hooks/2 }); c != 1 {
+		t.Fatalf("%d crashes", c)
+	}
+
+	if !bytes.Equal(w.logBytes(), want) {
+		t.Fatal("a crash mid-run changes a humans run's log")
+	}
+
+	snap := ref.finalSnapshot()
+	if !bytes.Equal(w.finalSnapshot(), snap) {
+		t.Fatal("a crash mid-run changes a humans run's state")
+	}
+
+	r, err := Restore(cfg, snap)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	again, err := r.Snapshot()
+	if err != nil || !bytes.Equal(again, snap) {
+		t.Fatalf("a restored humans engine encodes a different snapshot (%v)", err)
+	}
+
+	owners := map[population.HumanID]int{}
+	for _, id := range r.co.IDs() {
+		a, _ := r.co.Get(id)
+		if a.Kind == profile.Wallet && a.Owner != 0 && r.co.People.Get(a.Owner) == nil {
+			t.Fatalf("wallet %d names owner %d, which does not exist", id, a.Owner)
+		}
+
+		if a.Owner != 0 {
+			owners[a.Owner]++
+		}
+
+		if h := r.co.People.Of(id); h != nil && r.co.Rec(id).Trader != h.Trader {
+			t.Fatalf("wallet %d does not trade as its owner %d", id, h.ID)
+		}
+	}
+
+	multi := 0
+	for _, n := range owners {
+		if n > 1 {
+			multi++
+		}
+	}
+
+	if len(owners) == 0 || multi == 0 {
+		t.Fatalf("owners %v: want humans, some with several wallets", owners)
+	}
 }

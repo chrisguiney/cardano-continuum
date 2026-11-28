@@ -97,7 +97,11 @@ func DecisionKinds() []string { return wire.DecisionKinds() }
 func Digest(blockCbor []byte) ([]byte, error) { return wire.Digest(blockCbor) }
 
 // snapshotVersion is bumped whenever snapshot's shape changes.
-const snapshotVersion = 11
+const snapshotVersion = 12
+
+// snapshotHumanless is the last snapshot version without humans: it loads
+// as a run whose wallets are their own owners.
+const snapshotHumanless = 11
 
 // logFormat is the version of the engine's input and decision bodies. It is
 // part of the log header's genesis fingerprint, so a log written in another
@@ -142,6 +146,9 @@ type cohortRec struct {
 	Births []wire.BirthRec `json:"births"`
 	// Quote is the market's next Quote record; zero without a market.
 	Quote sched.Time `json:"quote_at,omitzero"`
+	// Humans are the owners of the wallets by ID, in a run with a humans
+	// section.
+	Humans []wire.HumanRec `json:"humans,omitempty"`
 }
 
 // attackRec is the adversaries' section of the snapshot.

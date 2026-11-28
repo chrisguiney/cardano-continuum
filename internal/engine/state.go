@@ -48,7 +48,7 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 		return nil, fmt.Errorf("engine: decode snapshot: %w", err)
 	}
 
-	if s.Version != snapshotVersion {
+	if s.Version != snapshotVersion && (s.Version != snapshotHumanless || cfg.Humans != nil) {
 		return nil, fmt.Errorf("engine: snapshot version %d, want %d", s.Version, snapshotVersion)
 	}
 
@@ -67,6 +67,7 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 
 	e.st.Load(s.Steer)
 	e.fl.Load(s.Floor)
+	e.co.People.Load(s.Cohort.Humans)
 	if err := e.co.Load(cfg.Profiles, s.Cohort.Actors, s.Cohort.Births); err != nil {
 		return nil, err
 	}
