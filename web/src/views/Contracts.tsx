@@ -19,7 +19,7 @@ function Validator({ v }: { v: ValidatorRow }) {
   const id = `c-${v.name}`;
   return (
     <Panel aria-labelledby={id}>
-      <Heading id={id}>{v.name} <Tip k="validator" id={`${id}-tip`} /></Heading>
+      <Heading id={id}><Link to={`/contracts/${v.name}`}>{v.name}</Link> <Tip k="validator" id={`${id}-tip`} /></Heading>
       <Facts rows={[
         ["Source", <Mono>{v.module}</Mono>],
         ["Script hash", <Mono className="[overflow-wrap:anywhere]">{v.hash}</Mono>],

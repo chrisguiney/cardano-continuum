@@ -9,6 +9,10 @@
 // blueprint hash differs from gouroboros' hash of the same bytes.
 //
 //	contracts/templates/*.ak --aiken build--> plutus.json --go generate--> registry_gen.go
+//	contracts/templates/*.ak ------------------go generate--> sources_gen.go
+//
+// sources_gen.go snapshots the Aiken sources for the UI, and Pipe renders a
+// script's UPLC, flat and wrapped bytes from the committed code alone.
 //
 // CIP-57: https://cips.cardano.org/cip/CIP-0057 (Plutus contract blueprint).
 package contract

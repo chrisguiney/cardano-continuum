@@ -121,3 +121,67 @@ export function decisionScripts(d: Decision): DecisionScripts | null {
   if (typeof b.validator !== "string" || b.validator === "") return null;
   return { validator: b.validator, runs: Array.isArray(b.scripts) ? (b.scripts as ScriptRun[]) : [] };
 }
+
+/** Pipeline is a script at each phase of its compilation (internal/contract Pipeline). */
+export interface Pipeline {
+  uplc: string;
+  flat: string;
+  flat_size: number;
+  wrapped: string;
+  wrapped_size: number;
+  tag: number;
+  hash: string;
+}
+
+export interface SourceFile {
+  path: string;
+  text: string;
+}
+
+/** ContractDetail is /api/contracts/{name}: a validator's source and the compiler's output. */
+export interface ContractDetail {
+  name: string;
+  toolchain: string;
+  params?: string[];
+  sources: SourceFile[];
+  pipeline: Pipeline;
+  instances: number[];
+}
+
+/** InstanceDetail is /api/contracts/{name}/instances/{n}: the validator applied to a deployed contract's nonce. */
+export interface InstanceDetail {
+  name: string;
+  pipeline: Pipeline;
+}
+
+const reInstance = /^([a-z][a-z0-9_]{0,63})(?:#(\d{1,18}))?$/;
+
+/** contractPath is the page of a validator or of an instance ("vesting#3"), or null for a name that is neither. */
+export function contractPath(name: string): string | null {
+  const m = reInstance.exec(name);
+  if (!m) return null;
+  return m[2] === undefined ? `/contracts/${m[1]}` : `/contracts/${m[1]}/${m[2]}`;
+}
+
+export interface PhaseRow {
+  phase: string;
+  /** form is what the phase holds. */
+  form: string;
+  size: number;
+  unit: "bytes" | "characters";
+  /** change says what the step from the previous phase did. */
+  change: string;
+}
+
+const bytesText = (n: number) => `${n.toLocaleString("en-US")} ${n === 1 ? "byte" : "bytes"}`;
+
+/** phaseSummary lists the four phases of p with their sizes; source is the validator's Aiken module. */
+export function phaseSummary(p: Pipeline, source: string): PhaseRow[] {
+  const header = p.wrapped_size - p.flat_size;
+  return [
+    { phase: "Aiken source", form: "Typed source text", size: new TextEncoder().encode(source).length, unit: "bytes", change: "What the author wrote, with types, comments and tests." },
+    { phase: "UPLC", form: "Untyped Plutus Core, as text", size: p.uplc.length, unit: "characters", change: "The compiler checked the types and dropped them with the comments and tests, leaving a lambda-calculus term over builtins. Each variable is named for its lambda here; on chain it is a number." },
+    { phase: "Flat bytes", form: "Flat-encoded program", size: p.flat_size, unit: "bytes", change: `The term tree is packed into ${bytesText(p.flat_size)}: tags and variable numbers take a few bits each, with no names or whitespace.` },
+    { phase: "On-chain bytes", form: "CBOR byte string around the flat bytes", size: p.wrapped_size, unit: "bytes", change: `CBOR wraps the flat bytes in a byte-string header, adding ${bytesText(header)}. These are the bytes a witness set carries; the hash covers them after a language tag.` },
+  ];
+}

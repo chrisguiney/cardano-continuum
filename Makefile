@@ -78,9 +78,9 @@ contracts: ## Build the Aiken contracts and regenerate the Go registry (download
 	for p in $(AIKEN_PROJECTS); do (cd $$p && $$aiken check --deny >/dev/null && $$aiken build --trace-level silent --deny); done
 	go generate ./internal/contract
 
-# Rebuilding from source must leave the committed blueprint and the
-# generated registry byte-identical: the reproducibility check.
-contracts-check: contracts ## Fail if rebuilding the contracts changes the committed blueprint or registry
+# Rebuilding from source must leave the committed blueprint, the
+# generated registry and the source snapshot byte-identical: the reproducibility check.
+contracts-check: contracts ## Fail if rebuilding the contracts changes the committed blueprint, registry or sources
 	@git diff --exit-code -- contracts internal/contract || { echo "contracts drift: run make contracts and commit"; exit 1; }
 	@untracked=$$(git ls-files --others --exclude-standard -- contracts internal/contract); if [ -n "$$untracked" ]; then echo "$$untracked"; echo "untracked contract files: commit them"; exit 1; fi
 

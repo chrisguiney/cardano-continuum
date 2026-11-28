@@ -2,6 +2,7 @@ export type Route =
   | { name: "overview" | "actors" | "pools" | "nodes" | "governance" | "markets" | "decisions" | "findings" | "adversaries" | "controls" | "help" | "explorer" | "contracts" | "notfound" }
   | { name: "pool" | "node"; key: string }
   | { name: "actor"; id: number }
+  | { name: "contract"; key: string; instance?: number }
   | { name: "govaction"; tx: string; index: number }
   | { name: "xblock" | "xtx" | "xaddr" | "xpool"; key: string }
   | { name: "xepoch"; n: number };
@@ -14,6 +15,7 @@ const reAddr = /^[a-z0-9_]{8,200}$/;
 const rePool = /^[0-9a-f]{56}$/;
 // reNode is a Kubernetes object name, which a node's name is.
 const reNode = /^[a-z0-9](?:[-a-z0-9.]{0,251}[a-z0-9])?$/;
+const reValidator = /^[a-z][a-z0-9_]{0,63}$/;
 
 // The explorer's routes validate their argument here so a view never
 // builds an API path from arbitrary text.
@@ -32,9 +34,16 @@ export function parseRoute(path: string): Route {
   if (parts.length === 2 && head === "actors" && arg && /^\d+$/.test(arg)) return { name: "actor", id: Number(arg) };
   if (parts.length === 2 && head === "pools" && arg) return rePool.test(arg) ? { name: "pool", key: arg } : { name: "notfound" };
   if (parts.length === 2 && head === "nodes" && arg) return reNode.test(arg) ? { name: "node", key: arg } : { name: "notfound" };
+  if (head === "contracts" && (parts.length === 2 || parts.length === 3) && arg) return contractRoute(arg, key);
   if (head === "governance" && parts.length === 3 && arg && key) return govRoute(arg, key);
   if (head === "explorer" && parts.length === 3 && arg && key) return explorerRoute(arg, key);
   return { name: "notfound" };
+}
+
+function contractRoute(name: string, instance?: string): Route {
+  if (!reValidator.test(name)) return { name: "notfound" };
+  if (instance === undefined) return { name: "contract", key: name };
+  return /^\d{1,18}$/.test(instance) ? { name: "contract", key: name, instance: Number(instance) } : { name: "notfound" };
 }
 
 function govRoute(tx: string, index: string): Route {

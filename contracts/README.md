@@ -20,6 +20,19 @@ chain: applying a different one gives each deployed contract its own script
 hash and address (`contract.Apply`, `build.Contract`). Contracts 0 to 2
 exist from genesis.
 
+## Compilation phases in the UI
+
+`/contracts/<name>` (and `/contracts/<name>/<n>` for the instance applied
+to nonce `n`) shows a validator as Aiken source, UPLC text, flat bytes and
+the on-chain bytes with the script hash derivation; the API is
+`GET /api/contracts/<name>` and `/api/contracts/<name>/instances/<n>`.
+Only the source is a snapshot: `internal/contract/sources_gen.go` holds the
+`.ak` files under `templates/lib` and `templates/validators`. The other
+phases are computed from the committed script by `contract.Pipe` (plutigo
+decodes the flat program and prints it as UPLC), so a Go build still needs
+no Aiken. Source lines are not mapped to UPLC terms: Aiken's source maps
+are not part of the blueprint.
+
 ## Pins
 
 `tools.lock` pins the compiler: Aiken v1.1.24 (commit `bacbeb35`), with the
@@ -42,7 +55,7 @@ address; builds are silent. `make contracts-check` is the reproducibility
 check and runs in CI as its own job, since it needs the compiler.
 
 Tests in `internal/contract` fail when `registry_gen.go` drifts from the
-blueprint, when a blueprint hash differs from gouroboros' hash of the same
+blueprint, when `sources_gen.go` drifts from the `.ak` files, when a blueprint hash differs from gouroboros' hash of the same
 bytes, and when plutigo's flat codec does not round-trip a validator
 (parameter application decodes and re-encodes it).
 
@@ -50,8 +63,9 @@ bytes, and when plutigo's flat codec does not round-trip a validator
 
 1. Write it in `templates/validators/<name>.ak`, with `aiken check` tests,
    and any shared types in `templates/lib/continuum/`.
-2. Run `make contracts` and commit the `.ak` files, `plutus.json` and
-   `registry_gen.go` together.
+2. Run `make contracts` and commit the `.ak` files, `plutus.json`,
+   `registry_gen.go` and `sources_gen.go` together; the UI shows the new
+   validator with no further change.
 3. Use it through `contract.Named("<name>")`; for a builder script, as
    `build.AlwaysSucceeds` and `build.FreeMint` do, or as a template in
    `build.Template`. A new template also needs its datum, claim rule and

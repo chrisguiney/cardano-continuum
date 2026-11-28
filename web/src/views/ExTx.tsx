@@ -1,7 +1,7 @@
 import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { scriptRows, unitsText, type ScriptRow } from "../lib/contracts";
+import { contractPath, scriptRows, unitsText, type ScriptRow } from "../lib/contracts";
 import { blockLink, lovelaceText, metadataText, txCborPath } from "../lib/explorer";
 import { FIELD_HELP } from "../lib/help";
 import type { Cert, Input, Output, TxDetail } from "../lib/extypes";
@@ -117,6 +117,12 @@ function HeadTip({ k, id }: { k: string; id: string }) {
   return <TableHead>{h.label} <HelpTip id={id} label={h.label} text={h.help} /></TableHead>;
 }
 
+/** ExTxScriptLink links a script row's validator or instance name to its compilation pipeline. */
+export function ExTxScriptLink({ validator }: { validator: string }) {
+  const to = contractPath(validator);
+  return to ? <Link to={to}>{validator}</Link> : <>{validator}</>;
+}
+
 function Verdict({ r }: { r: ScriptRow }) {
   if (r.ok === undefined) return <Muted>not evaluated by the run</Muted>;
   return r.ok ? <Badge>passed</Badge> : <><Badge variant="bad">failed</Badge> <span className="[overflow-wrap:anywhere]">{r.error ?? ""}</span></>;
@@ -157,7 +163,7 @@ function Scripts({ tx }: { tx: TxDetail }) {
               {rows.map((r) => (
                 <TableRow key={`${r.purpose}${r.index}`}>
                   <TableCell>{r.purpose} #{r.index}</TableCell>
-                  <TableCell>{r.validator ? <Link to="/contracts">{r.validator}</Link> : <Muted>unknown</Muted>}</TableCell>
+                  <TableCell>{r.validator ? <ExTxScriptLink validator={r.validator} /> : <Muted>unknown</Muted>}</TableCell>
                   <TableCell>{r.script ? <Mono title={r.script}>{r.script.slice(0, 16)}</Mono> : <Muted>not known</Muted>}</TableCell>
                   <TableCell className="tabular-nums">{unitsText(r.declared)}</TableCell>
                   <TableCell className="tabular-nums">{r.used ? unitsText(r.used) : <Muted>—</Muted>}</TableCell>

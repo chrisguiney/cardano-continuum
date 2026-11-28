@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Feed, foldDecisions, type EventSourceLike, type FeedFilter, type FeedRow, type FeedState, type IdleMode, type IdleRun } from "../lib/feed";
 import { chances, clamp, percent } from "../lib/chance";
 import { positionLine } from "../lib/markets";
-import { decisionScripts, unitsText, type DecisionScripts } from "../lib/contracts";
+import { contractPath, decisionScripts, unitsText, type DecisionScripts } from "../lib/contracts";
 import { simTime } from "../lib/format";
 import { FIELD_HELP, VIEW_BLURB } from "../lib/help";
 import { useEnums } from "../lib/meta";
@@ -52,7 +52,7 @@ function ScriptWhy({ d, s }: { d: Decision; s: DecisionScripts }) {
     <details className="mt-1">
       <summary className="cursor-pointer text-primary">why: {d.intent || "script"} at {s.validator}</summary>
       <p className="my-1">
-        Validator <Link to="/contracts">{s.validator}</Link> <HelpTip id={`why-${d.id}-v`} label={FIELD_HELP.validator!.label} text={FIELD_HELP.validator!.help} />
+        Validator <Link to={contractPath(s.validator) ?? "/contracts"}>{s.validator}</Link> <HelpTip id={`why-${d.id}-v`} label={FIELD_HELP.validator!.label} text={FIELD_HELP.validator!.help} />
       </p>
       {s.runs.length > 0 && (
         <ul className="space-y-1">
