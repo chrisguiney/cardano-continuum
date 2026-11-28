@@ -33,5 +33,5 @@ func scriptWhy(a population.Actor, v View) string {
 			return "unlocks: " + c
 		}
 	}
-	return "locks a script output; nothing of its own to unlock"
+	return "locks a script output or trades at the market; nothing of its own to unlock"
 }

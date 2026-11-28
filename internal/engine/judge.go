@@ -16,7 +16,7 @@ func judgeSpec(e *Engine, genesis uint64) judge.Spec {
 	cfg := &e.cfg
 	return judge.Spec{
 		Mistakes: cfg.Mistakes, Build: cfg.Build, Run: cfg.Run, K: cfg.K, BlockEvery: cfg.BlockEvery,
-		Guard: e.fl.Guard(), Genesis: genesis, Faucet: faucetActor, Again: intent.Again,
+		Guard: e.fl.Guard(), Genesis: genesis, Faucet: faucetActor, Again: intent.Again, Contended: intent.Contended,
 	}
 }
 

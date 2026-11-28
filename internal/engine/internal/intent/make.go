@@ -60,6 +60,10 @@ func (m *Maker) validator(p *wire.Pending) string {
 	if p.Call == callAward {
 		return build.Disbursement.Name
 	}
+
+	if p.Kind == TradeKind || p.Kind == MarketKind {
+		return build.Market.Name
+	}
 	return ""
 }
 

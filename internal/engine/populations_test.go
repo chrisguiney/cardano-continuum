@@ -511,36 +511,36 @@ func escrowCalls(t *testing.T, r eventlog.Reader) []escrowCall {
 // deadline, every script run passes, and value is conserved.
 func TestEscrowTwoParties(t *testing.T) {
 	t.Parallel()
-	f := populationFile(t, populationYAML)
-	cfg := populationConfig(t, 4, f)
-	w := newWorld(t, cfg)
-	p := cleanRun(t, w, 6*3600*1000)
-	e := p.r.Engine()
-
-	calls := escrowCalls(t, p.log)
 	n := map[string]int{}
-	for _, c := range calls {
-		key := e.co.Wallet(c.actor).PaymentKeyHash()
-		party := c.datum.Depositor
-		if c.call == "release" {
-			party = c.datum.Beneficiary
+	// One escrow in four is disputed, so a few seeds see both outcomes.
+	for seed := uint64(1); seed <= 2; seed++ {
+		cfg := populationConfig(t, seed, populationFile(t, populationYAML))
+		w := newWorld(t, cfg)
+		p := cleanRun(t, w, 12*3600*1000)
+		e := p.r.Engine()
+		for _, c := range escrowCalls(t, p.log) {
+			key := e.co.Wallet(c.actor).PaymentKeyHash()
+			party := c.datum.Depositor
+			if c.call == "release" {
+				party = c.datum.Beneficiary
+			}
+			if !bytes.Equal(party, key[:]) || bytes.Equal(c.datum.Depositor, c.datum.Beneficiary) || !c.ok {
+				t.Fatalf("seed %d: %s by actor %d of escrow %x -> %x (run ok %v)", seed, c.call, c.actor, c.datum.Depositor[:4], c.datum.Beneficiary[:4], c.ok)
+			}
+			n[c.call]++
 		}
-		if !bytes.Equal(party, key[:]) || bytes.Equal(c.datum.Depositor, c.datum.Beneficiary) || !c.ok {
-			t.Fatalf("%s by actor %d of escrow %x -> %x (run ok %v)", c.call, c.actor, c.datum.Depositor[:4], c.datum.Beneficiary[:4], c.ok)
+
+		if s, g := e.Summary().Supply, genesisTotal(t, cfg)+e.Summary().Inflow; s != g {
+			t.Errorf("seed %d: supply %d, genesis plus inflow %d", seed, s, g)
 		}
-		n[c.call]++
+		if fs := findings(t, p.log); len(fs) > 0 {
+			t.Errorf("seed %d: %d oracle findings, the first %+v", seed, len(fs), fs[0])
+		}
 	}
 	if n["release"] == 0 || n["refund"] == 0 {
 		t.Fatalf("escrow calls %v, want releases and refunds", n)
 	}
 	t.Logf("escrow calls %v", n)
-
-	if s, g := e.Summary().Supply, genesisTotal(t, cfg); s != g {
-		t.Errorf("supply %d, genesis %d", s, g)
-	}
-	if fs := findings(t, p.log); len(fs) > 0 {
-		t.Errorf("%d oracle findings, the first %+v", len(fs), fs[0])
-	}
 }
 
 // Treasury withdrawals pay the recipient types: the network proposer's
@@ -583,6 +583,69 @@ func TestTreasuryAwards(t *testing.T) {
 	}
 	if e.win.View().Treasury() >= cfg.treasury() {
 		t.Fatalf("treasury %d never paid out", e.win.View().Treasury())
+	}
+
+	if s, g := e.Summary().Supply, genesisTotal(t, cfg)+e.Summary().Inflow; s != g {
+		t.Errorf("supply %d, genesis plus inflow %d", s, g)
+	}
+	if fs := findings(t, p.log); len(fs) > 0 {
+		t.Errorf("%d oracle findings, the first %+v", len(fs), fs[0])
+	}
+}
+
+// Script users trade at the one market: the first opens it, the others
+// buy and sell, swaps built against the same market race and the losers
+// are refused with BadInputs (never a failed script, so no collateral is
+// forfeited) and rebuilt against the market the winner left, and value
+// is conserved with the market's outputs counted as foreign.
+func TestMarketContention(t *testing.T) {
+	t.Parallel()
+	// Busy, well-funded script users, so trades often meet at the market.
+	y := strings.Replace(populationYAML, "rates: {base: {script_call: 0.05}}", "rates: {base: {script_call: 0.5}}", 1)
+	y = strings.Replace(y, "budget: 1000000000\n    rates: {base: {script_call", "budget: 100000000000\n    rates: {base: {script_call", 1)
+	f := populationFile(t, y)
+	cfg := populationConfig(t, 4, f)
+	w := newWorld(t, cfg)
+	p := cleanRun(t, w, 6*3600*1000)
+	e := p.r.Engine()
+
+	trades, sent, confirmed, badInputs := map[uint64]string{}, map[uint64]int{}, map[string]int{}, 0
+	for _, rec := range logRecords(t, p.log) {
+		switch rec.Kind {
+		case KindSubmitted:
+			var s Submitted
+			if eventlog.Decode(rec.Body, &s) != nil || (s.Kind != "trade" && s.Kind != "market") {
+				continue
+			}
+			trades[s.Intent] = s.Call
+			sent[s.Intent]++
+			for _, r := range s.Scripts {
+				if !r.OK {
+					t.Fatalf("%s intent %d: a script run failed: %s", s.Call, s.Intent, r.Error)
+				}
+			}
+		case KindRefused:
+			var r Refused
+			if eventlog.Decode(rec.Body, &r) == nil && trades[r.Intent] != "" && strings.Contains(r.Why, "BadInputs") {
+				badInputs++
+			}
+		case KindConfirmed:
+			var c Confirmed
+			if eventlog.Decode(rec.Body, &c) == nil && trades[c.Intent] != "" {
+				confirmed[trades[c.Intent]]++
+			}
+		}
+	}
+
+	var rebuilt int
+	for id := range trades {
+		if sent[id] > 1 {
+			rebuilt++
+		}
+	}
+	t.Logf("confirmed %v, refused with BadInputs %d, rebuilt %d", confirmed, badInputs, rebuilt)
+	if confirmed["open"] != 1 || confirmed["buy"] == 0 || confirmed["sell"] == 0 || badInputs == 0 || rebuilt == 0 {
+		t.Fatalf("confirmed %v, refused with BadInputs %d, rebuilt %d", confirmed, badInputs, rebuilt)
 	}
 
 	if s, g := e.Summary().Supply, genesisTotal(t, cfg)+e.Summary().Inflow; s != g {

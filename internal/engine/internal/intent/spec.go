@@ -2,6 +2,7 @@ package intent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -35,6 +36,10 @@ import (
 const (
 	LockKind   = "lock"
 	UnlockKind = "unlock"
+	// TradeKind is a trade at the market, MarketKind the provider's
+	// opening of the market or provision to it.
+	TradeKind  = "trade"
+	MarketKind = "market"
 )
 
 const (
@@ -69,7 +74,12 @@ type kind struct {
 	// same transaction already landed: what the oracle expects beside
 	// "inputs spent" from a resend.
 	again []submit.Class
+	// contended kinds spend an output other actors race for, so "inputs
+	// spent" is an honest answer to their first send.
+	contended bool
 }
+
+var errNoMarket = errors.New("no market open")
 
 var (
 	againRegister   = []submit.Class{submit.Class(fakechain.StakeKeyRegistered)}
@@ -141,6 +151,13 @@ var specs = map[string]kind{
 	// A landed unlock's script input is gone, so its redeemer and script
 	// witness point at nothing.
 	UnlockKind: {need: none, headroom: ScriptHeadroom, deposit: noDeposit, build: buildUnlock, script: true,
+		again: []submit.Class{submit.Class(fakechain.ExtraRedeemers), submit.MissingScriptWitnesses}},
+	// A market spend whose market output is gone also has its redeemer
+	// and script witness point at nothing, as a landed unlock's do.
+	TradeKind: {need: tradeNeed, headroom: ScriptHeadroom, deposit: noDeposit, build: buildTrade, script: true, contended: true,
+		again: []submit.Class{submit.Class(fakechain.ExtraRedeemers), submit.MissingScriptWitnesses}},
+	MarketKind: {need: func(_ *core, p *wire.Pending) uint64 { return p.Amount }, headroom: ScriptHeadroom, deposit: noDeposit,
+		build: buildMarket, script: true, contended: true,
 		again: []submit.Class{submit.Class(fakechain.ExtraRedeemers), submit.MissingScriptWitnesses}},
 	string(profile.IntentRegisterPool): {need: poolNeed, headroom: FeeHeadroom, deposit: poolDeposit, build: buildPool},
 	string(profile.IntentRetirePool): {need: none, headroom: FeeHeadroom, guarded: true, deposit: noDeposit,
@@ -371,6 +388,62 @@ func buildWithdraw(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, 
 		wd.Into, wd.Datum = &build.Disbursement, common.Datum{Data: d.Data()}
 	}
 	return c.spec.Builder.Stake().Withdraw(ctx, w, wd)
+}
+
+// tradeNeed is the lovelace a buy pays; a sale mints what it sells.
+func tradeNeed(_ *core, p *wire.Pending) uint64 {
+	if p.Call == callBuy {
+		return p.Amount
+	}
+	return 0
+}
+
+// liveMarket is the market every trade goes to: the oldest output at the
+// market address whose value holds its datum's reserves. Other outputs
+// there (a second market opened in a race, a stray payment) are left
+// alone.
+func liveMarket(v *chain.View, network uint8) (common.Utxo, contract.MarketDatum, bool) {
+	for _, u := range v.UtxosAt(build.Market.Address(network)) {
+		if d, ok := build.MarketDatumOf(u); ok {
+			return u, d, true
+		}
+	}
+	return common.Utxo{}, contract.MarketDatum{}, false
+}
+
+// buildTrade trades p.Amount at the market as the view has it now: every
+// attempt, a rebuild after losing the race included, reads the market's
+// output and datum afresh (models/specs/dex-contention, rule 1) and spends
+// the intent's reserved coins (rule 2). The output it spends is recorded
+// for settling.
+func buildTrade(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, p *wire.Pending) (build.Built, error) {
+	u, d, ok := liveMarket(c.env.Chain.View(), c.spec.NetworkID)
+	if !ok {
+		return build.Built{}, errNoMarket
+	}
+
+	ref := wire.Ref{Tx: wire.TxID(u.Id.Id()), Index: u.Id.Index()}
+	p.Locked, p.Held = &ref, u.Output.Amount().Uint64()
+	return c.spec.Builder.Markets().Trade(ctx, w, build.Trade{Spend: sp, Pool: u, Datum: d, Buy: p.Call == callBuy, Amount: p.Amount})
+}
+
+// buildMarket opens the market with p.Amount lovelace and openTokens
+// tokens, or provides p.Amount and provideTokens to the market the actor
+// owns.
+func buildMarket(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, p *wire.Pending) (build.Built, error) {
+	o := build.MarketOpen{Spend: sp, Ada: p.Amount, Tokens: openTokens}
+	if p.Call == callProvide {
+		o.Tokens = provideTokens
+		u, d, ok := liveMarket(c.env.Chain.View(), c.spec.NetworkID)
+		if !ok {
+			return build.Built{}, errNoMarket
+		}
+
+		ref := wire.Ref{Tx: wire.TxID(u.Id.Id()), Index: u.Id.Index()}
+		p.Locked, p.Held = &ref, u.Output.Amount().Uint64()
+		o.Pool, o.Datum = &u, d
+	}
+	return c.spec.Builder.Markets().OpenMarket(ctx, w, o)
 }
 
 func buildPool(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, p *wire.Pending) (build.Built, error) {

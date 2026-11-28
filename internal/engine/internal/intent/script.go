@@ -41,6 +41,27 @@ const (
 	callRefund  = "refund"
 	callAward   = "award"
 	callDraw    = "draw"
+	callBuy     = "buy"
+	callSell    = "sell"
+	callOpen    = "open"
+	callProvide = "provide"
+)
+
+// The market: tradeShare of the script calls that unlock nothing trade
+// (buys marketBuys of them), and the market's owner provides in
+// provideShare of its calls. The first script call with no market opens
+// it with openAda lovelace and openTokens tokens. A trade moves at most
+// 1/maxTradeShare of a reserve.
+const (
+	tradeShare    = 0.5
+	marketBuys    = 0.6
+	provideShare  = 0.1
+	openAda       = 100_000_000
+	openTokens    = 1_000_000
+	provideAda    = 20_000_000
+	provideTokens = 200_000
+	minBuy        = 2_000_000
+	maxTradeShare = 20
 )
 
 // vestDelay is how many slots after its lock a vesting position opens;

@@ -605,10 +605,10 @@ func noteFork(e *Engine, at sched.Time, before wire.Protocol, first bool) {
 }
 
 // bookContracts names the script owner as the owner of the contracts that
-// exist from genesis and of the disbursement instance, so the view tracks
-// their outputs.
+// exist from genesis and of the disbursement and market instances, so the
+// view tracks their outputs.
 func bookContracts(b *chain.Book, network uint8) error {
-	booked := []uint64{build.DisburseContract}
+	booked := []uint64{build.DisburseContract, build.MarketContract}
 	for i := range uint64(intent.Genesis) {
 		booked = append(booked, i)
 	}
@@ -664,6 +664,9 @@ func (e *Engine) settle(at sched.Time, p *wire.Pending, tx TxID) error {
 		// The lock's script output counted as foreign when it settled.
 		e.win.Reclaim(p.Amount)
 	}
+	// A market spend takes back the market output it spent, which counted
+	// as foreign; the market it paid back counts when its block settles.
+	e.win.Reclaim(p.Held)
 	if p.Kind == string(profile.IntentWithdraw) {
 		// A reward withdrawal brings lovelace from outside the genesis
 		// total: a treasury award.

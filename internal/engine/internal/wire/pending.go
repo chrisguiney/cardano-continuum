@@ -85,8 +85,12 @@ type Args struct {
 	// Contract is the contract a lock or unlock calls.
 	Contract uint64 `json:"contract,omitzero"`
 	// Call is what a lock or unlock does with its contract: lock, claim,
-	// or an escrow's release or refund.
+	// an escrow's release or refund, a disbursement's draw; for a market
+	// intent buy, sell, open or provide.
 	Call string `json:"call,omitempty"`
+	// Held is the lovelace of the market output the current attempt
+	// spends, which settling takes back out of the foreign count.
+	Held uint64 `json:"held,omitzero"`
 	// Epoch is the epoch a retirement takes effect.
 	Epoch uint64 `json:"epoch,omitzero"`
 	// Register makes a delegation also register the stake key.

@@ -56,6 +56,10 @@ func New(spec Spec, env Env) *Intent {
 // spent" from a resend.
 func Again(kind string) []submit.Class { return specs[kind].again }
 
+// Contended reports a kind whose attempts race other actors for an
+// output: a market trade or provision.
+func Contended(kind string) bool { return specs[kind].contended }
+
 // AllAgain is Again over every kind of the table.
 func AllAgain() []submit.Class {
 	var out []submit.Class

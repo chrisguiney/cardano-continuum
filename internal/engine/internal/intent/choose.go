@@ -1,6 +1,7 @@
 package intent
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
@@ -256,6 +257,10 @@ func (ch *Chooser) prepareScript(a population.Actor, p *wire.Pending, r *rand.Ra
 		return
 	}
 
+	if ch.prepareMarket(a, p, r) {
+		return
+	}
+
 	p.Kind, p.Amount, p.Contract, p.Call = LockKind, lockAmount, ch.ct.pick(r), callLock
 	if build.Template(p.Contract) != "escrow" {
 		return
@@ -268,6 +273,57 @@ func (ch *Chooser) prepareScript(a population.Actor, p *wire.Pending, r *rand.Ra
 		return
 	}
 	p.To = uint64(to)
+}
+
+// prepareMarket makes the market call a dapp user takes instead of a
+// lock, and reports whether it takes one. With no market open (and none
+// opening) the actor opens it and owns it; the owner sometimes provides
+// more; otherwise tradeShare of calls trade, buying with a payment-sized
+// amount or selling tokens, each at most 1/maxTradeShare of the reserve.
+func (ch *Chooser) prepareMarket(a population.Actor, p *wire.Pending, r *rand.Rand) bool {
+	// Only dapp users trade: an opportunist's script calls stay the locks
+	// and unlocks the adversaries race for.
+	if prof := ch.env.Roster.Profile(a.ID); prof == nil || prof.Agenda != "dapp" {
+		return false
+	}
+
+	_, d, ok := liveMarket(ch.env.Chain.View(), ch.spec.NetworkID)
+	if !ok {
+		if ch.opening() {
+			return false
+		}
+		p.Kind, p.Call, p.Amount, p.Contract = MarketKind, callOpen, openAda, build.MarketContract
+		return true
+	}
+
+	me := ch.env.Roster.Wallet(a.ID).PaymentKeyHash()
+	if bytes.Equal(d.Owner, me[:]) && r.Float64() < provideShare {
+		p.Kind, p.Call, p.Amount, p.Contract = MarketKind, callProvide, provideAda, build.MarketContract
+		return true
+	}
+
+	if r.Float64() >= tradeShare {
+		return false
+	}
+
+	p.Kind, p.Contract = TradeKind, build.MarketContract
+	if r.Float64() < marketBuys {
+		bal := ch.env.Flight.Spendable(uint64(a.ID))
+		p.Call, p.Amount = callBuy, min(paymentSize(ch.env.Roster.Profile(a.ID).Amount, bal, minBuy, r), max(uint64(d.Ada)/maxTradeShare, minBuy))
+		return true
+	}
+	p.Call, p.Amount = callSell, max(1, uint64(float64(uint64(d.Tokens)/maxTradeShare)*r.Float64()))
+	return true
+}
+
+// opening reports an unfinished intent that opens the market.
+func (ch *Chooser) opening() bool {
+	for q := range ch.env.Flight.All() {
+		if q.Kind == MarketKind && q.Call == callOpen {
+			return true
+		}
+	}
+	return false
 }
 
 // callPhrases describe each unlock call for an actor's why box.
