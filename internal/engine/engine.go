@@ -307,7 +307,7 @@ func (e *Engine) Summary() Summary {
 		Tip:     e.win.Tip(),
 		Pending: e.pay.Len(),
 		Actors:  e.co.Pop().Len(),
-		Wallets: e.co.People.Holdings(),
+		Wallets: e.co.Holdings(),
 	}
 }
 

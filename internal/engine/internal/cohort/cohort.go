@@ -239,3 +239,18 @@ func (c *Cohort) revive(ps Profiles, r wire.ActorRec) error {
 	}
 	return nil
 }
+
+// Holdings is how many wallets each human ever owned, by human ID; nil
+// without a humans section.
+func (c *Cohort) Holdings() []int {
+	pp := c.People
+	if !pp.On() {
+		return nil
+	}
+
+	out := make([]int, len(pp.list))
+	for i, h := range pp.list {
+		out[i] = len(walletsOf(c.Roster, h.ID))
+	}
+	return out
+}

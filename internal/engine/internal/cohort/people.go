@@ -317,16 +317,3 @@ func (pp *People) Load(rs []wire.HumanRec) {
 // owner is the owner a snapshot recorded for the wallet; zero for an actor
 // no person owns.
 func (pp *People) owner(id population.ActorID) population.Owner { return pp.owners[id] }
-
-// Holdings is how many wallets each human ever owned, by ID; nil when off.
-func (pp *People) Holdings() []int {
-	if !pp.On() {
-		return nil
-	}
-
-	out := make([]int, len(pp.list))
-	for i, h := range pp.list {
-		out[i] = len(walletsOf(pp.r, h.ID))
-	}
-	return out
-}
