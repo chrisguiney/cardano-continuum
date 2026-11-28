@@ -55,6 +55,10 @@ const (
 	// chain; IntentSellADA pays ADA to an exchange for fiat.
 	IntentBuyADA  IntentKind = "buy_ada"
 	IntentSellADA IntentKind = "sell_ada"
+	// IntentTransfer moves ADA between two wallets of the same owner. It
+	// is a payment on chain but not a payment between people, so it is
+	// counted apart from sends; only the owner's money clock starts one.
+	IntentTransfer IntentKind = "transfer"
 )
 
 var intents = map[IntentKind]bool{
@@ -62,7 +66,7 @@ var intents = map[IntentKind]bool{
 	IntentWithdraw: true, IntentVote: true, IntentRegisterDRep: true, IntentDelegateDRep: true,
 	IntentPropose: true, IntentMint: true, IntentBurn: true, IntentScriptCall: true,
 	IntentRegisterPool: true, IntentRetirePool: true, IntentUpdatePool: true, IntentRetireDRep: true,
-	IntentBuyADA: true, IntentSellADA: true,
+	IntentBuyADA: true, IntentSellADA: true, IntentTransfer: true,
 }
 
 // Lovelace is an amount of ADA in lovelace.

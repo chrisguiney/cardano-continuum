@@ -30,6 +30,7 @@ type rawFile struct {
 	Populations []rawPopulation `yaml:"populations,omitempty"`
 	Network     rawNetwork      `yaml:"network,omitempty"`
 	Markets     *Markets        `yaml:"markets,omitempty"`
+	Humans      *Humans         `yaml:"humans,omitempty"`
 }
 
 type rawProfile struct {
@@ -125,7 +126,12 @@ func parseFile(r io.Reader) (File, error) {
 	if err != nil {
 		return File{}, err
 	}
-	return File{Profiles: ps, Populations: pops, Network: net, Markets: mk}, nil
+
+	hs, err := parseHumans(f.Humans)
+	if err != nil {
+		return File{}, err
+	}
+	return File{Profiles: ps, Populations: pops, Network: net, Markets: mk, Humans: hs}, nil
 }
 
 func parse(r io.Reader) ([]Profile, rawFile, error) {
@@ -410,7 +416,7 @@ func MarshalFile(f File) ([]byte, error) {
 	if len(f.Network.Proposals) > 0 {
 		raw.Network.Proposals = f.Network.Proposals
 	}
-	raw.Markets = f.Markets
+	raw.Markets, raw.Humans = f.Markets, f.Humans
 	return yaml.Marshal(raw)
 }
 

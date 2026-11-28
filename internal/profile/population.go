@@ -113,6 +113,9 @@ type File struct {
 	Network     Network
 	// Markets is the ADA market the wallets trade in; nil means none.
 	Markets *Markets
+	// Humans is the people who own the wallets; nil means every wallet is
+	// its own owner.
+	Humans *Humans
 }
 
 var actionTypes = map[string]bool{
