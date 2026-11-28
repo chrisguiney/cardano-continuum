@@ -112,36 +112,36 @@ export function App() {
           ))}
         </nav>
         <div className="ml-auto flex flex-wrap items-center gap-4">
-        {caps.explorer && <SearchBox />}
-        <span className="inline-flex items-center">
-          <Button type="button" variant="ghost" size="sm" onClick={toggle} aria-describedby="theme-help">
-            {theme === "dark" ? <SunIcon aria-hidden="true" /> : <MoonIcon aria-hidden="true" />}
-            {theme === "dark" ? "Light theme" : "Dark theme"}
-          </Button>
-          <HelpTip id="theme-help" label="Theme" text={FIELD_HELP.theme!.help} />
-        </span>
+          {caps.explorer && <SearchBox />}
+          <span className="inline-flex items-center">
+            <Button type="button" variant="ghost" size="sm" onClick={toggle} aria-describedby="theme-help">
+              {theme === "dark" ? <SunIcon aria-hidden="true" /> : <MoonIcon aria-hidden="true" />}
+              {theme === "dark" ? "Light theme" : "Dark theme"}
+            </Button>
+            <HelpTip id="theme-help" label="Theme" text={FIELD_HELP.theme!.help} />
+          </span>
         </div>
       </header>
       <main id="main" className="mx-auto max-w-[1200px] px-4 pb-12">
         <Suspense fallback={<Note>Loading…</Note>}>
-        {route.name === "overview" && <Overview />}
-        {route.name === "actors" && <Actors />}
-        {route.name === "actor" && <Actor id={route.id} />}
-        {route.name === "pools" && <Pools />}
-        {route.name === "governance" && <Governance />}
-        {route.name === "govaction" && <GovAction tx={route.tx} index={route.index} />}
-        {route.name === "decisions" && <Decisions />}
-        {route.name === "findings" && <Findings />}
-        {route.name === "adversaries" && <Adversaries />}
-        {route.name === "explorer" && <Explorer />}
-        {route.name === "xblock" && <ExBlock id={route.key} />}
-        {route.name === "xtx" && <ExTx id={route.key} />}
-        {route.name === "xaddr" && <ExAddress addr={route.key} />}
-        {route.name === "xepoch" && <ExEpoch n={route.n} />}
-        {route.name === "xpool" && <Explorer pool={route.key} />}
-        {route.name === "help" && <Help />}
-        {route.name === "controls" && (controls ? <Controls /> : <Note className="p-4 text-center">Controls are not enabled on this server (start it with --controls).</Note>)}
-        {route.name === "notfound" && <Note className="p-4 text-center">No such page.</Note>}
+          {route.name === "overview" && <Overview />}
+          {route.name === "actors" && <Actors />}
+          {route.name === "actor" && <Actor id={route.id} />}
+          {route.name === "pools" && <Pools />}
+          {route.name === "governance" && <Governance />}
+          {route.name === "govaction" && <GovAction tx={route.tx} index={route.index} />}
+          {route.name === "decisions" && <Decisions />}
+          {route.name === "findings" && <Findings />}
+          {route.name === "adversaries" && <Adversaries />}
+          {route.name === "explorer" && <Explorer />}
+          {route.name === "xblock" && <ExBlock id={route.key} />}
+          {route.name === "xtx" && <ExTx id={route.key} />}
+          {route.name === "xaddr" && <ExAddress addr={route.key} />}
+          {route.name === "xepoch" && <ExEpoch n={route.n} />}
+          {route.name === "xpool" && <Explorer pool={route.key} />}
+          {route.name === "help" && <Help />}
+          {route.name === "controls" && (controls ? <Controls /> : <Note className="p-4 text-center">Controls are not enabled on this server (start it with --controls).</Note>)}
+          {route.name === "notfound" && <Note className="p-4 text-center">No such page.</Note>}
         </Suspense>
       </main>
     </TooltipProvider>

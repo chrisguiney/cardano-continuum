@@ -201,8 +201,8 @@ suite: GitHub's runners have no cluster.
 `127.0.0.1:8088`; it takes `continuum serve`'s flags. `continuum serve` and
 `continuum run --serve` answer the JSON API only, and
 `continuum-ui proxy --api http://127.0.0.1:8088 --addr 127.0.0.1:8089` puts
-the UI in front of either. The single-page app (Preact, Vite, TypeScript) is
-in `web/`; its build, `web/dist`, is committed and embedded in
+the UI in front of either. The single-page app (React, Vite, TypeScript,
+Tailwind CSS, shadcn/ui) is in `web/`; its build, `web/dist`, is committed and embedded in
 `continuum-ui` (never in `continuum`), so Go builds need no Node. After changing `web/src`, run `make web` and commit `web/dist`;
 `make web-test` typechecks and runs the unit tests. Screenshots are in
 `docs/screenshots/`; the `-sample` ones use stand-in API data because a fake
