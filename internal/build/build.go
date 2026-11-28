@@ -80,7 +80,10 @@ type Params struct {
 	MaxBlockExUnits     common.ExUnits
 	CollateralPercent   uint
 	MaxCollateralInputs uint
-	ProtocolMajor       uint
+	// ProtocolMajor and ProtocolMinor are the protocol version; the major
+	// selects the script semantics local evaluation uses.
+	ProtocolMajor uint
+	ProtocolMinor uint
 	// PlutusV3 is the PlutusV3 cost model in ledger parameter order.
 	PlutusV3 []int64
 
@@ -100,7 +103,7 @@ func ParamsFromConway(pp *conway.ConwayProtocolParameters, networkID uint8) Para
 		MinPoolCost: pp.MinPoolCost, MaxRetireEpochs: uint64(pp.MaxEpoch),
 		Prices: pp.ExecutionCosts, MaxTxExUnits: pp.MaxTxExUnits, MaxBlockExUnits: pp.MaxBlockExUnits,
 		CollateralPercent: pp.CollateralPercentage, MaxCollateralInputs: pp.MaxCollateralInputs,
-		ProtocolMajor: pp.ProtocolVersion.Major, PlutusV3: pp.CostModels[2],
+		ProtocolMajor: pp.ProtocolVersion.Major, ProtocolMinor: pp.ProtocolVersion.Minor, PlutusV3: pp.CostModels[2],
 	}
 }
 

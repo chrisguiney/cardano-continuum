@@ -191,6 +191,39 @@ func TestProposeActionTypes(t *testing.T) {
 	}
 }
 
+// A committee vote may carry its own hot-key authorisation, witnessed by
+// the cold key. Below protocol version 11 cardano-node's mempool refuses
+// it (the fake's unelected); from 11 the ledger accepts it, as GOV judges
+// the vote against the state after the transaction's certificates.
+func TestCommitteeVoteWithAuthorisation(t *testing.T) {
+	t.Parallel()
+	for _, major := range []uint{10, 11} {
+		h := newHarnessWith(t, func(pp *conway.ConwayProtocolParameters) { pp.ProtocolVersion.Major = major })
+		h.registerStake()
+		prop, err := h.b.Gov().Propose(ctx, h.alice, Proposal{Spend: h.spend()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		h.commit(prop)
+		cold, hot := h.store.CommitteeSigners(0)
+
+		sp := h.spend()
+		vote := Vote{Spend: sp, Voter: hot, Auth: &cold, Role: RoleCommittee, Action: common.GovActionId{TransactionId: prop.ID}, Choice: common.GovVoteYes}
+		got, err := h.b.Gov().Vote(ctx, h.alice, vote)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if major < 11 {
+			h.rejects(got.Tx, fakechain.MempoolFailure)
+			continue
+		}
+		h.check(got, sp.Inputs, want{signers: []keys.Credential{h.alice.PaymentKeyHash(), hot.KeyHash(), cold.KeyHash()}},
+			func() (Built, error) { return h.b.Gov().Vote(ctx, h.alice, vote) })
+		h.commit(got)
+	}
+}
+
 // A committee vote by a hot key the chain has not authorised is refused
 // from the mempool, as a cardano-node refuses it: authorise first.
 func TestCommitteeVoteBeforeAuthorisationRefused(t *testing.T) {

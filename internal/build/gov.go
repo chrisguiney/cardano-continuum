@@ -48,6 +48,11 @@ type Vote struct {
 	Choice uint8
 	// Anchor is the vote's rationale, nil for none.
 	Anchor *common.GovAnchor
+	// Auth is a committee member's cold key, when the vote carries the
+	// authorisation of its hot key (Voter); nil for none. Only from
+	// protocol version 11 does a node take such a vote (fakechain
+	// unelected).
+	Auth *keys.Signer
 }
 
 // Proposal submits a governance action of type Action (info when
@@ -180,8 +185,21 @@ func (f Gov) Vote(ctx context.Context, w keys.Wallet, v Vote) (Built, error) {
 		return Built{}, fmt.Errorf("build: unknown vote %d", v.Choice)
 	}
 	voter := common.Voter{Type: t, Hash: v.Voter.KeyHash()}
+	signers := []keys.Signer{v.Voter}
+
+	var certs []common.Certificate
+	if v.Auth != nil {
+		if v.Role != RoleCommittee {
+			return Built{}, fmt.Errorf("build: only a committee vote carries an authorisation")
+		}
+		signers = append(signers, *v.Auth)
+		certs = []common.Certificate{&common.AuthCommitteeHotCertificate{
+			CertType:       uint(common.CertificateTypeAuthCommitteeHot),
+			ColdCredential: keyCred(v.Auth.KeyHash()), HotCredential: keyCred(v.Voter.KeyHash()),
+		}}
+	}
 	return f.b.finish(ctx, w, spec{
-		sp: v.Spend, signers: []keys.Signer{v.Voter},
+		sp: v.Spend, signers: signers, certs: certs,
 		add: func(a *apollo.Apollo) (*apollo.Apollo, error) {
 			return a.AddVote(voter, v.Action, common.VotingProcedure{Vote: v.Choice, Anchor: v.Anchor}), nil
 		},

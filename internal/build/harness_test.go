@@ -32,6 +32,13 @@ const fund = 800_000_000_000
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
+	return newHarnessWith(t, nil)
+}
+
+// newHarnessWith is newHarness on parameters mod changes; the chain and
+// the builder share them.
+func newHarnessWith(t *testing.T, mod func(*conway.ConwayProtocolParameters)) *harness {
+	t.Helper()
 	var seed rng.Seed
 	seed[31] = 7
 	store, err := keys.New(seed, 0)
@@ -44,8 +51,13 @@ func newHarness(t *testing.T) *harness {
 	}
 	cold, _ := store.Committee(0)
 	h := &harness{t: t, store: store, alice: store.Wallet(1), pp: fakechain.DefaultParams()}
+	if mod != nil {
+		mod(&h.pp)
+	}
+	pp := h.pp
 	h.chain, err = fakechain.New(fakechain.Config{
-		Slots: slots, K: 3, BlockEvery: 2,
+		Params: &pp,
+		Slots:  slots, K: 3, BlockEvery: 2,
 		Genesis:   []fakechain.GenesisOutput{{Address: h.alice.Address(), Lovelace: fund}},
 		Committee: []fakechain.CommitteeSeat{{Cold: common.Blake2b224(cold), Expiry: 1000}},
 	})
