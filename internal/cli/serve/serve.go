@@ -125,7 +125,8 @@ func serve(ctx context.Context, p serveParams, out io.Writer) error {
 	if _, err := tail.Poll(ctx); err != nil {
 		return err
 	}
-	hcfg := httpapi.Config{Source: view.NewLogSource(p.cfg), Explorer: p.explorer, UI: p.ui, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil))}
+	src := view.NewLogSource(p.cfg)
+	hcfg := httpapi.Config{Source: src, People: view.NewPeople(src), Explorer: p.explorer, UI: p.ui, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil))}
 	if p.controls {
 		fl, err := eventlog.Open(p.log)
 		if err != nil {

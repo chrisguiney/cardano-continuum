@@ -110,7 +110,9 @@ type ActorDetail struct {
 	Findings    []ActorFinding `json:"findings"`
 	Adversary   *AdversaryCost `json:"adversary,omitempty"`
 	// Market is a market wallet's currencies and cost basis.
-	Market   *store.Market   `json:"market,omitempty"`
+	Market *store.Market `json:"market,omitempty"`
+	// Owner is the human that owns the wallet, in a run with humans.
+	Owner    *store.Owner    `json:"owner,omitempty"`
 	Timeline []TimelineEntry `json:"timeline"`
 }
 

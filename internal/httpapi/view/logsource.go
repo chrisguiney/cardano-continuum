@@ -398,7 +398,7 @@ func (s *LogSource) ActorDetail(ctx context.Context, id uint64) (ActorDetail, er
 	}
 	d.Delegation = Delegation{in.StakeRegistered, in.DelegatedPool, in.DelegatedActor, in.DelegatedDRep}
 	d.Traits = Traits{in.Competence, in.Care, in.Patience, in.LearningRate, in.LossAversion}
-	d.Market = in.Market
+	d.Market, d.Owner = in.Market, in.Owner
 	d.Lifecycle = Lifecycle{State: l.info.state, BornMs: l.info.born, ChangedMs: l.info.changed, Frustration: in.Frustration, Hazard: in.Hazard}
 	i := l.info
 	d.Activity = Activity{Intents: i.intents, Submitted: i.txs, Confirmed: i.confirmed, Refused: i.refused, Released: i.released,

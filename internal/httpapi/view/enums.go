@@ -8,6 +8,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
+	"github.com/chrisguiney/cardano-continuum/internal/household"
 	"github.com/chrisguiney/cardano-continuum/internal/mistake"
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
@@ -44,6 +45,10 @@ type Enums struct {
 	// Scenario is every scenario an inject control may name, with its
 	// argument and what it does.
 	Scenario []engine.ScenarioInfo `json:"scenarios"`
+	// Purpose is the wallet purposes and InvestStyle the humans'
+	// investment styles.
+	Purpose     []string `json:"purpose"`
+	InvestStyle []string `json:"invest_style"`
 }
 
 func strs[T ~string](xs []T) []string {
@@ -81,5 +86,6 @@ func BuildEnums() Enums {
 		Attack: strs(adversary.Names()), DecisionKind: engine.DecisionKinds(),
 		VoterClass: []string{classCommittee, classDRep, classSPO}, ActionType: chain.ActionTypes(),
 		MistakeKind: mistakeKinds(), Weight: strs(profile.IntentKinds()), Scenario: engine.Scenarios(),
+		Purpose: strs(population.Purposes()), InvestStyle: strs(household.Styles()),
 	}
 }

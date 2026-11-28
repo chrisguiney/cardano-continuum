@@ -1,6 +1,7 @@
 package view
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -8,6 +9,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
+	"github.com/chrisguiney/cardano-continuum/internal/httpapi/people"
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 )
@@ -27,6 +29,8 @@ type totals struct {
 	ctl *controlFold
 	// mkt folds the market records, for the same reason.
 	mkt *engine.Tape
+	// ppl folds the humans' records, for the same reason.
+	ppl *people.Fold
 }
 
 // Projection is the read model built by folding event log records in order.
@@ -54,7 +58,7 @@ func (p *Projection) Observe(f func(eventlog.Record)) {
 
 // NewProjection returns an empty projection.
 func NewProjection() *Projection {
-	return &Projection{actors: newActorIndex(), findings: oracle.NewSet(), meter: engine.NewMeter(), gov: newGovFold(), tot: totals{ctl: newControlFold(), mkt: &engine.Tape{}}}
+	return &Projection{actors: newActorIndex(), findings: oracle.NewSet(), meter: engine.NewMeter(), gov: newGovFold(), tot: totals{ctl: newControlFold(), mkt: &engine.Tape{}, ppl: &people.Fold{}}}
 }
 
 // Apply folds one record. A body that does not decode is counted, shown as a
@@ -78,7 +82,7 @@ func (p *Projection) Apply(r eventlog.Record) {
 	case eventlog.Input:
 		err = foldInput(p, r)
 	case eventlog.Decision:
-		err = errors.Join(foldDecision(p, r), p.tot.mkt.Add(r))
+		err = errors.Join(foldDecision(p, r), p.tot.mkt.Add(r), p.tot.ppl.Add(r))
 	}
 	if err != nil {
 		p.tot.bodyErrors++
@@ -109,6 +113,63 @@ func marketsOf(p *Projection) MarketsView {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.tot.mkt.Summary()
+}
+
+// People is the People page over a LogSource: the humans the projection's
+// records and the store's identity rows describe.
+type People struct{ s *LogSource }
+
+// NewPeople returns the People page of s.
+func NewPeople(s *LogSource) People { return People{s} }
+
+func (pv People) wallets(ctx context.Context) (people.Wallets, error) {
+	n, err := pv.s.names(ctx)
+	if err != nil {
+		return people.Wallets{}, err
+	}
+
+	w := people.Wallets{Idents: pv.s.identities(), Profiles: map[uint64]string{}, States: map[uint64]string{}}
+	for id, r := range n {
+		w.Profiles[id] = r.Profile
+	}
+
+	for _, r := range pv.s.cfg.Projection.Rows() {
+		w.States[r.ID] = r.State
+		if r.Profile != "" {
+			w.Profiles[r.ID] = r.Profile
+		}
+	}
+	return w, nil
+}
+
+// People is every human and the fiat flows.
+func (pv People) People(ctx context.Context) (people.View, error) {
+	w, err := pv.wallets(ctx)
+	if err != nil {
+		return people.View{}, err
+	}
+
+	p := pv.s.cfg.Projection
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return people.Build(w, p.tot.ppl), nil
+}
+
+// Person is one human, or ErrNotFound.
+func (pv People) Person(ctx context.Context, id uint64) (people.Person, error) {
+	w, err := pv.wallets(ctx)
+	if err != nil {
+		return people.Person{}, err
+	}
+
+	p := pv.s.cfg.Projection
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	h, ok := people.Detail(id, w, p.tot.ppl)
+	if !ok {
+		return people.Person{}, fmt.Errorf("%w: human %d", ErrNotFound, id)
+	}
+	return h, nil
 }
 
 // controlsOf is the steering the engine has applied. A function, not a

@@ -169,6 +169,15 @@ type ActorRow struct {
 	Delegated bool   `json:"delegated"`
 	Pool      string `json:"pool"`
 	DRep      string `json:"drep"`
+	// Owner is the wallet's human and what the wallet is for, in a run
+	// with humans.
+	Owner *OwnerRef `json:"owner,omitempty"`
+}
+
+// OwnerRef names a wallet's owner and the wallet's purpose.
+type OwnerRef struct {
+	Human   uint64 `json:"human"`
+	Purpose string `json:"purpose"`
 }
 
 // ActorPage is one page of actors; Total counts the filtered set.
@@ -256,7 +265,9 @@ type Decision struct {
 	Clock string `json:"clock,omitempty"`
 	// Position is the market position a market wallet's scores read.
 	Position *agenda.Position `json:"position,omitempty"`
-	Body     any              `json:"body,omitempty"`
+	// Owner is the human behind a wallet's decision, in a run with humans.
+	Owner *agenda.OwnerNote `json:"owner,omitempty"`
+	Body  any               `json:"body,omitempty"`
 }
 
 // Filter selects decisions on the feed. Every set field must match.
@@ -312,4 +323,7 @@ type Subscription struct {
 func (r *ActorRow) withIdentity(in store.Identity) {
 	r.Kind, r.Address, r.Balance, r.Pending = in.Kind, shortAddr(in.PaymentAddr), in.Settled, in.Unconfirmed
 	r.Tokens, r.Delegated, r.Pool, r.DRep = len(in.Tokens), in.DelegatedPool != "", shortAddr(in.DelegatedPool), in.DelegatedDRep
+	if o := in.Owner; o != nil {
+		r.Owner = &OwnerRef{Human: o.Human, Purpose: o.Purpose}
+	}
 }

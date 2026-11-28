@@ -144,7 +144,7 @@ func (s *liveServer) serve(ctx context.Context, addr string, log *slog.Logger) e
 	if err != nil {
 		return err
 	}
-	h := httpapi.NewHandler(httpapi.Config{Source: s.src, Controls: s.controls, Explorer: s.explorer, Logger: log})
+	h := httpapi.NewHandler(httpapi.Config{Source: s.src, People: view.NewPeople(s.src), Controls: s.controls, Explorer: s.explorer, Logger: log})
 	if err := httpapi.Serve(ctx, ln, h, log); err != nil && !errors.Is(err, context.Canceled) {
 		return err
 	}

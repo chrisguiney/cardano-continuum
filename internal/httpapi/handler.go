@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chrisguiney/cardano-continuum/internal/httpapi/people"
 	"github.com/chrisguiney/cardano-continuum/internal/httpapi/view"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 )
@@ -27,6 +29,8 @@ type Config struct {
 	// Explorer, when set, serves /api/explorer; without it those paths are
 	// 404 and the capabilities say so.
 	Explorer *Explorer
+	// People, when set, serves /api/people; without it the page is empty.
+	People People
 	// UI serves every GET path outside /api and /healthz, normally the
 	// embedded single-page app; nil leaves those paths 404.
 	UI     http.Handler
@@ -58,6 +62,8 @@ type api struct {
 //	GET  /api/governance
 //	GET  /api/governance/{tx}/{index}
 //	GET  /api/markets
+//	GET  /api/people
+//	GET  /api/people/{id}
 //	GET  /api/findings?limit&offset&known=true|false&kind&severity
 //	GET  /api/findings/{id}
 //	GET  /api/decisions?actor&profile&kind&intent&vote&last_event_id   (SSE)
@@ -114,6 +120,7 @@ func NewHandler(cfg Config) http.Handler {
 		exRoutes{a}.register(mux)
 	}
 	govRoutes{a}.register(mux)
+	peopleRoutes{a}.register(mux)
 	if cfg.UI == nil {
 		return mux
 	}
@@ -198,6 +205,51 @@ func (a *api) actors(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.json(w, http.StatusOK, pg)
+}
+
+// People is the People page's read model (view.People).
+type People interface {
+	People(ctx context.Context) (people.View, error)
+	Person(ctx context.Context, id uint64) (people.Person, error)
+}
+
+// peopleRoutes serves the humans who own the wallets.
+type peopleRoutes struct{ a *api }
+
+func (pr peopleRoutes) register(mux *http.ServeMux) {
+	a := pr.a
+	mux.HandleFunc("GET /api/people", func(w http.ResponseWriter, r *http.Request) {
+		if a.People == nil {
+			a.json(w, http.StatusOK, people.View{Humans: []people.Row{}, Flows: []people.Flow{}})
+			return
+		}
+
+		v, err := a.People.People(r.Context())
+		if err != nil {
+			a.fail(w, err)
+			return
+		}
+		a.json(w, http.StatusOK, v)
+	})
+	mux.HandleFunc("GET /api/people/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
+		if err != nil {
+			a.fail(w, badf("human id must be an unsigned integer"))
+			return
+		}
+
+		if a.People == nil {
+			a.fail(w, fmt.Errorf("%w: human %d", view.ErrNotFound, id))
+			return
+		}
+
+		p, err := a.People.Person(r.Context(), id)
+		if err != nil {
+			a.fail(w, err)
+			return
+		}
+		a.json(w, http.StatusOK, p)
+	})
 }
 
 func (a *api) timeline(w http.ResponseWriter, r *http.Request) {

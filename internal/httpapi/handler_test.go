@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
+	"github.com/chrisguiney/cardano-continuum/internal/httpapi/people"
 	"github.com/chrisguiney/cardano-continuum/internal/httpapi/view"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/store"
@@ -579,5 +581,41 @@ func TestMarketsRoute(t *testing.T) {
 	var seeded struct{ Seeded string }
 	if err := json.Unmarshal(body, &seeded); err != nil || seeded.Seeded != profile.SnapshotDate() {
 		t.Fatalf("seeded %q, want the snapshot date %q (%v)", seeded.Seeded, profile.SnapshotDate(), err)
+	}
+}
+
+// fakePeople serves one human.
+type fakePeople struct{}
+
+func (fakePeople) People(context.Context) (people.View, error) {
+	return people.View{Humans: []people.Row{{ID: 3, Motivation: "hodl", Wallets: 2}}, Flows: []people.Flow{}}, nil
+}
+
+func (fakePeople) Person(_ context.Context, id uint64) (people.Person, error) {
+	if id != 3 {
+		return people.Person{}, fmt.Errorf("%w: human %d", view.ErrNotFound, id)
+	}
+	return people.Person{Row: people.Row{ID: 3}}, nil
+}
+
+func TestPeopleRoutes(t *testing.T) {
+	bare := httptest.NewServer(NewHandler(Config{Source: &fakeSource{hub: NewHub(8, 4, 8)}}))
+	defer bare.Close()
+	if code, body := get(t, bare.URL+"/api/people"); code != http.StatusOK || !strings.Contains(string(body), `"humans":[]`) {
+		t.Fatalf("people without a source: %d %s", code, body)
+	}
+
+	srv := httptest.NewServer(NewHandler(Config{Source: &fakeSource{hub: NewHub(8, 4, 8)}, People: fakePeople{}}))
+	defer srv.Close()
+	var v people.View
+	code, body := get(t, srv.URL+"/api/people")
+	if err := json.Unmarshal(body, &v); code != http.StatusOK || err != nil || len(v.Humans) != 1 || v.Humans[0].Wallets != 2 {
+		t.Fatalf("people %d %s %v", code, body, err)
+	}
+
+	for path, want := range map[string]int{"/api/people/3": http.StatusOK, "/api/people/4": http.StatusNotFound, "/api/people/x": http.StatusBadRequest} {
+		if code, _ := get(t, srv.URL+path); code != want {
+			t.Errorf("%s: %d, want %d", path, code, want)
+		}
 	}
 }
