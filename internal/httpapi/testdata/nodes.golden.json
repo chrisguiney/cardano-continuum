@@ -1,0 +1,48 @@
+{
+  "nodes": [
+    {
+      "name": "p3",
+      "label": "continuum-pool-3",
+      "impl": "dingo",
+      "tier": "forging",
+      "phase": "Forging",
+      "dark": false,
+      "tip": {
+        "slot": 100,
+        "hash": "aa"
+      },
+      "slot_lag": 0,
+      "fork": false,
+      "last_block": {
+        "slot": 95,
+        "hash": "bb",
+        "height": 19
+      },
+      "stake_pool": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a",
+      "findings": 2,
+      "known_findings": 1
+    }
+  ],
+  "tips": [
+    {
+      "impl": "dingo",
+      "slot": 100,
+      "hash": "aa",
+      "nodes": 1
+    }
+  ],
+  "forks": [],
+  "topology": {
+    "mode": "mesh",
+    "nodes": [
+      {
+        "id": "p3",
+        "impl": "dingo",
+        "tier": "forging",
+        "phase": "Forging",
+        "fork": false
+      }
+    ],
+    "edges": []
+  }
+}

@@ -111,7 +111,7 @@ func diverged(cs []poolChain, lo, minDepth uint64) (Fork, bool) {
 			byHash[h] = &ForkGroup{Hash: h}
 			f.Slot = max(f.Slot, m.Slot)
 		}
-		byHash[h].Pools = append(byHash[h].Pools, c.name)
+		byHash[h].Nodes = append(byHash[h].Nodes, c.name)
 	}
 	f.Groups = groups(byHash)
 	return f, len(f.Groups) > 1
@@ -130,7 +130,7 @@ func behind(cs []poolChain, hi, k uint64) Fork {
 		if g.Hash == "" {
 			g.Hash = hex.EncodeToString(t.Hash[:])
 		}
-		g.Pools = append(g.Pools, c.name)
+		g.Nodes = append(g.Nodes, c.name)
 		if g == lag {
 			f.Height = max(f.Height, t.Height)
 		}
@@ -143,7 +143,7 @@ func behind(cs []poolChain, hi, k uint64) Fork {
 func groups(m map[string]*ForkGroup) []ForkGroup {
 	out := make([]ForkGroup, 0, len(m))
 	for _, g := range m {
-		slices.Sort(g.Pools)
+		slices.Sort(g.Nodes)
 		out = append(out, *g)
 	}
 	slices.SortFunc(out, func(a, b ForkGroup) int { return strings.Compare(a.Hash, b.Hash) })
@@ -164,7 +164,7 @@ func slotForks(cs []poolChain) []Fork {
 			bySlot[t.Slot][h] = &ForkGroup{Hash: h}
 		}
 		g := bySlot[t.Slot][h]
-		g.Pools = append(g.Pools, c.name)
+		g.Nodes = append(g.Nodes, c.name)
 	}
 	out := []Fork{}
 	for slot, hashes := range bySlot {

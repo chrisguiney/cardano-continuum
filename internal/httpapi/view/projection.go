@@ -217,6 +217,19 @@ func (p *Projection) Proposal(id string, slots *sched.Slots, life uint64, profil
 	return d, nil
 }
 
+// SPOVotes counts each stake pool's votes in force, by pool id (hex).
+func (p *Projection) SPOVotes() map[string]int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	out := map[string]int{}
+	for _, v := range p.gov.votes {
+		if v.Voter == classSPO {
+			out[v.VoterID]++
+		}
+	}
+	return out
+}
+
 // Rows returns every actor's row, unsorted.
 func (p *Projection) Rows() []ActorRow {
 	p.mu.Lock()

@@ -1,42 +1,38 @@
 {
   "pools": [
     {
-      "id": "a",
-      "pool_id": "p1",
-      "impl": "dingo",
-      "tier": "forging",
-      "phase": "Forging",
-      "dark": false,
-      "tip": {
-        "slot": 100,
-        "hash": "aa"
-      },
-      "fork": false,
-      "stake": null,
-      "blocks_made": null,
-      "blocks_expected": null
-    }
-  ],
-  "tips": [
+      "id": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a",
+      "bech32": "pool1pg9q5zs2pg9q5zs2pg9q5zs2pg9q5zs2pg9q5zs2pg9q5lc4t0t",
+      "actor": 7,
+      "actor_name": "pool-7",
+      "profile": "pools",
+      "actor_state": "registered",
+      "registration": null,
+      "retire_epoch": null,
+      "delegators": 2,
+      "delegated_lovelace": 11000000,
+      "blocks": null,
+      "votes": 1,
+      "nodes": [
+        {
+          "name": "p3",
+          "impl": "dingo",
+          "tier": "forging",
+          "phase": "Forging"
+        }
+      ]
+    },
     {
-      "impl": "dingo",
-      "slot": 100,
-      "hash": "aa",
-      "pools": 1
+      "id": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+      "bech32": "pool1pv9skzctpv9skzctpv9skzctpv9skzctpv9skzctpv9skeqm37x",
+      "actor": null,
+      "registration": null,
+      "retire_epoch": null,
+      "delegators": 0,
+      "delegated_lovelace": 0,
+      "blocks": null,
+      "votes": 0,
+      "nodes": []
     }
-  ],
-  "forks": [],
-  "topology": {
-    "mode": "mesh",
-    "nodes": [
-      {
-        "id": "a",
-        "impl": "dingo",
-        "tier": "forging",
-        "phase": "Forging",
-        "fork": false
-      }
-    ],
-    "edges": []
-  }
+  ]
 }

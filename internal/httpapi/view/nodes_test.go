@@ -27,7 +27,7 @@ func pool(name, poolID string, impl v1alpha1.Implementation, tier v1alpha1.Tier,
 	}
 }
 
-func edgeSet(v PoolsView) map[string]bool {
+func edgeSet(v NodesView) map[string]bool {
 	m := map[string]bool{}
 	for _, e := range v.Topology.Edges {
 		m[e.From+"~"+e.To] = true
@@ -35,28 +35,28 @@ func edgeSet(v PoolsView) map[string]bool {
 	return m
 }
 
-func TestBuildPoolsMeshForksAndTips(t *testing.T) {
+func TestBuildNodesMeshForksAndTips(t *testing.T) {
 	ps := []v1alpha1.ContinuumPool{
 		pool("b", "p2", v1alpha1.CardanoNode, v1alpha1.TierForging, 100, "bb"),
 		pool("a", "p1", v1alpha1.Dingo, v1alpha1.TierForging, 100, "aa"),
 		pool("c", "p3", v1alpha1.Dingo, v1alpha1.TierValidating, 90, "cc"),
 		pool("d", "p4", v1alpha1.Dingo, v1alpha1.TierLogical, 0, ""),
 	}
-	v := buildPools(ps, v1alpha1.TopologyMesh, nil, 5, 2)
-	if len(v.Pools) != 4 || v.Pools[0].ID != "a" || v.Pools[1].ID != "b" {
-		t.Fatalf("rows %+v", v.Pools)
+	v := buildNodes(ps, v1alpha1.TopologyMesh, nodeFacts{k: 5, depth: 2})
+	if len(v.Nodes) != 4 || v.Nodes[0].Name != "a" || v.Nodes[1].Name != "b" {
+		t.Fatalf("rows %+v", v.Nodes)
 	}
 	if len(v.Forks) != 1 || v.Forks[0].Slot != 100 || len(v.Forks[0].Groups) != 2 {
 		t.Fatalf("forks %+v", v.Forks)
 	}
-	if !v.Pools[0].Fork || !v.Pools[1].Fork || v.Pools[2].Fork {
-		t.Fatalf("fork marks %+v", v.Pools)
+	if !v.Nodes[0].Fork || !v.Nodes[1].Fork || v.Nodes[2].Fork {
+		t.Fatalf("fork marks %+v", v.Nodes)
 	}
 	tips := map[string]ImplTip{}
 	for _, tp := range v.Tips {
 		tips[tp.Impl] = tp
 	}
-	if tips["dingo"].Slot != 100 || tips["dingo"].Pools != 3 || tips["cardano-node"].Slot != 100 {
+	if tips["dingo"].Slot != 100 || tips["dingo"].Nodes != 3 || tips["cardano-node"].Slot != 100 {
 		t.Fatalf("tips %+v", v.Tips)
 	}
 	e := edgeSet(v)
@@ -69,14 +69,14 @@ func TestBuildPoolsMeshForksAndTips(t *testing.T) {
 	}
 }
 
-func TestBuildPoolsRelayed(t *testing.T) {
+func TestBuildNodesRelayed(t *testing.T) {
 	ps := []v1alpha1.ContinuumPool{
 		pool("bp1", "p1", v1alpha1.Dingo, v1alpha1.TierForging, 1, "x"),
 		pool("r1", "p1", v1alpha1.Dingo, v1alpha1.TierValidating, 1, "x"),
 		pool("bp2", "p2", v1alpha1.Dingo, v1alpha1.TierForging, 1, "x"),
 		pool("r2", "p2", v1alpha1.Dingo, v1alpha1.TierValidating, 1, "x"),
 	}
-	e := edgeSet(buildPools(ps, v1alpha1.TopologyRelayed, nil, 5, 2))
+	e := edgeSet(buildNodes(ps, v1alpha1.TopologyRelayed, nodeFacts{k: 5, depth: 2}))
 	// A keyed node dials only its own relays; relays dial each other.
 	if len(e) != 3 || !e["bp1~r1"] || !e["bp2~r2"] || !e["r1~r2"] {
 		t.Fatalf("edges %v", e)
@@ -90,3 +90,24 @@ type fakeKube struct {
 
 func (f fakeKube) Pools(context.Context) ([]v1alpha1.ContinuumPool, error) { return f.pools, nil }
 func (f fakeKube) Topology(context.Context) (v1alpha1.TopologyMode, error) { return f.mode, nil }
+
+// TestNodeRowFacts: a row carries its slot lag behind the furthest node,
+// its last own block, the stake pool whose keys it runs and the findings
+// that involve it.
+func TestNodeRowFacts(t *testing.T) {
+	a := pool("a", "continuum-pool-0", v1alpha1.Dingo, v1alpha1.TierForging, 100, "aa")
+	a.Status.LastBlock = v1alpha1.TipStatus{Slot: 90, Hash: "AB", Height: 9}
+	b := pool("b", "continuum-pool-1", v1alpha1.CardanoNode, v1alpha1.TierValidating, 97, "bb")
+	v := buildNodes([]v1alpha1.ContinuumPool{b, a}, v1alpha1.TopologyMesh, nodeFacts{
+		keys:     map[string]string{"a": "0a"},
+		findings: map[string]findingCount{"b": {all: 3, known: 2}},
+	})
+	ra, rb := v.Nodes[0], v.Nodes[1]
+	if ra.Label != "continuum-pool-0" || ra.SlotLag != 0 || ra.StakePool != "0a" || ra.LastBlock == nil ||
+		*ra.LastBlock != (Point{Slot: 90, Hash: "ab", Height: 9}) || ra.Findings != 0 {
+		t.Fatalf("a %+v", ra)
+	}
+	if rb.SlotLag != 3 || rb.StakePool != "" || rb.LastBlock != nil || rb.Findings != 3 || rb.KnownFindings != 2 {
+		t.Fatalf("b %+v", rb)
+	}
+}

@@ -52,6 +52,7 @@ type api struct {
 //	GET  /api/actors/{id}
 //	GET  /api/adversaries
 //	GET  /api/actors/{id}/timeline
+//	GET  /api/nodes
 //	GET  /api/pools
 //	GET  /api/governance
 //	GET  /api/governance/{tx}/{index}
@@ -87,7 +88,8 @@ func NewHandler(cfg Config) http.Handler {
 	mux.HandleFunc("GET /api/actors/{id}/timeline", a.timeline)
 	mux.HandleFunc("GET /api/actors/{id}", a.actorDetail)
 	mux.HandleFunc("GET /api/adversaries", a.adversaries)
-	mux.HandleFunc("GET /api/pools", a.pools)
+	mux.HandleFunc("GET /api/nodes", a.nodes)
+	mux.HandleFunc("GET /api/pools", a.stakePools)
 	mux.HandleFunc("GET /api/governance", a.governance)
 	mux.HandleFunc("GET /api/findings", a.findings)
 	mux.HandleFunc("GET /api/findings/{id}", func(w http.ResponseWriter, _ *http.Request) {
@@ -222,13 +224,47 @@ func (a *api) adversaries(w http.ResponseWriter, r *http.Request) {
 	a.json(w, http.StatusOK, v)
 }
 
-func (a *api) pools(w http.ResponseWriter, r *http.Request) {
-	v, err := a.Source.Pools(r.Context())
+// nodesView is the Nodes view, with the explorer resolving the keys of
+// the nodes the source could not.
+func (a *api) nodesView(r *http.Request) (view.NodesView, error) {
+	v, err := a.Source.Nodes(r.Context())
+	if err != nil {
+		return view.NodesView{}, err
+	}
+	if a.Explorer != nil {
+		v = a.Explorer.withKeys(v)
+	}
+	return v, nil
+}
+
+func (a *api) nodes(w http.ResponseWriter, r *http.Request) {
+	v, err := a.nodesView(r)
 	if err != nil {
 		a.fail(w, err)
 		return
 	}
 	a.json(w, http.StatusOK, v)
+}
+
+// stakePools serves the on-chain pools: the pool actors, what the chain
+// shows of them, and the nodes that run their keys.
+func (a *api) stakePools(w http.ResponseWriter, r *http.Request) {
+	v, err := a.Source.StakePools(r.Context())
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+
+	nodes, err := a.nodesView(r)
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+
+	if a.Explorer != nil {
+		v = view.WithChain(v, a.Explorer.chainPools())
+	}
+	a.json(w, http.StatusOK, view.WithNodes(v, nodes))
 }
 
 func (a *api) governance(w http.ResponseWriter, r *http.Request) {

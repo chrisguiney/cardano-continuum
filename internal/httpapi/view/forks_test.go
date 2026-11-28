@@ -64,12 +64,12 @@ func TestForksHeightGapBeyondK(t *testing.T) {
 	if len(fs) != 1 || fs[0].Reason != ReasonBehind {
 		t.Fatalf("forks %+v", fs)
 	}
-	if g := fs[0].Groups; len(g) != 2 || g[0].Pools[0] != "b" {
+	if g := fs[0].Groups; len(g) != 2 || g[0].Nodes[0] != "b" {
 		t.Fatalf("groups %+v", g)
 	}
 }
 
-func TestLiveSourcePoolsFromKubeAndTips(t *testing.T) {
+func TestLiveSourceNodesFromKubeAndTips(t *testing.T) {
 	ps := []v1alpha1.ContinuumPool{
 		pool("p0", "x0", v1alpha1.CardanoNode, v1alpha1.TierForging, 0, ""),
 		pool("p3", "x3", v1alpha1.Dingo, v1alpha1.TierForging, 0, ""),
@@ -80,15 +80,15 @@ func TestLiveSourcePoolsFromKubeAndTips(t *testing.T) {
 		Kube: fakeKube{pools: ps, mode: v1alpha1.TopologyMesh}, K: 5, ForkDepth: 2,
 		Tips: fakeTips{"p0": run(1, 10, 99, 'a'), "p3": run(1, 10, 8, 'b')},
 	})
-	v, err := s.Pools(context.Background())
+	v, err := s.Nodes(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(v.Pools) != 2 || v.Pools[1].Impl != "dingo" || v.Pools[1].Image != "sha256:d1" || v.Pools[1].Phase != "Syncing" {
-		t.Fatalf("pools %+v", v.Pools)
+	if len(v.Nodes) != 2 || v.Nodes[1].Impl != "dingo" || v.Nodes[1].Image != "sha256:d1" || v.Nodes[1].Phase != "Syncing" {
+		t.Fatalf("nodes %+v", v.Nodes)
 	}
-	if v.Pools[0].Tip.Height != 10 || v.Pools[0].Tip.Hash == "" || !v.Pools[0].Fork || !v.Pools[1].Fork {
-		t.Fatalf("tips/forks %+v", v.Pools)
+	if v.Nodes[0].Tip.Height != 10 || v.Nodes[0].Tip.Hash == "" || !v.Nodes[0].Fork || !v.Nodes[1].Fork {
+		t.Fatalf("tips/forks %+v", v.Nodes)
 	}
 	if len(v.Forks) != 1 || len(v.Topology.Edges) != 1 || !v.Topology.Nodes[1].Fork {
 		t.Fatalf("view %+v", v)

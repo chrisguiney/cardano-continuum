@@ -42,9 +42,11 @@ type (
 	Node            = view.Node
 	Page            = view.Page
 	Point           = view.Point
-	PoolRow         = view.PoolRow
+	NodeRow         = view.NodeRow
 	PoolVotes       = view.PoolVotes
-	PoolsView       = view.PoolsView
+	NodesView       = view.NodesView
+	StakePoolRow    = view.StakePoolRow
+	StakePoolsView  = view.StakePoolsView
 	Population      = view.Population
 	Projection      = view.Projection
 	ProposalDetail  = view.ProposalDetail

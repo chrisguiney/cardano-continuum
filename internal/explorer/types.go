@@ -157,6 +157,8 @@ const (
 	KindAddress Kind = "address"
 	KindPool    Kind = "pool"
 	KindActor   Kind = "actor"
+	// KindNode is a node's name; the caller resolves it.
+	KindNode Kind = "node"
 	// KindHash64 is a 64-digit hex key: a block or a transaction hash.
 	KindHash64 Kind = "hash64"
 	// KindNumber is a bare number: a height, or failing that a slot.

@@ -152,24 +152,53 @@ func (s *LogSource) Controls(context.Context) (ControlState, error) {
 	return s.cfg.Projection.Controls(), nil
 }
 
-// Pools implements Source.
-func (s *LogSource) Pools(ctx context.Context) (PoolsView, error) {
+// Nodes implements Source.
+func (s *LogSource) Nodes(ctx context.Context) (NodesView, error) {
 	if s.cfg.Kube == nil {
-		return buildPools(nil, "", nil, 0, 0), nil
+		return buildNodes(nil, "", nodeFacts{}), nil
 	}
 	mode, err := s.cfg.Kube.Topology(ctx)
 	if err != nil {
-		return PoolsView{}, fmt.Errorf("read topology: %w", err)
+		return NodesView{}, fmt.Errorf("read topology: %w", err)
 	}
 	ps, err := s.cfg.Kube.Pools(ctx)
 	if err != nil {
-		return PoolsView{}, fmt.Errorf("list pools: %w", err)
+		return NodesView{}, fmt.Errorf("list pools: %w", err)
 	}
 	var tips map[string][]chain.Mark
 	if s.cfg.Tips != nil {
 		tips = s.cfg.Tips.Tips()
 	}
-	return buildPools(ps, mode, tips, s.cfg.K, s.cfg.ForkDepth), nil
+	var findings map[string]findingCount
+	if s.cfg.Findings != nil || s.cfg.Projection != nil {
+		findings = nodeFindings(s.findingsSet())
+	}
+	return buildNodes(ps, mode, nodeFacts{
+		tips:     tips,
+		k:        s.cfg.K,
+		depth:    s.cfg.ForkDepth,
+		keys:     NodeKeys(ps, tips, nil),
+		findings: findings,
+	}), nil
+}
+
+// StakePools implements Source. The rows come from the pool actors the
+// store holds; the handler adds the nodes and the explorer's chain view.
+func (s *LogSource) StakePools(ctx context.Context) (StakePoolsView, error) {
+	n, err := s.names(ctx)
+	if err != nil {
+		return StakePoolsView{}, err
+	}
+	states := map[uint64]string{}
+	for _, r := range s.cfg.Projection.Rows() {
+		states[r.ID] = r.State
+	}
+	return buildStakePools(stakeInputs{
+		names:  n,
+		idents: s.identities(),
+		states: states,
+		votes:  s.cfg.Projection.SPOVotes(),
+	}), nil
 }
 
 // Actors implements Source. The log decides which actors exist; the store

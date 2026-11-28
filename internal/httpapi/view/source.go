@@ -21,8 +21,12 @@ type Source interface {
 	Adversaries(ctx context.Context) (AdversaryView, error)
 	// Controls is the steering the engine has applied.
 	Controls(ctx context.Context) (ControlState, error)
-	// Pools is the Pools view with its topology graph.
-	Pools(ctx context.Context) (PoolsView, error)
+	// Nodes is the Nodes view: the node processes with their tips, forks
+	// and peer graph.
+	Nodes(ctx context.Context) (NodesView, error)
+	// StakePools is the Stake pools view: the on-chain pools the run's
+	// actors operate. The handler links nodes and the chain's view to it.
+	StakePools(ctx context.Context) (StakePoolsView, error)
 	// Governance is the Governance view: proposals, their votes by voter
 	// class, the vote feed and each pool's recent SPO votes.
 	Governance(ctx context.Context) (GovernanceView, error)

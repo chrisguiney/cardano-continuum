@@ -119,3 +119,28 @@ func sortedKeys(m map[string]string) []string {
 	slices.Sort(ks)
 	return ks
 }
+
+// nodeFindings counts the findings that involve each node, by node name,
+// and how many of them a known issue explains.
+func nodeFindings(fs Findings) map[string]findingCount {
+	_, n := fs.Page(0, 0)
+	all, _ := fs.Page(0, n)
+	out := map[string]findingCount{}
+	for _, f := range all {
+		_, known := oracle.KnownIssueOf(f)
+		seen := map[string]bool{}
+		for _, nd := range f.Nodes {
+			if nd.Pool == "" || seen[nd.Pool] {
+				continue
+			}
+			seen[nd.Pool] = true
+			c := out[nd.Pool]
+			c.all++
+			if known {
+				c.known++
+			}
+			out[nd.Pool] = c
+		}
+	}
+	return out
+}

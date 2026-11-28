@@ -121,12 +121,22 @@ func (f *fakeSource) Controls(context.Context) (ControlState, error) {
 	return ControlState{Paused: true, K: 3, Weights: map[string]float64{"send": 2}, Last: &view.LastControl{RequestID: "ui-1", Op: "set_weights", Seq: 40, At: 9000}}, nil
 }
 
-func (f *fakeSource) Pools(context.Context) (PoolsView, error) {
-	return PoolsView{
-		Pools: []PoolRow{{ID: "a", PoolID: "p1", Impl: "dingo", Tier: "forging", Phase: "Forging", Tip: Point{Slot: 100, Hash: "aa"}}},
-		Tips:  []ImplTip{{Impl: "dingo", Slot: 100, Hash: "aa", Pools: 1}},
-		Forks: []Fork{}, Topology: Topology{Mode: "mesh", Nodes: []Node{{ID: "a", Impl: "dingo", Tier: "forging", Phase: "Forging"}}, Edges: []Edge{}},
+func (f *fakeSource) Nodes(context.Context) (NodesView, error) {
+	return NodesView{
+		Nodes: []NodeRow{{Name: "p3", Label: "continuum-pool-3", Impl: "dingo", Tier: "forging", Phase: "Forging", Tip: Point{Slot: 100, Hash: "aa"},
+			LastBlock: &Point{Slot: 95, Hash: "bb", Height: 19}, StakePool: strings.Repeat("0a", 28), Findings: 2, KnownFindings: 1}},
+		Tips:  []ImplTip{{Impl: "dingo", Slot: 100, Hash: "aa", Nodes: 1}},
+		Forks: []Fork{}, Topology: Topology{Mode: "mesh", Nodes: []Node{{ID: "p3", Impl: "dingo", Tier: "forging", Phase: "Forging"}}, Edges: []Edge{}},
 	}, nil
+}
+
+func (f *fakeSource) StakePools(context.Context) (StakePoolsView, error) {
+	actor := uint64(7)
+	return StakePoolsView{Pools: []StakePoolRow{
+		{ID: strings.Repeat("0a", 28), Bech32: view.PoolBech32(strings.Repeat("0a", 28)), Actor: &actor, ActorName: "pool-7", Profile: "pools",
+			ActorState: "registered", Delegators: 2, DelegatedLovelace: 11_000_000, Votes: 1, Nodes: []view.NodeRef{}},
+		{ID: strings.Repeat("0b", 28), Bech32: view.PoolBech32(strings.Repeat("0b", 28)), Nodes: []view.NodeRef{}},
+	}}, nil
 }
 
 func (f *fakeSource) Governance(context.Context) (GovernanceView, error) {
@@ -194,6 +204,7 @@ func TestRESTGoldens(t *testing.T) {
 		{"overview", "/api/overview"},
 		{"actors", "/api/actors?limit=2&sort=name&dir=desc&profile=hodl"},
 		{"timeline", "/api/actors/1/timeline"},
+		{"nodes", "/api/nodes"},
 		{"pools", "/api/pools"},
 		{"controls", "/api/controls"},
 		{"findings", "/api/findings"},

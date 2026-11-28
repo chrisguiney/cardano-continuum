@@ -65,7 +65,7 @@ func TestLogSourceActorsPagesSortsFiltersAndNames(t *testing.T) {
 	}
 }
 
-func TestLogSourceSnapshotEpochAndPoolsWithoutKube(t *testing.T) {
+func TestLogSourceSnapshotEpochAndNodesWithoutKube(t *testing.T) {
 	path := writeLog(t, fixture(t))
 	tl, p, h := newTail(t, path)
 	if _, err := tl.Poll(context.Background()); err != nil {
@@ -83,9 +83,13 @@ func TestLogSourceSnapshotEpochAndPoolsWithoutKube(t *testing.T) {
 	if s.TxPerSec != 1.0/20 {
 		t.Fatalf("tx/s %v", s.TxPerSec)
 	}
-	v, err := src.Pools(context.Background())
-	if err != nil || v.Pools == nil || v.Topology.Edges == nil || v.Forks == nil {
+	v, err := src.Nodes(context.Background())
+	if err != nil || v.Nodes == nil || v.Topology.Edges == nil || v.Forks == nil {
 		t.Fatalf("empty view must hold empty slices, not null: %+v %v", v, err)
+	}
+	sp, err := src.StakePools(context.Background())
+	if err != nil || sp.Pools == nil {
+		t.Fatalf("empty stake pools must be an empty slice, not null: %+v %v", sp, err)
 	}
 	f, err := src.Findings(context.Background(), Page{Limit: 10})
 	if err != nil || f.Total != 0 || f.Rows == nil {

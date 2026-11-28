@@ -6,13 +6,16 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/blinklabs-io/gouroboros/ledger/conway"
 
+	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
@@ -253,16 +256,16 @@ func (e *Explorer) Search(ctx context.Context, q string) (SearchResult, error) {
 		id := strings.TrimLeft(strings.TrimPrefix(q, "actor:"), "@")
 		return SearchResult{Kind: explorer.KindActor, ID: id, Route: "/actors/" + id}, nil
 	case explorer.KindPool:
-		if id, ok := e.pools.poolID(q); ok {
-			return SearchResult{Kind: explorer.KindPool, ID: id, Route: "/explorer/pools/" + id}, nil
+		if id, ok := e.stakePool(q); ok {
+			return SearchResult{Kind: explorer.KindPool, ID: id, Route: "/pools/" + id}, nil
 		}
 	default:
 		if h, ok := e.idx.Find(q); ok {
 			return SearchResult{Kind: h.Kind, ID: h.ID, Route: route(h)}, nil
 		}
 	}
-	if id, ok := e.pools.poolID(q); ok {
-		return SearchResult{Kind: explorer.KindPool, ID: id, Route: "/explorer/pools/" + id}, nil
+	if e.pools.node(q) {
+		return SearchResult{Kind: explorer.KindNode, ID: q, Route: "/nodes/" + url.PathEscape(q)}, nil
 	}
 	if reHash64.MatchString(q) {
 		if _, ok := stubOf(strings.ToLower(q), e.opt.Tips); ok {
@@ -271,6 +274,50 @@ func (e *Explorer) Search(ctx context.Context, q string) (SearchResult, error) {
 	}
 	return SearchResult{}, fmt.Errorf("%w: nothing matches %q", view.ErrNotFound, q)
 }
+
+// stakePool is the pool id (hex) q names, hex or bech32, when the chain or
+// a node knows the pool.
+func (e *Explorer) stakePool(q string) (string, bool) {
+	id, ok := view.PoolHex(q)
+	if !ok {
+		if id, ok = poolHexKey(q); !ok {
+			return "", false
+		}
+	}
+	if _, ok := e.pools.poolID(id); ok {
+		return id, true
+	}
+	for _, p := range e.idx.Pools() {
+		if p.ID == id {
+			return id, true
+		}
+	}
+	return "", false
+}
+
+// poolHexKey is q as a lowercase 56-digit hex pool id, if it is one.
+func poolHexKey(q string) (string, bool) {
+	q = strings.ToLower(q)
+	return q, rePoolHex.MatchString(q)
+}
+
+// withKeys returns v with each forging node the source could not resolve
+// given the issuer of its last own block, if the index holds that block.
+func (e *Explorer) withKeys(v view.NodesView) view.NodesView {
+	v.Nodes = slices.Clone(v.Nodes)
+	for i, n := range v.Nodes {
+		if n.StakePool != "" || n.Tier != string(v1alpha1.TierForging) || n.LastBlock == nil {
+			continue
+		}
+		if id, ok := e.issuer(n.LastBlock.Hash); ok {
+			v.Nodes[i].StakePool = id
+		}
+	}
+	return v
+}
+
+// chainPools is every pool the index shows.
+func (e *Explorer) chainPools() []explorer.PoolStat { return e.idx.Pools() }
 
 func route(h explorer.Hit) string {
 	switch h.Kind {

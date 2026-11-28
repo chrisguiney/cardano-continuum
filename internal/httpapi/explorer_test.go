@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/blinklabs-io/gouroboros/cbor"
@@ -19,6 +20,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/explorer"
+	"github.com/chrisguiney/cardano-continuum/internal/httpapi/view"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 )
 
@@ -289,11 +291,10 @@ func TestProjectionObserveSeesEveryRecord(t *testing.T) {
 	}
 }
 
-// TestExplorerIssuerIsTheForgingNode: a block's issuer resolves to the node
-// whose keys forged it (the node whose last own block it is), not to a node
-// that merely follows a chain holding it. Every node follows every block,
-// so labelling by follower named whichever node reported it.
-func TestExplorerIssuerIsTheForgingNode(t *testing.T) {
+// forgingRig is three blocks by one issuer that node p3 (dingo) forged
+// the last of, followed only by node p1 (cardano-node).
+func forgingRig(t *testing.T) (*Explorer, common.Blake2b224, LogSourceConfig) {
+	t.Helper()
 	slots := testSlots(t)
 	c := &xchain{t: t}
 	var raws [][]byte
@@ -326,12 +327,77 @@ func TestExplorerIssuerIsTheForgingNode(t *testing.T) {
 	for _, raw := range raws {
 		r.feed(raw)
 	}
+	return ex, issuer, LogSourceConfig{Projection: NewProjection(), Kube: kube, Tips: tips}
+}
 
+// TestExplorerIssuerIsTheForgingNode: a block's issuer resolves to the node
+// whose keys forged it (the node whose last own block it is), not to a node
+// that merely follows a chain holding it. Every node follows every block,
+// so labelling by follower named whichever node reported it.
+func TestExplorerIssuerIsTheForgingNode(t *testing.T) {
+	ex, _, _ := forgingRig(t)
 	b, err := ex.Block(context.Background(), "3")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if b.Pool == nil || b.Pool.Name != "p3" || b.Pool.Impl != "dingo" {
 		t.Fatalf("block 3 issuer %s resolved to %+v, want p3 / dingo", b.Issuer, b.Pool)
+	}
+}
+
+// TestSearchSeparatesNodesFromStakePools: a pool id opens the stake pool,
+// in hex or bech32, and a node's name opens the node.
+func TestSearchSeparatesNodesFromStakePools(t *testing.T) {
+	ex, issuer, _ := forgingRig(t)
+	ctx := context.Background()
+	id := issuer.String()
+	for _, tt := range []struct{ q, kind, route string }{
+		{id, "pool", "/pools/" + id},
+		{strings.ToUpper(id), "pool", "/pools/" + id},
+		{view.PoolBech32(id), "pool", "/pools/" + id},
+		{"p3", "node", "/nodes/p3"},
+		{"p1", "node", "/nodes/p1"},
+	} {
+		got, err := ex.Search(ctx, tt.q)
+		if err != nil || string(got.Kind) != tt.kind || got.Route != tt.route {
+			t.Errorf("search %q: %+v %v, want %s %s", tt.q, got, err, tt.kind, tt.route)
+		}
+	}
+	if _, err := ex.Search(ctx, strings.Repeat("ee", 28)); err == nil {
+		t.Error("an unknown pool id resolved")
+	}
+}
+
+// TestNodesAndStakePoolsCrossLink: the node running a pool's keys names the
+// pool, and the pool's row lists that node with the blocks it issued; a
+// node with no keys names none.
+func TestNodesAndStakePoolsCrossLink(t *testing.T) {
+	ex, issuer, cfg := forgingRig(t)
+	srv := httptest.NewServer(NewHandler(Config{Source: NewLogSource(cfg), Explorer: ex}))
+	t.Cleanup(srv.Close)
+	r := &explorerRig{t: t, srv: srv}
+
+	var nv NodesView
+	if code := r.get("/api/nodes", &nv); code != 200 || len(nv.Nodes) != 2 {
+		t.Fatalf("nodes %d %+v", code, nv)
+	}
+	if p1, p3 := nv.Nodes[0], nv.Nodes[1]; p1.StakePool != "" || p3.StakePool != issuer.String() {
+		t.Fatalf("keys p1 %q p3 %q, want none and %s", p1.StakePool, p3.StakePool, issuer)
+	}
+
+	var sp StakePoolsView
+	if code := r.get("/api/pools", &sp); code != 200 || len(sp.Pools) != 1 {
+		t.Fatalf("pools %d %+v", code, sp)
+	}
+	p := sp.Pools[0]
+	if p.ID != issuer.String() || p.Blocks == nil || *p.Blocks != 3 || len(p.Nodes) != 1 || p.Nodes[0].Name != "p3" || p.Nodes[0].Impl != "dingo" {
+		t.Fatalf("pool %+v", p)
+	}
+
+	// Without an issuer on any followed chain, the index's copy of p3's
+	// last block still names its keys.
+	cfg.Tips.(exTips)["p1"][0].Issuer = common.Blake2b224{}
+	if code := r.get("/api/nodes", &nv); code != 200 || nv.Nodes[1].StakePool != issuer.String() {
+		t.Fatalf("keys from the index: %d %+v", code, nv.Nodes)
 	}
 }
