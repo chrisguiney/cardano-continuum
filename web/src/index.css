@@ -1,9 +1,5 @@
-/* legacy holds theme.css, the pre-port stylesheet, below the utilities so a
-   ported component's classes win; it shrinks as views are ported. */
-@layer theme, base, legacy, components, utilities;
 @import "tailwindcss";
 @import "tw-animate-css";
-@import "./theme.css" layer(legacy);
 
 /* The theme toggle sets data-theme on <html>; dark: utilities follow it. */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
