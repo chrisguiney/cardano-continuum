@@ -165,3 +165,38 @@ func TestForkOf(t *testing.T) {
 		t.Fatalf("info: prev %v, version %v", prev, ver)
 	}
 }
+
+func rb(blocks uint64) Rollback { return Rollback{Blocks: blocks, Slots: blocks * 10} }
+
+func TestRollbackLogCountsDeepestAndLast(t *testing.T) {
+	t.Parallel()
+	var l RollbackLog
+	for _, b := range []uint64{2, 5, 5, 1} {
+		l.Add(rb(b))
+	}
+	if l.Count != 4 || l.Deepest.Blocks != 5 || l.Last.Blocks != 1 {
+		t.Fatalf("log %+v", l)
+	}
+}
+
+func TestRollbackLogKeepsNewestFirstAndBounded(t *testing.T) {
+	t.Parallel()
+	var l RollbackLog
+	for b := uint64(1); b <= RecentRollbacks+3; b++ {
+		l.Add(rb(b))
+	}
+	if len(l.Recent) != RecentRollbacks || l.Recent[0].Blocks != RecentRollbacks+3 || l.Recent[RecentRollbacks-1].Blocks != 4 {
+		t.Fatalf("recent %+v", l.Recent)
+	}
+}
+
+func TestRollbackLogCloneDoesNotAlias(t *testing.T) {
+	t.Parallel()
+	var l RollbackLog
+	l.Add(rb(1))
+	c := l.Clone()
+	c.Recent[0].Blocks = 99
+	if l.Recent[0].Blocks != 1 {
+		t.Fatal("clone aliases Recent")
+	}
+}

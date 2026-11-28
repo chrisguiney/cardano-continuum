@@ -70,6 +70,12 @@ type Tips interface {
 	Tips() map[string][]chain.Mark
 }
 
+// Rollbacks is what a Tips source may also serve: each pool's rollbacks by
+// pool name.
+type Rollbacks interface {
+	Rollbacks() map[string]chain.RollbackLog
+}
+
 // LogSource is the read-only Source over an event log's projection, the
 // store's actor table and the operator's pool status.
 type LogSource struct {
@@ -174,16 +180,21 @@ func (s *LogSource) Nodes(ctx context.Context) (NodesView, error) {
 	if s.cfg.Tips != nil {
 		tips = s.cfg.Tips.Tips()
 	}
+	var rolled map[string]chain.RollbackLog
+	if r, ok := s.cfg.Tips.(Rollbacks); ok {
+		rolled = r.Rollbacks()
+	}
 	var findings map[string]findingCount
 	if s.cfg.Findings != nil || s.cfg.Projection != nil {
 		findings = nodeFindings(findingsOf(s))
 	}
 	return buildNodes(ps, mode, nodeFacts{
-		tips:     tips,
-		k:        s.cfg.K,
-		depth:    s.cfg.ForkDepth,
-		keys:     NodeKeys(ps, tips, nil),
-		findings: findings,
+		tips:      tips,
+		k:         s.cfg.K,
+		depth:     s.cfg.ForkDepth,
+		keys:      NodeKeys(ps, tips, nil),
+		findings:  findings,
+		rollbacks: rolled,
 	}), nil
 }
 

@@ -54,6 +54,16 @@ type NodeRow struct {
 	// KnownFindings those a known upstream issue explains.
 	Findings      int `json:"findings"`
 	KnownFindings int `json:"known_findings"`
+	// Rollbacks counts the times the node moved its selected chain back to
+	// a point behind its tip, as the engine's chain-sync follower saw it
+	// since it began following the node.
+	Rollbacks uint64 `json:"rollbacks"`
+	// Deepest is the rollback that dropped the most blocks; nil when none.
+	Deepest *RollbackRow `json:"deepest_rollback"`
+	// LastRollback is the newest rollback; nil when none.
+	LastRollback *RollbackRow `json:"last_rollback"`
+	// RecentRollbacks are the newest rollbacks, newest first; never nil.
+	RecentRollbacks []RollbackRow `json:"recent_rollbacks"`
 }
 
 // ImplTip is the furthest tip among one implementation's nodes.
@@ -151,6 +161,8 @@ type nodeFacts struct {
 	keys map[string]string
 	// findings counts findings by node name.
 	findings map[string]findingCount
+	// rollbacks are the followers' rollback logs by node name.
+	rollbacks map[string]chain.RollbackLog
 }
 
 // findingCount is how many findings involve a node, and how many of them
@@ -206,20 +218,24 @@ func nodeRow(p v1alpha1.ContinuumPool, chains []poolChain, top uint64, fork bool
 		}
 	}
 	return NodeRow{
-		Name:          p.Name,
-		Label:         p.Spec.PoolID,
-		Impl:          string(p.Spec.Implementation),
-		Tier:          string(p.Spec.Tier),
-		Phase:         string(p.Status.Phase),
-		Dark:          p.Spec.Dark,
-		Tip:           tip,
-		SlotLag:       top - tip.Slot,
-		Image:         p.Status.Image.Digest,
-		Fork:          fork,
-		LastBlock:     last,
-		StakePool:     f.keys[p.Name],
-		Findings:      f.findings[p.Name].all,
-		KnownFindings: f.findings[p.Name].known,
+		Name:            p.Name,
+		Label:           p.Spec.PoolID,
+		Impl:            string(p.Spec.Implementation),
+		Tier:            string(p.Spec.Tier),
+		Phase:           string(p.Status.Phase),
+		Dark:            p.Spec.Dark,
+		Tip:             tip,
+		SlotLag:         top - tip.Slot,
+		Image:           p.Status.Image.Digest,
+		Fork:            fork,
+		LastBlock:       last,
+		StakePool:       f.keys[p.Name],
+		Findings:        f.findings[p.Name].all,
+		KnownFindings:   f.findings[p.Name].known,
+		Rollbacks:       f.rollbacks[p.Name].Count,
+		Deepest:         deepestRow(f.rollbacks[p.Name]),
+		LastRollback:    lastRow(f.rollbacks[p.Name]),
+		RecentRollbacks: recentRows(f.rollbacks[p.Name]),
 	}
 }
 
@@ -287,4 +303,58 @@ func peers(mode v1alpha1.TopologyMode, a, b v1alpha1.ContinuumPool) bool {
 		return a.Spec.PoolID == b.Spec.PoolID
 	}
 	return true
+}
+
+// RollbackRow is one rollback of a node's selected chain.
+type RollbackRow struct {
+	// From is the tip the node held when it rolled back.
+	From Point `json:"from"`
+	// To is the point it rolled back to; its Height is the height of From
+	// minus Blocks, and zero when Beyond.
+	To Point `json:"to"`
+	// Blocks is the depth: the blocks dropped.
+	Blocks uint64 `json:"blocks"`
+	// Slots is the slots between From and To.
+	Slots uint64 `json:"slots"`
+	// Beyond reports To older than the blocks the follower keeps, so Blocks
+	// and Slots are lower bounds.
+	Beyond bool `json:"beyond"`
+}
+
+func rollbackRow(r chain.Rollback) RollbackRow {
+	to := Point{Slot: r.To.Slot, Hash: hex.EncodeToString(r.To.Hash[:])}
+	if !r.Beyond {
+		to.Height = r.From.Height - min(r.Blocks, r.From.Height)
+	}
+	return RollbackRow{
+		From:   Point{Slot: r.From.Slot, Hash: hex.EncodeToString(r.From.Hash[:]), Height: r.From.Height},
+		To:     to,
+		Blocks: r.Blocks,
+		Slots:  r.Slots,
+		Beyond: r.Beyond,
+	}
+}
+
+func deepestRow(l chain.RollbackLog) *RollbackRow {
+	if l.Count == 0 {
+		return nil
+	}
+	r := rollbackRow(l.Deepest)
+	return &r
+}
+
+func lastRow(l chain.RollbackLog) *RollbackRow {
+	if l.Count == 0 {
+		return nil
+	}
+	r := rollbackRow(l.Last)
+	return &r
+}
+
+func recentRows(l chain.RollbackLog) []RollbackRow {
+	out := make([]RollbackRow, 0, len(l.Recent))
+	for _, r := range l.Recent {
+		out = append(out, rollbackRow(r))
+	}
+	return out
 }

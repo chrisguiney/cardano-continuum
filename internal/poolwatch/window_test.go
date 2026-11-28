@@ -68,3 +68,51 @@ func TestWindowMarksIsACopy(t *testing.T) {
 		t.Fatalf("aliased %v", got)
 	}
 }
+
+func TestWindowBackwardMeasuresDepth(t *testing.T) {
+	t.Parallel()
+	w := NewWindow(8)
+	for h := uint64(1); h <= 5; h++ {
+		w.Forward(mk(h, 'a'))
+	}
+	rb, ok := w.Backward(mk(3, 'a').Point)
+	if !ok {
+		t.Fatal("a rollback two blocks deep was not reported")
+	}
+	if rb.Blocks != 2 || rb.Slots != 20 || rb.From.Height != 5 || rb.To.Slot != 30 || rb.Beyond {
+		t.Fatalf("rollback %+v", rb)
+	}
+}
+
+// The first RollBackward after an intersect names the tip itself; it is the
+// protocol's handshake, not a rollback.
+func TestWindowBackwardToTipIsNotARollback(t *testing.T) {
+	t.Parallel()
+	w := NewWindow(8)
+	w.Forward(mk(5, 'a'))
+	if _, ok := w.Backward(mk(5, 'a').Point); ok {
+		t.Fatal("a rollback to the tip counted")
+	}
+	if got := heights(w); len(got) != 1 {
+		t.Fatalf("heights %v", got)
+	}
+}
+
+func TestWindowBackwardPastWindowIsALowerBound(t *testing.T) {
+	t.Parallel()
+	w := NewWindow(8)
+	w.Forward(mk(5, 'a'))
+	w.Forward(mk(6, 'a'))
+	rb, ok := w.Backward(mk(1, 'z').Point)
+	if !ok || !rb.Beyond || rb.Blocks != 2 || rb.Slots != 50 {
+		t.Fatalf("rollback %+v ok=%v", rb, ok)
+	}
+}
+
+func TestWindowBackwardOnEmptyWindowIsNotACount(t *testing.T) {
+	t.Parallel()
+	w := NewWindow(8)
+	if _, ok := w.Backward(mk(1, 'a').Point); ok {
+		t.Fatal("an empty window reported a rollback")
+	}
+}

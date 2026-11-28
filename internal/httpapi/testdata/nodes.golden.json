@@ -22,7 +22,11 @@
       "forged": 4,
       "verified": 15,
       "findings": 2,
-      "known_findings": 1
+      "known_findings": 1,
+      "rollbacks": 0,
+      "deepest_rollback": null,
+      "last_rollback": null,
+      "recent_rollbacks": null
     }
   ],
   "tips": [

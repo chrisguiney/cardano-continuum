@@ -55,8 +55,10 @@ type Tracker struct {
 	cfg     Config
 	log     *slog.Logger
 
-	mu      sync.Mutex // protects windows
+	mu      sync.Mutex // protects windows, rolled
 	windows map[string][]chain.Mark
+	// rolled is each followed pool's rollbacks; it outlives a reconnect.
+	rolled map[string]chain.RollbackLog
 }
 
 // New returns a Tracker. targets lists the pools to follow; it is called
@@ -67,7 +69,7 @@ func New(d Dialer, targets func(ctx context.Context) ([]Target, error), cfg Conf
 		l = log[0]
 	}
 	return &Tracker{dial: d, targets: targets, cfg: cfg, log: l.With("component", "poolwatch"),
-		windows: map[string][]chain.Mark{}}
+		windows: map[string][]chain.Mark{}, rolled: map[string]chain.RollbackLog{}}
 }
 
 // Tips returns each followed pool's newest blocks, oldest first. A pool
@@ -82,6 +84,27 @@ func (t *Tracker) Tips() map[string][]chain.Mark {
 	return out
 }
 
+// Rollbacks returns each followed pool's rollbacks since it was first
+// followed. A reconnect does not count: the new connection starts at the
+// node's tip, and only a RollBackward behind the tip it followed from counts.
+func (t *Tracker) Rollbacks() map[string]chain.RollbackLog {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	out := make(map[string]chain.RollbackLog, len(t.rolled))
+	for k, v := range t.rolled {
+		out[k] = v.Clone()
+	}
+	return out
+}
+
+func (t *Tracker) rollback(name string, r chain.Rollback) {
+	t.mu.Lock()
+	l := t.rolled[name]
+	l.Add(r)
+	t.rolled[name] = l
+	t.mu.Unlock()
+}
+
 func (t *Tracker) set(name string, w *Window) {
 	t.mu.Lock()
 	t.windows[name] = w.Marks()
@@ -91,6 +114,7 @@ func (t *Tracker) set(name string, w *Window) {
 func (t *Tracker) drop(name string) {
 	t.mu.Lock()
 	delete(t.windows, name)
+	delete(t.rolled, name)
 	t.mu.Unlock()
 }
 
@@ -196,7 +220,9 @@ func (t *Tracker) session(ctx context.Context, name, addr string) error {
 		case ev.Forward != nil:
 			w.Forward(*ev.Forward)
 		case ev.Backward != nil:
-			w.Backward(*ev.Backward)
+			if rb, ok := w.Backward(*ev.Backward); ok {
+				t.rollback(name, rb)
+			}
 		default:
 			return errors.New("poolwatch: empty chain-sync event")
 		}

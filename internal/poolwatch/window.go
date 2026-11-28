@@ -29,16 +29,27 @@ func (w *Window) Forward(m chain.Mark) {
 	}
 }
 
-// Backward rolls the window back to p. A point older than the window empties
-// it: the blocks it held are gone and the new ones arrive as Forward.
-func (w *Window) Backward(p chain.Point) {
+// Backward rolls the window back to p and reports the rollback. A point
+// older than the window empties it: the blocks it held are gone and the new
+// ones arrive as Forward, and the rollback is marked Beyond. The second
+// result is false when nothing was rolled back: p is the tip, which is what
+// a node answers right after an intersect, or the window is empty.
+func (w *Window) Backward(p chain.Point) (chain.Rollback, bool) {
+	if len(w.marks) == 0 {
+		return chain.Rollback{}, false
+	}
+	from := w.marks[len(w.marks)-1]
+	rb := chain.Rollback{From: from, To: p, Slots: from.Slot - min(p.Slot, from.Slot)}
 	for i := len(w.marks) - 1; i >= 0; i-- {
 		if w.marks[i].Point == p {
+			rb.Blocks = uint64(len(w.marks) - 1 - i)
 			w.marks = w.marks[:i+1]
-			return
+			return rb, rb.Blocks > 0
 		}
 	}
+	rb.Blocks, rb.Beyond = uint64(len(w.marks)), true
 	w.marks = w.marks[:0]
+	return rb, true
 }
 
 // Tip is the newest block, or false when the window is empty.

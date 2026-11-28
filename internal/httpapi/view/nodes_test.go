@@ -217,3 +217,44 @@ func show(p *uint64) any {
 	}
 	return *p
 }
+
+func rollback(fromH, toH uint64) chain.Rollback {
+	var r chain.Rollback
+	r.From.Height, r.From.Slot = fromH, fromH*10
+	r.To.Slot = toH * 10
+	r.To.Hash[0] = byte(toH)
+	r.Blocks, r.Slots = fromH-toH, (fromH-toH)*10
+	return r
+}
+
+func TestNodeRowCarriesRollbacks(t *testing.T) {
+	var l chain.RollbackLog
+	l.Add(rollback(7, 5))
+	l.Add(rollback(9, 8))
+	ps := []v1alpha1.ContinuumPool{
+		pool("a", "p1", v1alpha1.Dingo, v1alpha1.TierForging, 100, "aa"),
+		pool("b", "p2", v1alpha1.Dingo, v1alpha1.TierForging, 100, "aa"),
+	}
+	v := buildNodes(ps, v1alpha1.TopologyMesh, nodeFacts{k: 5, depth: 2, rollbacks: map[string]chain.RollbackLog{"a": l}})
+	a, b := v.Nodes[0], v.Nodes[1]
+	if a.Rollbacks != 2 || a.Deepest == nil || a.Deepest.Blocks != 2 || a.Deepest.Slots != 20 || a.Deepest.From.Height != 7 {
+		t.Fatalf("a %+v", a)
+	}
+	if a.LastRollback == nil || a.LastRollback.Blocks != 1 || a.LastRollback.To.Slot != 80 || a.LastRollback.To.Height != 8 {
+		t.Fatalf("last %+v", a.LastRollback)
+	}
+	if len(a.RecentRollbacks) != 2 || a.RecentRollbacks[0].Blocks != 1 {
+		t.Fatalf("recent %+v", a.RecentRollbacks)
+	}
+	if b.Rollbacks != 0 || b.Deepest != nil || b.LastRollback != nil || b.RecentRollbacks == nil || len(b.RecentRollbacks) != 0 {
+		t.Fatalf("b %+v", b)
+	}
+}
+
+func TestRollbackBeyondWindowHasNoTargetHeight(t *testing.T) {
+	r := rollback(9, 3)
+	r.Beyond = true
+	if got := rollbackRow(r); got.To.Height != 0 || !got.Beyond {
+		t.Fatalf("row %+v", got)
+	}
+}

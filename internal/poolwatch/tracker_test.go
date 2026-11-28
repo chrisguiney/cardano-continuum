@@ -133,3 +133,37 @@ func TestTrackerReconnectsAndDropsRemovedTarget(t *testing.T) {
 }
 
 func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+
+func bwd(m chain.Mark) Event { return Event{Backward: &m.Point} }
+
+func TestTrackerCountsRollbacksNotHandshakesOrReconnects(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		d := &fakeDial{dials: map[string]int{}, conns: map[string][]*fakeConn{
+			"a:3001": {
+				// The handshake rollback to the tip, then two real rollbacks.
+				{tip: mk(5, 'a'), script: []Event{
+					bwd(mk(5, 'a')), fwd(mk(6, 'a')), fwd(mk(7, 'a')), bwd(mk(5, 'a')),
+					fwd(mk(6, 'b')), bwd(mk(6, 'b')), bwd(mk(5, 'a')), {Err: errors.New("reset")},
+				}},
+				// A node that restarted behind its old tip: a lower intersect, not a rollback.
+				{tip: mk(2, 'a'), script: []Event{bwd(mk(2, 'a'))}},
+			},
+		}}
+		targets := func(context.Context) ([]Target, error) {
+			return []Target{{Name: "p0", Addr: "a:3001"}}, nil
+		}
+		cfg := Config{Size: 8, Refresh: 10 * time.Millisecond, Backoff: time.Millisecond}
+		tr := New(d, targets, cfg)
+		defer run(t, tr)()
+		time.Sleep(cfg.Backoff * 2)
+		synctest.Wait()
+		l := tr.Rollbacks()["p0"]
+		if l.Count != 2 || l.Deepest.Blocks != 2 || l.Last.Blocks != 1 || l.Last.To.Slot != 50 || len(l.Recent) != 2 {
+			t.Fatalf("log %+v", l)
+		}
+		if d.dials["a:3001"] < 2 {
+			t.Fatalf("no reconnect: %d dials", d.dials["a:3001"])
+		}
+	})
+}

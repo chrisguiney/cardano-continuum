@@ -120,3 +120,6 @@ func (l *liveTips) start(ctx context.Context, log *slog.Logger) (stop func()) {
 	}()
 	return func() { cancel(); wg.Wait() }
 }
+
+// Rollbacks implements view.Rollbacks.
+func (l *liveTips) Rollbacks() map[string]chain.RollbackLog { return l.tr.Rollbacks() }
