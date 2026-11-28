@@ -108,6 +108,7 @@ export function App() {
             </a>
           ))}
         </nav>
+        <div className="ml-auto flex flex-wrap items-center gap-4">
         {caps.explorer && <SearchBox />}
         <span className="inline-flex items-center">
           <Button type="button" variant="ghost" size="sm" onClick={toggle} aria-describedby="theme-help">
@@ -116,6 +117,7 @@ export function App() {
           </Button>
           <HelpTip id="theme-help" label="Theme" text={FIELD_HELP.theme!.help} />
         </span>
+        </div>
       </header>
       <main id="main" className="mx-auto max-w-[1200px] px-4 pb-12">
         {route.name === "overview" && <Overview />}

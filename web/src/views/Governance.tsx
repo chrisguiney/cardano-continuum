@@ -8,7 +8,10 @@ import { FIELD_HELP, VIEW_BLURB } from "../lib/help";
 import { optionsOf, useEnums } from "../lib/meta";
 import { usePoll } from "../lib/hooks";
 import type { Decision, GovernanceView, ProposalRow, VoteRow } from "../lib/types";
-import { ErrorNote, Link, Stat } from "./common";
+import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { cn } from "../lib/utils";
+import { EmptyRow, ErrorNote, Filters, Heading, Link, Mono, Muted, Note, Stat, Stats, TableFrame, Title } from "./common";
 import { Blurb, HelpTip, SelectField } from "./fields";
 
 const FEED_CAP = 100;
@@ -16,56 +19,59 @@ const FEED_CAP = 100;
 const CLASS_LABEL: Record<string, string> = { drep: "DRep", spo: "SPO", committee: "Constitutional committee" };
 
 function Actor({ id, profile }: { id?: number; profile?: string }) {
-  if (id === undefined) return <span className="muted">not ours</span>;
+  if (id === undefined) return <Muted>not ours</Muted>;
   return (
     <>
       <Link to={`/actors/${id}`}>actor {id}</Link>
-      {profile && <span className="muted"> {profile}</span>}
+      {profile && <Muted> {profile}</Muted>}
     </>
   );
 }
 
 function Share({ v }: { v: number | null }) {
-  return v === null ? <span className="muted">–</span> : <span>{(v * 100).toFixed(0)}% yes</span>;
+  return v === null ? <Muted>–</Muted> : <span>{(v * 100).toFixed(0)}% yes</span>;
 }
 
 /** VoteTable lists votes, newest first. */
 export function VoteTable({ votes, empty }: { votes: VoteRow[]; empty: string }) {
   return (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Slot</th><th>Voter</th><th>Actor</th><th>Proposal</th><th>Type</th><th>Choice</th><th>Power</th></tr>
-        </thead>
-        <tbody>
+    <TableFrame>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="text-right">Slot</TableHead><TableHead>Voter</TableHead><TableHead>Actor</TableHead><TableHead>Proposal</TableHead>
+            <TableHead>Type</TableHead><TableHead>Choice</TableHead><TableHead className="text-right">Power</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {votes.map((v) => (
-            <tr key={`${v.tx}-${v.proposal}-${v.voter}`}>
-              <td className="num">{count(v.slot)}</td>
-              <td>{CLASS_LABEL[v.voter] ?? v.voter}</td>
-              <td><Actor id={v.actor} profile={v.profile} /></td>
-              <td><ProposalLink id={v.proposal} /></td>
-              <td>{v.type || "–"}</td>
-              <td>{v.choice}</td>
-              <td className="num">{v.power > 0 ? ada(v.power) : "–"}</td>
-            </tr>
+            <TableRow key={`${v.tx}-${v.proposal}-${v.voter}`}>
+              <TableCell className="text-right tabular-nums">{count(v.slot)}</TableCell>
+              <TableCell>{CLASS_LABEL[v.voter] ?? v.voter}</TableCell>
+              <TableCell><Actor id={v.actor} profile={v.profile} /></TableCell>
+              <TableCell><ProposalLink id={v.proposal} /></TableCell>
+              <TableCell>{v.type || "–"}</TableCell>
+              <TableCell>{v.choice}</TableCell>
+              <TableCell className="text-right tabular-nums">{v.power > 0 ? ada(v.power) : "–"}</TableCell>
+            </TableRow>
           ))}
-          {votes.length === 0 && <tr><td colSpan={7} className="empty">{empty}</td></tr>}
-        </tbody>
-      </table>
-    </div>
+          {votes.length === 0 && <EmptyRow cols={7}>{empty}</EmptyRow>}
+        </TableBody>
+      </Table>
+    </TableFrame>
   );
 }
 
 function ProposalLink({ id }: { id: string }) {
   const to = govPath(id);
-  const text = <code>{short(id, 10)}</code>;
+  const text = <code className="text-[0.85em]">{short(id, 10)}</code>;
   return to ? <Link to={to}>{text}</Link> : text;
 }
 
 /** ColHead is a column heading with the "?" tip of a governance term. */
-function ColHead({ k, label, id }: { k: string; label?: string; id: string }) {
+function ColHead({ k, label, id, className }: { k: string; label?: string; id: string; className?: string }) {
   const h = (GOV_HELP[k] ?? FIELD_HELP[k])!;
-  return <th>{label ?? h.label}<HelpTip id={`gh-${id}`} label={h.label} text={h.help} /></th>;
+  return <TableHead className={className}>{label ?? h.label}<HelpTip id={`gh-${id}`} label={h.label} text={h.help} /></TableHead>;
 }
 
 const CLASS_TERM: Record<string, string> = { drep: "drep", spo: "spo", committee: "committee" };
@@ -73,35 +79,35 @@ const CLASS_TERM: Record<string, string> = { drep: "drep", spo: "spo", committee
 /** ProposalTable lists proposals, each linking to its page with a one-line summary of what it asks for. */
 export function ProposalTable({ proposals }: { proposals: ProposalRow[] }) {
   return (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Proposal</th><ColHead k="action_type" label="Type" id="type" /><th>Proposer</th><ColHead k="deposit" id="deposit" />
-            <ColHead k="gov_lifetime" label="Expires" id="expires" /><ColHead k="status" id="status" />
+    <TableFrame>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Proposal</TableHead><ColHead k="action_type" label="Type" id="type" /><TableHead>Proposer</TableHead><ColHead k="deposit" id="deposit" className="text-right" />
+            <ColHead k="gov_lifetime" label="Expires" id="expires" className="text-right" /><ColHead k="status" id="status" />
             {CLASSES.map((c) => <ColHead key={c} k={CLASS_TERM[c]!} label={CLASS_LABEL[c]} id={`class-${c}`} />)}
-          </tr>
-        </thead>
-        <tbody>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {proposals.map((p) => (
-            <tr key={p.id} className={p.status === "expired" ? "dim" : undefined}>
-              <td><ProposalLink id={p.id} /></td>
-              <td>{p.type || "unknown"}{p.summary && <div className="muted">{p.summary}</div>}</td>
-              <td><Actor id={p.proposer} profile={p.profile} /></td>
-              <td className="num">{ada(p.deposit_lovelace)}</td>
-              <td className="num">{p.expires_epoch === undefined ? "–" : `epoch ${p.expires_epoch}`}</td>
-              <td><span className={`tag ${p.status === "open" || p.status === "ratified" ? "ok" : "warn"}`}>{p.status}</span></td>
+            <TableRow key={p.id} className={cn(p.status === "expired" && "opacity-60")}>
+              <TableCell><ProposalLink id={p.id} /></TableCell>
+              <TableCell className="min-w-48 whitespace-normal">{p.type || "unknown"}{p.summary && <div className="text-muted-foreground">{p.summary}</div>}</TableCell>
+              <TableCell><Actor id={p.proposer} profile={p.profile} /></TableCell>
+              <TableCell className="text-right tabular-nums">{ada(p.deposit_lovelace)}</TableCell>
+              <TableCell className="text-right tabular-nums">{p.expires_epoch === undefined ? "–" : `epoch ${p.expires_epoch}`}</TableCell>
+              <TableCell><Badge variant={p.status === "open" || p.status === "ratified" ? "ok" : "warn"}>{p.status}</Badge></TableCell>
               {CLASSES.map((c) => {
                 const t = p.tally[c];
-                if (c === "spo" && !p.spo_may_vote) return <td key={c} className="muted" title="the ledger does not let stake pools vote on this action">not eligible</td>;
-                return <td key={c}>{t ? <>{choiceLine(t)}<br /><Share v={yesShare(t)} /></> : "–"}</td>;
+                if (c === "spo" && !p.spo_may_vote) return <TableCell key={c} className="text-muted-foreground" title="the ledger does not let stake pools vote on this action">not eligible</TableCell>;
+                return <TableCell key={c}>{t ? <>{choiceLine(t)}<br /><Share v={yesShare(t)} /></> : "–"}</TableCell>;
               })}
-            </tr>
+            </TableRow>
           ))}
-          {proposals.length === 0 && <tr><td colSpan={9} className="empty">No proposals on the chain yet.</td></tr>}
-        </tbody>
-      </table>
-    </div>
+          {proposals.length === 0 && <EmptyRow cols={9}>No proposals on the chain yet.</EmptyRow>}
+        </TableBody>
+      </Table>
+    </TableFrame>
   );
 }
 
@@ -128,11 +134,11 @@ function Summary({ g }: { g: GovernanceView }) {
   const open = g.proposals.filter((p) => p.status === "open").length;
   const byClass = (c: string) => g.proposals.reduce((n, p) => n + (p.tally[c]?.yes ?? 0) + (p.tally[c]?.no ?? 0) + (p.tally[c]?.abstain ?? 0), 0);
   return (
-    <div className="stats">
+    <Stats>
       <Stat label="Proposals" value={count(g.proposals.length)} sub={`${count(open)} open${g.epoch !== undefined ? `, epoch ${g.epoch}` : ""}`} />
       {CLASSES.map((c) => <Stat key={c} label={`${CLASS_LABEL[c]} votes`} value={count(byClass(c))} />)}
       <Stat label="Lifetime" value={`${g.lifetime_epochs} epochs`} sub="a proposal stays open this long" />
-    </div>
+    </Stats>
   );
 }
 
@@ -145,39 +151,39 @@ export function Governance() {
   const proposals = useMemo(() => (g ? sortProposals(g.proposals) : []), [g]);
   return (
     <>
-      <h1>Governance</h1>
+      <Title>Governance</Title>
       <Blurb text={VIEW_BLURB.governance!} />
-      <form className="filters" aria-label="Filter governance" onSubmit={(e) => e.preventDefault()}>
+      <Filters aria-label="Filter governance">
         <SelectField id="g-voter" help={FIELD_HELP.voter_class!} value={filt.voter} options={optionsOf(enums?.voter_class ?? [])} onChange={(v) => setFilt((f) => ({ ...f, voter: v }))} />
         <SelectField id="g-type" help={FIELD_HELP.action_type!} value={filt.type} options={optionsOf(enums?.action_type ?? [])} onChange={(v) => setFilt((f) => ({ ...f, type: v }))} />
-      </form>
+      </Filters>
       <ErrorNote error={error} />
-      {!g && !error && <p className="muted">Loading…</p>}
+      {!g && !error && <Note>Loading…</Note>}
       {g && (
         <>
           <Summary g={g} />
-          <h2>Proposals</h2>
-          <p className="muted">Votes are each voter's latest; power is the stake behind the vote in the engine's chain view.</p>
+          <Heading className="mt-6">Proposals</Heading>
+          <Note>Votes are each voter's latest; power is the stake behind the vote in the engine's chain view.</Note>
           <ProposalTable proposals={proposals} />
-          <h2>Votes on the chain</h2>
+          <Heading className="mt-6">Votes on the chain</Heading>
           <VoteTable votes={g.votes} empty="No votes on the chain yet." />
         </>
       )}
-      <h2>Vote decisions <span className={`tag ${state === "live" ? "ok" : "warn"}`} role="status">{state}</span></h2>
-      <p className="muted">The voters' vote intents and submissions as they happen, newest first, last {FEED_CAP}.</p>
-      <ul className="feed">
+      <Heading className="mt-6 flex items-center gap-2">Vote decisions <Badge variant={state === "live" ? "ok" : "warn"} role="status">{state}</Badge></Heading>
+      <Note>The voters' vote intents and submissions as they happen, newest first, last {FEED_CAP}.</Note>
+      <ul className="rounded-lg border bg-card">
         {feed.map((d) => (
-          <li key={d.id}>
-            <span className="when">{simTime(d.at)}</span>
-            <span className="kind">{d.kind}</span>
+          <li key={d.id} className="border-b px-3 py-2 last:border-b-0">
+            <Mono className="mr-2 text-muted-foreground">{simTime(d.at)}</Mono>
+            <span className="mr-2 font-semibold">{d.kind}</span>
             <Link to={`/actors/${d.actor}`}>actor {d.actor}</Link>
-            {d.profile && <span className="muted"> {d.profile}</span>}
+            {d.profile && <Muted> {d.profile}</Muted>}
             {d.kind === "IntentChosen" && d.scores?.find((s) => s.kind === "vote" && s.proposal)?.why && (
               <span> {d.scores.find((s) => s.kind === "vote" && s.proposal)?.why}</span>
             )}
           </li>
         ))}
-        {feed.length === 0 && <li className="empty">Waiting for vote decisions…</li>}
+        {feed.length === 0 && <li className="p-4 text-center text-muted-foreground">Waiting for vote decisions…</li>}
       </ul>
     </>
   );
