@@ -1,5 +1,5 @@
 import { ada } from "./format";
-import type { GovernanceView, PendingFork, ProposalRow, ProtocolVersion, ScheduledFork, Tally, VoteRow } from "./types";
+import type { GovernanceView, PendingFork, ProposalRow, ProtocolVersion, ScheduledFork, Tally, TreasuryView, VoteRow } from "./types";
 
 /** versionText renders a protocol version as major.minor, "unknown" when absent. */
 export function versionText(v?: ProtocolVersion): string {
@@ -76,4 +76,11 @@ export function filterGov(v: GovernanceView, f: GovFilter): GovernanceView {
     proposals: v.proposals.filter((p) => !f.type || p.type === f.type),
     votes: v.votes.filter((x) => (!f.voter || x.voter === f.voter) && (!f.type || x.type === f.type)),
   };
+}
+
+/** treasuryLine says what the treasury's last payout moved it from and to. */
+export function treasuryLine(t: TreasuryView): string {
+  const m = t.moves[t.moves.length - 1];
+  if (!m) return "no withdrawal paid yet";
+  return `epoch ${m.epoch}: ${ada(m.before_lovelace)} → ${ada(m.after_lovelace)}`;
 }

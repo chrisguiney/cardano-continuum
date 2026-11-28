@@ -25,6 +25,9 @@ type GovDetail struct {
 	Content  *GovContent      `json:"content,omitempty"`
 	Voters   []VoterRule      `json:"voters"`
 	Votes    []GovVote        `json:"votes"`
+	// Treasury is the treasury now as the engine's chain view reckons it,
+	// which a withdrawal draws on; absent before the engine reported one.
+	Treasury *uint64 `json:"treasury_lovelace,omitempty"`
 }
 
 // GovContent is the decoded action with the continuum actors behind its
@@ -88,7 +91,7 @@ func govDetail(ctx context.Context, src Source, ex *Explorer, tx string, idx uin
 	if err != nil {
 		return GovDetail{}, err
 	}
-	d := GovDetail{ID: id, Epoch: pd.Epoch, Lifetime: pd.Lifetime, Proposal: pd.Row, Voters: voterRules(pd.Row.Type, pd.Row.PoolsMayVote), Votes: make([]GovVote, 0, len(pd.Votes))}
+	d := GovDetail{ID: id, Epoch: pd.Epoch, Lifetime: pd.Lifetime, Proposal: pd.Row, Voters: voterRules(pd.Row.Type, pd.Row.PoolsMayVote), Votes: make([]GovVote, 0, len(pd.Votes)), Treasury: pd.Treasury}
 	var anchors []explorer.VoteAnchor
 	if ex != nil {
 		anchors = ex.idx.GovVotes(tx, idx)

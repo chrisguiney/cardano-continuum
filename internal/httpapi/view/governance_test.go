@@ -124,3 +124,22 @@ func mustEncode(t *testing.T, v any) []byte {
 	}
 	return b
 }
+
+// The Governance view shows the treasury the engine's Treasury decisions
+// report: its lovelace now and each payout's before and after, and a
+// proposal's detail carries the treasury it would draw on.
+func TestGovernanceShowsTreasury(t *testing.T) {
+	p := NewProjection()
+	if g := p.Governance(nil, 2); g.Treasury != nil {
+		t.Fatalf("a treasury before any Treasury decision: %+v", g.Treasury)
+	}
+	decide := func(seq uint64, tr engine.Treasury) {
+		p.Apply(eventlog.Record{Seq: seq, At: 10_000, Class: eventlog.Decision, Kind: engine.KindTreasury, Body: mustEncode(t, tr)})
+	}
+	decide(1, engine.Treasury{Epoch: 0, Before: 1000, After: 1000})
+	decide(2, engine.Treasury{Epoch: 2, Before: 1000, After: 700})
+	g := p.Governance(nil, 2)
+	if g.Treasury == nil || g.Treasury.Now != 700 || len(g.Treasury.Moves) != 1 || g.Treasury.Moves[0] != (TreasuryMove{Epoch: 2, Before: 1000, After: 700}) {
+		t.Fatalf("treasury %+v", g.Treasury)
+	}
+}

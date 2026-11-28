@@ -81,6 +81,15 @@ describe("governance action page", () => {
     expect(html).toContain("Total");
   });
 
+  it("treasury withdrawal: the treasury before and after it", () => {
+    const c: GovContent = { ...base, kind: "treasury_withdrawals", total: 1_200_000_000, withdrawals: [{ address: "stake_test1a", lovelace: 1_200_000_000 }] };
+    const html = render(<GovBody d={detail(c, { voters: voters(false), treasury_lovelace: 5_000_000_000 })} />);
+    expect(html).toContain("Treasury now");
+    expect(html).toContain("5,000.00 ADA");
+    expect(html).toContain("After this withdrawal");
+    expect(html).toContain("3,800.00 ADA");
+  });
+
   it("update committee: removed and added members with terms, and the quorum", () => {
     const c: GovContent = { ...base, kind: "update_committee", removed: ["key:" + "41".repeat(28)], added: [{ credential: "script:" + "42".repeat(28), epoch: 250 }], quorum: "2/3" };
     const html = render(<GovBody d={detail(c, { voters: voters(true, false) })} />);

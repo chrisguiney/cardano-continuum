@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { feedUrl } from "../src/lib/feed";
-import { choiceLine, filterGov, forkLine, poolVotes, sortProposals, versionText, yesShare } from "../src/lib/governance";
+import { choiceLine, filterGov, forkLine, poolVotes, sortProposals, treasuryLine, versionText, yesShare } from "../src/lib/governance";
 import { FIELD_HELP, VIEW_BLURB } from "../src/lib/help";
 import { parseRoute } from "../src/lib/router";
 import type { GovernanceView, ProposalRow, Tally } from "../src/lib/types";
@@ -80,5 +80,12 @@ describe("governance view", () => {
   it("explains the governance controls and view", () => {
     for (const k of ["voter_class", "action_type"]) expect(FIELD_HELP[k], k).toBeTruthy();
     expect(VIEW_BLURB.governance).toBeTruthy();
+  });
+});
+
+describe("treasury line", () => {
+  it("names the last payout's before and after", () => {
+    expect(treasuryLine({ now_lovelace: 7e9, moves: [] })).toBe("no withdrawal paid yet");
+    expect(treasuryLine({ now_lovelace: 7e9, moves: [{ epoch: 3, before_lovelace: 10e9, after_lovelace: 7e9 }] })).toBe("epoch 3: 10,000.00 ADA → 7,000.00 ADA");
   });
 });

@@ -67,7 +67,7 @@ function Params({ ps }: { ps: GovParam[] }) {
   );
 }
 
-function Treasury({ c }: { c: GovContent }) {
+function Treasury({ c, now }: { c: GovContent; now?: number }) {
   return (
     <TableFrame>
       <Table>
@@ -77,6 +77,12 @@ function Treasury({ c }: { c: GovContent }) {
             <TableRow key={w.address}><TableCell><Account address={w.address} actor={w.actor} /></TableCell><TableCell className="text-right tabular-nums">{ada(w.lovelace)}</TableCell></TableRow>
           ))}
           <TableRow><TableHead scope="row">Total</TableHead><TableCell className="text-right tabular-nums"><strong>{ada(c.total ?? 0)}</strong></TableCell></TableRow>
+          {now !== undefined && (
+            <>
+              <TableRow><TableHead scope="row">Treasury now</TableHead><TableCell className="text-right tabular-nums">{ada(now)}</TableCell></TableRow>
+              <TableRow><TableHead scope="row">After this withdrawal</TableHead><TableCell className="text-right tabular-nums">{ada(Math.max(now - (c.total ?? 0), 0))}</TableCell></TableRow>
+            </>
+          )}
         </TableBody>
       </Table>
     </TableFrame>
@@ -99,13 +105,13 @@ function Committee({ c }: { c: GovContent }) {
 }
 
 /** Contents is what the action asks for, by kind. */
-export function Contents({ c }: { c: GovContent }) {
+export function Contents({ c, treasury }: { c: GovContent; treasury?: number }) {
   const what = GOV_HELP[c.kind];
   return (
     <>
       {what && <Note>{what.help}</Note>}
       {c.kind === "parameter_change" && <Params ps={c.params ?? []} />}
-      {c.kind === "treasury_withdrawals" && <Treasury c={c} />}
+      {c.kind === "treasury_withdrawals" && <Treasury c={c} now={treasury} />}
       {c.kind === "update_committee" && <Committee c={c} />}
       {c.kind === "new_constitution" && c.constitution && (
         <Facts

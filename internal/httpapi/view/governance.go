@@ -58,7 +58,28 @@ type GovernanceView struct {
 	// Plan is the hard fork the run proposes by itself while its version is
 	// not yet in force; nil without a schedule.
 	Plan *protocol.Schedule `json:"scheduled_fork,omitempty"`
+	// Treasury is the treasury as the engine's chain view reckons it; nil
+	// before the engine's first Treasury decision.
+	Treasury *TreasuryView `json:"treasury,omitempty"`
 }
+
+// TreasuryView is the treasury's lovelace now and its recent moves,
+// oldest first: enacted withdrawals paid out at a boundary, or a rollback
+// taking one back.
+type TreasuryView struct {
+	Now   uint64         `json:"now_lovelace"`
+	Moves []TreasuryMove `json:"moves"`
+}
+
+// TreasuryMove is one Treasury decision that moved the treasury.
+type TreasuryMove struct {
+	Epoch  uint64 `json:"epoch"`
+	Before uint64 `json:"before_lovelace"`
+	After  uint64 `json:"after_lovelace"`
+}
+
+// maxTreasuryMoves bounds the moves the view keeps.
+const maxTreasuryMoves = 100
 
 // ProposalRow is one governance action. Status is open or expired, or
 // unknown without a slot schedule, or ratified when the votes the run saw
@@ -84,6 +105,9 @@ type ProposalRow struct {
 // ProposalDetail is /api/governance/{tx}/{index}'s fold side: the
 // proposal's row with every current vote on it, newest first.
 type ProposalDetail struct {
+	// Treasury is the treasury now, which a withdrawal would draw on;
+	// nil before the engine's first Treasury decision.
+	Treasury *uint64     `json:"treasury_lovelace,omitempty"`
 	Epoch    *uint64     `json:"epoch,omitempty"`
 	Lifetime uint64      `json:"lifetime_epochs"`
 	Row      ProposalRow `json:"proposal"`
@@ -164,6 +188,52 @@ type govFold struct {
 	proto *engine.Protocol
 	// enacted are the hard forks a Protocol decision showed enacted.
 	enacted map[string]bool
+	// treasury folds the Treasury decisions.
+	treasury treasuryFold
+}
+
+// treasuryFold is the treasury after the last Treasury decision, nil
+// before the first, and the decisions that moved it.
+type treasuryFold struct {
+	// now is the treasury after the last decision.
+	now *uint64
+	// moves are the decisions that moved it, oldest first.
+	moves []TreasuryMove
+}
+
+// move folds a Treasury decision.
+func (t *treasuryFold) move(r eventlog.Record) error {
+	var tr engine.Treasury
+	if err := eventlog.Decode(r.Body, &tr); err != nil {
+		return err
+	}
+
+	now := tr.After
+	t.now = &now
+	if tr.Before != tr.After {
+		t.moves = append(t.moves, TreasuryMove{Epoch: tr.Epoch, Before: tr.Before, After: tr.After})
+		if len(t.moves) > maxTreasuryMoves {
+			t.moves = t.moves[1:]
+		}
+	}
+	return nil
+}
+
+// view is the folded treasury, nil before the first decision.
+func (t *treasuryFold) view() *TreasuryView {
+	if t.now == nil {
+		return nil
+	}
+	return &TreasuryView{Now: *t.now, Moves: append([]TreasuryMove{}, t.moves...)}
+}
+
+// lovelace is the treasury now, nil before the first decision.
+func (t *treasuryFold) lovelace() *uint64 {
+	if t.now == nil {
+		return nil
+	}
+	now := *t.now
+	return &now
 }
 
 func newGovFold() *govFold {
@@ -332,7 +402,7 @@ func share(t Tally, pct uint64) bool {
 // view builds the GovernanceView at tip. profileOf names an actor's
 // profile; slots may be nil.
 func (g *govFold) view(slots *sched.Slots, tip uint64, life uint64, profileOf func(uint64) string) GovernanceView {
-	out := GovernanceView{Lifetime: life, Proposals: []ProposalRow{}, Votes: []VoteRow{}, Pools: []PoolVotes{}}
+	out := GovernanceView{Lifetime: life, Proposals: []ProposalRow{}, Votes: []VoteRow{}, Pools: []PoolVotes{}, Treasury: g.treasury.view()}
 	var now uint64
 	if slots != nil {
 		now = slots.EpochOfSlot(tip)
@@ -453,7 +523,7 @@ func (g *govFold) detail(id string, slots *sched.Slots, tip uint64, life uint64,
 	if i < 0 {
 		return ProposalDetail{}, false
 	}
-	d := ProposalDetail{Epoch: v.Epoch, Lifetime: life, Row: v.Proposals[i], Votes: []VoteRow{}}
+	d := ProposalDetail{Epoch: v.Epoch, Lifetime: life, Row: v.Proposals[i], Votes: []VoteRow{}, Treasury: g.treasury.lovelace()}
 	for _, r := range g.sortedVotes() {
 		if r.Proposal != id {
 			continue

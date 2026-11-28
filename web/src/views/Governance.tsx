@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Feed, appendDecision, type EventSourceLike, type FeedState } from "../lib/feed";
 import { ada, count, short, simTime } from "../lib/format";
-import { CLASSES, choiceLine, filterGov, forkLine, sortProposals, versionText, yesShare, type GovFilter } from "../lib/governance";
+import { CLASSES, choiceLine, filterGov, forkLine, sortProposals, treasuryLine, versionText, yesShare, type GovFilter } from "../lib/governance";
 import { govPath } from "../lib/govdetail";
 import { GOV_HELP } from "../lib/govhelp";
 import { FIELD_HELP, VIEW_BLURB } from "../lib/help";
@@ -139,6 +139,7 @@ function Summary({ g }: { g: GovernanceView }) {
       {CLASSES.map((c) => <Stat key={c} label={`${CLASS_LABEL[c]} votes`} value={count(byClass(c))} />)}
       <Stat label="Lifetime" value={`${g.lifetime_epochs} epochs`} sub="a proposal stays open this long" />
       <Stat label="Protocol version" value={versionText(g.protocol_version)} sub={forkLine(g.pending_fork, g.scheduled_fork, g.proposals.some((p) => p.type === "hard_fork_initiation" && p.status === "open"))} />
+      {g.treasury && <Stat label="Treasury" value={ada(g.treasury.now_lovelace)} sub={treasuryLine(g.treasury)} />}
     </Stats>
   );
 }

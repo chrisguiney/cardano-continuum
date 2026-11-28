@@ -125,7 +125,7 @@ export function GovBody({ d }: { d: GovDetail }) {
       <Header d={d} />
       <Panel aria-labelledby="g-body">
         <Heading id="g-body">What it asks for</Heading>
-        {d.content ? <Contents c={d.content} /> : <Note>The explorer has not decoded this action (its transaction is not in the index), so only the type is known.</Note>}
+        {d.content ? <Contents c={d.content} treasury={d.treasury_lovelace} /> : <Note>The explorer has not decoded this action (its transaction is not in the index), so only the type is known.</Note>}
       </Panel>
       <Eligibility d={d} />
       <Panel aria-labelledby="g-votes">

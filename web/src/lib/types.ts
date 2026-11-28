@@ -430,6 +430,14 @@ export interface GovernanceView {
   pending_fork?: PendingFork;
   /** scheduled_fork is the hard fork the run proposes by itself, until its version is in force. */
   scheduled_fork?: ScheduledFork;
+  /** treasury is the treasury as the engine's chain view reckons it; absent before the engine reports one. */
+  treasury?: TreasuryView;
+}
+
+/** TreasuryView is the treasury now and its recent moves, oldest first: enacted withdrawals paid out at a boundary, or a rollback of one. */
+export interface TreasuryView {
+  now_lovelace: number;
+  moves: { epoch: number; before_lovelace: number; after_lovelace: number }[];
 }
 
 /** GovParam is one protocol parameter a parameter-change action sets. */
@@ -505,4 +513,6 @@ export interface GovDetail {
   content?: GovContent;
   voters: VoterRule[];
   votes: GovVote[];
+  /** treasury_lovelace is the treasury now, which a withdrawal draws on. */
+  treasury_lovelace?: number;
 }

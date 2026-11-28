@@ -112,6 +112,8 @@ func foldDecision(p *Projection, r eventlog.Record) error {
 		foldSubmitted(p, id, r, s)
 	case engine.KindProtocol:
 		return p.gov.protocol(r)
+	case engine.KindTreasury:
+		return p.gov.treasury.move(r)
 	default:
 		return foldOutcome(p, id, r)
 	}
