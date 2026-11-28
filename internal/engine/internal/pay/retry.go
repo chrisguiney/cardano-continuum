@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"strings"
 
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
@@ -116,10 +117,32 @@ func (rt *Retry) Begin(p *wire.Pending) error {
 	return nil
 }
 
-// Answer feeds the node's answer to the payment's machine. why is the
-// node's text for a rejection, for the Refused decision.
+// Answer feeds the node's answer to the payment's machine. why names a
+// rejection's classes for the Refused decision, which also keeps the
+// node's own text for each failure.
 func (rt *Retry) Answer(ctx context.Context, at sched.Time, p *wire.Pending, out submit.Outcome, why string) error {
-	return rt.apply(ctx, at, p, submit.Answered{Out: out}, why)
+	return rt.apply(ctx, at, p, submit.Answered{Out: out}, reason{why: why, detail: detailOf(out)})
+}
+
+// reason is what a Refused decision says: why names the classes, detail
+// is the node's text for them.
+type reason struct {
+	// why is the Refused decision's Why.
+	why string
+	// detail is the Refused decision's Detail.
+	detail string
+}
+
+// detailOf joins the node's text of each failure that has one as
+// "class: text", in failure order.
+func detailOf(out submit.Outcome) string {
+	var ds []string
+	for _, f := range out.Failures {
+		if f.Detail != "" {
+			ds = append(ds, string(f.Class)+": "+f.Detail)
+		}
+	}
+	return strings.Join(ds, "; ")
 }
 
 // Settle tells the machine of the intent whose attempt tx settled, forgets
@@ -250,8 +273,8 @@ func (rt *Retry) Wake(p *wire.Pending) {
 }
 
 // apply feeds one event to the payment's machine and carries out its
-// actions. why is the node's text for a rejection, for the Refused decision.
-func (rt *Retry) apply(ctx context.Context, at sched.Time, p *wire.Pending, ev submit.Event, why string) error {
+// actions. why is the rejection's reason, for the Refused decision.
+func (rt *Retry) apply(ctx context.Context, at sched.Time, p *wire.Pending, ev submit.Event, why reason) error {
 	a, _ := rt.env.Actors.Get(population.ActorID(p.Actor))
 	m, acts, err := submit.Step(rt.spec.Policy, p.M, ev, a, rt.env.Actors.Draw(a, "retry"))
 	if err != nil {
@@ -262,7 +285,7 @@ func (rt *Retry) apply(ctx context.Context, at sched.Time, p *wire.Pending, ev s
 
 // carry adopts the machine's next state and does its actions. The bytes
 // are kept while the attempt is pending: a rollback can ask for them again.
-func (rt *Retry) carry(ctx context.Context, at sched.Time, p *wire.Pending, m submit.Machine, acts []submit.Action, why string) error {
+func (rt *Retry) carry(ctx context.Context, at sched.Time, p *wire.Pending, m submit.Machine, acts []submit.Action, why reason) error {
 	p.M = m
 	if m.State == submit.Pending {
 		p.Awaiting = false
@@ -290,7 +313,7 @@ func isBuild(a submit.Action) bool {
 // act1 carries out one action. A backoff that precedes a build is not
 // waited: the engine builds at once and waits before the send that follows,
 // so the delay lands where the node is next asked.
-func (rt *Retry) act1(ctx context.Context, at sched.Time, p *wire.Pending, act submit.Action, beforeBuild bool, why string) error {
+func (rt *Retry) act1(ctx context.Context, at sched.Time, p *wire.Pending, act submit.Action, beforeBuild bool, why reason) error {
 	switch act := act.(type) {
 	case submit.Backoff:
 		if !beforeBuild {
@@ -324,12 +347,17 @@ func (rt *Retry) act1(ctx context.Context, at sched.Time, p *wire.Pending, act s
 }
 
 // refuse writes off an attempt every node rejected before it arrived.
-func (rt *Retry) refuse(ctx context.Context, at sched.Time, p *wire.Pending, tx plan.TxID, why string) error {
+func (rt *Retry) refuse(ctx context.Context, at sched.Time, p *wire.Pending, tx plan.TxID, why reason) error {
 	dead, err := rt.pay.led.Refused(ctx, tx)
 	if err != nil {
 		return fmt.Errorf("engine: refuse intent %d: %w", p.ID, err)
 	}
-	rt.env.Journal.Emit(at, wire.KindRefused, population.ActorID(p.Actor), wire.Refused{Intent: p.ID, ID: wire.TxID(tx), Why: why})
+	rt.env.Journal.Emit(at, wire.KindRefused, population.ActorID(p.Actor), wire.Refused{
+		Intent: p.ID,
+		ID:     wire.TxID(tx),
+		Why:    why.why,
+		Detail: why.detail,
+	})
 	for _, d := range dead {
 		rt.pay.forget(wire.TxID(d))
 	}
@@ -370,7 +398,7 @@ func (rt *Retry) observe(ctx context.Context, at sched.Time, p *wire.Pending, ev
 	if p.OneShot() || p.M.State == submit.GaveUp || p.M.State == submit.Done {
 		return nil
 	}
-	err := rt.apply(ctx, at, p, ev, "")
+	err := rt.apply(ctx, at, p, ev, reason{})
 	if errors.Is(err, submit.ErrIllegal) {
 		return nil
 	}

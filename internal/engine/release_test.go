@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
+	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/submit"
@@ -569,5 +572,62 @@ func TestRolledBackAttemptIsSentAgain(t *testing.T) {
 	inf := e.pay.InFlight(e.clk.Now())
 	if len(inf) != 1 || inf[0].ID != sub.ID || !bytes.Equal(inf[0].Tx, sub.Tx) {
 		t.Fatalf("in flight %+v, want the same bytes again", inf)
+	}
+}
+
+// TestRejectionTextKept: a node's own text for a rejection survives into
+// the SubmitResult, the Refused decision and the finding, not only its
+// class: a ConwayMempoolFailure says nothing without it.
+func TestRejectionTextKept(t *testing.T) {
+	t.Parallel()
+	const text = "Unelected committee members are not allowed to cast votes"
+	cfg := testConfig(t, 5, 6)
+	w := newWorld(t, cfg)
+	sn := &scriptedNode{FakeNode: w.node}
+	sn.answer = func(context.Context, int, []byte) error {
+		return &submit.RejectedError{Failures: []submit.Failure{{Class: submit.MempoolFailure, Detail: text}}}
+	}
+	l := &eventlog.MemLog{}
+	r, err := Start(context.Background(), w.cfg, Deps{Clock: w.clock, Log: l, Node: sn, Pacer: w.node})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Run(context.Background(), 60_000); err != nil {
+		t.Fatal(err)
+	}
+
+	var results, refused int
+	for _, rec := range logRecords(t, l) {
+		switch rec.Kind {
+		case eventlog.KindSubmitResult:
+			var s SubmitResult
+			if err := eventlog.Decode(rec.Body, &s); err != nil {
+				t.Fatal(err)
+			}
+			if s.Verdict == VerdictRejected && (len(s.Details) != 1 || s.Details[0] != text) {
+				t.Fatalf("submit result details %q, want [%q]", s.Details, text)
+			}
+			results++
+		case KindRefused:
+			var f Refused
+			if err := eventlog.Decode(rec.Body, &f); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(f.Detail, text) {
+				t.Fatalf("refused detail %q, want it to name %q", f.Detail, text)
+			}
+			refused++
+		}
+	}
+	if results == 0 || refused == 0 {
+		t.Fatalf("%d rejections, %d refusals: want both", results, refused)
+	}
+
+	fs := findings(t, l)
+	if len(fs) == 0 {
+		t.Fatal("no finding for the unexplained rejection")
+	}
+	if !slices.ContainsFunc(fs[0].Facts, func(f oracle.Fact) bool { return f.Name == "detail" && strings.Contains(f.Value, text) }) {
+		t.Fatalf("finding facts %+v name no detail %q", fs[0].Facts, text)
 	}
 }

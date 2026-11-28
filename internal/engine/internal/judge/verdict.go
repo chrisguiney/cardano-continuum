@@ -39,10 +39,7 @@ func AnswerOutcome(a wire.Answer) submit.Outcome {
 	case wire.VerdictAccepted:
 		o.Verdict = submit.Accepted
 	case wire.VerdictRejected:
-		o.Verdict = submit.Rejected
-		for _, c := range a.Failures {
-			o.Failures = append(o.Failures, submit.Failure{Class: submit.Class(c)})
-		}
+		o.Verdict, o.Failures = submit.Rejected, wire.Failures(a.Failures, a.Details)
 	}
 	return o
 }

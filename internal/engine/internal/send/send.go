@@ -6,6 +6,7 @@ package send
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
@@ -73,7 +74,7 @@ func (s *Sender) Send(ctx context.Context, sub wire.Submission) (wire.SubmitResu
 		if ctx.Err() != nil {
 			return res, ctx.Err()
 		}
-		res.Again = &wire.Answer{Verdict: verdictOf(o), Failures: classesOf(o)}
+		res.Again = &wire.Answer{Verdict: verdictOf(o), Failures: classesOf(o), Details: detailsOf(o)}
 	}
 	delete(s.resumed, sub.Intent)
 	return res, nil
@@ -94,7 +95,7 @@ func (s *Sender) once(ctx context.Context, sub wire.Submission) (wire.SubmitResu
 	switch o.Verdict {
 	case submit.Rejected:
 		res.Verdict, res.Reason = wire.VerdictRejected, (&submit.RejectedError{Failures: o.Failures}).Error()
-		res.Failures = classesOf(o)
+		res.Failures, res.Details = classesOf(o), detailsOf(o)
 		res.Resend = s.resumed[sub.Intent]
 		s.rejections++
 	case submit.Unreached:
@@ -114,7 +115,7 @@ func (s *Sender) rival(ctx context.Context, rv wire.Rival) wire.Answer {
 	if o.Verdict == submit.Rejected {
 		s.rejections++
 	}
-	return wire.Answer{Verdict: verdictOf(o), Failures: classesOf(o)}
+	return wire.Answer{Verdict: verdictOf(o), Failures: classesOf(o), Details: detailsOf(o)}
 }
 
 func verdictOf(o submit.Outcome) wire.Verdict {
@@ -131,6 +132,19 @@ func classesOf(o submit.Outcome) []string {
 	var out []string
 	for _, f := range o.Failures {
 		out = append(out, string(f.Class))
+	}
+	return out
+}
+
+// detailsOf is the node's text per failure, or nil when no failure has
+// any, so an answer without text logs as before.
+func detailsOf(o submit.Outcome) []string {
+	if !slices.ContainsFunc(o.Failures, func(f submit.Failure) bool { return f.Detail != "" }) {
+		return nil
+	}
+	out := make([]string, len(o.Failures))
+	for i, f := range o.Failures {
+		out[i] = f.Detail
 	}
 	return out
 }

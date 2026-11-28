@@ -239,11 +239,7 @@ func Outcome(r wire.SubmitResult) (submit.Outcome, error) {
 	case wire.VerdictUnreached, wire.VerdictDropped:
 		return submit.Outcome{Verdict: submit.Unreached}, nil
 	case wire.VerdictRejected:
-		o := submit.Outcome{Verdict: submit.Rejected}
-		for _, c := range r.Failures {
-			o.Failures = append(o.Failures, submit.Failure{Class: submit.Class(c)})
-		}
-		return o, nil
+		return submit.Outcome{Verdict: submit.Rejected, Failures: wire.Failures(r.Failures, r.Details)}, nil
 	}
 	return submit.Outcome{}, fmt.Errorf("%w: intent %d", ErrUnknownVerdict, r.Intent)
 }

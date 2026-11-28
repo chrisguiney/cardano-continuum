@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
+	"github.com/chrisguiney/cardano-continuum/internal/submit"
 )
 
 // ErrUnknownVerdict: a SubmitResult whose verdict is missing or unknown.
@@ -57,6 +58,9 @@ type SubmitResult struct {
 	// machine reads them: after an earlier send only a class that depends on
 	// the transaction alone proves the attempt never reached a mempool.
 	Failures []string `json:"failures,omitempty"`
+	// Details are the node's own text for each of Failures, in order: the
+	// class alone does not say why, a ConwayMempoolFailure least of all.
+	Details []string `json:"details,omitempty"`
 	// Tx is the attempt a drop notice is about.
 	Tx *TxID `json:"tx,omitzero"`
 	// Node is the node that answered, for the oracle's findings.
@@ -74,6 +78,23 @@ type SubmitResult struct {
 type Answer struct {
 	Verdict  Verdict  `json:"verdict"`
 	Failures []string `json:"failures,omitempty"`
+	// Details are the node's text for each of Failures, as in
+	// SubmitResult.
+	Details []string `json:"details,omitempty"`
+}
+
+// Failures rebuilds the failures a logged answer names: classes with the
+// node's text when the answer kept it.
+func Failures(classes, details []string) []submit.Failure {
+	out := make([]submit.Failure, 0, len(classes))
+	for i, c := range classes {
+		f := submit.Failure{Class: submit.Class(c)}
+		if i < len(details) {
+			f.Detail = details[i]
+		}
+		out = append(out, f)
+	}
+	return out
 }
 
 // MonitorSnapshot is the body of a MonitorSnapshot input: what the runner

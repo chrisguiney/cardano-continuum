@@ -86,10 +86,23 @@ func judge(e mistake.Expected, o submit.Outcome) (judgement, bool) {
 	// A rejection naming an expected class beside others was a rightful
 	// rejection with a wrong class added; one naming none, of a transaction
 	// the node may accept, refused it for no reason the oracle knows.
+	d := classDetail(o, extra)
 	if e.Accept && !explained {
-		return judgement{kind: UnexpectedReject, sev: Error, unexpected: extra}, false
+		return judgement{kind: UnexpectedReject, sev: Error, unexpected: extra, detail: d}, false
 	}
-	return judgement{kind: WrongClass, sev: Warn, unexpected: extra}, false
+	return judgement{kind: WrongClass, sev: Warn, unexpected: extra, detail: d}, false
+}
+
+// classDetail joins the node's text for every failure of a class in cs, so
+// a finding says why as well as which rule.
+func classDetail(o submit.Outcome, cs []submit.Class) string {
+	var ds []string
+	for _, f := range o.Failures {
+		if f.Detail != "" && slices.Contains(cs, f.Class) {
+			ds = append(ds, string(f.Class)+": "+f.Detail)
+		}
+	}
+	return strings.Join(ds, "; ")
 }
 
 // unknownDetail joins the node's text for every unmapped failure.

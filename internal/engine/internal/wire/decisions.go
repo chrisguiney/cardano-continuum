@@ -137,6 +137,8 @@ type Refused struct {
 	Intent uint64 `json:"intent"`
 	ID     TxID   `json:"id"`
 	Why    string `json:"why"`
+	// Detail is the node's own text for the failures Why names.
+	Detail string `json:"detail,omitempty"`
 }
 
 // GaveUp is the body of a GaveUp decision: the actor's patience is spent. No
