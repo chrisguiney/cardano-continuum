@@ -10,6 +10,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
+	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 )
 
 func TestDRepRegisterVotePropose(t *testing.T) {
@@ -224,6 +225,43 @@ func actionTypeOf(a common.GovAction) (ActionType, bool) {
 		return ActionNewConstitution, true
 	case *common.UpdateCommitteeGovAction:
 		return ActionUpdateCommittee, true
+	case *common.HardForkInitiationGovAction:
+		return ActionHardFork, true
 	}
 	return "", false
+}
+
+// A hard fork proposes the version that can follow the current one, with
+// the last enacted hard fork (none on a fresh devnet) as predecessor; the
+// fake chain's GOV rule accepts it. A version that cannot follow is
+// refused before anything is built, as GOV-Propose's validHFAction would
+// refuse it.
+func TestProposeHardFork(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.registerStake()
+	cur := protocol.Version{Major: h.pp.ProtocolVersion.Major, Minor: h.pp.ProtocolVersion.Minor}
+	sp := h.spend()
+	prop := Proposal{Spend: sp, Action: ActionHardFork, Fork: &HardFork{From: cur, To: cur.Next()}}
+	got, err := h.b.Gov().Propose(ctx, h.alice, prop)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx := h.check(got, sp.Inputs, want{deposit: h.pp.GovActionDeposit, signers: []keys.Credential{h.alice.PaymentKeyHash()}},
+		func() (Built, error) { return h.b.Gov().Propose(ctx, h.alice, prop) })
+	hf, ok := tx.ProposalProcedures()[0].GovAction().(*common.HardForkInitiationGovAction)
+	if !ok || hf.ActionId != nil || hf.ProtocolVersion.Major != cur.Major+1 || hf.ProtocolVersion.Minor != 0 {
+		t.Fatalf("built %+v", tx.ProposalProcedures()[0].GovAction())
+	}
+	h.commit(got)
+
+	for _, to := range []protocol.Version{{Major: cur.Major + 2}, cur} {
+		bad := Proposal{Spend: h.spend(), Action: ActionHardFork, Fork: &HardFork{From: cur, To: to}}
+		if _, err := h.b.Gov().Propose(ctx, h.alice, bad); err == nil {
+			t.Errorf("a hard fork from %v to %v built", cur, to)
+		}
+	}
+	if _, err := h.b.Gov().Propose(ctx, h.alice, Proposal{Spend: h.spend(), Action: ActionHardFork}); err == nil {
+		t.Fatal("a hard fork with no version built")
+	}
 }

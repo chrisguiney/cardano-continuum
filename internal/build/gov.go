@@ -11,6 +11,7 @@ import (
 	"github.com/blinklabs-io/gouroboros/ledger/conway"
 
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
+	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 )
 
 // Gov builds the governance transactions: DRep registration, hot-key authorisation, votes and proposals.
@@ -60,6 +61,19 @@ type Proposal struct {
 	Anchor common.GovAnchor
 	// Change is what a parameter change proposes; it is required for one.
 	Change *ParamChange
+	// Fork is what a hard fork proposes; it is required for one.
+	Fork *HardFork
+}
+
+// HardFork is a hard fork's move and the hard fork it follows: the last
+// enacted one, nil while none was ever enacted (prevGovActionId of the
+// hard-fork purpose).
+type HardFork struct {
+	// From is the protocol version enacted now and To the one proposed;
+	// To must be able to follow From (protocol.CanFollow).
+	From, To protocol.Version
+	// Prev is the predecessor.
+	Prev *common.GovActionId
 }
 
 // ParamChange is a parameter change's update and the parameter change it
@@ -76,11 +90,10 @@ type ParamChange struct {
 // files use (profile.Network.Proposals).
 type ActionType string
 
-// The action types Propose builds. A hard fork needs a protocol version
-// the devnet can move to, so it is not built. A parameter change names the
-// predecessor its ParamChange gives; the rest name none, which is right
-// while no action of their purpose was ever enacted: honest voters never
-// favour them (intent.neverFavoured), so none is.
+// The action types Propose builds. A parameter change and a hard fork name
+// the predecessor their ParamChange and HardFork give; the rest name none,
+// which is right while no action of their purpose was ever enacted: honest
+// voters never favour them (intent.neverFavoured), so none is.
 const (
 	ActionInfo                ActionType = "info"
 	ActionParameterChange     ActionType = "parameter_change"
@@ -88,6 +101,7 @@ const (
 	ActionNoConfidence        ActionType = "no_confidence"
 	ActionNewConstitution     ActionType = "new_constitution"
 	ActionUpdateCommittee     ActionType = "update_committee"
+	ActionHardFork            ActionType = "hard_fork_initiation"
 )
 
 // treasuryAsk is what a treasury withdrawal proposal asks for. The
@@ -179,7 +193,7 @@ func (f Gov) Vote(ctx context.Context, w keys.Wallet, v Vote) (Built, error) {
 // re-states the genesis quorum. Neither it nor a parameter change names a
 // guardrail policy: the devnet constitution has none.
 func (f Gov) Propose(ctx context.Context, w keys.Wallet, p Proposal) (Built, error) {
-	act, err := f.govAction(w, p.Action, p.Change)
+	act, err := f.govAction(w, p)
 	if err != nil {
 		return Built{}, err
 	}
@@ -195,7 +209,8 @@ func (f Gov) Propose(ctx context.Context, w keys.Wallet, p Proposal) (Built, err
 	})
 }
 
-func (f Gov) govAction(w keys.Wallet, t ActionType, c *ParamChange) (conway.ConwayGovAction, error) {
+func (f Gov) govAction(w keys.Wallet, p Proposal) (conway.ConwayGovAction, error) {
+	t, c := p.Action, p.Change
 	switch t {
 	case "", ActionInfo:
 		info, err := common.NewInfoGovAction()
@@ -227,6 +242,26 @@ func (f Gov) govAction(w keys.Wallet, t ActionType, c *ParamChange) (conway.Conw
 		c := &common.NewConstitutionGovAction{Type: uint(common.GovActionTypeNewConstitution)}
 		c.Constitution.Anchor = constitutionAnchor
 		return conway.ConwayGovAction{Type: uint(common.GovActionTypeNewConstitution), Action: c}, nil
+	case ActionHardFork:
+		return hardFork(p.Fork)
 	}
 	return conway.ConwayGovAction{}, fmt.Errorf("build: unsupported governance action type %q", t)
+}
+
+// hardFork is the HardForkInitiation action h proposes. A version that
+// cannot follow the enacted one is refused here, as GOV-Propose would
+// refuse it (validHFAction, formal-ledger-specifications f8059737f1db,
+// src/Ledger/Conway/Specification/Gov.lagda.md).
+func hardFork(h *HardFork) (conway.ConwayGovAction, error) {
+	if h == nil {
+		return conway.ConwayGovAction{}, fmt.Errorf("build: a hard fork needs its version")
+	}
+
+	if !protocol.CanFollow(h.To, h.From) {
+		return conway.ConwayGovAction{}, fmt.Errorf("build: protocol version %s cannot follow %s", h.To, h.From)
+	}
+
+	a := &common.HardForkInitiationGovAction{Type: uint(common.GovActionTypeHardForkInitiation), ActionId: h.Prev}
+	a.ProtocolVersion.Major, a.ProtocolVersion.Minor = h.To.Major, h.To.Minor
+	return conway.ConwayGovAction{Type: uint(common.GovActionTypeHardForkInitiation), Action: a}, nil
 }
