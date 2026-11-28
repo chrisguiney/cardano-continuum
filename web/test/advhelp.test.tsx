@@ -1,5 +1,8 @@
+// @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { renderToStaticMarkup as render } from "react-dom/server";
+import { renderToStaticMarkup } from "react-dom/server";
+import { render as mount } from "@testing-library/react";
+import type { ReactElement } from "react";
 import { ADV_GLOSSARY, ADV_HELP } from "../src/lib/advhelp";
 import { honestImpact } from "../src/lib/adversaries";
 import type { AdversaryRow, AdversaryView } from "../src/lib/types";
@@ -22,13 +25,19 @@ const view: AdversaryView = {
   impact: HONEST.map((metric) => ({ metric, value: 1, control: 0, delta: 1 })),
 };
 
-/** describedBy is the text a control with this label is described by. */
-function describedBy(html: string, label: string): string {
-  const m = new RegExp(`aria-label="About ${label}" aria-describedby="([^"]+)"`).exec(html);
-  expect(m, `a tip for ${label}`).not.toBeNull();
-  const t = new RegExp(`id="${m![1]}" class="tip-text">([^<]*)<`).exec(html);
+/** html mounts node in the DOM and returns the root, so tips can be followed by id. */
+function html(node: ReactElement): HTMLElement {
+  return mount(node).container;
+}
+
+/** describedBy is the text a tip button with this label is described by. */
+function describedBy(root: HTMLElement, label: string): string {
+  const btn = root.querySelector(`button[aria-label="About ${label}"]`);
+  expect(btn, `a tip for ${label}`).not.toBeNull();
+  const id = btn!.getAttribute("aria-describedby");
+  const t = id ? root.ownerDocument.getElementById(id) : null;
   expect(t, `text for ${label}`).not.toBeNull();
-  return t![1]!.replaceAll("&#x27;", "'");
+  return t!.textContent ?? "";
 }
 
 describe("adversary definitions", () => {
@@ -46,35 +55,36 @@ describe("adversary definitions", () => {
   });
 
   it("describes every metric the impact table shows, in a tip tied to its row", () => {
-    const html = render(<Impact v={view} />);
-    for (const r of honestImpact(view)) expect(describedBy(html, ADV_HELP[r.metric]!.label)).toBe(ADV_HELP[r.metric]!.help);
-    for (const c of ["This run", "Control baseline", "Delta"]) expect(describedBy(html, c).length).toBeGreaterThan(30);
+    const root = html(<Impact v={view} />);
+    for (const r of honestImpact(view)) expect(describedBy(root, ADV_HELP[r.metric]!.label)).toBe(ADV_HELP[r.metric]!.help);
+    for (const c of ["This run", "Control baseline", "Delta"]) expect(describedBy(root, c).length).toBeGreaterThan(30);
   });
 
   it("describes the card's terms: attack, cost ceiling, success metric, outcomes and step columns", () => {
-    const html = render(<Adversary a={view.adversaries[0]!} control />);
+    const root = html(<Adversary a={view.adversaries[0]!} control />);
     for (const l of ["dust-flood", "Cost ceiling", "Success metric", "Attempted", "Landed", "Detected", "Rejected", "Budget", "Mutation", "Cost", "Value grabbed", "Txs"]) {
-      expect(describedBy(html, l).length, l).toBeGreaterThan(20);
+      expect(describedBy(root, l).length, l).toBeGreaterThan(20);
     }
   });
 
   it("describes each attack kind", () => {
     for (const k of ATTACKS) {
-      const html = render(<Adversary a={adv(k, "utxo_growth")} control />);
-      expect(describedBy(html, k)).toBe(ADV_HELP[k]!.help);
+      const root = html(<Adversary a={adv(k, "utxo_growth")} control />);
+      expect(describedBy(root, k)).toBe(ADV_HELP[k]!.help);
     }
   });
 
   it("gives every tip a unique id", () => {
-    const html = render(<><Adversary a={view.adversaries[0]!} control /><Impact v={view} /></>);
-    const ids = [...html.matchAll(/ id="(adv-[^"]+)" class="tip-text"/g)].map((m) => m[1]);
+    const root = html(<><Adversary a={view.adversaries[0]!} control /><Impact v={view} /></>);
+    const ids = [...root.querySelectorAll("button[aria-describedby^=adv-]")].map((b) => b.getAttribute("aria-describedby"));
+    expect(ids.length).toBeGreaterThan(10);
     expect(new Set(ids).size).toBe(ids.length);
   });
 });
 
 describe("help glossary", () => {
   it("has an Adversaries section with the terms", () => {
-    const html = render(<Help />);
+    const html = renderToStaticMarkup(<Help />);
     expect(html).toContain(">Adversaries<");
     for (const t of ["Honest failure rate", "Retries", "UTxO growth", "Value grabbed", "Landed", "Detected", "Rejected", "Attempted", "Cost ceiling", "Success metric", "Control baseline", "Delta", ...ATTACKS]) {
       expect(ADV_GLOSSARY.map((g) => g.term), t).toContain(t);

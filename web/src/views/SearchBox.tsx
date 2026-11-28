@@ -1,4 +1,6 @@
 import { useState, type FormEvent } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { FIELD_HELP } from "../lib/help";
 import { runSearch } from "../lib/search";
 import { navigate } from "../lib/router";
@@ -24,20 +26,21 @@ export function SearchBox() {
     });
   };
   return (
-    <form className="search" role="search" aria-label="Search the chain" onSubmit={submit}>
-      <label htmlFor="search-q" className="sr">Search</label>
-      <input
+    <form className="flex flex-wrap items-center gap-1.5" role="search" aria-label="Search the chain" onSubmit={submit}>
+      <label htmlFor="search-q" className="sr-only">Search</label>
+      <Input
         id="search-q"
         type="search"
         value={q}
         placeholder="Block, tx, address, pool, actor"
         aria-describedby="search-tip"
         maxLength={200}
+        className="h-8 w-60 max-w-full"
         onChange={(e) => setQ(e.currentTarget.value)}
       />
-      <button type="submit">Search</button>
+      <Button type="submit" variant="outline" size="sm">Search</Button>
       <HelpTip id="search-tip" label={FIELD_HELP.search!.label} text={FIELD_HELP.search!.help} />
-      {msg && <span className="search-msg" role="alert">{msg}</span>}
+      {msg && <span className="basis-full text-xs text-destructive" role="alert">{msg}</span>}
     </form>
   );
 }

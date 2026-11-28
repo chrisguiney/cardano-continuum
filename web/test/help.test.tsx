@@ -47,7 +47,7 @@ describe("help tip", () => {
     const html = render(<HelpTip id="t1" label="State" text="what it means" />);
     expect(html).toContain("<button");
     expect(html).toContain('aria-describedby="t1"');
-    expect(html).toContain('role="tooltip"');
+    expect(html).toContain('<span id="t1" class="sr-only">what it means</span>');
     expect(html).toContain("what it means");
   });
 });

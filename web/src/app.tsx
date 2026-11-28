@@ -1,4 +1,7 @@
 import { useEffect, useState } from "react";
+import { MoonIcon, SunIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { getJSON } from "./lib/api";
 import { navigate, parseRoute } from "./lib/router";
 import { Actor } from "./views/Actor";
@@ -19,6 +22,7 @@ import { ExEpoch } from "./views/ExEpoch";
 import { ExTx } from "./views/ExTx";
 import { Explorer } from "./views/Explorer";
 import { SearchBox } from "./views/SearchBox";
+import { Note } from "./views/common";
 import { navFor, type Capabilities } from "./lib/nav";
 import { Pools } from "./views/Pools";
 
@@ -83,16 +87,17 @@ export function App() {
   const active = (to: string) => (to === "/" ? path === "/" : path === to || path.startsWith(to + "/"));
 
   return (
-    <>
-      <a className="skip" href="#main">Skip to content</a>
-      <header className="top">
-        <strong className="brand">continuum</strong>
-        <nav aria-label="Views">
+    <TooltipProvider>
+      <a href="#main" className="absolute -left-[9999px] z-10 rounded-md bg-card p-2 focus:top-2 focus:left-2">Skip to content</a>
+      <header className="flex flex-wrap items-center gap-4 border-b bg-card px-4 py-2">
+        <strong className="tracking-wide">continuum</strong>
+        <nav aria-label="Views" className="flex flex-1 flex-wrap gap-1">
           {nav.map(([to, label]) => (
             <a
               key={to}
               href={to}
               aria-current={active(to) ? "page" : undefined}
+              className="rounded-md px-3 py-1.5 hover:bg-accent aria-[current=page]:bg-primary aria-[current=page]:font-semibold aria-[current=page]:text-primary-foreground"
               onClick={(e) => {
                 if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
                 e.preventDefault();
@@ -104,14 +109,15 @@ export function App() {
           ))}
         </nav>
         {caps.explorer && <SearchBox />}
-        <span className="theme">
-          <button type="button" className="ghost" onClick={toggle} aria-describedby="theme-help">
+        <span className="inline-flex items-center">
+          <Button type="button" variant="ghost" size="sm" onClick={toggle} aria-describedby="theme-help">
+            {theme === "dark" ? <SunIcon aria-hidden="true" /> : <MoonIcon aria-hidden="true" />}
             {theme === "dark" ? "Light theme" : "Dark theme"}
-          </button>
+          </Button>
           <HelpTip id="theme-help" label="Theme" text={FIELD_HELP.theme!.help} />
         </span>
       </header>
-      <main id="main">
+      <main id="main" className="mx-auto max-w-[1200px] px-4 pb-12">
         {route.name === "overview" && <Overview />}
         {route.name === "actors" && <Actors />}
         {route.name === "actor" && <Actor id={route.id} />}
@@ -128,9 +134,9 @@ export function App() {
         {route.name === "xepoch" && <ExEpoch n={route.n} />}
         {route.name === "xpool" && <Explorer pool={route.key} />}
         {route.name === "help" && <Help />}
-        {route.name === "controls" && (controls ? <Controls /> : <p className="empty">Controls are not enabled on this server (start it with --controls).</p>)}
-        {route.name === "notfound" && <p className="empty">No such page.</p>}
+        {route.name === "controls" && (controls ? <Controls /> : <Note className="p-4 text-center">Controls are not enabled on this server (start it with --controls).</Note>)}
+        {route.name === "notfound" && <Note className="p-4 text-center">No such page.</Note>}
       </main>
-    </>
+    </TooltipProvider>
   );
 }

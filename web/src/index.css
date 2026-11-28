@@ -1,0 +1,113 @@
+/* legacy holds theme.css, the pre-port stylesheet, below the utilities so a
+   ported component's classes win; it shrinks as views are ported. */
+@layer theme, base, legacy, components, utilities;
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "./theme.css" layer(legacy);
+
+/* The theme toggle sets data-theme on <html>; dark: utilities follow it. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* Colour tokens in shadcn/ui's names. The values are the palette the UI had
+   before the port; the chart colours are Okabe-Ito, which stays readable
+   under the common colour-vision deficiencies. */
+:root {
+  --radius: 0.5rem;
+  --background: #f6f7f9;
+  --foreground: #1b1f24;
+  --card: #ffffff;
+  --card-foreground: #1b1f24;
+  --popover: #ffffff;
+  --popover-foreground: #1b1f24;
+  --primary: #1d4e89;
+  --primary-foreground: #ffffff;
+  --secondary: #eef1f5;
+  --secondary-foreground: #1b1f24;
+  --muted: #f6f7f9;
+  --muted-foreground: #576170;
+  --accent: #eef1f5;
+  --accent-foreground: #1b1f24;
+  --destructive: #b3261e;
+  --destructive-foreground: #ffffff;
+  --ok: #176b3a;
+  --warn: #8a5a00;
+  --border: #d0d6de;
+  --input: #d0d6de;
+  --ring: #1d4e89;
+  --chart-a: #0072b2;
+  --chart-b: #009e73;
+  --chart-c: #cc79a7;
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --background: #12161b;
+  --foreground: #e6e9ed;
+  --card: #1b2128;
+  --card-foreground: #e6e9ed;
+  --popover: #1b2128;
+  --popover-foreground: #e6e9ed;
+  --primary: #7fb2ee;
+  --primary-foreground: #0b1117;
+  --secondary: #252d36;
+  --secondary-foreground: #e6e9ed;
+  --muted: #12161b;
+  --muted-foreground: #a3adba;
+  --accent: #252d36;
+  --accent-foreground: #e6e9ed;
+  --destructive: #ff8a80;
+  --destructive-foreground: #0b1117;
+  --ok: #5fd08a;
+  --warn: #f2b84b;
+  --border: #353e49;
+  --input: #353e49;
+  --ring: #7fb2ee;
+  --chart-a: #56b4e9;
+  --chart-b: #2fcf9f;
+  --chart-c: #e8a0cb;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --font-sans: system-ui, sans-serif;
+  --font-mono: ui-monospace, monospace;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-a: var(--chart-a);
+  --color-chart-b: var(--chart-b);
+  --color-chart-c: var(--chart-c);
+}
+
+/* The only element rules: shadcn/ui's border colour default and the page
+   background. Everything else is a utility on the element that needs it. */
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground font-sans text-[15px] leading-normal;
+  }
+}
