@@ -81,7 +81,7 @@ markets:
   quote_every: 60
   # ADA/USD: a log random walk whose drift flips between bull and bear,
   # with downward-leaning jumps.
-  ada: {start: 0.6, vol: 0.5, drift: 0.4, regime_rate: 2, jump_rate: 1, jump_mean: -0.02, jump_sd: 0.08}
+  ada: {start: 0.6, vol: 0.8, drift: 0.4, regime_rate: 2, jump_rate: 3, jump_mean: -0.02, jump_sd: 0.08}
   fx: {vol: 0.02, reversion: 1}
   # Each wallet's primary currency is drawn by share; usd is the USD one
   # unit buys at time zero.

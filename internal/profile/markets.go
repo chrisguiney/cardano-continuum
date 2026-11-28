@@ -136,7 +136,7 @@ const ada = 1_000_000
 func DefaultMarkets() Markets {
 	return Markets{
 		Step: 10, QuoteEvery: 60,
-		ADA: ADAPath{Start: 0.6, Vol: 0.5, Drift: 0.4, RegimeRate: 2, JumpRate: 1, JumpMean: -0.02, JumpSD: 0.08},
+		ADA: ADAPath{Start: 0.6, Vol: 0.8, Drift: 0.4, RegimeRate: 2, JumpRate: 3, JumpMean: -0.02, JumpSD: 0.08},
 		FX:  FXPath{Vol: 0.02, Reversion: 1},
 		Currencies: []Currency{
 			{Code: "USD", Share: 0.35, USD: 1},
