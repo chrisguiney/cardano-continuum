@@ -123,6 +123,10 @@ func (p *Projection) NoteBodyError() {
 // UnknownProfile counts an actor no source names a profile for.
 const UnknownProfile = "unknown"
 
+// FaucetProfile labels the faucet's account in the actor rows. The faucet
+// funds actors but is not one: it is left out of the population counts.
+const FaucetProfile = "faucet"
+
 // ProfileCounts counts every actor by profile, so the counts sum to the
 // actor total. An actor the log spawned carries its profile; any other
 // (genesis) actor takes profileOf's answer, and an empty answer counts as
@@ -143,7 +147,7 @@ func (p *Projection) Snapshot(slots *sched.Slots) Snapshot {
 	s := Snapshot{
 		LastSeq: t.lastSeq, SimTimeMs: t.now, Blocks: t.blocks, Rollbacks: t.rollbacks,
 		Ada: t.ada, Txs: t.txs,
-		Population: Population{Total: len(p.actors.actors), ByState: maps(p.actors.byState)},
+		Population: Population{Total: p.actors.members(), ByState: maps(p.actors.byState)},
 		Invariants: []Invariant{{Name: "log_gapless", OK: true}, {Name: "bodies_decode", OK: t.bodyErrors == 0}},
 	}
 	if t.bodyErrors > 0 {

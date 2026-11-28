@@ -6,6 +6,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
+	"github.com/chrisguiney/cardano-continuum/internal/keys"
 )
 
 // maxTimeline bounds the entries kept per actor. A longer history drops its
@@ -112,9 +113,27 @@ func (x *actorIndex) profile(id uint64) string {
 	return ""
 }
 
+// isFaucet reports the faucet's account, which funds actors but is not a
+// member of the population.
+func isFaucet(id uint64) bool { return id == uint64(keys.FaucetID) }
+
+// members counts the population: every indexed actor but the faucet.
+func (x *actorIndex) members() int {
+	n := len(x.actors)
+	if _, ok := x.actors[uint64(keys.FaucetID)]; ok {
+		n--
+	}
+
+	return n
+}
+
 func (x *actorIndex) profileCounts(profileOf func(uint64) string) map[string]int {
 	out := map[string]int{}
 	for id, a := range x.actors {
+		if isFaucet(id) {
+			continue
+		}
+
 		prof := a.profile
 		if prof == "" && profileOf != nil {
 			prof = profileOf(id)
@@ -130,8 +149,13 @@ func (x *actorIndex) profileCounts(profileOf func(uint64) string) map[string]int
 func (x *actorIndex) rows() []ActorRow {
 	out := make([]ActorRow, 0, len(x.actors))
 	for id, a := range x.actors {
+		prof := a.profile
+		if isFaucet(id) {
+			prof = FaucetProfile
+		}
+
 		out = append(out, ActorRow{
-			ID: id, Profile: a.profile, State: a.state, Intents: a.intents, Txs: a.txs,
+			ID: id, Profile: prof, State: a.state, Intents: a.intents, Txs: a.txs,
 			Retries: a.retries, Confirmed: a.confirmed, Released: a.released,
 		})
 	}

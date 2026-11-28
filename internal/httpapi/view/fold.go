@@ -182,6 +182,9 @@ func foldOutcome(p *Projection, id uint64, r eventlog.Record) error {
 		}
 		p.tot.txs.Skipped++
 		x.note(id, r, v.Kind+": "+v.Why, nil)
+	case engine.KindControlled, engine.KindDeployed, engine.KindIncident:
+		// Engine-wide records: logged under actor 0, they belong to no
+		// actor, so they must not create one.
 	default:
 		x.note(id, r, "", nil)
 	}

@@ -6,6 +6,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
+	"github.com/chrisguiney/cardano-continuum/internal/keys"
 )
 
 // controlLog appends Control inputs and the engine's Controlled answers to
@@ -108,5 +109,38 @@ func TestControlStateIsACopy(t *testing.T) {
 	controlsOf(l.p).Weights["send"] = 9
 	if got := controlsOf(l.p).Weights["send"]; got != 2 {
 		t.Fatalf("weights aliased: %v", got)
+	}
+}
+
+// Engine-wide records (control answers, contract deployments, incidents)
+// are logged under actor 0 and the faucet's payments under the faucet's
+// account. Neither is a member of the population: the overview counted
+// them as two actors of profile "unknown".
+func TestSystemRecordsAreNotActors(t *testing.T) {
+	t.Parallel()
+	l := &controlLog{t: t, p: NewProjection()}
+	l.answer("r1", "pause", "")
+	l.add(eventlog.Decision, engine.KindDeployed, engine.Deployed{Contract: 0, Address: "lock"})
+	l.add(eventlog.Decision, engine.KindIncident, engine.Incident{Kind: "stall"})
+
+	b, err := eventlog.Encode(engine.Submitted{Intent: 1, To: 5, Amount: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.seq++
+	l.p.Apply(eventlog.Record{Seq: l.seq, Class: eventlog.Decision, Kind: engine.KindSubmitted, Actor: eventlog.ActorID(keys.FaucetID), Body: b})
+
+	counts := l.p.ProfileCounts(func(uint64) string { return "" })
+	if counts[UnknownProfile] != 0 || len(counts) != 0 {
+		t.Fatalf("profile counts %v: want no population members", counts)
+	}
+
+	if s := l.p.Snapshot(nil); s.Population.Total != 0 {
+		t.Fatalf("population total %d, want 0", s.Population.Total)
+	}
+
+	rows := l.p.Rows()
+	if len(rows) != 1 || rows[0].ID != uint64(keys.FaucetID) || rows[0].Profile != FaucetProfile {
+		t.Fatalf("rows %+v: want only the faucet, labelled %q", rows, FaucetProfile)
 	}
 }
