@@ -28,8 +28,9 @@
 // Plutus scripts of every language (with the devnet genesis cost models,
 // ParamsFor) are checked by the same gouroboros rules against the
 // fake's delegation and governance state (see certState), which accepted
-// transactions update. Epoch-boundary effects are not modelled: no rewards,
-// pool retirement, ratification or enactment. Treasury donations, the
+// transactions update. At epoch boundaries the stake snapshots rotate,
+// retiring pools retire, and parameter changes and hard forks are ratified
+// and enacted (epoch.go, ratify.go); no rewards accrue. Treasury donations, the
 // current-treasury-value field and phase-2-invalid transactions are refused
 // with ErrUnsupported, so the supply invariant is exactly: unspent lovelace +
 // collected fees + deposits held = genesis lovelace.

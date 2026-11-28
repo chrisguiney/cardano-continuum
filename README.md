@@ -80,7 +80,7 @@ Variables, passed as `make up NAME=value`:
 | `SCALE` | `200` | multiplier on every profile's activity rates |
 | `SEED` | fixed 64-hex value | run seed for the genesis and the population |
 | `ATTACKS` | every tier-1 attack | comma-separated list, or `none` |
-| `ENGINE_POOLS` | `0` | pool operators the engine simulates (keep 0 with `preprod` and `preview`) |
+| `ENGINE_POOLS` | `0` | pool operators the engine simulates beside the profiles' pool populations, which operate the genesis pools (keep 0 with `preprod` and `preview`) |
 | `CONTEXT` | the current context | kubectl context; read once, never switched |
 | `NAMESPACE`, `RELEASE` | `continuum`, `continuum` | where to install, and the Helm release |
 | `VALUES` | none | an extra chart values file (the variables above take precedence) |
@@ -112,6 +112,33 @@ pulled the node images and published the genesis, which on a first pull can
 outlast Helm's default timeout: with `--wait`, pass a `--timeout` of 15
 minutes or more. Every value is described in
 [`charts/continuum/values.yaml`](charts/continuum/values.yaml).
+
+## Protocol version and hard forks
+
+The devnet starts at protocol version 10.0 (Conway, past the bootstrap
+phase, so DReps vote), where mainnet, preprod and preview are at 11.0. The
+`hard_fork` scenario forks it: on the UI's Controls page, inject
+`hard_fork` (or `hard_fork:11.0`), or post the control to the live API:
+
+```sh
+curl -X POST http://127.0.0.1:8088/api/control \
+  -d '{"request_id":"fork","op":"inject","scenario":"hard_fork"}'
+```
+
+The richest actor with a registered stake key proposes a
+HardForkInitiation to that version, which must be able to follow the one
+in force: the next major with minor 0, or the next minor. The committee,
+the DReps and the stake pools vote on it, and it needs all three
+thresholds: two thirds of the committee, 60% of the DRep stake and 51% of
+the pool stake, a pool that did not vote counting as no. Once the votes
+pass, an epoch boundary ratifies it and the next boundary enacts it; the
+scenario refuses a second fork until then. The Governance page and the
+Overview show the version in force and the pending fork.
+
+Every node must reach the new version at that boundary: a node still at
+the old one is a fatal `protocol_version_mismatch` finding. From 11.0 the
+engine sends a committee vote with its hot-key authorisation in one
+transaction, which cardano-node's mempool refuses below 11.
 
 ## Development
 
