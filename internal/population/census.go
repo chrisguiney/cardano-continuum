@@ -41,6 +41,12 @@ type Actor struct {
 	// Seed roots the actor's private random streams. It derives from the
 	// census root seed and the actor's ID alone.
 	Seed rng.Seed
+	// Owner is the human that owns the wallet; zero for the actors no person
+	// owns (pools, DReps, contracts, the faucet).
+	Owner HumanID
+	// Purpose is what the wallet is for to its owner; empty without an
+	// owner.
+	Purpose Purpose
 }
 
 // Stream returns a fresh generator on the actor's stream named by path. A
@@ -57,6 +63,8 @@ type bucket struct {
 type Census struct {
 	actors []Actor // actors[id-1]
 	index  map[bucket]map[ActorID]struct{}
+	// humans are the owners of the wallets by ID.
+	humans map[HumanID]*Human
 }
 
 // Len returns the number of actors ever spawned.
@@ -76,26 +84,31 @@ func (c *Census) Spawn(p profile.Profile, root rng.Seed, now sched.Time) Actor {
 		Traits: Sampled{SampledTraits: traits, RateMult: rate},
 		Born:   now, Changed: now, Competence: traits.Competence, Seed: seed,
 	}
+	if p.Kind == profile.Wallet {
+		c.found(&a, HumanID(id), p.Agenda)
+	}
 	c.actors = append(c.actors, a)
 	c.add(a)
 	return a
 }
 
-// Get returns the actor with the given ID.
+// Get returns the actor with the given ID. A wallet carries its owner's
+// traits and competence.
 func (c *Census) Get(id ActorID) (Actor, bool) {
 	if id == 0 || uint64(id) > uint64(len(c.actors)) {
 		return Actor{}, false
 	}
-	return c.actors[id-1], true
+	return c.owned(c.actors[id-1]), true
 }
 
 // Apply performs a transition after checking it against the lifecycle table
 // and, for chain effects, its cause. A refused transition changes nothing.
 func (c *Census) Apply(tr Transition) error {
-	a, ok := c.Get(tr.ID)
-	if !ok {
+	if tr.ID == 0 || uint64(tr.ID) > uint64(len(c.actors)) {
 		return fmt.Errorf("%w: %d", ErrUnknownActor, tr.ID)
 	}
+
+	a := c.actors[tr.ID-1]
 	if err := tr.check(a.Kind, a.State); err != nil {
 		return err
 	}
@@ -117,12 +130,18 @@ func (c *Census) SetFrustration(id ActorID, f float64) error {
 }
 
 // SetCompetence sets an actor's competence, clamped to [0, 1]: what
-// learning from its own fixes has made of its drawn trait.
+// learning from its own fixes has made of its drawn trait. A wallet's
+// competence is its owner's, so the owner learns for all its wallets.
 func (c *Census) SetCompetence(id ActorID, v float64) error {
-	if _, ok := c.Get(id); !ok {
+	a, ok := c.Get(id)
+	if !ok {
 		return fmt.Errorf("%w: %d", ErrUnknownActor, id)
 	}
-	c.actors[id-1].Competence = min(max(v, 0), 1)
+	v = min(max(v, 0), 1)
+	if h, ok := c.humans[a.Owner]; ok {
+		h.Competence = v
+	}
+	c.actors[id-1].Competence = v
 	return nil
 }
 
@@ -171,4 +190,52 @@ func (c *Census) consistent() bool {
 		}
 	}
 	return true
+}
+
+// Human returns the human with the given ID.
+func (c *Census) Human(id HumanID) (Human, bool) {
+	h, ok := c.humans[id]
+	if !ok {
+		return Human{}, false
+	}
+	out := *h
+	out.Wallets = slices.Clone(h.Wallets)
+	return out, true
+}
+
+// Humans returns every human's ID in ascending order.
+func (c *Census) Humans() []HumanID {
+	ids := make([]HumanID, 0, len(c.humans))
+	for id := range c.humans {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	return ids
+}
+
+// found makes a the first wallet of a new human with ID id, which takes the
+// wallet's traits as its own.
+func (c *Census) found(a *Actor, id HumanID, motivation profile.AgendaName) {
+	if c.humans == nil {
+		c.humans = map[HumanID]*Human{}
+	}
+	c.humans[id] = &Human{
+		ID:         id,
+		Motivation: motivation,
+		Traits:     a.Traits.SampledTraits,
+		Competence: a.Competence,
+		Born:       a.Born,
+		Wallets:    []ActorID{a.ID},
+	}
+	a.Owner, a.Purpose = id, General
+}
+
+// owned is a with its owner's traits and competence.
+func (c *Census) owned(a Actor) Actor {
+	h, ok := c.humans[a.Owner]
+	if !ok {
+		return a
+	}
+	a.Traits.SampledTraits, a.Competence = h.Traits, h.Competence
+	return a
 }
