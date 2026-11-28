@@ -167,9 +167,15 @@ Profiles with a `markets:` section (`mainnet`, `preprod`, `preview`, and `m1`,
 which spells out every default) give the wallets an ADA market:
 
 - An ADA/USD price that moves through bull and bear spells and sudden jumps,
-  and an exchange rate for each currency. Time is compressed, so a run of
-  minutes sees rallies and drawdowns.
-- Several exchanges, each quoting slightly different prices. An exchange is a
+  and an exchange rate for each of 15 currencies, from the dollar and euro to
+  the lira, peso and naira. Time is compressed, so a run of minutes sees
+  rallies and drawdowns.
+- The starting ADA price and each currency's rate, volatility, drift against
+  USD and mean reversion are fitted to a year of public data (Frankfurter and
+  CoinGecko), committed as `internal/profile/fxsnapshot.json`. `make
+  market-snapshot` refetches it; runs never touch the network. The wallet
+  shares per currency are synthetic.
+- Four exchanges, each quoting slightly different prices. An exchange is a
   wallet on chain: buying ADA means the exchange pays you on chain, less a
   withdrawal fee; selling means you pay the exchange. Fiat stays off chain.
 - Each wallet has a home currency, and sometimes others, and trades where the

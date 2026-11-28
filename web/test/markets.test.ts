@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bids, bounds, currencies, flowRows, indexed, latestMid, linePath, positionLine, splitShare } from "../src/lib/markets";
+import { bids, bounds, dashFor, currencies, flowRows, indexed, latestMid, linePath, positionLine, splitShare } from "../src/lib/markets";
 import { navGroups } from "../src/lib/nav";
 import { parseRoute } from "../src/lib/router";
 import type { MarketPoint, MarketsView } from "../src/lib/types";
@@ -19,6 +19,11 @@ describe("markets view", () => {
     expect(currencies(qs)).toEqual(["EUR", "USD"]);
     const s = indexed(qs, ["USD"]);
     expect(s[0]!.points).toEqual([[1, 100], [2, 200]]);
+  });
+
+  it("tells lines apart by dashes once the colours repeat", () => {
+    const seen = new Set(Array.from({ length: 15 }, (_, i) => `${i % 3}/${dashFor(i, 3)}`));
+    expect(seen.size).toBe(15);
   });
 
   it("lists each exchange's bid in a currency", () => {

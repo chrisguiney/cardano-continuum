@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { ada, count, simTime } from "../lib/format";
 import { VIEW_BLURB } from "../lib/help";
 import { usePoll } from "../lib/hooks";
-import { bids, bounds, currencies, flowRows, indexed, linePath, splitShare, type Series } from "../lib/markets";
+import { bids, bounds, currencies, dashFor, flowRows, indexed, linePath, splitShare, type Series } from "../lib/markets";
 import type { MarketsView } from "../lib/types";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmptyRow, ErrorNote, Heading, Muted, Note, Stat, Stats, TableFrame, Title } from "./common";
@@ -26,13 +26,15 @@ function Chart({ series, label, shade }: { series: Series[]; label: string; shad
         )}
         {series.map((s, i) => (
           <path key={s.label} d={linePath(s.points, box, W, H)} fill="none" stroke={SWATCH[i % SWATCH.length]} strokeWidth={1.5}
-            strokeDasharray={i >= SWATCH.length ? "4 3" : undefined} />
+            strokeDasharray={dashFor(i, SWATCH.length)} />
         ))}
       </svg>
       <figcaption className="mt-1 flex flex-wrap gap-3 text-xs text-muted-foreground">
         {series.map((s, i) => (
           <span key={s.label} className="inline-flex items-center gap-1">
-            <span className="inline-block h-0.5 w-4" style={{ background: SWATCH[i % SWATCH.length] }} />
+            <svg width="16" height="4" aria-hidden="true">
+              <line x1="0" y1="2" x2="16" y2="2" stroke={SWATCH[i % SWATCH.length]} strokeWidth={2} strokeDasharray={dashFor(i, SWATCH.length)} />
+            </svg>
             {s.label}
           </span>
         ))}
@@ -70,6 +72,7 @@ export function Markets() {
       </Stats>
 
       <Heading>ADA in each currency</Heading>
+      {data?.seeded && <Muted>Rates seeded from a snapshot dated {data.seeded}.</Muted>}
       <Muted>Mid rate rebased to 100 at the first quote; the shaded span is the largest ADA/USD drawdown.</Muted>
       <Chart series={indexed(quotes, codes)} label="ADA mid rate per currency, rebased to 100" shade={window} />
 

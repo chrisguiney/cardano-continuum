@@ -483,7 +483,8 @@ def _ou(x: float, level: float, theta: float, vol: float, dt: float, z: float) -
 
 def rate_path(seed: int, hours: float, params: dict | None = None) -> RatePath:
     """ADA/USD as a regime-switching log random walk with jumps, each
-    currency as a log Ornstein-Uhlenbeck process around its level, and each
+    currency as a log Ornstein-Uhlenbeck process around a level that trends
+    at its own drift (USD stays put), and each
     exchange's basis as one around zero: internal/market's curve."""
     p = params or markets_params()
     rng = np.random.default_rng(seed)
@@ -504,7 +505,15 @@ def rate_path(seed: int, hours: float, params: dict | None = None) -> RatePath:
             ada[k] += jumps * a["jump_mean"] + a["jump_sd"] * np.sqrt(jumps) * rng.standard_normal()
         for c in p["currencies"]:
             code = c["code"]
-            usd[code][k] = _ou(usd[code][k - 1], np.log(c["usd"]), p["fx"]["reversion"], p["fx"]["vol"], dt, rng.standard_normal())
+            z = rng.standard_normal()
+            if code == "USD":
+                usd[code][k] = usd[code][0]
+                continue
+            vol = c.get("vol") or p["fx"]["vol"]
+            theta = c.get("reversion") or p["fx"]["reversion"]
+            trend = c.get("drift", 0.0) * p["fx"].get("drift_scale", 0.2)
+            level = np.log(c["usd"]) + trend * k * dt
+            usd[code][k] = _ou(usd[code][k - 1] + trend * dt, level, theta, vol, dt, z)
         for x in p["exchanges"]:
             basis[x["name"]][k] = _ou(basis[x["name"]][k - 1], 0.0, x["basis_reversion"], x["basis_vol"], dt, rng.standard_normal())
     return RatePath(np.arange(n) * dt, np.exp(ada), {c: np.exp(v) for c, v in usd.items()}, basis, p)

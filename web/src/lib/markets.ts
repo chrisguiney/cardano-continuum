@@ -126,3 +126,10 @@ export function splitShare(hodlers: number, sellers: number): number | null {
   const n = hodlers + sellers;
   return n > 0 ? sellers / n : null;
 }
+
+const DASHES = [undefined, "6 3", "2 3", "8 3 2 3", "1 2"];
+
+/** dashFor is the dash pattern of line i: the colours repeat every three lines, so each lap of them gets its own dashes. */
+export function dashFor(i: number, colours: number): string | undefined {
+  return DASHES[Math.floor(i / colours) % DASHES.length];
+}

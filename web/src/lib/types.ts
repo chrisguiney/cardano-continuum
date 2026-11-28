@@ -296,6 +296,8 @@ export interface Drawdown {
 }
 /** MarketsView is /api/markets. */
 export interface MarketsView {
+  /** seeded is the date of the FX and ADA snapshot the server's default rates came from. */
+  seeded?: string;
   quotes: MarketPoint[] | null;
   flows: MarketFlow[] | null;
   births: Record<string, number>;

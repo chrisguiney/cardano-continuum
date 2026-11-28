@@ -20,6 +20,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/httpapi/view"
+	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/store"
 )
 
@@ -568,5 +569,9 @@ func TestMarketsRoute(t *testing.T) {
 	var m view.MarketsView
 	if err := json.Unmarshal(body, &m); code != http.StatusOK || err != nil || m.Births["EUR"] != 2 || len(m.Flows) != 1 {
 		t.Fatalf("markets %d %s %v", code, body, err)
+	}
+	var seeded struct{ Seeded string }
+	if err := json.Unmarshal(body, &seeded); err != nil || seeded.Seeded != profile.SnapshotDate() {
+		t.Fatalf("seeded %q, want the snapshot date %q (%v)", seeded.Seeded, profile.SnapshotDate(), err)
 	}
 }

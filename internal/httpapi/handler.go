@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/chrisguiney/cardano-continuum/internal/httpapi/view"
+	"github.com/chrisguiney/cardano-continuum/internal/profile"
 )
 
 const (
@@ -98,7 +99,12 @@ func NewHandler(cfg Config) http.Handler {
 			a.fail(w, err)
 			return
 		}
-		a.json(w, http.StatusOK, m)
+		// Seeded is this build's snapshot date, not the run's: a log does
+		// not record which snapshot seeded the market.
+		a.json(w, http.StatusOK, struct {
+			view.MarketsView
+			Seeded string `json:"seeded"`
+		}{m, profile.SnapshotDate()})
 	})
 	mux.HandleFunc("GET /api/findings", a.findings)
 	mux.HandleFunc("GET /api/findings/{id}", func(w http.ResponseWriter, _ *http.Request) {
