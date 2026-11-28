@@ -48,7 +48,12 @@ func summarize(out io.Writer, cfg engine.Config, r *engine.Runner, chain *fakech
 	for _, o := range owners {
 		onChain += o.Lovelace
 	}
-	conserved := e.Supply == genesis && chain.UnspentLovelace()+chain.Fees()+chain.Deposits() == onChain
+	// Treasury awards come into the population from the treasury: the
+	// engine counts what its withdrawals took (Inflow), and the chain
+	// holds its treasury and reward balances beside the UTxO set.
+	treasury, rewards := chain.Treasury()
+	conserved := e.Supply == genesis+e.Inflow &&
+		chain.UnspentLovelace()+chain.Fees()+chain.Deposits()+treasury+rewards == onChain+cfg.StartTreasury()
 	w.Printf("epochs %d, actors %d (genesis %d), blocks %d, records %d\n",
 		epochs, e.Actors, len(funds), len(chain.Blocks()), recs)
 	w.Printf("payments: submitted %d, confirmed %d, released %d, skipped %d, pending %d\n",
@@ -59,6 +64,7 @@ func summarize(out io.Writer, cfg engine.Config, r *engine.Runner, chain *fakech
 	}
 	w.Printf("%s", sk)
 	w.Printf("value conserved: %t (genesis %d lovelace, fees %d)\n", conserved, genesis, chain.Fees())
+	w.Printf("treasury: %d lovelace of %d left, %d withdrawn as awards, %d in reward accounts\n", treasury, cfg.StartTreasury(), e.Inflow, rewards)
 	t, err := engine.AuditLog(context.Background(), mem)
 	if err != nil {
 		return err
