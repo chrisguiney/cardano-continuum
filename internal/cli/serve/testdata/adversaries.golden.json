@@ -59,14 +59,14 @@
       "agenda": "disrupt",
       "budget": 5000000000,
       "cost": {
-        "spent": 175310,
+        "spent": 180106,
         "ceiling": 300000000,
         "epoch": 1,
-        "epoch_spent": 175310,
+        "epoch_spent": 180106,
         "by_epoch": [
           {
             "epoch": 1,
-            "spent": 175310
+            "spent": 180106
           }
         ]
       },
@@ -81,10 +81,10 @@
       "rejected": 0,
       "recent": [
         {
-          "seq": 1639,
-          "at": 77274,
-          "intent": 43,
-          "cost": 175310,
+          "seq": 2259,
+          "at": 110121,
+          "intent": 51,
+          "cost": 180106,
           "value": 5000000,
           "txs": 1
         }
@@ -181,25 +181,25 @@
           "txs": 1
         },
         {
-          "seq": 2105,
+          "seq": 2100,
           "at": 102463,
-          "intent": 46,
+          "intent": 45,
           "mutation": "non-canonical",
           "cost": 168537,
           "txs": 1
         },
         {
-          "seq": 2219,
+          "seq": 2216,
           "at": 107730,
-          "intent": 50,
+          "intent": 49,
           "mutation": "non-canonical",
           "cost": 168537,
           "txs": 1
         },
         {
-          "seq": 2249,
+          "seq": 2246,
           "at": 109600,
-          "intent": 51,
+          "intent": 50,
           "mutation": "non-canonical",
           "cost": 168537,
           "txs": 1
@@ -311,9 +311,9 @@
     },
     {
       "metric": "honest_retries",
-      "value": 3,
+      "value": 4,
       "control": 2,
-      "delta": 1
+      "delta": 2
     },
     {
       "metric": "honest_value_grabbed_ada",
@@ -329,9 +329,9 @@
     },
     {
       "metric": "node_rejections",
-      "value": 17,
+      "value": 18,
       "control": 4,
-      "delta": 13
+      "delta": 14
     },
     {
       "metric": "findings",
@@ -353,9 +353,9 @@
     },
     {
       "metric": "attack_cost_ada",
-      "value": 46.821683,
+      "value": 46.826479,
       "control": 0,
-      "delta": 46.821683
+      "delta": 46.826479
     },
     {
       "metric": "attack_landed",

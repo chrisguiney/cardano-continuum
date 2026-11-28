@@ -156,7 +156,7 @@
         ]
       },
       {
-        "id": 1745,
+        "id": 1746,
         "at": 81728,
         "kind": "IntentChosen",
         "actor": 23,
@@ -183,7 +183,7 @@
         ]
       },
       {
-        "id": 1917,
+        "id": 1912,
         "at": 91018,
         "kind": "IntentChosen",
         "actor": 23,
@@ -210,7 +210,7 @@
         ]
       },
       {
-        "id": 2005,
+        "id": 2002,
         "at": 96257,
         "kind": "IntentChosen",
         "actor": 23,
@@ -237,7 +237,7 @@
         ]
       },
       {
-        "id": 2104,
+        "id": 2099,
         "at": 102463,
         "kind": "IntentChosen",
         "actor": 23,
@@ -264,7 +264,7 @@
         ]
       },
       {
-        "id": 2218,
+        "id": 2215,
         "at": 107730,
         "kind": "IntentChosen",
         "actor": 23,
@@ -291,7 +291,7 @@
         ]
       },
       {
-        "id": 2248,
+        "id": 2245,
         "at": 109600,
         "kind": "IntentChosen",
         "actor": 23,
@@ -607,118 +607,118 @@
       "intent": 37
     },
     {
-      "seq": 1745,
+      "seq": 1746,
       "at": 81728,
       "kind": "IntentChosen",
       "detail": "idle"
     },
     {
-      "seq": 1917,
+      "seq": 1912,
       "at": 91018,
       "kind": "IntentChosen",
       "detail": "idle"
     },
     {
-      "seq": 2005,
+      "seq": 2002,
       "at": 96257,
       "kind": "IntentChosen",
       "detail": "idle"
     },
     {
-      "seq": 2104,
+      "seq": 2099,
       "at": 102463,
       "kind": "IntentChosen",
       "detail": "malformed-cbor"
     },
     {
-      "seq": 2105,
+      "seq": 2100,
       "at": 102463,
       "kind": "Attack"
     },
     {
-      "seq": 2106,
+      "seq": 2101,
       "at": 102463,
       "kind": "Submitted",
       "detail": "2000000 lovelace to 23",
-      "intent": 46
+      "intent": 45
     },
     {
-      "seq": 2107,
+      "seq": 2102,
       "at": 102463,
       "kind": "SubmitResult",
       "detail": "rejected: transaction rejected: InvalidWitnessesUTXOW, FeeTooSmallUTxO",
-      "intent": 46
+      "intent": 45
     },
     {
-      "seq": 2108,
+      "seq": 2103,
       "at": 102463,
       "kind": "Released",
       "detail": "transaction rejected: InvalidWitnessesUTXOW, FeeTooSmallUTxO",
-      "intent": 46
+      "intent": 45
+    },
+    {
+      "seq": 2215,
+      "at": 107730,
+      "kind": "IntentChosen",
+      "detail": "malformed-cbor"
+    },
+    {
+      "seq": 2216,
+      "at": 107730,
+      "kind": "Attack"
+    },
+    {
+      "seq": 2217,
+      "at": 107730,
+      "kind": "Submitted",
+      "detail": "2000000 lovelace to 23",
+      "intent": 49
     },
     {
       "seq": 2218,
       "at": 107730,
-      "kind": "IntentChosen",
-      "detail": "malformed-cbor"
+      "kind": "SubmitResult",
+      "detail": "rejected: transaction rejected: InvalidWitnessesUTXOW, FeeTooSmallUTxO",
+      "intent": 49
     },
     {
       "seq": 2219,
       "at": 107730,
+      "kind": "Released",
+      "detail": "transaction rejected: InvalidWitnessesUTXOW, FeeTooSmallUTxO",
+      "intent": 49
+    },
+    {
+      "seq": 2245,
+      "at": 109600,
+      "kind": "IntentChosen",
+      "detail": "malformed-cbor"
+    },
+    {
+      "seq": 2246,
+      "at": 109600,
       "kind": "Attack"
     },
     {
-      "seq": 2220,
-      "at": 107730,
+      "seq": 2247,
+      "at": 109600,
       "kind": "Submitted",
       "detail": "2000000 lovelace to 23",
-      "intent": 50
-    },
-    {
-      "seq": 2221,
-      "at": 107730,
-      "kind": "SubmitResult",
-      "detail": "rejected: transaction rejected: InvalidWitnessesUTXOW, FeeTooSmallUTxO",
-      "intent": 50
-    },
-    {
-      "seq": 2222,
-      "at": 107730,
-      "kind": "Released",
-      "detail": "transaction rejected: InvalidWitnessesUTXOW, FeeTooSmallUTxO",
       "intent": 50
     },
     {
       "seq": 2248,
       "at": 109600,
-      "kind": "IntentChosen",
-      "detail": "malformed-cbor"
+      "kind": "SubmitResult",
+      "detail": "rejected: transaction rejected: InvalidWitnessesUTXOW, FeeTooSmallUTxO",
+      "intent": 50
     },
     {
       "seq": 2249,
       "at": 109600,
-      "kind": "Attack"
-    },
-    {
-      "seq": 2250,
-      "at": 109600,
-      "kind": "Submitted",
-      "detail": "2000000 lovelace to 23",
-      "intent": 51
-    },
-    {
-      "seq": 2251,
-      "at": 109600,
-      "kind": "SubmitResult",
-      "detail": "rejected: transaction rejected: InvalidWitnessesUTXOW, FeeTooSmallUTxO",
-      "intent": 51
-    },
-    {
-      "seq": 2252,
-      "at": 109600,
       "kind": "Released",
       "detail": "transaction rejected: InvalidWitnessesUTXOW, FeeTooSmallUTxO",
-      "intent": 51
+      "intent": 50
     }
   ]
 }
