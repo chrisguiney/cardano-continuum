@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/blinklabs-io/gouroboros/cbor"
+	"github.com/blinklabs-io/gouroboros/ledger/conway"
 
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
@@ -81,6 +82,24 @@ func TestPoolRegistration(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.rejects(bad.Tx, fakechain.PoolCostTooLow)
+}
+
+// From protocol version 11 the ledger checks a pool's VRF key against the
+// pending parameter updates too (gouroboros' PV11 VRF-uniqueness rule,
+// which reads FuturePoolParametersState); a registration and an update of
+// the same pool with its own key still pass.
+func TestPoolUpdateAtVersion11(t *testing.T) {
+	t.Parallel()
+	h := newHarnessWith(t, func(pp *conway.ConwayProtocolParameters) { pp.ProtocolVersion.Major = 11 })
+	h.registerPool(9)
+	sp := h.spend()
+	upd := h.poolReq(9, sp)
+	upd.Cost++
+	got, err := h.b.Pool().UpdatePool(ctx, h.alice, upd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.commit(got)
 }
 
 func TestPoolRetirement(t *testing.T) {

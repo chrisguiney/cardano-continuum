@@ -22,6 +22,18 @@ type ledgerView struct {
 	certs *certState
 }
 
+// settledPools is the ledger view as validation reads it, with the
+// deferred pool parameters gouroboros' PV11 VRF-uniqueness rule asks for
+// (common.FuturePoolParametersState). The fake applies a pool
+// re-registration at once instead of at the next epoch boundary, so no
+// parameters are ever pending and no VRF key is reserved by them.
+type settledPools struct{ *ledgerView }
+
+// IsFutureVrfKeyInUse implements common.FuturePoolParametersState.
+func (settledPools) IsFutureVrfKeyInUse(common.Blake2b256) (bool, common.PoolKeyHash, error) {
+	return false, common.PoolKeyHash{}, nil
+}
+
 func (v *ledgerView) account(c common.Credential) (*account, bool) {
 	a, ok := v.certs.accounts[keyOf(c)]
 	return a, ok

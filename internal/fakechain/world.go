@@ -47,7 +47,7 @@ type world struct {
 func (w *world) check(tx *conway.ConwayTransaction, slot uint64, view *overlay) []Failure {
 	w.view, w.ls.certs = view.get, view.certs
 	defer func() { w.view, w.ls.certs = nil, nil }()
-	return validate(tx, slot, w.ls, rulesAt(w.pp, view.certs))
+	return validate(tx, slot, settledPools{w.ls}, rulesAt(w.pp, view.certs))
 }
 
 // rulesAt is pp, the configured protocol parameters at the protocol version s
