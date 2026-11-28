@@ -48,8 +48,9 @@ type seat struct {
 // permanently.
 //
 // At an epoch boundary (epoch.go) the snapshots rotate, retiring pools
-// retire, parameter changes enacted at the boundary before are removed and
-// parameter changes with the votes are enacted (ratify.go). Expired
+// retire, actions ratified at the boundary before are removed, a hard fork
+// ratified then is enacted, and parameter changes and hard forks with the
+// votes are ratified (ratify.go). Expired
 // proposals are never removed, and no rewards accrue, so every reward
 // balance is zero.
 type certState struct {

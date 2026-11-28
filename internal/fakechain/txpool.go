@@ -8,6 +8,8 @@ import (
 
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 	"github.com/blinklabs-io/gouroboros/ledger/conway"
+
+	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 )
 
 // txpool is the mempool's behaviour over the world. Its methods assume the
@@ -45,9 +47,15 @@ func (p txpool) submit(tx *conway.ConwayTransaction) error {
 // never enters a cardano-node mempool (cardano-ledger 085b8cc6b17c,
 // eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Mempool.hs,
 // mempoolTransition and unelectedCommitteeVoters). From protocol version
-// 11 the ledger moves the check into GOV; the fake applies it at every
-// version.
+// 11 (protocol.VanRossem) the node drops it and the ledger's GOV rule
+// checks elected membership against the state after the transaction's
+// certificates (gouroboros conway rules, gated on the same version), so
+// the fake applies it below 11 only, judged by the version s has enacted.
 func unelected(tx *conway.ConwayTransaction, s *certState) []Failure {
+	if s.enact.params.ProtocolVersion.Major >= protocol.VanRossem {
+		return nil
+	}
+
 	hot := map[credKey]bool{}
 	for _, m := range s.committee {
 		if m.hot != nil && !m.resigned {

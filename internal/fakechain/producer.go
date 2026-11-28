@@ -162,7 +162,9 @@ func (p producer) encode(txs []*conway.ConwayTransaction) (Block, error) {
 		gtxs[i] = tx
 		ids[i] = tx.Hash()
 	}
-	pv := w.pp.ProtocolVersion
+	// The header claims the version the tip has enacted, as a node that
+	// writes its ledger's version (dingo) does.
+	pv := w.certs.enact.params.ProtocolVersion
 	b, err := fixtures.NewBlockBuilder(conway.EraConway).
 		WithBlockNumber(number).
 		WithSlot(w.slot).

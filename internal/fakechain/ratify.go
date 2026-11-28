@@ -13,13 +13,27 @@ import (
 var committeeQuorum = big.NewRat(2, 3)
 
 // enactment is what the fake has enacted: the protocol parameters as
-// parameter changes left them, and the root of the parameter-change purpose
-// chain, the last one enacted (nil while none has been).
+// parameter changes and hard forks left them, and the root of each purpose
+// chain the fake enacts, the last action of it ratified (nil while none
+// has been).
 type enactment struct {
 	// params are the protocol parameters with every enacted change applied.
 	params conway.ConwayProtocolParameters
 	// root is the last enacted parameter change.
 	root *common.GovActionId
+	// hardFork is the last ratified hard fork.
+	hardFork *common.GovActionId
+	// fork is a ratified hard fork's version, waiting for the boundary
+	// that enacts it; nil when none is. It is replaced, never mutated, so
+	// a cloned state may share it.
+	fork *pendingFork
+}
+
+// pendingFork is a ratified hard fork: the version it moves to and the
+// epoch whose boundary enacts it, one after the boundary that ratified it.
+type pendingFork struct {
+	major, minor uint
+	at           uint64
 }
 
 // tally is one voter class's yes and counted stake (or seats): Yes over
@@ -38,41 +52,138 @@ func (t tally) meets(th *big.Rat) bool {
 	return new(big.Rat).SetFrac(new(big.Int).SetUint64(t.yes), new(big.Int).SetUint64(t.total)).Cmp(th) >= 0
 }
 
-// ratify enacts in s, at the start of epoch ep, every open parameter change
-// whose predecessor is the purpose root and whose DRep and committee votes
-// (and pool votes, for a security-group change) meet the thresholds. It is
-// written from cardano-ledger's Rules/Ratify.hs (dRepAcceptedRatio,
-// committeeAcceptedRatio, spoAcceptedRatio) at 08773e9a, simplified: the
-// fake ratifies and enacts at the same boundary, where the ledger enacts
-// one epoch after ratifying, every DRep counts as active, and stake is the
-// UTxO lovelace per credential in stake. Other action types are never
-// enacted. An enacted proposal stays in the proposal map until the next
-// boundary (prune), and the root names it after that.
+// ratify enacts in s, at the start of epoch ep, the hard fork ratified at
+// the boundary before, then ratifies the open proposals whose votes meet
+// the thresholds and whose predecessor is their purpose's root, in the
+// ledger's priority order (Gov.lagda.md govActionPriority: hard forks
+// before parameter changes, then by ID). It is written from
+// formal-ledger-specifications f8059737f1db,
+// src/Ledger/Conway/Specification/Ratify.lagda.md (RATIFY, acceptConds,
+// delayingAction) and cardano-ledger's Rules/Ratify.hs (dRepAcceptedRatio,
+// committeeAcceptedRatio, spoAcceptedRatio) at 08773e9a, simplified:
+//
+//   - a parameter change is enacted at the boundary that ratifies it,
+//     where the ledger enacts one epoch later; a hard fork keeps the
+//     ledger's delay, since the protocol version decides which rules the
+//     next epoch's blocks are held to (Enact.lagda.md, Enact-HF);
+//   - a ratified hard fork is a delaying action: nothing after it is
+//     ratified at the same boundary;
+//   - every DRep counts as active, and stake is the UTxO lovelace per
+//     credential in stake;
+//   - other action types are never enacted.
+//
+// A ratified proposal stays in the proposal map until the next boundary
+// (prune), and the root names it after that.
 func ratify(s *certState, ep uint64, stake map[common.Blake2b224]uint64) {
+	enactFork(s, ep)
 	ids := make([]common.GovActionId, 0, len(s.proposals))
 	for id := range s.proposals {
 		ids = append(ids, id)
 	}
-	slices.SortFunc(ids, compareAction)
+
+	slices.SortFunc(ids, func(a, b common.GovActionId) int {
+		if c := priority(s.proposals[a]) - priority(s.proposals[b]); c != 0 {
+			return c
+		}
+		return compareAction(a, b)
+	})
 	for _, id := range ids {
 		p := s.proposals[id]
-		pc, ok := p.state.Action.(*conway.ConwayParameterChangeGovAction)
-		if !ok || p.enacted || p.expires+1 < ep || !sameAction(pc.ActionId, s.enact.root) {
+		if p.enacted || p.expires+1 < ep {
 			continue
 		}
-		if !accepted(s, id, pc, ep, stake) {
-			continue
+
+		switch a := p.state.Action.(type) {
+		case *conway.ConwayParameterChangeGovAction:
+			ratifyChange(s, id, a, ep, stake)
+		case *common.HardForkInitiationGovAction:
+			if ratifyFork(s, id, a, ep, stake) {
+				return
+			}
 		}
-		upd := pc.ParamUpdate
-		if err := s.enact.params.ApplyUpdate(&upd); err != nil {
-			continue
-		}
-		p.enacted, p.enactedAt = true, ep
-		s.proposals[id] = p
-		root := id
-		s.enact.root = &root
 	}
 }
+
+// priority is govActionPriority for the actions the fake ratifies; every
+// other type sorts after them.
+func priority(p proposal) int {
+	switch p.state.Action.(type) {
+	case *common.HardForkInitiationGovAction:
+		return 3
+	case *conway.ConwayParameterChangeGovAction:
+		return 4
+	}
+	return 5
+}
+
+// enactFork moves the protocol version to the pending hard fork's once its
+// boundary has come.
+func enactFork(s *certState, ep uint64) {
+	f := s.enact.fork
+	if f == nil || f.at > ep {
+		return
+	}
+	s.enact.params.ProtocolVersion.Major, s.enact.params.ProtocolVersion.Minor = f.major, f.minor
+	s.enact.fork = nil
+}
+
+// ratifyChange enacts the parameter change id when it names the root and
+// its votes pass.
+func ratifyChange(s *certState, id common.GovActionId, pc *conway.ConwayParameterChangeGovAction, ep uint64, stake map[common.Blake2b224]uint64) {
+	if !sameAction(pc.ActionId, s.enact.root) || !accepted(s, id, pc, ep, stake) {
+		return
+	}
+
+	upd := pc.ParamUpdate
+	if err := s.enact.params.ApplyUpdate(&upd); err != nil {
+		return
+	}
+	p := s.proposals[id]
+	p.enacted, p.enactedAt = true, ep
+	s.proposals[id] = p
+	root := id
+	s.enact.root = &root
+}
+
+// ratifyFork ratifies the hard fork id when it names the hard-fork root
+// and the committee, the DReps and the pools accept it (Ratify.lagda.md
+// threshold: CC, P4 and Q4), and reports whether it did. A pool that did
+// not vote counts as no on a hard fork whatever its reward account
+// delegates to (AcceptedBySPO defaultVote), which poolTally does for
+// every action.
+func ratifyFork(s *certState, id common.GovActionId, hf *common.HardForkInitiationGovAction, ep uint64, stake map[common.Blake2b224]uint64) bool {
+	pp := &s.enact.params
+	if !sameAction(hf.ActionId, s.enact.hardFork) || !committeeTally(s, id, ep).meets(committeeQuorum) {
+		return false
+	}
+
+	if !drepTally(s, id, stake).meets(drepForkThreshold(pp)) || !poolTally(s, id).meets(pp.PoolVotingThresholds.HardForkInitiation.Rat) {
+		return false
+	}
+
+	p := s.proposals[id]
+	p.enacted, p.enactedAt = true, ep
+	s.proposals[id] = p
+	root := id
+	s.enact.hardFork = &root
+	s.enact.fork = &pendingFork{major: hf.ProtocolVersion.Major, minor: hf.ProtocolVersion.Minor, at: ep + 1}
+	return true
+}
+
+// drepForkThreshold is P4, except during the Conway bootstrap phase
+// (major 9), when DRep thresholds are zero and only the committee and the
+// pools decide (formal-ledger-specifications ConwayBootstrap.md). The
+// devnet starts at 10, past it.
+func drepForkThreshold(pp *conway.ConwayProtocolParameters) *big.Rat {
+	if pp.ProtocolVersion.Major < bootstrapEnd {
+		return new(big.Rat)
+	}
+	return pp.DRepVotingThresholds.HardForkInitiation.Rat
+}
+
+// bootstrapEnd is the first major version after the Conway bootstrap
+// phase.
+const bootstrapEnd = 10
 
 // accepted reports whether the change's votes meet every threshold that
 // applies to it.

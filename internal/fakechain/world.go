@@ -47,7 +47,17 @@ type world struct {
 func (w *world) check(tx *conway.ConwayTransaction, slot uint64, view *overlay) []Failure {
 	w.view, w.ls.certs = view.get, view.certs
 	defer func() { w.view, w.ls.certs = nil, nil }()
-	return validate(tx, slot, w.ls, w.pp)
+	return validate(tx, slot, w.ls, w.rules(view.certs))
+}
+
+// rules is the configured protocol parameters at the protocol version s
+// has enacted: the version the ledger rules (gouroboros gates its PV11
+// rules on it) and the HardForkInitiation pvCanFollow check read. Other
+// enacted parameter changes do not reach validation.
+func (w *world) rules(s *certState) *conway.ConwayProtocolParameters {
+	pp := *w.pp
+	pp.ProtocolVersion = s.enact.params.ProtocolVersion
+	return &pp
 }
 
 func loadGenesis(w *world, gs []GenesisOutput) error {
@@ -73,8 +83,8 @@ func loadGenesis(w *world, gs []GenesisOutput) error {
 // rules read: UTxO lookup, network id and slot arithmetic here, delegation
 // and governance state in ledgerView.
 //
-// The purpose roots are the last enacted parameter change of the cert state
-// being checked; the fake enacts no other purpose.
+// The purpose roots are the last enacted parameter change and hard fork of
+// the cert state being checked; the fake enacts no other purpose.
 func newLedgerView(w *world) *ledgerView {
 	lv := &ledgerView{}
 	g := w.cfg.Slots
@@ -96,7 +106,7 @@ func newLedgerView(w *world) *ledgerView {
 		}).
 		WithConstitutionValue(&common.Constitution{}).
 		WithGovPurposeRoots(func() (*common.GovPurposeRoots, error) {
-			return &common.GovPurposeRoots{PParamUpdate: lv.certs.enact.root}, nil
+			return &common.GovPurposeRoots{PParamUpdate: lv.certs.enact.root, HardFork: lv.certs.enact.hardFork}, nil
 		}).
 		Build()
 	lv.MockLedgerState = ls
