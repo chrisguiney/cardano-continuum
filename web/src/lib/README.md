@@ -7,7 +7,8 @@ Non-visual code.
   `paging.ts`, `search.ts`, `controls.ts`.
 - Types: `types.ts` mirrors the JSON of `internal/httpapi`; `extypes.ts` the
   explorer's responses.
-- Routing: `router.ts` (`parseRoute` validates each route's argument), `nav.ts`.
+- Routing: `router.ts` (`parseRoute` validates each route's argument), `nav.ts` (the
+  sidebar's groups), `sidebar.ts` (remembered collapsed state).
 - Per-view logic: `actorcols.ts`, `actordetail.ts`, `adversaries.ts`,
   `chance.ts`, `explorer.ts`, `findings.ts`, `forks.ts`, `governance.ts`,
   `govdetail.ts`, `markets.ts`.

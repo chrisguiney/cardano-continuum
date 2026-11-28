@@ -1,14 +1,18 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { getJSON } from "./lib/api";
-import { navigate, parseRoute, redirectFor } from "./lib/router";
+import { parseRoute, redirectFor } from "./lib/router";
 import { Overview } from "./views/Overview";
 import { SearchBox } from "./views/SearchBox";
 import { Note } from "./views/common";
 import { EngineProvider, StartupBanner, useEngine } from "./views/startup";
 import { loadStyle, saveStyle, type Style } from "./lib/appearance";
 import { StyleSelect } from "./views/StyleSelect";
-import { navFor, type Capabilities } from "./lib/nav";
+import type { Capabilities } from "./lib/nav";
+import { usePoll } from "./lib/hooks";
+import type { FindingPage } from "./lib/types";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { AppSidebar } from "./views/AppSidebar";
 
 // Every view but the overview loads on first visit, so the landing page does
 // not wait for the explorer's or the controls' code.
@@ -86,64 +90,54 @@ function Shell() {
   const [style, chooseStyle] = useStyle();
   const controls = caps.controls;
   const route = parseRoute(path);
-  const nav = navFor(caps);
-  const active = (to: string) => (to === "/" ? path === "/" : path === to || path.startsWith(to + "/"));
+  const findings = usePoll<FindingPage>("/api/findings?limit=1&known=false", 10000);
 
   return (
     <TooltipProvider>
-      <a href="#main" className="absolute -left-[9999px] z-10 rounded-md bg-card p-2 focus:top-2 focus:left-2">Skip to content</a>
-      <header className="flex flex-wrap items-center gap-4 border-b bg-card px-4 py-2">
-        <strong className="mr-auto tracking-wide lg:mr-0">continuum</strong>
-        <nav aria-label="Views" className="order-last flex basis-full flex-wrap gap-1 lg:order-none lg:basis-auto lg:flex-1">
-          {nav.map(([to, label]) => (
-            <a
-              key={to}
-              href={to}
-              aria-current={active(to) ? "page" : undefined}
-              className="rounded-md px-3 py-1.5 hover:bg-accent aria-[current=page]:bg-primary aria-[current=page]:font-semibold aria-[current=page]:text-primary-foreground"
-              onClick={(e) => {
-                if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-                e.preventDefault();
-                navigate(to);
-              }}
-            >
-              {label}
-            </a>
-          ))}
-        </nav>
-        <div className="ml-auto flex flex-wrap items-center gap-4">
-          {caps.explorer && <SearchBox />}
-          <StyleSelect style={style} onChange={chooseStyle} />
+      <SidebarProvider>
+        <a href="#main" className="absolute -left-[9999px] z-10 rounded-md bg-card p-2 focus:top-2 focus:left-2">Skip to content</a>
+        <div className="flex min-h-screen">
+          <AppSidebar path={path} caps={caps} newFindings={findings.data?.total ?? 0} />
+          <div className="min-w-0 flex-1">
+            <header className="flex flex-wrap items-center gap-4 border-b bg-card px-4 py-1.5">
+              <SidebarTrigger />
+              <strong className="tracking-wide md:hidden">continuum</strong>
+              <div className="ml-auto flex flex-wrap items-center gap-4">
+                {caps.explorer && <SearchBox />}
+                <StyleSelect style={style} onChange={chooseStyle} />
+              </div>
+            </header>
+          <main id="main" className="mx-auto max-w-[1200px] px-4 pb-12">
+            <StartupBanner />
+            <Suspense fallback={<Note>Loading…</Note>}>
+              {route.name === "overview" && <Overview />}
+              {route.name === "actors" && <Actors />}
+              {route.name === "actor" && <Actor id={route.id} />}
+              {route.name === "nodes" && <Nodes />}
+              {route.name === "node" && <Nodes name={route.key} />}
+              {route.name === "pools" && <StakePools />}
+              {route.name === "pool" && <StakePools id={route.key} />}
+              {route.name === "governance" && <Governance />}
+              {route.name === "markets" && <Markets />}
+              {route.name === "govaction" && <GovAction tx={route.tx} index={route.index} />}
+              {route.name === "decisions" && <Decisions />}
+              {route.name === "findings" && <Findings />}
+              {route.name === "adversaries" && <Adversaries />}
+              {route.name === "explorer" && <Explorer />}
+              {route.name === "contracts" && <Contracts />}
+              {route.name === "xblock" && <ExBlock id={route.key} />}
+              {route.name === "xtx" && <ExTx id={route.key} />}
+              {route.name === "xaddr" && <ExAddress addr={route.key} />}
+              {route.name === "xepoch" && <ExEpoch n={route.n} />}
+              {route.name === "xpool" && <Explorer pool={route.key} />}
+              {route.name === "help" && <Help />}
+              {route.name === "controls" && (controls ? <Controls /> : <Note className="p-4 text-center">Controls are not enabled on this server (start it with --controls).</Note>)}
+              {route.name === "notfound" && <Note className="p-4 text-center">No such page.</Note>}
+            </Suspense>
+          </main>
+          </div>
         </div>
-      </header>
-      <main id="main" className="mx-auto max-w-[1200px] px-4 pb-12">
-        <StartupBanner />
-        <Suspense fallback={<Note>Loading…</Note>}>
-          {route.name === "overview" && <Overview />}
-          {route.name === "actors" && <Actors />}
-          {route.name === "actor" && <Actor id={route.id} />}
-          {route.name === "nodes" && <Nodes />}
-          {route.name === "node" && <Nodes name={route.key} />}
-          {route.name === "pools" && <StakePools />}
-          {route.name === "pool" && <StakePools id={route.key} />}
-          {route.name === "governance" && <Governance />}
-          {route.name === "markets" && <Markets />}
-          {route.name === "govaction" && <GovAction tx={route.tx} index={route.index} />}
-          {route.name === "decisions" && <Decisions />}
-          {route.name === "findings" && <Findings />}
-          {route.name === "adversaries" && <Adversaries />}
-          {route.name === "explorer" && <Explorer />}
-          {route.name === "contracts" && <Contracts />}
-          {route.name === "xblock" && <ExBlock id={route.key} />}
-          {route.name === "xtx" && <ExTx id={route.key} />}
-          {route.name === "xaddr" && <ExAddress addr={route.key} />}
-          {route.name === "xepoch" && <ExEpoch n={route.n} />}
-          {route.name === "xpool" && <Explorer pool={route.key} />}
-          {route.name === "help" && <Help />}
-          {route.name === "controls" && (controls ? <Controls /> : <Note className="p-4 text-center">Controls are not enabled on this server (start it with --controls).</Note>)}
-          {route.name === "notfound" && <Note className="p-4 text-center">No such page.</Note>}
-        </Suspense>
-      </main>
+      </SidebarProvider>
     </TooltipProvider>
   );
 }

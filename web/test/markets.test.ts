@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { bids, bounds, currencies, flowRows, indexed, latestMid, linePath, positionLine, splitShare } from "../src/lib/markets";
-import { navFor } from "../src/lib/nav";
+import { navGroups } from "../src/lib/nav";
 import { parseRoute } from "../src/lib/router";
 import type { MarketPoint, MarketsView } from "../src/lib/types";
 
@@ -11,7 +11,7 @@ const q = (at: number, usd: number, eur: number): MarketPoint => ({
 describe("markets view", () => {
   it("routes /markets and lists it in the menu", () => {
     expect(parseRoute("/markets")).toEqual({ name: "markets" });
-    expect(navFor({ controls: false, explorer: false }).map((n) => n[0])).toContain("/markets");
+    expect(navGroups({ controls: false, explorer: false }).flatMap((g) => g.items.map((n) => n.path))).toContain("/markets");
   });
 
   it("rebases each currency to 100 at its first quote", () => {

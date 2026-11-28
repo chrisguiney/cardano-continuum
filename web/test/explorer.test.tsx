@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup as render } from "react-dom/server";
-import { navFor } from "../src/lib/nav";
+import { isActive, navGroups } from "../src/lib/nav";
 import { parseRoute } from "../src/lib/router";
 import { blocksPath, forkLines, lovelaceText, usage } from "../src/lib/explorer";
 import { runSearch } from "../src/lib/search";
@@ -22,19 +22,41 @@ const ADDR = "addr_test1qpmtp5t0t5y6cqkaz7rfsyrx7mld77kpvksgkwm0p7en7qum7a589n30
 const limits = { max_mem: 14_000_000, max_steps: 10_000_000_000, max_bytes: 90112 };
 const row = { height: 7, slot: 70, epoch: 1, time_ms: 70_000, hash: H1, prev: H2, issuer: ISSUER, txs: 2, size: 2048, fees: 340_000, ex_mem: 1_400_000, ex_steps: 100_000_000 };
 
-describe("top menu", () => {
-  it("ends with Help however many views the server enables", () => {
+describe("sidebar menu", () => {
+  const flat = (c: { controls: boolean; explorer: boolean }) => navGroups(c).flatMap((g) => g.items);
+
+  it("starts with Overview, ends with Help and gates by capability", () => {
     for (const controls of [false, true]) {
       for (const explorer of [false, true]) {
-        const nav = navFor({ controls, explorer });
-        expect(nav[nav.length - 1]).toEqual(["/help", "Help"]);
-        expect(nav.some(([p]) => p === "/explorer")).toBe(explorer);
-        expect(nav.some(([p]) => p === "/controls")).toBe(controls);
-        expect(new Set(nav.map(([p]) => p)).size).toBe(nav.length);
-        expect(nav).toContainEqual(["/nodes", "Nodes"]);
-        expect(nav).toContainEqual(["/pools", "Stake pools"]);
+        const groups = navGroups({ controls, explorer });
+        const nav = flat({ controls, explorer });
+        expect(groups[0]).toEqual({ items: [{ path: "/", label: "Overview" }] });
+        expect(groups[groups.length - 1]).toEqual({ items: [{ path: "/help", label: "Help" }] });
+        expect(nav.some((n) => n.path === "/explorer")).toBe(explorer);
+        expect(nav.some((n) => n.path === "/contracts")).toBe(explorer);
+        expect(nav.some((n) => n.path === "/controls")).toBe(controls);
+        expect(groups.some((g) => g.label === "Run")).toBe(controls);
+        expect(groups.every((g) => g.items.length > 0)).toBe(true);
+        expect(new Set(nav.map((n) => n.path)).size).toBe(nav.length);
       }
     }
+  });
+
+  it("groups the pages under headings", () => {
+    const heads = navGroups({ controls: true, explorer: true }).filter((g) => g.label).map((g) => [g.label, g.items.map((i) => i.label)]);
+    expect(heads).toEqual([
+      ["Network", ["Nodes", "Stake pools", "Explorer"]],
+      ["Activity", ["Actors", "Decisions", "Markets", "Contracts", "Governance"]],
+      ["Testing", ["Findings", "Adversaries"]],
+      ["Run", ["Controls"]],
+    ]);
+  });
+
+  it("marks a page and its children active, but not Overview everywhere", () => {
+    expect(isActive("/", "/")).toBe(true);
+    expect(isActive("/actors/3", "/")).toBe(false);
+    expect(isActive("/actors/3", "/actors")).toBe(true);
+    expect(isActive("/actorsx", "/actors")).toBe(false);
   });
 });
 

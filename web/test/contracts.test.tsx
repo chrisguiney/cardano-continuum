@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup as render } from "react-dom/server";
-import { navFor } from "../src/lib/nav";
+import { navGroups } from "../src/lib/nav";
 import { parseRoute } from "../src/lib/router";
 import { decisionScripts, scriptRows, unitsText } from "../src/lib/contracts";
 import type { ContractsView, ScriptRun } from "../src/lib/contracts";
@@ -83,8 +83,8 @@ describe("contracts page", () => {
 
   it("has a route and a menu entry beside the explorer", () => {
     expect(parseRoute("/contracts")).toEqual({ name: "contracts" });
-    expect(navFor({ controls: false, explorer: true })).toContainEqual(["/contracts", "Contracts"]);
-    expect(navFor({ controls: false, explorer: false }).some(([p]) => p === "/contracts")).toBe(false);
+    expect(navGroups({ controls: false, explorer: true }).flatMap((g) => g.items)).toContainEqual({ path: "/contracts", label: "Contracts" });
+    expect(navGroups({ controls: false, explorer: false }).flatMap((g) => g.items).some((n) => n.path === "/contracts")).toBe(false);
   });
 });
 
