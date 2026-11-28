@@ -50,5 +50,6 @@ func (t *Tips) Poll(ctx context.Context, l Loop) error {
 	if err != nil {
 		return err
 	}
-	return l.Feed(ctx, eventlog.Record{At: l.Now(), Kind: eventlog.KindMonitorSnapshot, Body: body})
+	// Stamped at the run's clock, as blocks are (View.Poll).
+	return l.Feed(ctx, eventlog.Record{At: now, Kind: eventlog.KindMonitorSnapshot, Body: body})
 }

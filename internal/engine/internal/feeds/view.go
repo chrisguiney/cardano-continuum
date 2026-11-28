@@ -91,7 +91,9 @@ func (v *View) Poll(ctx context.Context, l Loop) error {
 	if err != nil {
 		return err
 	}
-	return l.Feed(ctx, eventlog.Record{At: l.Now(), Kind: eventlog.KindMonitorSnapshot, Body: body})
+	// Stamped at the run's clock, as blocks are: the monitors judge the
+	// answer by it, and the engine's own time can lag a block it applied.
+	return l.Feed(ctx, eventlog.Record{At: now, Kind: eventlog.KindMonitorSnapshot, Body: body})
 }
 
 func samePoint(a, b eventlog.ChainPoint) bool {
