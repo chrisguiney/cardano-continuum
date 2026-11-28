@@ -659,3 +659,29 @@ func jointVote(t *testing.T, w *world, e *Engine) {
 		t.Fatalf("a vote authorising its own hot key refused at 11.0: %v", err)
 	}
 }
+
+// A live-like run (faucet-funded, the pools a profile population's) whose
+// pool actors operate the genesis pools, as liveConfig now has them do,
+// files no stake_floor_breached and its SPO votes carry stake. Left
+// unoperated (GenesisPools 0, what --pools 0 gave a live run), the
+// genesis pools' stake is invisible to the view: the pools it knows hold
+// none, so the floor reads as breached every epoch and every SPO vote
+// carries no power. One cause, two symptoms.
+func TestLiveLikeRunCreditsGenesisPools(t *testing.T) {
+	t.Parallel()
+	run := func(genesis int) (int, uint64) {
+		cfg := populationConfig(t, 4, populationFile(t, govYAML))
+		cfg.Faucet, cfg.RefillEvery = 50_000_000_000_000, 8
+		cfg.GenesisPools = genesis
+		p := cleanRun(t, newWorld(t, cfg), 6*3600*1000)
+		return len(verdictFindings(t, p.log, oracle.FloorBreached)), readGov(t, p.log).power["spo"]
+	}
+
+	if n, power := run(3); n != 0 || power == 0 {
+		t.Fatalf("genesis pools operated: %d stake_floor_breached, SPO power %d; want none and some", n, power)
+	}
+
+	if n, _ := run(0); n == 0 {
+		t.Fatal("genesis pools unoperated: no stake_floor_breached; the test no longer shows the cause")
+	}
+}
