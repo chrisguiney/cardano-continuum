@@ -1,16 +1,17 @@
 package oracle
 
 import (
-	"github.com/blinklabs-io/gouroboros/ledger/common"
-
 	"bytes"
 	"slices"
 	"testing"
+
+	"github.com/blinklabs-io/gouroboros/ledger/common"
 
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/plan"
 	"github.com/chrisguiney/cardano-continuum/internal/policy"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
+	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 )
 
 const k = 3
@@ -68,7 +69,7 @@ func TestMonitorNames(t *testing.T) {
 	for _, m := range Monitors(k, guard(t)) {
 		names = append(names, m.Name())
 	}
-	want := []string{"value", "paid_once", "reservations", "settled", "view", "liveness", "tips", "stake_floor", "rogue", "block_budget"}
+	want := []string{"value", "paid_once", "reservations", "settled", "view", "liveness", "tips", "stake_floor", "rogue", "block_budget", "protocol"}
 	if !slices.Equal(names, want) {
 		t.Fatalf("monitors = %v, want %v", names, want)
 	}
@@ -217,6 +218,37 @@ func TestViewMatchesNode(t *testing.T) {
 	}
 	if len(fs[0].Nodes) != 1 || fs[0].Nodes[0].Pool != "p1" {
 		t.Fatalf("node not recorded: %+v", fs[0].Nodes)
+	}
+}
+
+// A node's protocol version is the one the chain's ratified hard forks put
+// in force in the epoch it answered for; a node still at the old version
+// after the fork's boundary (old rules: it validates differently from the
+// rest) or ahead of it is a fatal finding. An answer the engine cannot
+// judge yet, or one without a version, is not.
+func TestProtocolVersionAgrees(t *testing.T) {
+	t.Parallel()
+	v10, v11 := protocol.Version{Major: 10}, protocol.Version{Major: 11}
+	at := ViewCheck{Node: node("dingo", "p2"), At: pt(10, 1), NodeAt: pt(10, 1), Epoch: 4, Version: &v11, Want: &v11}
+	quiet(t, "protocol", Snapshot{Views: []ViewCheck{at}})
+
+	unjudged := at
+	unjudged.Want = nil
+	quiet(t, "protocol", Snapshot{Views: []ViewCheck{unjudged}})
+
+	silent := at
+	silent.Version = nil
+	quiet(t, "protocol", Snapshot{Views: []ViewCheck{silent}})
+
+	stale := at
+	stale.Version = &v10
+	f := fires(t, "protocol", Snapshot{Views: []ViewCheck{stale}}, ProtocolMismatch, Fatal)
+	if !hasFact(f, "pool", "p2") || !hasFact(f, "node", "10.0") || !hasFact(f, "want", "11.0") || !hasFact(f, "epoch", "4") {
+		t.Fatalf("evidence %+v", f.Facts)
+	}
+
+	if len(f.Nodes) != 1 || f.Nodes[0].Impl != "dingo" {
+		t.Fatalf("node not recorded: %+v", f.Nodes)
 	}
 }
 

@@ -208,6 +208,30 @@ func checkViews(s Snapshot) []Finding {
 	return out
 }
 
+// checkProtocol: every node is at the protocol version the ratified hard
+// forks put in force in the epoch it answered for. The engine's view moves
+// the version at the boundary after the one that ratified the fork, as the
+// ledger enacts it (models/specs/governance-change HardFork.tla,
+// VersionAgrees). The key leaves the epoch out, so a node stuck on the old
+// version is one finding, however many answers show it.
+func checkProtocol(s Snapshot) []Finding {
+	var out []Finding
+	for _, v := range s.Views {
+		if v.Version == nil || v.Want == nil || *v.Version == *v.Want {
+			continue
+		}
+		out = append(out, Finding{
+			Kind: ProtocolMismatch, Severity: Fatal,
+			Summary: fmt.Sprintf("%s on %s is at protocol version %s in epoch %d; the ratified hard forks put the chain at %s",
+				v.Node.Impl, v.Node.Pool, v.Version, v.Epoch, v.Want),
+			Facts: []Fact{key("pool", v.Node.Pool), key("node", v.Version.String()), key("want", v.Want.String()),
+				note("epoch", uitoa(v.Epoch))},
+			Nodes: []Node{v.Node},
+		})
+	}
+	return out
+}
+
 // checkLiveness: an epoch passed with no block, so the ledger never runs
 // another epoch transition (stake-floor NoFreeze, contract rule 14).
 func checkLiveness(s Snapshot) []Finding {

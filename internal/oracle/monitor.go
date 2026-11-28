@@ -7,6 +7,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/plan"
 	"github.com/chrisguiney/cardano-continuum/internal/policy"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
+	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 )
 
 // Snapshot is everything the monitors read, assembled by the engine at one
@@ -117,6 +118,12 @@ type ViewCheck struct {
 	// node answered. Only answers at the same point are comparable.
 	At, NodeAt    chain.Point
 	Engine, Chain map[population.ActorID]uint64
+	// Version is the protocol version the node reported in epoch Epoch,
+	// nil when it reported none; Want is the version the engine's view of
+	// the ratified hard forks puts in force then, nil when the view has not
+	// reached that epoch and cannot judge it.
+	Version, Want *protocol.Version
+	Epoch         uint64
 }
 
 // Balances sums utxos per owner; outputs owner does not name are left out.
@@ -159,6 +166,7 @@ func Monitors(k uint64, g policy.Guard) []Monitor {
 		monitor{"stake_floor", func(s Snapshot) []Finding { return checkFloor(s, g) }},
 		monitor{"rogue", checkRogue},
 		monitor{"block_budget", checkBudget},
+		monitor{"protocol", checkProtocol},
 	}
 }
 

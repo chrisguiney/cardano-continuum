@@ -118,6 +118,11 @@ const (
 	// more execution units than maxBlockExUnits, which the BBODY rule
 	// forbids (cardano-ledger Alonzo/Rules/Bbody.hs TooManyExUnits).
 	BlockOverBudget Kind = "block_exunits_over_limit"
+	// ProtocolMismatch: a node's protocol version is not the one the
+	// chain's ratified hard forks put in force in that epoch. A node
+	// still at the old version keeps validating under the old rules,
+	// and the network can split on any rule the fork changed.
+	ProtocolMismatch Kind = "protocol_version_mismatch"
 )
 
 // Node is one node involved in a finding: its implementation, the pool it
@@ -281,6 +286,7 @@ func Kinds() []Kind {
 		UnexpectedAccept, UnexpectedReject, WrongClass, Unclassified, VerdictSplit,
 		ValueNotConserved, PaidTwice, ReservationLeaked, ReservationDouble, Unreserved,
 		SettledBack, ViewMismatch, Frozen, DeepFork, FloorBreached, RogueAdopted, BlockOverBudget,
+		ProtocolMismatch,
 	}
 }
 
