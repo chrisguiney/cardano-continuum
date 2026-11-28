@@ -1,8 +1,9 @@
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { epochLink, bytesText, lovelaceText, poolLink } from "../lib/explorer";
 import type { EpochView } from "../lib/extypes";
 import { count } from "../lib/format";
 import { usePoll } from "../lib/hooks";
-import { ErrorNote, Link } from "./common";
+import { ErrorNote, Link, Mono, Muted, Note, TableFrame, Title } from "./common";
 import { Facts, Section } from "./exparts";
 
 /** EpochBody summarises an epoch: totals, and each pool's blocks against an equal share. */
@@ -19,21 +20,21 @@ export function EpochBody({ e }: { e: EpochView }) {
         ]} />
       </Section>
       <Section id="e-pools" title="Blocks per pool against expected">
-        <p className="muted">The explorer does not see stake, so expected is an equal share of the epoch's blocks among the pools.</p>
-        <div className="table-wrap">
-          <table>
-            <thead><tr><th>Pool</th><th>Blocks</th><th>Expected</th></tr></thead>
-            <tbody>
+        <Note>The explorer does not see stake, so expected is an equal share of the epoch's blocks among the pools.</Note>
+        <TableFrame>
+          <Table>
+            <TableHeader><TableRow><TableHead>Pool</TableHead><TableHead>Blocks</TableHead><TableHead>Expected</TableHead></TableRow></TableHeader>
+            <TableBody>
               {e.pools.map((p) => (
-                <tr key={p.pool}>
-                  <td><Link to={poolLink(p.pool)}>{p.resolved ? <>{p.resolved.name} <span className="muted">({p.resolved.impl})</span></> : <span className="mono" title={p.pool}>{p.pool.slice(0, 12)}…</span>}</Link></td>
-                  <td>{p.blocks}</td>
-                  <td>{p.expected.toFixed(1)}</td>
-                </tr>
+                <TableRow key={p.pool}>
+                  <TableCell><Link to={poolLink(p.pool)}>{p.resolved ? <>{p.resolved.name} <Muted>({p.resolved.impl})</Muted></> : <Mono title={p.pool}>{p.pool.slice(0, 12)}…</Mono>}</Link></TableCell>
+                  <TableCell>{p.blocks}</TableCell>
+                  <TableCell>{p.expected.toFixed(1)}</TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </TableBody>
+          </Table>
+        </TableFrame>
       </Section>
     </>
   );
@@ -43,11 +44,11 @@ export function ExEpoch({ n }: { n: number }) {
   const { data, error } = usePoll<EpochView>(`/api/explorer/epochs/${n}`, 10_000);
   return (
     <>
-      <h1>Epoch {n}</h1>
-      <p className="muted">
+      <Title>Epoch {n}</Title>
+      <Note>
         <Link to="/explorer">All blocks</Link>
         {n > 0 && <> · <Link to={epochLink(n - 1)}>Previous epoch</Link></>} · <Link to={epochLink(n + 1)}>Next epoch</Link>
-      </p>
+      </Note>
       <ErrorNote error={error} />
       {data && <EpochBody e={data} />}
     </>
