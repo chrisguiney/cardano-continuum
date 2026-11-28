@@ -11,8 +11,8 @@ every cent is accounted for, and a released order gives its hold back.
 Run it with `make models` (all models) or
 `models/scripts/run-model.sh specs/fiat-escrow`.
 
-Models cardano-continuum at `881fdee` (written first; the code map names the
-functions the money code then implemented to it).
+Models cardano-continuum at `433d1fd`. The model was written first, at
+`881fdee`, and the money code implemented to it.
 
 ## The result in one paragraph
 
@@ -46,7 +46,7 @@ rule breaks an invariant, as the [configs](#configs) show.
 | `Place` | internal/engine/internal/cohort/money.go `Money.Fund` (a scored buy), internal/engine/intents.go `sizeTrade` (a purchase from income) | an order holds its cents in `Order.Cents` |
 | `Settle` | internal/engine/internal/cohort/money.go `Money.Settled`, called from internal/engine/internal/cohort/desk.go `Desk.Settled` | the held cents are spent |
 | `Release` | internal/engine/internal/pay/retry.go (release and give up drop the pending record) | the hold goes with the record |
-| `Pay`, `Earn` | internal/engine/internal/household/household.go `Month`, applied by internal/engine/internal/cohort/money.go `Money.month` | a payday and the bills, paid from available fiat |
+| `Pay`, `Earn` | internal/household/household.go `Month`, applied by internal/engine/internal/cohort/money.go `Money.month` | a payday and the bills, paid from available fiat |
 | `Restart` | internal/engine/internal/cohort/money.go `moneyOf`/`purseOf`, internal/engine/internal/cohort/people.go `People.Save`/`Load` | fiat restored; holds come back with the pay section's orders |
 | `Available` | internal/engine/internal/cohort/money.go `Money.Held`, `Money.Available` | fiat less the open buys' Cents |
 
