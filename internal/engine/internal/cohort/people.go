@@ -39,6 +39,10 @@ type Person struct {
 	Trader *Trader
 	// Gone marks a human whose every wallet is abandoned.
 	Gone bool
+	// Purse is the human's money; nil without a market.
+	Purse *Purse
+	// Fiat0 is the cents the human started with.
+	Fiat0 int64
 }
 
 // People is the humans who own the wallets. Without a humans section it
@@ -231,6 +235,7 @@ func (pp *People) Born(at sched.Time, a population.Actor) {
 		Target:     h.Target,
 		Currency:   currency,
 		Spread:     h.Spread,
+		Money:      householdOf(h),
 	})
 }
 
@@ -281,6 +286,7 @@ func (pp *People) Save() []wire.HumanRec {
 
 		out = append(out, wire.HumanRec{
 			Wallets:    ws,
+			Money:      moneyOf(h),
 			ID:         uint64(h.ID),
 			Motivation: string(h.Motivation),
 			Tier:       h.Tier,
@@ -310,6 +316,8 @@ func (pp *People) Load(rs []wire.HumanRec) {
 			Currency:   r.Currency,
 			Spread:     r.Spread,
 			Gone:       r.Gone,
+			Purse:      purseOf(r.Money),
+			Fiat0:      fiat0(r.Money),
 		})
 	}
 }

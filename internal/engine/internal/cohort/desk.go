@@ -18,6 +18,8 @@ import (
 type Desk struct {
 	// m is the market the desk trades on.
 	m *Market
+	// money is the owners' fiat, which a settled trade moves.
+	money *Money
 }
 
 // Position is the wallet's market position at t.
@@ -105,6 +107,7 @@ func (d *Desk) Settled(at sched.Time, p *wire.Pending) {
 		tr.Units -= min(tr.Units, p.Amount)
 	}
 	t.Basis = tr.Basis
+	t.Human, t.Cents = d.money.Settled(p)
 	tr.Venue = venueOf(d.m.path.Params(), o.Exchange)
 	d.m.r.env.Emit.Emit(at, wire.KindTraded, population.ActorID(o.Wallet), t)
 }

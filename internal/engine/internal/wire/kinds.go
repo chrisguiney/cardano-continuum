@@ -27,6 +27,12 @@ const (
 	// in a run with a humans section.
 	KindHumanBorn = "HumanBorn"
 	KindHumanLeft = "HumanLeft"
+	// KindIncome, KindExpense, KindEmployment and KindInvested are a
+	// human's household money.
+	KindIncome     = "Income"
+	KindExpense    = "Expense"
+	KindEmployment = "Employment"
+	KindInvested   = "Invested"
 )
 
 // DecisionKinds returns every decision kind the engine emits.
@@ -35,6 +41,6 @@ func DecisionKinds() []string {
 		KindSpawned, KindTransition, KindIntentChosen, KindSubmitted, KindSkipped, KindReleased,
 		KindConfirmed, KindRefused, KindGaveUp, KindRefill, KindGuarded, KindPoolTier, KindRepair,
 		KindIncident, KindControlled, KindImageChange, KindDeployed, KindProtocol, KindQuote, KindTraded,
-		KindTreasury, KindHumanBorn, KindHumanLeft,
+		KindTreasury, KindHumanBorn, KindHumanLeft, KindIncome, KindExpense, KindEmployment, KindInvested,
 	}
 }

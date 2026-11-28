@@ -402,4 +402,40 @@ func TestDeterminismHumans(t *testing.T) {
 	if len(owners) == 0 || multi == 0 {
 		t.Fatalf("owners %v: want humans, some with several wallets", owners)
 	}
+
+	// Fiat is conserved: what the humans hold is what they started with,
+	// plus pay and sales, less bills and purchases.
+	var flow int64
+	kinds := map[string]int{}
+	for _, rec := range logRecords(t, ref.log) {
+		kinds[rec.Kind]++
+		switch rec.Kind {
+		case KindIncome:
+			var b Income
+			if err := eventlog.Decode(rec.Body, &b); err != nil {
+				t.Fatal(err)
+			}
+			flow += b.Cents
+		case KindExpense:
+			var b Expense
+			if err := eventlog.Decode(rec.Body, &b); err != nil {
+				t.Fatal(err)
+			}
+			flow -= b.Paid
+		case KindTraded:
+			var b Traded
+			if err := eventlog.Decode(rec.Body, &b); err != nil {
+				t.Fatal(err)
+			}
+			if b.Side == "buy" {
+				flow -= b.Cents
+			} else {
+				flow += b.Cents
+			}
+		}
+	}
+
+	if s := r.Summary(); s.Fiat != s.Fiat0+flow || kinds[KindIncome] == 0 || kinds[KindInvested] == 0 {
+		t.Fatalf("fiat %d, want start %d + flows %d; records %v", s.Fiat, s.Fiat0, flow, kinds)
+	}
 }

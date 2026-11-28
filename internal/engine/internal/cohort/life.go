@@ -21,6 +21,8 @@ type Life struct {
 	market *Market
 	// people decides whose each new wallet is.
 	people *People
+	// money starts a new human's household.
+	money *Money
 }
 
 // Spawn adds an actor and schedules its first hazard. A wallet's primary
@@ -37,6 +39,7 @@ func (l *Life) Spawn(p profile.Profile, at sched.Time, currency int) population.
 	st := l.r.Register(a, p)
 	l.market.Join(a, st, currency)
 	if founded {
+		l.money.Begin(at, l.people.Get(a.Owner))
 		l.people.Born(at, a)
 	}
 

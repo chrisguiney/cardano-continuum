@@ -216,7 +216,7 @@ func newEmpty(cfg Config) (*Engine, error) {
 		pace.Env{Sched: evsched{&e.clk}, Knobs: hooks{e}, Chain: e.win, Flight: hooks{e}, Agenda: hooks{e}})
 	e.co = cohort.New(cohort.Spec{Seed: cfg.Seed, Census: cfg.Seed.Derive(censusStream), Slots: cfg.Slots, Proposer: proposerName,
 		ActorKeys: ks, RootKeys: rootKeys, Pools: gpools, PoolStake: cfg.GenesisPoolStake, Markets: cfg.Markets, Humans: cfg.Humans},
-		cohort.Env{Sched: evsched{&e.clk}, Emit: &e.jr, Chain: e.win, Att: hooks{e}, Pace: hooks{e}})
+		cohort.Env{Sched: evsched{&e.clk}, Emit: &e.jr, Chain: e.win, Att: hooks{e}, Pace: hooks{e}, Flight: e.pay})
 	e.jd = judge.New(judgeSpec(e, genesis), judgeEnv(e))
 	e.in = intent.New(intentSpec(e), intentEnv(e))
 	e.adv = attack.New(attackSpec(e), attackEnv(e))
@@ -296,11 +296,15 @@ type Summary struct {
 	// Wallets is how many wallets each human ever owned, by human ID; nil
 	// without a humans section.
 	Wallets []int
+	// Fiat and Fiat0 are the humans' fiat now and at their births, in
+	// cents summed over currencies.
+	Fiat, Fiat0 int64
 }
 
 // Summary is the engine's state at a glance.
 func (e *Engine) Summary() Summary {
 	sv := e.win.Saved()
+	fiat, fiat0 := e.co.Money.Totals()
 	return Summary{
 		Supply:  e.pay.Supply() + sv.Fees + sv.Foreign,
 		Inflow:  sv.Inflow,
@@ -308,6 +312,8 @@ func (e *Engine) Summary() Summary {
 		Pending: e.pay.Len(),
 		Actors:  e.co.Pop().Len(),
 		Wallets: e.co.Holdings(),
+		Fiat:    fiat,
+		Fiat0:   fiat0,
 	}
 }
 
@@ -424,6 +430,8 @@ func (e *Engine) run(ctx context.Context, at sched.Time, ev clock.Event) error {
 		return e.in.Deploy(at)
 	case clock.Fork:
 		return steer.ForkStep(ctx, at, e.cfg.HardFork, forkEnv{scenarioRoute{e}})
+	case clock.Money:
+		return (starter{e}).money(ctx, at, population.HumanID(ev.Actor))
 	case clock.Quote:
 		e.co.Market.Quote(at)
 	}

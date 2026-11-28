@@ -178,6 +178,11 @@ func (c evsched) Fork(at sched.Time) { c.Push(at, clock.Event{Kind: clock.Fork})
 // Quote implements cohort.Scheduler.
 func (c evsched) Quote(at sched.Time) { c.Push(at, clock.Event{Kind: clock.Quote}) }
 
+// Money implements cohort.Scheduler: the event's Actor carries the HumanID.
+func (c evsched) Money(at sched.Time, h population.HumanID) sched.Handle {
+	return c.Push(at, clock.Event{Kind: clock.Money, Actor: population.ActorID(h)})
+}
+
 func (c evsched) Birth(at sched.Time, idx int) sched.Handle {
 	return c.Push(at, clock.Event{Kind: clock.Birth, Birth: idx})
 }

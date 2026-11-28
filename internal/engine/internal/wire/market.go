@@ -37,6 +37,10 @@ type Order struct {
 	Primary  float64 `json:"primary"`
 	Fee      uint64  `json:"fee,omitzero"`
 	Gain     float64 `json:"gain"`
+	// Human is the wallet's owner, and Cents the fiat a buy holds in the
+	// owner's currency until it settles, in a run with humans.
+	Human uint64 `json:"human,omitzero"`
+	Cents int64  `json:"cents,omitzero"`
 }
 
 // Traded is the body of a Traded decision: an order's ADA settled K deep,
@@ -55,4 +59,8 @@ type Traded struct {
 	Rate     float64 `json:"rate"`
 	Basis    float64 `json:"basis"`
 	Gain     float64 `json:"gain,omitzero"`
+	// Human is the wallet's owner and Cents the fiat it paid or received
+	// in its own currency, in a run with humans.
+	Human uint64 `json:"human,omitzero"`
+	Cents int64  `json:"cents,omitzero"`
 }

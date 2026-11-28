@@ -14,6 +14,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/intent"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/window"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
+	"github.com/chrisguiney/cardano-continuum/internal/household"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/plan"
 	"github.com/chrisguiney/cardano-continuum/internal/policy"
@@ -34,6 +35,9 @@ func (s starter) intend(ctx context.Context, at sched.Time, a population.Actor, 
 	p, why := e.in.Prepare(at, a, in, r)
 	if p != nil {
 		p.GovType = string(gov)
+	}
+	if why == "" {
+		why = e.co.Money.Fund(p, intent.MinTrade)
 	}
 	if why == "" {
 		var err error
@@ -124,6 +128,110 @@ func (s starter) sweep(ctx context.Context, at sched.Time, id population.ActorID
 
 	if why != "" {
 		e.jr.Emit(at, KindSkipped, id, Skipped{Kind: "sweep", Why: why})
+	}
+	return nil
+}
+
+// money runs a human's money step and starts what it asks for: a move
+// out of savings and a forced sale when a bill went unpaid, then the
+// step's purchase. Each is a wallet's intent of its own, so each skips
+// alone.
+func (s starter) money(ctx context.Context, at sched.Time, h population.HumanID) error {
+	e := s.e
+	eff := e.co.Money.Step(at, h)
+	if eff.Move != 0 {
+		if err := s.shift(ctx, at, eff.Move, eff.From); err != nil {
+			return err
+		}
+	}
+
+	if eff.Sell > 0 && eff.From != 0 {
+		if err := s.trade(ctx, at, h, eff.From, eff.Sell, false, eff.Trend); err != nil {
+			return err
+		}
+	}
+
+	if eff.Buy > 0 && eff.Into != 0 {
+		return s.trade(ctx, at, h, eff.Into, eff.Buy, true, eff.Trend)
+	}
+	return nil
+}
+
+// trade starts a human's purchase of cents of ADA into wallet id, or its
+// forced sale of ADA from wallet id to raise cents. A purchase records an
+// Invested decision first. The order holds its cents (Money.Fund's rule)
+// and is sized at the venue's price, within what the venue (a buy) or the
+// wallet (a sale) can pay.
+func (s starter) trade(ctx context.Context, at sched.Time, h population.HumanID, id population.ActorID, cents int64, buy bool, trend float64) error {
+	e := s.e
+	a, _ := e.co.Get(id)
+	kind, label := profile.IntentSellADA, "forced_sale"
+	if buy {
+		kind, label = profile.IntentBuyADA, "invest"
+	}
+
+	p, why := e.in.Prepare(at, a, agenda.Intent{Kind: kind, Actor: id}, e.co.Rec(id).Draw(a, label))
+	if p != nil {
+		why = sizeTrade(e, p, h, cents, buy)
+	}
+
+	if why == "" && buy {
+		e.jr.Emit(at, KindInvested, id, Invested{Human: uint64(h), Wallet: uint64(id), Cents: p.Order.Cents, Style: string(e.co.People.Get(h).Purse.Budget.Style), Trend: trend})
+	}
+
+	if why == "" {
+		var err error
+		if why, err = s.start(ctx, at, p); err != nil {
+			return err
+		}
+	}
+
+	if why != "" {
+		e.jr.Emit(at, KindSkipped, id, Skipped{Kind: label, Why: why})
+	}
+	return nil
+}
+
+// sizeTrade sets a human's order to cents at its venue's price: a buy's
+// gross is what cents buy, within the venue's free ADA, and holds its cost
+// in cents; a sale sells what raises cents, within the wallet's spendable
+// balance. It returns why the order is too small to make.
+func sizeTrade(e *Engine, p *wire.Pending, h population.HumanID, cents int64, buy bool) string {
+	o := p.Order
+	if !buy {
+		bal := e.pay.Spendable(p.Actor)
+		amount := min(household.Lovelace(cents, o.Primary), bal-min(bal, feeHeadroom))
+		if amount < intent.MinTrade {
+			return "too little ADA to raise the shortfall"
+		}
+		p.Amount, o.Human = amount, uint64(h)
+		return ""
+	}
+
+	free := e.pay.Spendable(p.Actor)
+	gross := min(household.Lovelace(cents, o.Primary), free-min(free, feeHeadroom))
+	if gross < intent.MinTrade || gross <= o.Fee {
+		return "tranche below the minimum trade"
+	}
+	p.Amount, o.Human, o.Cents = gross-o.Fee, uint64(h), min(household.Hold(gross, o.Primary), cents)
+	return ""
+}
+
+// shift moves a savings wallet's ADA to its sibling to, so the sibling can
+// sell it: a savings wallet never trades itself.
+func (s starter) shift(ctx context.Context, at sched.Time, from, to population.ActorID) error {
+	e := s.e
+	a, _ := e.co.Get(from)
+	p, why := e.in.Prepare(at, a, agenda.Intent{Kind: profile.IntentTransfer, Actor: from, Target: to}, e.co.Rec(from).Draw(a, "shift"))
+	if p != nil {
+		var err error
+		if why, err = s.start(ctx, at, p); err != nil {
+			return err
+		}
+	}
+
+	if why != "" {
+		e.jr.Emit(at, KindSkipped, from, Skipped{Kind: "shift", Why: why})
 	}
 	return nil
 }

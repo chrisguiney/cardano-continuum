@@ -42,6 +42,13 @@ type (
 	Quote           = wire.Quote
 	Mid             = wire.Mid
 	Traded          = wire.Traded
+	HumanBorn       = wire.HumanBorn
+	HumanLeft       = wire.HumanLeft
+	Household       = wire.Household
+	Income          = wire.Income
+	Expense         = wire.Expense
+	Employment      = wire.Employment
+	Invested        = wire.Invested
 	Ref             = wire.Ref
 	Refill          = wire.Refill
 	Refused         = wire.Refused
@@ -76,6 +83,12 @@ const (
 	KindTreasury     = wire.KindTreasury
 	KindQuote        = wire.KindQuote
 	KindTraded       = wire.KindTraded
+	KindHumanBorn    = wire.KindHumanBorn
+	KindHumanLeft    = wire.KindHumanLeft
+	KindIncome       = wire.KindIncome
+	KindExpense      = wire.KindExpense
+	KindEmployment   = wire.KindEmployment
+	KindInvested     = wire.KindInvested
 	KindRefill       = wire.KindRefill
 	KindRefused      = wire.KindRefused
 	KindReleased     = wire.KindReleased

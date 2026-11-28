@@ -44,6 +44,8 @@ type Scheduler interface {
 	Act(at sched.Time, id population.ActorID) sched.Handle
 	// Birth schedules a birth stream's next birth.
 	Birth(at sched.Time, idx int) sched.Handle
+	// Money schedules a human's next money step.
+	Money(at sched.Time, h population.HumanID) sched.Handle
 	// Quote schedules the market's next Quote record.
 	Quote(at sched.Time)
 	// Cancel removes a scheduled event.
@@ -85,6 +87,8 @@ type Env struct {
 	Chain Chain
 	Att   Adversaries
 	Pace  Pacer
+	// Flight is the unfinished intents, which hold the humans' fiat.
+	Flight Flight
 }
 
 // Spec is what a cohort is built from.
@@ -119,6 +123,8 @@ type Cohort struct {
 	Desk *Desk
 	// People is the humans who own the wallets.
 	People *People
+	// Money is the humans' household money.
+	Money *Money
 }
 
 // New returns an empty cohort.
@@ -129,9 +135,12 @@ func New(sp Spec, v Env) *Cohort {
 	desk := &Desk{m: m}
 	pp := newPeople(sp, r, m)
 	m.people = pp
-	l := &Life{r: r, slots: sp.Slots, market: m, people: pp}
+	mo := newMoney(pp, v.Flight)
+	desk.money = mo
+	l := &Life{r: r, slots: sp.Slots, market: m, people: pp, money: mo}
 	return &Cohort{
 		People: pp,
+		Money:  mo,
 		Roster: r,
 		Life:   l,
 		Births: &Births{life: l, seed: sp.Seed, sched: v.Sched, emit: v.Emit},
@@ -200,6 +209,7 @@ func (c *Cohort) Load(ps Profiles, actors []wire.ActorRec, births []wire.BirthRe
 		c.Births.Resume(i, r.At, r.N)
 	}
 	c.Market.Bind()
+	c.Money.Resume()
 	return nil
 }
 

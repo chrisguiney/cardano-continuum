@@ -33,6 +33,9 @@ const (
 	Deploy
 	// Fork is the run's own hard-fork step, at an epoch boundary.
 	Fork
+	// Money is one human's money step (payday, bills, a purchase); Actor
+	// carries the HumanID. It runs before Quote, which stays last.
+	Money
 	// Quote records the market. It runs last at its time, so a record
 	// reads the market every other same-time event saw.
 	Quote

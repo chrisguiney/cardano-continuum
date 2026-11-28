@@ -76,16 +76,10 @@ func summarize(out io.Writer, cfg engine.Config, r *engine.Runner, chain *fakech
 		return err
 	}
 	w.Printf("%s", gov.line())
-	ml, err := marketLine(context.Background(), cfg, mem)
+	fiatOK, err := printMarkets(w, cfg, e, mem)
 	if err != nil {
 		return err
 	}
-	w.Printf("%s", ml)
-	hl, err := humansLine(context.Background(), e.Wallets, mem)
-	if err != nil {
-		return err
-	}
-	w.Printf("%s", hl)
 	if err := attack.Summarize(context.Background(), w, mem); err != nil {
 		return err
 	}
@@ -93,10 +87,27 @@ func summarize(out io.Writer, cfg engine.Config, r *engine.Runner, chain *fakech
 	if w.Err != nil {
 		return w.Err
 	}
-	if !conserved {
+	switch {
+	case !conserved:
 		return errors.New("value not conserved")
+	case !fiatOK:
+		return errors.New("fiat not conserved")
 	}
 	return nil
+}
+
+// printMarkets prints the markets and humans lines and reports whether
+// fiat was conserved.
+func printMarkets(w *lines.Writer, cfg engine.Config, e engine.Summary, mem eventlog.Reader) (bool, error) {
+	ml, err := marketLine(context.Background(), cfg, mem)
+	if err != nil {
+		return false, err
+	}
+
+	w.Printf("%s", ml)
+	hl, ok, err := humansLine(context.Background(), e, mem)
+	w.Printf("%s", hl)
+	return ok, err
 }
 
 // classCounts prints counts by class, sorted by class.
