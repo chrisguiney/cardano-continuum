@@ -47,17 +47,17 @@ type world struct {
 func (w *world) check(tx *conway.ConwayTransaction, slot uint64, view *overlay) []Failure {
 	w.view, w.ls.certs = view.get, view.certs
 	defer func() { w.view, w.ls.certs = nil, nil }()
-	return validate(tx, slot, w.ls, w.rules(view.certs))
+	return validate(tx, slot, w.ls, rulesAt(w.pp, view.certs))
 }
 
-// rules is the configured protocol parameters at the protocol version s
+// rulesAt is pp, the configured protocol parameters at the protocol version s
 // has enacted: the version the ledger rules (gouroboros gates its PV11
 // rules on it) and the HardForkInitiation pvCanFollow check read. Other
 // enacted parameter changes do not reach validation.
-func (w *world) rules(s *certState) *conway.ConwayProtocolParameters {
-	pp := *w.pp
-	pp.ProtocolVersion = s.enact.params.ProtocolVersion
-	return &pp
+func rulesAt(pp *conway.ConwayProtocolParameters, s *certState) *conway.ConwayProtocolParameters {
+	out := *pp
+	out.ProtocolVersion = s.enact.params.ProtocolVersion
+	return &out
 }
 
 func loadGenesis(w *world, gs []GenesisOutput) error {
