@@ -140,6 +140,27 @@ the old one is a fatal `protocol_version_mismatch` finding. From 11.0 the
 engine sends a committee vote with its hot-key authorisation in one
 transaction, which cardano-node's mempool refuses below 11.
 
+## The ADA market
+
+A profile file's `markets:` section (`profiles/m1.yaml` spells out every
+default) gives the wallets an ADA market (`internal/market`): an ADA/USD
+path, each currency's USD rate and each exchange's quotes, all a function of
+the run seed and simulated time, compressed so minutes of a fake run see
+rallies and drawdowns. Each exchange is a wallet actor whose hot wallet the
+genesis or the faucet funds. A wallet has one primary currency and, now and
+then, more; it buys ADA with fiat (the exchange pays it on chain, less a
+withdrawal fee) and sells ADA to an exchange, at the best effective rate.
+Fiat stays off chain, so the value check covers every lovelace.
+
+In a market run, wallet births per currency rise with ADA's gains against
+that currency, and a profile with `hazards.market: true` goes dormant and
+abandons faster in a prolonged fall, selling its ADA first; these lifecycle
+rates are synthetic parameters, not fitted from chain data. Under water, a
+hodl wallet holds; any other sells by its `loss_aversion` trait and its
+impatience. The Markets page, `/api/markets` and the fake run's `markets:`
+summary line show the rates, the flows by exchange, births by currency and
+who sold or held in the largest drawdown.
+
 ## Development
 
 Requires Go 1.27 (see `go.mod`) and `make`. Run the full local check, which is
