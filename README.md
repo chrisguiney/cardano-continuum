@@ -111,6 +111,7 @@ Pass them as `make up NAME=value`.
 | `SCALE` | `200` | multiplier on every profile's activity rates |
 | `SEED` | fixed 64-hex value | run seed for the genesis and the population |
 | `ATTACKS` | every tier-1 attack | comma-separated list, or `none` |
+| `HARD_FORK` | `11.0@epoch:3` | the hard fork the network proposes by itself: `<major.minor>@epoch:<n>`, a bare version (epoch 3), or `none`; chart value `engine.hardFork`, engine flag `--hard-fork` |
 | `ENGINE_POOLS` | `0` | extra pool operators the engine simulates; keep 0 with `preprod`, `preview` and `mainnet`, whose pool populations operate the genesis pools |
 | `CONTEXT` | the current context | kubectl context; read once, never switched |
 | `NAMESPACE`, `RELEASE` | `continuum`, `continuum` | where to install, and the Helm release name |
@@ -121,8 +122,8 @@ Pass them as `make up NAME=value`.
 
 ### When a deploy resets the devnet
 
-A running engine can only resume its run under the binary, seed, profiles and
-attacks that started it, and the genesis fixes the pool counts and seed. If
+A running engine can only resume its run under the binary, seed, profiles,
+attacks and hard-fork schedule that started it, and the genesis fixes the pool counts and seed. If
 any of these differ from what's deployed, `make up` resets the devnet (a
 `make down`, then a fresh install). Set `KEEP_RUN=1` to make it refuse
 instead. Changes to the UI alone never reset it.
@@ -154,6 +155,11 @@ The mainnet set is the richest: wallets, pools, DReps, contracts and
 governance proposals, plus the ADA market. Its fitted rates are slow (a wallet
 sends about once in half an hour at scale 1), so the default `SCALE=200`
 speeds everything up enough to watch.
+
+The devnet starts at protocol 10.0 and forks to 11.0 by itself: from epoch 3,
+once the committee holds hot keys and the pools hold stake, the network
+proposer proposes the fork and the voters ratify it. `HARD_FORK=none` disables
+it.
 
 ## The ADA market
 

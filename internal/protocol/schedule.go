@@ -10,6 +10,12 @@ import (
 // enough for the pools to hold stake and the committee to hold hot keys.
 const DefaultForkEpoch = 3
 
+// DefaultSchedule is the fork a devnet makes unless told otherwise: from
+// its 10.0 genesis to 11.0 (VanRossem), proposed from DefaultForkEpoch.
+func DefaultSchedule() Schedule {
+	return Schedule{To: Version{Major: VanRossem}, Epoch: DefaultForkEpoch}
+}
+
 // Schedule is the hard fork a run proposes by itself: the version it moves
 // to and the first epoch at which it is proposed, if the network is ready
 // then. The zero value schedules nothing.

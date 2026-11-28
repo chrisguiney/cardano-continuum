@@ -45,6 +45,13 @@ func TestScheduleString(t *testing.T) {
 	}
 }
 
+func TestDefaultSchedule(t *testing.T) {
+	t.Parallel()
+	if got := DefaultSchedule().String(); got != "11.0@epoch:3" {
+		t.Fatalf("default schedule %q", got)
+	}
+}
+
 func TestScheduleDue(t *testing.T) {
 	t.Parallel()
 	s := Schedule{To: Version{11, 0}, Epoch: 3}

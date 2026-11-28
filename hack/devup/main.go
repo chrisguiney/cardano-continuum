@@ -87,6 +87,7 @@ func runIdentity(args []string) error {
 	fs.StringVar(&r.Image, "image", "", "engine image")
 	fs.StringVar(&r.Profiles, "profiles", "", "PROFILES")
 	fs.StringVar(&r.Attacks, "attacks", "", "the engine's --attack value")
+	fs.StringVar(&r.HardFork, "hard-fork", "", "HARD_FORK, empty for the default schedule")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}

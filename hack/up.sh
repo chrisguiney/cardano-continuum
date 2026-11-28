@@ -26,8 +26,12 @@
 # also renders the genesis with per-transaction ExUnits above the per-block
 # ones (devup attacks prints the overrides).
 #
-# An engine resumes its event log only under the binary, seed, profiles and
-# attacks that wrote it, and the genesis fixes the pool counts and the
+# HARD_FORK is the hard fork the network proposes by itself,
+# <major.minor>@epoch:<n> or "none"; empty is 11.0@epoch:3, the engine's
+# default (the devnet starts at 10.0).
+#
+# An engine resumes its event log only under the binary, seed, profiles,
+# attacks and hard-fork schedule that wrote it, and the genesis fixes the pool counts and the
 # genesis overrides. The UI image is not part of it: the UI is a Deployment
 # of its own, so a UI-only change rolls that pod and keeps the run. This script computes the run identity (devup run) and
 # passes it as engine.runIdentity, which the chart records as the engine
@@ -42,7 +46,7 @@
 # empty array is expanded as ${a[@]+"${a[@]}"} under set -u.
 #
 # Environment (the Makefile passes these): CONTEXT, NAMESPACE, RELEASE,
-# PROFILES, POOLS, DINGO_POOLS, WALLETS, SCALE, SEED (64 hex), ATTACKS,
+# PROFILES, POOLS, DINGO_POOLS, WALLETS, SCALE, SEED (64 hex), ATTACKS, HARD_FORK,
 # ENGINE_POOLS, KEEP_RUN, CONTINUUM_REGISTRY, IMAGES, IMAGE_REF (digest or
 # tag), HELM, VALUES (an extra values file), MIN_MEM_GIB, UI_PORT,
 # UI_ADDRESS.
@@ -60,6 +64,7 @@ WALLETS=${WALLETS:-100}
 SCALE=${SCALE:-200}
 SEED=${SEED:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
 ATTACKS=${ATTACKS:-}
+HARD_FORK=${HARD_FORK:-}
 KEEP_RUN=${KEEP_RUN:-}
 REGISTRY=${CONTINUUM_REGISTRY:?set CONTINUUM_REGISTRY to the registry make images pushed to}
 IMAGES=${IMAGES:?set IMAGES to the file make images wrote}
@@ -175,7 +180,7 @@ check_run() {
   [ "$IMAGE_REF" = tag ] && ENGINE_IMG=$REGISTRY/continuum:$(digest continuum | cut -c8-19)
   local out old reason deployed want
   old=$(k -n "$NAMESPACE" get statefulset continuum-engine -o jsonpath='{.metadata.annotations.continuum\.blinklabs\.io/run}' 2>/dev/null) || old=""
-  out=$(SEED=$SEED devup run -deployed "$old" -image "$ENGINE_IMG" -profiles "$PROFILES" -attacks "$ENGINE_ATTACKS")
+  out=$(SEED=$SEED devup run -deployed "$old" -image "$ENGINE_IMG" -profiles "$PROFILES" -attacks "$ENGINE_ATTACKS" -hard-fork "$HARD_FORK")
   RUN_ID=$(printf '%s\n' "$out" | sed -n 1p)
   reason=$(printf '%s\n' "$out" | sed -n 2p)
   helm_ -n "$NAMESPACE" status "$RELEASE" >/dev/null 2>&1 || return 0
@@ -228,6 +233,8 @@ install() {
     # --set and --set-string split on commas, which the identity holds.
     --set-json "engine.runIdentity=$(jq -cn --arg v "$RUN_ID" '$v')"
   )
+  # Unset, the chart's own default (the engine's) applies.
+  [ -n "$HARD_FORK" ] && args+=(--set-string "engine.hardFork=$HARD_FORK")
   [ -n "$VALUES" ] && args+=(-f "$VALUES")
   helm_ upgrade --install "$RELEASE" "$chart" -n "$NAMESPACE" --create-namespace --timeout 5m "${args[@]}" >/dev/null ||
     die "helm upgrade --install failed"

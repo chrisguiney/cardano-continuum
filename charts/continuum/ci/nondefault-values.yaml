@@ -30,6 +30,7 @@ genesis:
 engine:
   wallets: 20
   scale: 1
+  hardFork: "11.0@epoch:5"
   attacks: [dust-flood, exunits-block-gap]
   runIdentity: image=registry.example.com/continuum/continuum@sha256:3333;profiles=preprod;seed=00;attacks=dust-flood
   api:

@@ -104,6 +104,41 @@ func TestUpResetsOnlyForTheEngine(t *testing.T) {
 	}
 }
 
+// TestUpPassesTheHardFork: HARD_FORK reaches the chart as engine.hardFork,
+// and unset leaves the chart's default; changing it changes the run
+// identity, so the deployed run is reset.
+func TestUpPassesTheHardFork(t *testing.T) {
+	t.Parallel()
+	for _, tool := range []string{"bash", "jq"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			t.Skipf("%s is not installed", tool)
+		}
+	}
+
+	if out, ok := upRun(t, "a", "c", []string{"HARD_FORK=none"}, `RUN_ID=x install`); !ok || !strings.Contains(out, "engine.hardFork=none") {
+		t.Errorf("HARD_FORK=none does not reach the chart:\n%s", out)
+	}
+
+	if out, ok := upRun(t, "a", "c", nil, `RUN_ID=x install`); !ok || strings.Contains(out, "engine.hardFork") {
+		t.Errorf("an unset HARD_FORK overrides the chart default:\n%s", out)
+	}
+
+	out, ok := upRun(t, "a", "c", nil, `check_run && printf 'run=%s\n' "$RUN_ID"`)
+	_, id, found := strings.Cut(out, "run=")
+	if !ok || !found {
+		t.Fatalf("first deploy:\n%s", out)
+	}
+	deployed := []string{"RELEASED=1", "DEPLOYED_RUN=" + strings.TrimSpace(strings.SplitN(id, "\n", 2)[0])}
+
+	if out, ok := upRun(t, "a", "c", append(deployed, "HARD_FORK=none"), "check_run"); ok || !strings.Contains(out, "hard fork changed") {
+		t.Errorf("a changed hard fork kept the run:\n%s", out)
+	}
+
+	if out, ok := upRun(t, "a", "c", append(deployed, "HARD_FORK=11.0@epoch:3"), "check_run"); !ok {
+		t.Errorf("naming the default hard fork reset the run:\n%s", out)
+	}
+}
+
 // TestUpStartsTheUIBeforeTheBlockWait: the UI port-forward and its URL come
 // right after the install, before the waits for the pools and for forged
 // blocks, so the UI is reachable while the devnet starts.

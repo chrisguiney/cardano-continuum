@@ -16,6 +16,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
+	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 )
 
 // CheckMemory reports whether the node's allocatable memory, a Kubernetes
@@ -93,6 +94,8 @@ func Attacks(s string) (AttackPlan, error) {
 // An engine pod resuming a log under another identity refuses it.
 type RunIdentity struct {
 	Image, Profiles, Seed, Attacks string
+	// HardFork is the schedule HARD_FORK names; empty is the default.
+	HardFork string
 }
 
 // String encodes the identity for the engine StatefulSet's annotation. The
@@ -100,7 +103,16 @@ type RunIdentity struct {
 func (r RunIdentity) String() string {
 	h := sha256.Sum256([]byte(r.Seed))
 	return strings.Join([]string{"image=" + r.Image, "profiles=" + r.Profiles,
-		"seed=" + hex.EncodeToString(h[:8]), "attacks=" + r.Attacks}, ";")
+		"seed=" + hex.EncodeToString(h[:8]), "attacks=" + r.Attacks, "fork=" + r.fork()}, ";")
+}
+
+// fork is the schedule the engine will run under: an unset HARD_FORK is the
+// default one, so naming the default explicitly keeps the run.
+func (r RunIdentity) fork() string {
+	if r.HardFork == "" {
+		return protocol.DefaultSchedule().String()
+	}
+	return r.HardFork
 }
 
 // runFields names each identity field in the order RunChange reports it,
@@ -110,6 +122,7 @@ var runFields = []struct{ key, why string }{
 	{"seed", "seed changed: a run can't be resumed under another seed"},
 	{"profiles", "profiles changed: a run can't be resumed under another profile set"},
 	{"attacks", "attacks changed: a run can't be resumed with other adversaries"},
+	{"fork", "hard fork changed: a run can't be resumed under another hard-fork schedule"},
 }
 
 // RunChange returns why a deployed engine, whose annotation is deployed,

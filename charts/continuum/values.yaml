@@ -122,6 +122,12 @@ engine:
     - malformed-cbor
     - front-run
     - double-spend
+  # The hard fork the network proposer proposes by itself:
+  # <major.minor>@epoch:<n> proposes it at the first epoch from n at which
+  # the committee holds hot keys and the pools hold stake; a bare version
+  # starts at epoch 3; "none" never forks. The devnet starts at 10.0. A
+  # different value is a different run, which an engine does not resume.
+  hardFork: "11.0@epoch:3"
   # Recorded as the StatefulSet's continuum.blinklabs.io/run annotation.
   # `make up` sets it and resets the network when it changes (devup run).
   runIdentity: ""

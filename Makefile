@@ -302,6 +302,9 @@ ENGINE_POOLS ?= 0
 # ATTACKS: empty runs every tier-1 attack a stock genesis supports, "none"
 # runs none (hack/up.sh).
 ATTACKS ?=
+# HARD_FORK is the hard fork the network proposes by itself:
+# <major.minor>@epoch:<n>, or "none". Empty is 11.0@epoch:3 (hack/up.sh).
+HARD_FORK ?=
 # KEEP_RUN=1 makes `make up` refuse, rather than reset, a deploy whose
 # engine cannot resume its run.
 KEEP_RUN ?=
@@ -313,11 +316,11 @@ VALUES ?=
 IMAGE_REF ?= digest
 UP_ENV = CONTEXT='$(CONTEXT)' NAMESPACE='$(NAMESPACE)' RELEASE='$(RELEASE)' PROFILES='$(PROFILES)' POOLS='$(POOLS)' \
 	DINGO_POOLS='$(DINGO_POOLS)' WALLETS='$(WALLETS)' SCALE='$(SCALE)' SEED='$(SEED)' UI_PORT='$(UI_PORT)' UI_ADDRESS='$(UI_ADDRESS)' \
-	ENGINE_POOLS='$(ENGINE_POOLS)' ATTACKS='$(ATTACKS)' KEEP_RUN='$(KEEP_RUN)' VALUES='$(VALUES)' \
+	ENGINE_POOLS='$(ENGINE_POOLS)' ATTACKS='$(ATTACKS)' HARD_FORK='$(HARD_FORK)' KEEP_RUN='$(KEEP_RUN)' VALUES='$(VALUES)' \
 	CONTINUUM_REGISTRY='$(CONTINUUM_REGISTRY)' IMAGES='$(IMAGES_OUT)' IMAGE_REF='$(IMAGE_REF)' HELM='$(HELM)'
 
 .PHONY: images up down
-up: images ## Build and push the images, then install the chart into CONTEXT/NAMESPACE (POOLS, DINGO_POOLS, WALLETS, SCALE, PROFILES, SEED, ATTACKS)
+up: images ## Build and push the images, then install the chart into CONTEXT/NAMESPACE (POOLS, DINGO_POOLS, WALLETS, SCALE, PROFILES, SEED, ATTACKS, HARD_FORK)
 	$(UP_ENV) hack/up.sh
 
 down: ## Delete the pools, uninstall the chart and delete NAMESPACE

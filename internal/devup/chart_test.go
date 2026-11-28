@@ -11,6 +11,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/genesis"
 	"github.com/chrisguiney/cardano-continuum/internal/ident"
 	"github.com/chrisguiney/cardano-continuum/internal/operator/render"
+	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 )
 
 // chartValues is the part of charts/continuum/values.yaml that copies a Go
@@ -34,7 +35,8 @@ type chartValues struct {
 		} `json:"budget"`
 	} `json:"network"`
 	Engine struct {
-		Attacks []string `json:"attacks"`
+		Attacks  []string `json:"attacks"`
+		HardFork string   `json:"hardFork"`
 	} `json:"engine"`
 }
 
@@ -70,6 +72,7 @@ func TestChartDefaults(t *testing.T) {
 		{"network.budget.cpuMillis", v.Network.Budget.CPUMillis, int64(v1alpha1.DefaultCPUMillis)},
 		{"network.budget.memoryMiB", v.Network.Budget.MemoryMiB, int64(v1alpha1.DefaultMemoryMiB)},
 		{"engine.attacks", strings.Join(v.Engine.Attacks, ","), attacks.Engine},
+		{"engine.hardFork", v.Engine.HardFork, protocol.DefaultSchedule().String()},
 	} {
 		if c.got != c.want {
 			t.Errorf("values.yaml %s = %v, want %v", c.name, c.got, c.want)

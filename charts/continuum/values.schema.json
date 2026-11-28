@@ -85,6 +85,7 @@
         "wallets": {"type": "integer", "minimum": 1},
         "scale": {"anyOf": [{"type": "number", "exclusiveMinimum": 0}, {"type": "string", "pattern": "^[0-9]*[1-9][0-9]*([.][0-9]+)?$|^0?[.][0-9]*[1-9][0-9]*$"}]},
         "pools": {"type": "integer", "minimum": 0},
+        "hardFork": {"type": "string", "pattern": "^(none|[0-9]+[.][0-9]+(@epoch:[0-9]+)?)$"},
         "attacks": {"type": "array", "items": {"type": "string", "pattern": "^[a-z0-9-]+$"}, "uniqueItems": true},
         "runIdentity": {"type": "string"},
         "extraArgs": {"type": "array", "items": {"type": "string"}},

@@ -73,8 +73,8 @@ comes up first and shows a "devnet is starting" banner until the engine
 answers (a few minutes). `make up` then waits for one chain (10 blocks
 forged, every cardano-node tip within k) and for the engine. A second run upgrades the release in place.
 
-An engine resumes its event log only under the binary, seed, profile set
-and attacks that wrote it; a pod given another refuses its log ("eventlog:
+An engine resumes its event log only under the binary, seed, profile set,
+attacks and hard-fork schedule that wrote it; a pod given another refuses its log ("eventlog:
 header mismatch") and crash-loops. `make up` passes those as the chart's
 `engine.runIdentity` (computed by `go run ./hack/devup run`), which the
 chart records on the engine StatefulSet (annotation

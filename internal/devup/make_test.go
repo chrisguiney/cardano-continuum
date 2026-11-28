@@ -32,6 +32,10 @@ func TestMakeDryRun(t *testing.T) {
 	if got := run("up", "SCALE=1", "CONTEXT=lab-cluster"); !strings.Contains(got, "SCALE='1'") || !strings.Contains(got, "CONTEXT='lab-cluster'") {
 		t.Errorf("make -n up SCALE=1 CONTEXT=lab-cluster does not pass them:\n%s", got)
 	}
+	if got := run("up", "HARD_FORK=none"); !strings.Contains(got, "HARD_FORK='none'") {
+		t.Errorf("make -n up HARD_FORK=none does not pass it:\n%s", got)
+	}
+
 	if down := run("down"); !strings.Contains(down, "hack/down.sh") || strings.Contains(down, "ko@") {
 		t.Errorf("make -n down = %q, want hack/down.sh and no image build", down)
 	}

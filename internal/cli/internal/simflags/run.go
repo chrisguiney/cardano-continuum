@@ -33,18 +33,14 @@ func (r *Run) register(fs *flag.FlagSet) {
 	fs.StringVar(&r.HardFork, "hard-fork", "", "hard fork the network proposer proposes by itself: <major.minor>@epoch:<n>, a version alone (epoch 3) or none; unset is 11.0@epoch:3 when the genesis version can fork to it")
 }
 
-// defaultFork is the schedule an unset --hard-fork means: the devnet starts
-// at 10.0 and moves to 11.0.
-var defaultFork = protocol.Schedule{To: protocol.Version{Major: protocol.VanRossem}, Epoch: protocol.DefaultForkEpoch}
-
 // HardForkSchedule resolves --hard-fork for a run whose genesis version is
 // start. Unset it is the default fork, or none when start cannot fork to it
 // in one step (a devnet already at 11.0); a value the user wrote is taken
 // as written and the engine refuses one start cannot reach.
 func (r *Run) HardForkSchedule(start protocol.Version) (protocol.Schedule, error) {
 	if r.HardFork == "" {
-		if protocol.CanFollow(defaultFork.To, start) {
-			return defaultFork, nil
+		if def := protocol.DefaultSchedule(); protocol.CanFollow(def.To, start) {
+			return def, nil
 		}
 		return protocol.Schedule{}, nil
 	}

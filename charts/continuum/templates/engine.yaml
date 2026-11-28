@@ -131,6 +131,9 @@ spec:
             # on the pod's addresses rather than its loopback.
             - --serve=0.0.0.0:{{ int $e.api.port }}
             - --allow-remote
+            {{- with $e.hardFork }}
+            - --hard-fork={{ . }}
+            {{- end }}
             {{- with $e.attacks }}
             - --attack={{ join "," . }}
             {{- end }}

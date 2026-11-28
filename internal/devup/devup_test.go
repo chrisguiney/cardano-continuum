@@ -75,6 +75,8 @@ func TestRunChange(t *testing.T) {
 		{func(r *RunIdentity) { r.Seed = "0100" }, "seed changed"},
 		{func(r *RunIdentity) { r.Profiles = "preview" }, "profiles changed"},
 		{func(r *RunIdentity) { r.Attacks = "none" }, "attacks changed"},
+		{func(r *RunIdentity) { r.HardFork = "none" }, "hard fork changed"},
+		{func(r *RunIdentity) { r.HardFork = "11.0@epoch:5" }, "hard fork changed"},
 	} {
 		b := a
 		tc.mod(&b)
@@ -82,6 +84,10 @@ func TestRunChange(t *testing.T) {
 			t.Errorf("RunChange = %q, want %q", got, tc.want)
 		}
 	}
+	if def := (RunIdentity{Image: a.Image, Profiles: a.Profiles, Seed: a.Seed, Attacks: a.Attacks, HardFork: "11.0@epoch:3"}); RunChange(a.String(), def) != "" {
+		t.Fatalf("an unset hard fork is not the default: %q", RunChange(a.String(), def))
+	}
+
 	if got := RunChange("", a); !strings.Contains(got, "unrecorded") {
 		t.Fatalf("a deploy with no recorded identity: %q", got)
 	}
