@@ -44,8 +44,8 @@ func TestDrawConvertsUSDToCents(t *testing.T) {
 		t.Fatalf("income %d at 0.5 USD/unit vs %d at 1", b.Income, usd.Income)
 	}
 
-	if b.Steps != 4 || b.Style != DCA {
-		t.Fatalf("steps %d style %s, want 4 dca", b.Steps, b.Style)
+	if b.Steps != 2 || b.Style != DCA {
+		t.Fatalf("steps %d style %s, want 2 dca", b.Steps, b.Style)
 	}
 
 	if p, _ := Draw(tier, d.Invest, "profit", 1, stream(1)); p.Style != Momentum {
@@ -137,5 +137,32 @@ func TestCentsRounding(t *testing.T) {
 
 	if got := Lovelace(5_000, 0.25); got != 200_000_000 {
 		t.Fatalf("Lovelace = %d, want 200 ADA", got)
+	}
+}
+
+// Small tranches add up until a purchase is worth making, a purchase
+// never spends into the buffer, and what is put aside stops at a month's
+// investment.
+func TestAccrue(t *testing.T) {
+	t.Parallel()
+	b := budget()
+	s := State{Disposable: 100_000, Bills: 200_000}
+	buy, left := Accrue(b, s, 0, 10_000_000, 12_000, 0)
+	if buy != 0 || left != 5_000 {
+		t.Fatalf("first step buys %d, keeps %d; want 0 and 5000 put aside", buy, left)
+	}
+
+	buy, left = Accrue(b, s, 10_000, 10_000_000, 12_000, 0)
+	if buy != 15_000 || left != 0 {
+		t.Fatalf("third step buys %d, keeps %d; want all 15000", buy, left)
+	}
+
+	buy, left = Accrue(b, s, 10_000, 213_000, 12_000, 0)
+	if buy != 13_000 || left != 2_000 {
+		t.Fatalf("buys %d keeps %d; want the 13000 above the buffer, 2000 kept", buy, left)
+	}
+
+	if _, left = Accrue(b, s, 1_000_000, 0, 12_000, 0); left != 20_000 {
+		t.Fatalf("put aside %d, want it capped at a month's 20000", left)
 	}
 }

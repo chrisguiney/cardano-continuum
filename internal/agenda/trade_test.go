@@ -146,3 +146,17 @@ func TestTradeBuyScoresZeroWhenExchangesAreDry(t *testing.T) {
 		}
 	}
 }
+
+// A wallet whose owner has no fiat above its buffer scores no buy, and
+// says why; its sales are unaffected.
+func TestBrokeOwnerScoresNoBuy(t *testing.T) {
+	a := actor(profile.Wallet, 0)
+	for _, name := range tradeAgendas {
+		pol, _ := For(name)
+		v := trading{world: world{fakeView: fakeView{balance: 1000 * ada}}, pos: Position{Currency: "USD", Broke: true}}
+		s := score(pol.Score(a, v), profile.IntentBuyADA)
+		if s.Value != 0 || s.Why != "owner has no fiat above its buffer of bills" {
+			t.Errorf("%s: buy %v (%s), want off for a broke owner", name, s.Value, s.Why)
+		}
+	}
+}

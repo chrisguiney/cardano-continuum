@@ -21,6 +21,9 @@ type Position struct {
 	// Dry is true when no exchange has ADA free to pay a buy out, so the
 	// wallet cannot buy now.
 	Dry bool `json:"dry,omitempty"`
+	// Broke is true when the wallet's owner has no fiat above the months
+	// of bills it keeps back, so it cannot buy now.
+	Broke bool `json:"broke,omitempty"`
 }
 
 // Trading is the ADA market as the agendas see it. A view without it, or
@@ -72,8 +75,11 @@ func trade(a population.Actor, v View, bal purse, hodl bool) []Score {
 	pull := min(trendCeil, max(trendFloor, math.Exp(trendGain*finite0(pos.Trend))))
 	buy := Score{Kind: profile.IntentBuyADA, Value: buyScore * pull,
 		Why: fmt.Sprintf("ADA %+.1f%% in %s over the window: buys at %.2fx", 100*pos.Trend, pos.Currency, pull)}
-	if pos.Dry {
+	switch {
+	case pos.Dry:
 		buy = off(profile.IntentBuyADA, "no exchange has free ADA to pay a buy out")
+	case pos.Broke:
+		buy = off(profile.IntentBuyADA, "owner has no fiat above its buffer of bills")
 	}
 	return []Score{buy, sell(a, pos, bal, hodl)}
 }

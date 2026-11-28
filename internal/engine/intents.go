@@ -138,7 +138,7 @@ func (s starter) sweep(ctx context.Context, at sched.Time, id population.ActorID
 // alone.
 func (s starter) money(ctx context.Context, at sched.Time, h population.HumanID) error {
 	e := s.e
-	eff := e.co.Money.Step(at, h)
+	eff := e.co.Money.Step(at, h, intent.MinTrade)
 	if eff.Move != 0 {
 		if err := s.shift(ctx, at, eff.Move, eff.From); err != nil {
 			return err

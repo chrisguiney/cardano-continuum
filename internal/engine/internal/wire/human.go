@@ -108,6 +108,8 @@ type MoneyRec struct {
 	Bills      int64      `json:"bills"`
 	Next       sched.Time `json:"next"`
 	Steps      uint64     `json:"steps"`
+	// Carry is the cents put aside from tranches too small to buy alone.
+	Carry int64 `json:"carry,omitzero"`
 }
 
 // OwnedRec is one wallet of a human in the snapshot and what it is for.

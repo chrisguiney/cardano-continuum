@@ -132,7 +132,7 @@ func DefaultHumans() Humans {
 			{Name: "high", Share: 0.15, Wallets: 1.5, Income: d("lognormal(9.2, 0.3)"), Expenses: d("beta(7, 3)"), Fiat: d("lognormal(9.5, 1)"), Layoff: 0.01, Hire: 0.4, Benefit: 0.3},
 			{Name: "whale", Share: 0.05, Wallets: 3, Income: d("lognormal(10.5, 0.5)"), Expenses: d("beta(3, 7)"), Fiat: d("lognormal(12, 1)"), Layoff: 0.005, Hire: 0.5, Benefit: 0.5},
 		},
-		Invest: Invest{Share: d("beta(2, 8)"), Every: 0.25, Buffer: 1},
+		Invest: Invest{Share: d("beta(2, 8)"), Every: 0.5, Buffer: 1},
 	}
 }
 

@@ -143,5 +143,5 @@ humans:
     - {name: high, share: 0.15, wallets: 1.5, income: "lognormal(9.2, 0.3)", expenses: "beta(7, 3)", fiat: "lognormal(9.5, 1)", layoff: 0.01, hire: 0.4, benefit: 0.3}
     - {name: whale, share: 0.05, wallets: 3, income: "lognormal(10.5, 0.5)", expenses: "beta(3, 7)", fiat: "lognormal(12, 1)", layoff: 0.005, hire: 0.5, benefit: 0.5}
   # The share of disposable income (income less expenses) put into ADA,
-  # every quarter month, once a month of expenses is kept in fiat.
-  invest: {share: "beta(2, 8)", every: 0.25, buffer: 1}
+  # twice a month, once a month of bills is kept in fiat.
+  invest: {share: "beta(2, 8)", every: 0.5, buffer: 1}

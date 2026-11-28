@@ -81,6 +81,7 @@ func (v view) Position(id population.ActorID) (agenda.Position, bool) {
 	now := v.e.clk.Now()
 	pos, ok := v.e.co.Desk.Position(id, now)
 	pos.Dry = ok && v.e.co.Desk.Dry(id, now, func(x population.ActorID) uint64 { return v.e.pay.Spendable(uint64(x)) }, intent.MinTrade+feeHeadroom)
+	pos.Broke = ok && v.e.co.Money.Broke(id, now, intent.MinTrade)
 	return pos, ok
 }
 

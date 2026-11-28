@@ -171,6 +171,22 @@ func Tranche(b Budget, s State, available int64, trend float64) int64 {
 	return max(min(want, room), 0)
 }
 
+// Accrue adds a step's tranche to what the human has put aside (carry)
+// and says how much to buy now: what is put aside, within the available
+// fiat above the buffer, once it reaches least cents (the smallest trade
+// worth making). The rest stays put aside, at most one month's investment,
+// so a human short of its buffer for months does not build up a hoard.
+func Accrue(b Budget, s State, carry, available, least int64, trend float64) (buy, left int64) {
+	month := int64(b.Share * float64(s.Disposable))
+	carry = min(carry+Tranche(b, s, math.MaxInt64, trend), max(month, 0))
+	room := available - int64(math.Ceil(b.Buffer*float64(s.Bills)))
+	buy = max(min(carry, room), 0)
+	if buy < least || buy == 0 {
+		return 0, carry
+	}
+	return buy, carry - buy
+}
+
 // Hold is the cents an order for gross lovelace at price (per ADA) holds:
 // rounded up, so a settled buy never spends more than it held.
 func Hold(gross uint64, price float64) int64 {

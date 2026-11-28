@@ -35,6 +35,8 @@ type Purse struct {
 	// Next is the human's next money step and Steps how many it has run.
 	Next  sched.Time
 	Steps uint64
+	// Carry is the cents put aside from tranches too small to buy alone.
+	Carry int64
 	// h is the scheduled step.
 	h sched.Handle
 }
@@ -119,10 +121,11 @@ type Effect struct {
 }
 
 // Step runs human id's money step at at: a payday and the month's bills
-// on the first step of each month, then a purchase when fiat allows. It
-// records the month and schedules the next step; a gone human's clock
+// on the first step of each month, then a purchase when what the human
+// has put aside buys at least least lovelace at the mid and fiat allows.
+// It records the month and schedules the next step; a gone human's clock
 // stops.
-func (mo *Money) Step(at sched.Time, id population.HumanID) Effect {
+func (mo *Money) Step(at sched.Time, id population.HumanID, least uint64) Effect {
 	h := mo.pp.Get(id)
 	if h == nil || h.Purse == nil || h.Gone {
 		return Effect{}
@@ -140,8 +143,10 @@ func (mo *Money) Step(at sched.Time, id population.HumanID) Effect {
 	}
 
 	eff.Trend = mo.pp.m.path.Trend(h.Trader.Primary, at)
-	if cents := household.Tranche(pu.Budget, pu.State, mo.Available(h), eff.Trend); cents > 0 {
-		eff.Buy, eff.Into = cents, mo.wallet(h, population.Savings, population.Spending, population.Trading, population.General)
+	floor := household.Hold(least, mo.pp.m.path.Mid(h.Trader.Primary, at))
+	eff.Buy, pu.Carry = household.Accrue(pu.Budget, pu.State, pu.Carry, mo.Available(h), floor, eff.Trend)
+	if eff.Buy > 0 {
+		eff.Into = mo.wallet(h, population.Savings, population.Spending, population.Trading, population.General)
 	}
 
 	if check.Slow {
@@ -200,6 +205,19 @@ func (mo *Money) wallet(h *Person, purposes ...population.Purpose) population.Ac
 		}
 	}
 	return 0
+}
+
+// Broke reports that the wallet's owner has too little fiat above its
+// buffer to buy least lovelace at the mid: its agenda then scores no buy.
+// Without money it is false.
+func (mo *Money) Broke(id population.ActorID, at sched.Time, least uint64) bool {
+	h := mo.pp.Of(id)
+	if !mo.On() || h == nil || h.Purse == nil {
+		return false
+	}
+
+	room := mo.Available(h) - int64(math.Ceil(h.Purse.Budget.Buffer*float64(h.Purse.State.Bills)))
+	return room < household.Hold(least, mo.pp.m.path.Mid(h.Trader.Primary, at))
 }
 
 // Fund bounds a scored buy by its owner's fiat: an order holds the cents
@@ -293,6 +311,7 @@ func moneyOf(h *Person) *wire.MoneyRec {
 		Bills:      pu.State.Bills,
 		Next:       pu.Next,
 		Steps:      pu.Steps,
+		Carry:      pu.Carry,
 	}
 }
 
@@ -319,6 +338,7 @@ func purseOf(r *wire.MoneyRec) *Purse {
 		Fiat:  r.Fiat,
 		Next:  r.Next,
 		Steps: r.Steps,
+		Carry: r.Carry,
 	}
 }
 
