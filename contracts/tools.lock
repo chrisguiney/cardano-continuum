@@ -1,0 +1,13 @@
+# Pinned toolchain for contracts/. contracts/scripts/install-aiken.sh reads
+# this file; change a version and its checksums together.
+#
+# aiken_commit is the commit the release tag names. Each sha256 is the
+# release asset's digest as GitHub reports it for aiken-<target>.tar.gz.
+aiken_version=1.1.24
+aiken_commit=bacbeb35fbc9f1db93cd2e1e93fb1d93053acb4a
+aiken_sha256_aarch64-apple-darwin=5faa52fb466686ad511c00e1b85c0d3eb0620b13192b064e116f80892e419676
+aiken_sha256_x86_64-unknown-linux-musl=c378acccdaf9533f3375ea623c948d3dcb21f7e8c5ecbb741162c53653470b13
+aiken_sha256_aarch64-unknown-linux-musl=faea24b60ca753c3efe65ff1bd1db62622088575e1702349c5b84a75ab26b4bc
+# The stdlib (tag v4.0.0) is pinned by this commit in contracts/aiken.toml;
+# the commit id is itself a content hash of the source tree.
+stdlib_commit=dfdf5ffc4fa28896c075f06faf2bf6709a11cc5e

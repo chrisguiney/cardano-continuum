@@ -120,3 +120,22 @@ jobs:
 
       - name: make web-test
         run: make web-test
+
+  # Rebuilds the Aiken contracts with the pinned compiler (Linux x86_64)
+  # and fails on any byte difference from the committed blueprint.
+  contracts:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: make contracts-check
+        run: make contracts-check

@@ -1,0 +1,214 @@
+{
+  "preamble": {
+    "title": "continuum/templates",
+    "description": "Contract templates the continuum engine deploys and calls",
+    "version": "0.0.0",
+    "plutusVersion": "v3",
+    "compiler": {
+      "name": "Aiken",
+      "version": "v1.1.24+bacbeb3"
+    },
+    "license": "Apache-2.0"
+  },
+  "validators": [
+    {
+      "title": "always_succeeds.always_succeeds.spend",
+      "datum": {
+        "title": "_datum",
+        "schema": {
+          "$ref": "#/definitions/Data"
+        }
+      },
+      "redeemer": {
+        "title": "_redeemer",
+        "schema": {
+          "$ref": "#/definitions/Data"
+        }
+      },
+      "compiledCode": "585c01010029800aba2aba1aab9eaab9dab9a4888896600264653001300600198031803800cc0180092225980099b8748008c01cdd500144c8cc892898050009805180580098041baa0028b200c180300098019baa0068a4d13656400401",
+      "hash": "d27ccc13fab5b782984a3d1f99353197ca1a81be069941ffc003ee75"
+    },
+    {
+      "title": "always_succeeds.always_succeeds.else",
+      "redeemer": {
+        "schema": {}
+      },
+      "compiledCode": "585c01010029800aba2aba1aab9eaab9dab9a4888896600264653001300600198031803800cc0180092225980099b8748008c01cdd500144c8cc892898050009805180580098041baa0028b200c180300098019baa0068a4d13656400401",
+      "hash": "d27ccc13fab5b782984a3d1f99353197ca1a81be069941ffc003ee75"
+    },
+    {
+      "title": "escrow.escrow.spend",
+      "datum": {
+        "title": "datum",
+        "schema": {
+          "$ref": "#/definitions/continuum~1types~1EscrowDatum"
+        }
+      },
+      "redeemer": {
+        "title": "action",
+        "schema": {
+          "$ref": "#/definitions/continuum~1types~1EscrowAction"
+        }
+      },
+      "parameters": [
+        {
+          "title": "_nonce",
+          "schema": {
+            "$ref": "#/definitions/Int"
+          }
+        }
+      ],
+      "compiledCode": "59029b010100229800aba2aba1aba0aab9faab9eaab9dab9a9bad0024888888896600264653001300900198049805000cc0240092225980099b8748008c020dd500144ca6002601a003300d300e0019b87480012223322598009801800c566002601e6ea802600516404115980099b87480080062b3001300f37540130028b20208b201a40342b30013001300c375400513298009bae30113012001911919800800801912cc00400629422b30013371e6eb8c05400400e2946266004004602c002808101348c048c04cc04cc04cc04cc04cc04cc04cc04c00522259800980298081baa00b8992cc004c018c044dd5000c4cc88c9660026600c6eb0c014c054dd50069bae3018008899198008009bac3019301a301a3016375401c44b30010018a508acc004c96600266ebcc06cc060dd5180d980c1baa0013374a90001980d1ba900a4bd7044cdc480218029bab30063018375400314a080b0c0680062946266004004603600280a90184528202630013756600460286ea8c008c050dd5180b980a1baa0032301630170012323322330020020012259800800c00e26464b300133722911000018acc004cdc7a4410000189bad3018002802a02c899802002180e001a02c375c602c002603200280b8c8c8cc0040040108966002003003899192cc004cdc8a45000018acc004cdc7a4410000189bab3019002802a02e899802002180e801a02e375c602e002603400280c052f5bded8c02900045901019198008009bac30153012375401444b30010018a60103d87a80008992cc004cdd7980b980a1baa00100a899ba548000cc0580052f5c113300300330180024048602c00280a22660046eb0c004c044dd5004801a01e18069baa3010300d375400516402c60186ea801c60126ea800a2c8038601200260086ea802629344d95900201",
+      "hash": "ef1abfb5dfdf6cfcca61711f11ff7127d7292fe0c54ba793da8b9caa"
+    },
+    {
+      "title": "escrow.escrow.else",
+      "redeemer": {
+        "schema": {}
+      },
+      "parameters": [
+        {
+          "title": "_nonce",
+          "schema": {
+            "$ref": "#/definitions/Int"
+          }
+        }
+      ],
+      "compiledCode": "59029b010100229800aba2aba1aba0aab9faab9eaab9dab9a9bad0024888888896600264653001300900198049805000cc0240092225980099b8748008c020dd500144ca6002601a003300d300e0019b87480012223322598009801800c566002601e6ea802600516404115980099b87480080062b3001300f37540130028b20208b201a40342b30013001300c375400513298009bae30113012001911919800800801912cc00400629422b30013371e6eb8c05400400e2946266004004602c002808101348c048c04cc04cc04cc04cc04cc04cc04cc04c00522259800980298081baa00b8992cc004c018c044dd5000c4cc88c9660026600c6eb0c014c054dd50069bae3018008899198008009bac3019301a301a3016375401c44b30010018a508acc004c96600266ebcc06cc060dd5180d980c1baa0013374a90001980d1ba900a4bd7044cdc480218029bab30063018375400314a080b0c0680062946266004004603600280a90184528202630013756600460286ea8c008c050dd5180b980a1baa0032301630170012323322330020020012259800800c00e26464b300133722911000018acc004cdc7a4410000189bad3018002802a02c899802002180e001a02c375c602c002603200280b8c8c8cc0040040108966002003003899192cc004cdc8a45000018acc004cdc7a4410000189bab3019002802a02e899802002180e801a02e375c602e002603400280c052f5bded8c02900045901019198008009bac30153012375401444b30010018a60103d87a80008992cc004cdd7980b980a1baa00100a899ba548000cc0580052f5c113300300330180024048602c00280a22660046eb0c004c044dd5004801a01e18069baa3010300d375400516402c60186ea801c60126ea800a2c8038601200260086ea802629344d95900201",
+      "hash": "ef1abfb5dfdf6cfcca61711f11ff7127d7292fe0c54ba793da8b9caa"
+    },
+    {
+      "title": "free_mint.free_mint.mint",
+      "redeemer": {
+        "title": "_redeemer",
+        "schema": {
+          "$ref": "#/definitions/Data"
+        }
+      },
+      "compiledCode": "585401010029800aba2aba1aab9eaab9dab9a4888896600264653001300600198031803800cc0180092225980099b8748000c01cdd500144c9289bae30093008375400516401830060013003375400d149a26cac8009",
+      "hash": "def68337867cb4f1f95b6b811fedbfcdd7780d10a95cc072077088ea"
+    },
+    {
+      "title": "free_mint.free_mint.else",
+      "redeemer": {
+        "schema": {}
+      },
+      "compiledCode": "585401010029800aba2aba1aab9eaab9dab9a4888896600264653001300600198031803800cc0180092225980099b8748000c01cdd500144c9289bae30093008375400516401830060013003375400d149a26cac8009",
+      "hash": "def68337867cb4f1f95b6b811fedbfcdd7780d10a95cc072077088ea"
+    },
+    {
+      "title": "vesting.vesting.spend",
+      "datum": {
+        "title": "datum",
+        "schema": {
+          "$ref": "#/definitions/continuum~1types~1VestingDatum"
+        }
+      },
+      "redeemer": {
+        "title": "_redeemer",
+        "schema": {
+          "$ref": "#/definitions/Data"
+        }
+      },
+      "parameters": [
+        {
+          "title": "_nonce",
+          "schema": {
+            "$ref": "#/definitions/Int"
+          }
+        }
+      ],
+      "compiledCode": "590114010100229800aba2aba1aab9faab9eaab9dab9a9bad002488888896600264653001300800198041804800cc0200092225980099b8748008c020dd500144c8cc896600266e1d2000300b37540031325980099199119801001000912cc00400629422b30013371e6eb8c04800400e2946266004004602600280710111bac301030113011301130113011301130113011300e375400c6eb8c03c006264b30013370e900118069baa001899b89375a602060220046eb4c040c038dd5000c5282018300f300d3754601e601a6ea8c03cc040c040c040c040c040c040c040c034dd5002c5282016300c3754601c60186ea80062c8050c030004c030c034004c024dd50014590070c020004c010dd5004452689b2b20041",
+      "hash": "c61e9245b49af0ae1e3fedaf0602e12407a0e23a69b48cdb61f75eb4"
+    },
+    {
+      "title": "vesting.vesting.else",
+      "redeemer": {
+        "schema": {}
+      },
+      "parameters": [
+        {
+          "title": "_nonce",
+          "schema": {
+            "$ref": "#/definitions/Int"
+          }
+        }
+      ],
+      "compiledCode": "590114010100229800aba2aba1aab9faab9eaab9dab9a9bad002488888896600264653001300800198041804800cc0200092225980099b8748008c020dd500144c8cc896600266e1d2000300b37540031325980099199119801001000912cc00400629422b30013371e6eb8c04800400e2946266004004602600280710111bac301030113011301130113011301130113011300e375400c6eb8c03c006264b30013370e900118069baa001899b89375a602060220046eb4c040c038dd5000c5282018300f300d3754601e601a6ea8c03cc040c040c040c040c040c040c040c034dd5002c5282016300c3754601c60186ea80062c8050c030004c030c034004c024dd50014590070c020004c010dd5004452689b2b20041",
+      "hash": "c61e9245b49af0ae1e3fedaf0602e12407a0e23a69b48cdb61f75eb4"
+    }
+  ],
+  "definitions": {
+    "Data": {
+      "title": "Data",
+      "description": "Any Plutus data."
+    },
+    "Int": {
+      "dataType": "integer"
+    },
+    "aiken/crypto/VerificationKeyHash": {
+      "title": "VerificationKeyHash",
+      "dataType": "bytes"
+    },
+    "continuum/types/EscrowAction": {
+      "title": "EscrowAction",
+      "description": "What an escrow spend does: Release is Constr 0, Refund Constr 1.",
+      "anyOf": [
+        {
+          "title": "Release",
+          "dataType": "constructor",
+          "index": 0,
+          "fields": []
+        },
+        {
+          "title": "Refund",
+          "dataType": "constructor",
+          "index": 1,
+          "fields": []
+        }
+      ]
+    },
+    "continuum/types/EscrowDatum": {
+      "title": "EscrowDatum",
+      "description": "An escrow: `depositor` releases to `beneficiary`, who may refund.",
+      "anyOf": [
+        {
+          "title": "EscrowDatum",
+          "dataType": "constructor",
+          "index": 0,
+          "fields": [
+            {
+              "title": "depositor",
+              "$ref": "#/definitions/aiken~1crypto~1VerificationKeyHash"
+            },
+            {
+              "title": "beneficiary",
+              "$ref": "#/definitions/aiken~1crypto~1VerificationKeyHash"
+            }
+          ]
+        }
+      ]
+    },
+    "continuum/types/VestingDatum": {
+      "title": "VestingDatum",
+      "description": "A vesting position: `owner` may claim from `lock_until` (POSIX ms).",
+      "anyOf": [
+        {
+          "title": "VestingDatum",
+          "dataType": "constructor",
+          "index": 0,
+          "fields": [
+            {
+              "title": "owner",
+              "$ref": "#/definitions/aiken~1crypto~1VerificationKeyHash"
+            },
+            {
+              "title": "lock_until",
+              "$ref": "#/definitions/Int"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

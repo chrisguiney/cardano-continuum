@@ -1,0 +1,20 @@
+name = "continuum/templates"
+version = "0.0.0"
+compiler = "v1.1.24"
+plutus = "v3"
+license = "Apache-2.0"
+description = "Contract templates the continuum engine deploys and calls"
+
+[repository]
+user = "chrisguiney"
+project = "cardano-continuum"
+platform = "github"
+
+# Pinned by commit, not tag: a tag can move, a commit id cannot. This is
+# stdlib v4.0.0, the version aiken v1.1.24 scaffolds (contracts/tools.lock).
+[[dependencies]]
+name = "aiken-lang/stdlib"
+version = "dfdf5ffc4fa28896c075f06faf2bf6709a11cc5e"
+source = "github"
+
+[config]

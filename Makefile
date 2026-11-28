@@ -65,6 +65,24 @@ web: ## Rebuild the web UI into web/dist (needs Node and npm)
 web-test: ## Typecheck and run the web UI's unit tests (needs Node and npm)
 	cd web && npm ci && npm run typecheck && npm test
 
+# The contracts' compiled blueprint (contracts/templates/plutus.json) is
+# committed like web/dist, so Go builds need no Aiken. The compiler is the
+# release contracts/tools.lock pins, checksum-verified into .tools/aiken; an
+# aiken on PATH is never used. Traces are silent: the trace level changes
+# the script bytes, so it is part of every script's hash.
+AIKEN_PROJECTS := contracts/templates
+
+.PHONY: contracts contracts-check
+contracts: ## Build the Aiken contracts and regenerate the Go registry (downloads the pinned Aiken)
+	@set -e; aiken=$$(contracts/scripts/install-aiken.sh); \
+	for p in $(AIKEN_PROJECTS); do (cd $$p && $$aiken check --deny >/dev/null && $$aiken build --trace-level silent --deny); done
+
+# Rebuilding from source must leave the committed blueprint and the
+# generated registry byte-identical: the reproducibility check.
+contracts-check: contracts ## Fail if rebuilding the contracts changes the committed blueprint or registry
+	@git diff --exit-code -- contracts internal/contract || { echo "contracts drift: run make contracts and commit"; exit 1; }
+	@untracked=$$(git ls-files --others --exclude-standard -- contracts internal/contract); if [ -n "$$untracked" ]; then echo "$$untracked"; echo "untracked contract files: commit them"; exit 1; fi
+
 check-static: build vet fmt-check lint check-manifests chart-check ## Everything CI's static job runs
 
 check: check-static test-race ## Everything CI runs
