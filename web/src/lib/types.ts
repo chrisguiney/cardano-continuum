@@ -209,6 +209,8 @@ export interface ImplVerdict {
   verdict: string;
   build?: string;
   dirty: boolean;
+  /** detail is the node's own text for each failure it named. */
+  detail?: string;
 }
 export interface Finding {
   id: string;

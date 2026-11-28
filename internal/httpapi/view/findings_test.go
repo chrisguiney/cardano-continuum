@@ -113,3 +113,25 @@ func TestFindingsKnownTagAndFilter(t *testing.T) {
 		t.Fatalf("only %+v", only)
 	}
 }
+
+// A rejection's text reaches each implementation's verdict, so the page
+// shows why a node refused.
+func TestFindingOfCarriesNodeText(t *testing.T) {
+	f := oracle.Finding{ID: "f", Verdicts: []oracle.Verdict{
+		{Node: oracleNode("node", ""), Verdict: "rejected", Classes: []submit.Class{submit.Unknown}, Detail: "Unknown: boom"},
+	}}
+	got := FindingOf(f).Verdicts
+	if len(got) != 1 || got[0].Detail != "Unknown: boom" {
+		t.Fatalf("verdicts %+v", got)
+	}
+}
+
+func TestFindingsPageByID(t *testing.T) {
+	fs := sliceFindings{{ID: "a"}, {ID: "b", Summary: "s"}}
+	if p := FindingsPage(fs, Page{Limit: 1, ID: "b"}); len(p.Rows) != 1 || p.Rows[0].ID != "b" {
+		t.Fatalf("got %+v", p)
+	}
+	if p := FindingsPage(fs, Page{Limit: 1, ID: "zz"}); len(p.Rows) != 0 {
+		t.Fatalf("found a finding that is not there: %+v", p)
+	}
+}

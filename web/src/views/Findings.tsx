@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { findingsPath, groupKnown, knownSummary, reproBadge, type FindingFilters } from "../lib/findings";
+import { findingsPath, groupKnown, knownSummary, reproBadge, verdictNotes, type FindingFilters } from "../lib/findings";
 import { VIEW_BLURB } from "../lib/help";
 import { useEnums } from "../lib/meta";
 import { buildQuery, parseQuery, writeQuery } from "../lib/query";
@@ -18,6 +18,20 @@ function badgeOf(f: Finding) {
   return b ? <Badge variant={b.tone} title={b.title}>{b.text}</Badge> : "yes";
 }
 
+// Notes expands to the node's own text for why it refused.
+function Notes({ f }: { f: Finding }) {
+  const notes = verdictNotes(f);
+  if (notes.length === 0) return null;
+  return (
+    <details className="mt-1">
+      <summary className="cursor-pointer text-primary">node text</summary>
+      {notes.map((n) => (
+        <pre key={n.impl} className="whitespace-pre-wrap break-all text-[0.85em]">{`${n.impl}: ${n.text}`}</pre>
+      ))}
+    </details>
+  );
+}
+
 function Row({ f }: { f: Finding }) {
   return (
     <TableRow>
@@ -25,7 +39,10 @@ function Row({ f }: { f: Finding }) {
       <TableCell><Badge variant={f.severity === "fatal" ? "bad" : f.severity === "error" ? "warn" : "default"}>{f.severity}</Badge></TableCell>
       <TableCell>{f.kind}</TableCell>
       <TableCell className="min-w-64 whitespace-normal">{f.summary}</TableCell>
-      <TableCell className="min-w-40 whitespace-normal">{f.verdicts.map((v) => `${v.impl}: ${v.verdict}`).join("; ")}</TableCell>
+      <TableCell className="min-w-40 whitespace-normal">
+        {f.verdicts.map((v) => `${v.impl}: ${v.verdict}`).join("; ")}
+        <Notes f={f} />
+      </TableCell>
       <TableCell>{f.provenance ?? ""}</TableCell>
       <TableCell>{badgeOf(f)}</TableCell>
       <TableCell>{f.replay_command ? <code className="text-[0.85em]">{f.replay_command}</code> : ""}</TableCell>

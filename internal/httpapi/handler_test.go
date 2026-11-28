@@ -159,7 +159,10 @@ func (f *fakeSource) Proposal(context.Context, string) (ProposalDetail, error) {
 	return ProposalDetail{}, ErrNotFound
 }
 
-func (f *fakeSource) Findings(context.Context, Page) (FindingPage, error) {
+func (f *fakeSource) Findings(_ context.Context, p Page) (FindingPage, error) {
+	if p.ID == "f1" {
+		return FindingPage{Rows: []Finding{{ID: "f1", Verdicts: []view.ImplVerdict{{Impl: "node", Verdict: "rejected Unknown", Detail: "Unknown: boom"}}}}}, nil
+	}
 	return FindingPage{Rows: []Finding{}}, nil
 }
 
@@ -273,6 +276,9 @@ func TestTimelineErrors(t *testing.T) {
 	}
 	if code, _ := get(t, srv.URL+"/api/findings/x"); code != http.StatusNotFound {
 		t.Errorf("finding detail: %d", code)
+	}
+	if code, body := get(t, srv.URL+"/api/findings/f1"); code != 200 || !strings.Contains(string(body), "Unknown: boom") {
+		t.Errorf("finding f1: %d %s", code, body)
 	}
 	if code, _ := get(t, srv.URL+"/healthz"); code != 200 {
 		t.Errorf("healthz: %d", code)

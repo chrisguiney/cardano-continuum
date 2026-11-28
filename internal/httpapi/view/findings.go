@@ -39,7 +39,7 @@ func FindingsPage(fs Findings, p Page) FindingPage {
 			out.KnownCounts[row.Known]++
 		}
 		if p.Known == KnownHide && row.Known != "" || p.Known == KnownOnly && row.Known == "" ||
-			p.Kind != "" && row.Kind != p.Kind || p.Severity != "" && row.Severity != p.Severity {
+			p.ID != "" && row.ID != p.ID || p.Kind != "" && row.Kind != p.Kind || p.Severity != "" && row.Severity != p.Severity {
 			continue
 		}
 		rows = append(rows, row)
@@ -73,7 +73,9 @@ func FindingOf(f oracle.Finding) Finding {
 		if len(v.Classes) > 0 {
 			text += " " + classList(v.Classes)
 		}
-		out.Verdicts = append(out.Verdicts, implVerdict(v.Node, text))
+		iv := implVerdict(v.Node, text)
+		iv.Detail = v.Detail
+		out.Verdicts = append(out.Verdicts, iv)
 	}
 	if len(f.Verdicts) == 0 {
 		for _, n := range f.Nodes {

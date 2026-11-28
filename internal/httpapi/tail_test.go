@@ -44,7 +44,7 @@ func fixture(t testing.TB) []eventlog.Record {
 		{At: 6000, Class: eventlog.Decision, Kind: engine.KindIntentChosen, Actor: 1, Body: enc(t, dec)},
 		{At: 6000, Class: eventlog.Decision, Kind: engine.KindSubmitted, Actor: 1, Body: enc(t, engine.Submitted{Intent: 9, ID: txid(0xa1), To: 2, Amount: 5_000_000, Fee: 170000})},
 		{At: 7000, Class: eventlog.Input, Kind: eventlog.KindSubmitResult, Body: enc(t, engine.SubmitResult{Intent: 9, Verdict: engine.VerdictRejected, Reason: "bad"})},
-		{At: 8000, Class: eventlog.Decision, Kind: engine.KindRefused, Actor: 1, Body: enc(t, engine.Refused{Intent: 9, ID: txid(0xa1), Why: "bad"})},
+		{At: 8000, Class: eventlog.Decision, Kind: engine.KindRefused, Actor: 1, Body: enc(t, engine.Refused{Intent: 9, ID: txid(0xa1), Why: "bad", Detail: "Unknown: node text"})},
 		{At: 9000, Class: eventlog.Decision, Kind: engine.KindSubmitted, Actor: 1, Body: enc(t, engine.Submitted{Intent: 9, ID: txid(0xa2), To: 2, Amount: 5_000_000, Fee: 180000})},
 		{At: 10000, Class: eventlog.Input, Kind: eventlog.KindBlockApplied, Body: enc(t, eventlog.BlockApplied{Point: pt, Content: enc(t, content)})},
 		{At: 20000, Class: eventlog.Decision, Kind: engine.KindConfirmed, Actor: 1, Body: enc(t, engine.Confirmed{Intent: 9, ID: txid(0xa2)})},
@@ -122,6 +122,11 @@ func TestTailBuildsProjection(t *testing.T) {
 	for i := range want {
 		if kinds[i] != want[i] {
 			t.Fatalf("timeline %v", kinds)
+		}
+	}
+	for _, e := range tlm.Entries {
+		if e.Kind == "Refused" && e.Detail != "bad: Unknown: node text" {
+			t.Fatalf("refusal detail %q lacks the node's text", e.Detail)
 		}
 	}
 	if tlm.Profile != "hodl" || tlm.State != "active" {

@@ -20,7 +20,8 @@
           "impl": "cardano-node",
           "verdict": "rejected FeeTooSmallUTxO",
           "build": "pool=p1 sha256:cardano-node cardano-node=abc123",
-          "dirty": false
+          "dirty": false,
+          "detail": "FeeTooSmallUTxO: text of FeeTooSmallUTxO"
         },
         {
           "impl": "dingo",

@@ -229,7 +229,7 @@ func (m *mutant) make(k Kind) error {
 		m.fs = m.fs.set(keyTTL, encUint(m.c.Slot))
 		return nil
 	case WrongNetwork:
-		return m.readdress(m.networkTarget(), func(a []byte) { a[0] ^= 1 })
+		return m.readdress(networkTarget(m.wits, m.change), func(a []byte) { a[0] ^= 1 })
 	case WrongAddress:
 		if _, ok := m.wits.get(witRedeemers); ok {
 			return fmt.Errorf("%w: a script spend validates its outputs", ErrNotApplicable)
@@ -297,9 +297,9 @@ func (m *mutant) dust() error {
 // address), so there the edit goes to the change output, which no validator
 // reads; a failed script would add ValidationTagMismatch to the class the
 // mistake is meant to cause.
-func (m *mutant) networkTarget() int {
-	if _, ok := m.wits.get(witRedeemers); ok {
-		return m.change
+func networkTarget(wits fields, change int) int {
+	if _, ok := wits.get(witRedeemers); ok {
+		return change
 	}
 
 	return 0

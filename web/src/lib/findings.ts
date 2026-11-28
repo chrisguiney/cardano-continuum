@@ -51,3 +51,13 @@ export function findingsPath(f: FindingFilters): string {
   for (const k of ["known", "kind", "severity"] as const) if (f[k]) q.set(k, f[k]);
   return `/api/findings?${q.toString()}`;
 }
+
+export interface VerdictNote {
+  impl: string;
+  text: string;
+}
+
+/** verdictNotes is each implementation's own text for why it refused. */
+export function verdictNotes(f: Pick<Finding, "verdicts">): VerdictNote[] {
+  return f.verdicts.flatMap((v) => (v.detail ? [{ impl: v.impl, text: v.detail }] : []));
+}

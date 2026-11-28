@@ -160,7 +160,7 @@ func TestWrongNetworkTargetsChangeOnScriptSpend(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got, want := m.networkTarget(), tt.want(m); got != want || got < 0 {
+		if got, want := networkTarget(m.wits, m.change), tt.want(m); got != want || got < 0 {
 			t.Errorf("%s: target %d, want %d", tt.name, got, want)
 		}
 	}

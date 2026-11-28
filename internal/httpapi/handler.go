@@ -107,9 +107,7 @@ func NewHandler(cfg Config) http.Handler {
 		}{m, profile.SnapshotDate()})
 	})
 	mux.HandleFunc("GET /api/findings", a.findings)
-	mux.HandleFunc("GET /api/findings/{id}", func(w http.ResponseWriter, _ *http.Request) {
-		a.fail(w, fmt.Errorf("%w: finding", view.ErrNotFound))
-	})
+	mux.HandleFunc("GET /api/findings/{id}", a.finding)
 	mux.HandleFunc("GET /api/decisions", sseFeed{a}.serve)
 	mux.HandleFunc("POST /api/control", a.control)
 	if a.Explorer != nil {
@@ -317,6 +315,20 @@ func (a *api) findings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.json(w, http.StatusOK, f)
+}
+
+func (a *api) finding(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	page, err := a.Source.Findings(r.Context(), view.Page{Limit: 1, ID: id})
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	if len(page.Rows) == 0 {
+		a.fail(w, fmt.Errorf("%w: finding %q", view.ErrNotFound, id))
+		return
+	}
+	a.json(w, http.StatusOK, page.Rows[0])
 }
 
 func (a *api) control(w http.ResponseWriter, r *http.Request) {

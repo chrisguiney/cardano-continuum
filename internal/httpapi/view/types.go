@@ -40,6 +40,8 @@ type Page struct {
 	// and severity name.
 	Kind     string
 	Severity string
+	// ID, when set, keeps only the finding with that id.
+	ID string
 }
 
 // KnownFilter selects findings by their known-issue tag.
@@ -205,6 +207,8 @@ type ImplVerdict struct {
 	Verdict string `json:"verdict"`
 	Build   string `json:"build,omitempty"`
 	Dirty   bool   `json:"dirty"`
+	// Detail is the node's own text for each failure it named.
+	Detail string `json:"detail,omitempty"`
 }
 
 // Finding is an oracle disagreement. No source produces them yet; the shape

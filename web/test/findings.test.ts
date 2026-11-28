@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { groupKnown, knownSummary, reproBadge } from "../src/lib/findings";
+import { groupKnown, knownSummary, reproBadge, verdictNotes } from "../src/lib/findings";
 
 describe("findings reproducibility badge", () => {
   it("marks a finding from a dirty build as not reproducible", () => {
@@ -24,5 +24,17 @@ describe("known-issue grouping", () => {
   it("summarises counts by issue", () => {
     expect(knownSummary({ "x#2": 1, "x#1": 275 })).toBe("x#1: 275, x#2: 1");
     expect(knownSummary(undefined)).toBe("");
+  });
+});
+
+describe("verdict notes", () => {
+  it("lists the node text of each verdict that has one", () => {
+    const f = {
+      verdicts: [
+        { impl: "expected", verdict: "accept", dirty: false },
+        { impl: "node", verdict: "rejected Unknown", detail: "Unknown: boom", dirty: false },
+      ],
+    } as import("../src/lib/types").Finding;
+    expect(verdictNotes(f)).toEqual([{ impl: "node", text: "Unknown: boom" }]);
   });
 });

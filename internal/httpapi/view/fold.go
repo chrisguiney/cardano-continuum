@@ -141,6 +141,16 @@ func foldSubmitted(p *Projection, id uint64, r eventlog.Record, s engine.Submitt
 	x.note(id, r, fmt.Sprintf("%d lovelace to %d", s.Amount, s.To), &s.Intent)
 }
 
+// refusal is the timeline text of a refusal: the rules named, then the
+// node's own words.
+func refusal(v engine.Refused) string {
+	if v.Detail == "" {
+		return v.Why
+	}
+
+	return v.Why + ": " + v.Detail
+}
+
 func foldOutcome(p *Projection, id uint64, r eventlog.Record) error {
 	x := &p.actors
 	switch r.Kind {
@@ -163,7 +173,7 @@ func foldOutcome(p *Projection, id uint64, r eventlog.Record) error {
 		}
 		x.actor(id).refused++
 		p.tot.txs.Refused++
-		x.note(id, r, v.Why, &v.Intent)
+		x.note(id, r, refusal(v), &v.Intent)
 	case engine.KindReleased:
 		var v engine.Released
 		if err := eventlog.Decode(r.Body, &v); err != nil {
