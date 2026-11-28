@@ -232,7 +232,7 @@ func (a *api) nodesView(r *http.Request) (view.NodesView, error) {
 		return view.NodesView{}, err
 	}
 	if a.Explorer != nil {
-		v = a.Explorer.withKeys(v)
+		v = withKeys(a.Explorer.idx, v)
 	}
 	return v, nil
 }
@@ -262,7 +262,7 @@ func (a *api) stakePools(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if a.Explorer != nil {
-		v = view.WithChain(v, a.Explorer.chainPools())
+		v = view.WithChain(v, a.Explorer.idx.Pools())
 	}
 	a.json(w, http.StatusOK, view.WithNodes(v, nodes))
 }

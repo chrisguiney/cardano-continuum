@@ -50,12 +50,12 @@ func (l *controlLog) answer(id, op, why string) {
 // or answered with a reason, changes nothing.
 func TestControlStateFollowsAppliedControls(t *testing.T) {
 	l := &controlLog{t: t, p: NewProjection()}
-	if got := l.p.Controls(); got.K != 1 || got.Paused || len(got.Weights) != 0 || got.Weights == nil || got.Last != nil {
+	if got := controlsOf(l.p); got.K != 1 || got.Paused || len(got.Weights) != 0 || got.Weights == nil || got.Last != nil {
 		t.Fatalf("empty log: %+v", got)
 	}
 
 	l.control(engine.Control{RequestID: "a", Op: "set_k", K: 4})
-	if got := l.p.Controls(); got.K != 1 || got.Last != nil {
+	if got := controlsOf(l.p); got.K != 1 || got.Last != nil {
 		t.Fatalf("before the engine answers: %+v", got)
 	}
 
@@ -74,19 +74,19 @@ func TestControlStateFollowsAppliedControls(t *testing.T) {
 			Seq:       5,
 		},
 	}
-	if got := l.p.Controls(); !reflect.DeepEqual(got, want) {
+	if got := controlsOf(l.p); !reflect.DeepEqual(got, want) {
 		t.Fatalf("applied: %+v, want %+v", got, want)
 	}
 
 	l.control(engine.Control{RequestID: "d", Op: "set_weights", Weights: map[string]float64{"mint": 3}})
 	l.answer("d", "set_weights", "")
-	if got := l.p.Controls().Weights; !reflect.DeepEqual(got, map[string]float64{"mint": 3}) {
+	if got := controlsOf(l.p).Weights; !reflect.DeepEqual(got, map[string]float64{"mint": 3}) {
 		t.Fatalf("set_weights replaces the override: %v", got)
 	}
 
 	l.control(engine.Control{RequestID: "e", Op: "set_k"})
 	l.answer("e", "set_k", "k must be positive")
-	if got := l.p.Controls(); got.K != 4 || got.Last.Why != "k must be positive" || got.Last.RequestID != "e" {
+	if got := controlsOf(l.p); got.K != 4 || got.Last.Why != "k must be positive" || got.Last.RequestID != "e" {
 		t.Fatalf("refused control: %+v", got)
 	}
 
@@ -94,7 +94,7 @@ func TestControlStateFollowsAppliedControls(t *testing.T) {
 	l.answer("f", "clear_weights", "")
 	l.control(engine.Control{RequestID: "g", Op: "resume"})
 	l.answer("g", "resume", "")
-	if got := l.p.Controls(); got.Paused || len(got.Weights) != 0 || got.Weights == nil || got.K != 4 {
+	if got := controlsOf(l.p); got.Paused || len(got.Weights) != 0 || got.Weights == nil || got.K != 4 {
 		t.Fatalf("cleared and resumed: %+v", got)
 	}
 }
@@ -105,8 +105,8 @@ func TestControlStateIsACopy(t *testing.T) {
 	l := &controlLog{t: t, p: NewProjection()}
 	l.control(engine.Control{RequestID: "a", Op: "set_weights", Weights: map[string]float64{"send": 2}})
 	l.answer("a", "set_weights", "")
-	l.p.Controls().Weights["send"] = 9
-	if got := l.p.Controls().Weights["send"]; got != 2 {
+	controlsOf(l.p).Weights["send"] = 9
+	if got := controlsOf(l.p).Weights["send"]; got != 2 {
 		t.Fatalf("weights aliased: %v", got)
 	}
 }

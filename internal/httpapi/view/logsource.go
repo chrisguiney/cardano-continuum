@@ -149,7 +149,7 @@ func (s *LogSource) Proposal(ctx context.Context, id string) (ProposalDetail, er
 
 // Controls implements Source.
 func (s *LogSource) Controls(context.Context) (ControlState, error) {
-	return s.cfg.Projection.Controls(), nil
+	return controlsOf(s.cfg.Projection), nil
 }
 
 // Nodes implements Source.
@@ -197,7 +197,7 @@ func (s *LogSource) StakePools(ctx context.Context) (StakePoolsView, error) {
 		names:  n,
 		idents: s.identities(),
 		states: states,
-		votes:  s.cfg.Projection.SPOVotes(),
+		votes:  spoVotes(s.cfg.Projection),
 	}), nil
 }
 

@@ -21,6 +21,9 @@ type totals struct {
 	ada        Ada
 	txs        TxCounts
 	bodyErrors int
+	// ctl folds the controls the engine applied: run-wide state, kept
+	// here so Projection stays within its member budget.
+	ctl *controlFold
 }
 
 // Projection is the read model built by folding event log records in order.
@@ -36,8 +39,6 @@ type Projection struct {
 	// meter folds the attack steps and the metrics Measure reads.
 	meter *engine.Meter
 	gov   *govFold
-	// ctl folds the controls the engine applied.
-	ctl *controlFold
 }
 
 // Observe sets f to be called with every record after it is folded, under
@@ -50,7 +51,7 @@ func (p *Projection) Observe(f func(eventlog.Record)) {
 
 // NewProjection returns an empty projection.
 func NewProjection() *Projection {
-	return &Projection{actors: newActorIndex(), findings: oracle.NewSet(), meter: engine.NewMeter(), gov: newGovFold(), ctl: newControlFold()}
+	return &Projection{actors: newActorIndex(), findings: oracle.NewSet(), meter: engine.NewMeter(), gov: newGovFold(), tot: totals{ctl: newControlFold()}}
 }
 
 // Apply folds one record. A body that does not decode is counted, shown as a
@@ -66,7 +67,7 @@ func (p *Projection) Apply(r eventlog.Record) {
 		p.tot.bodyErrors++
 	}
 
-	if cerr := p.foldControl(r); cerr != nil {
+	if cerr := foldControl(p, r); cerr != nil {
 		p.tot.bodyErrors++
 	}
 
@@ -86,22 +87,23 @@ func (p *Projection) Apply(r eventlog.Record) {
 
 // foldControl folds a Control input or a Controlled decision; the other
 // folds still see the record, so the Controlled decision stays on actor 0's
-// timeline.
-func (p *Projection) foldControl(r eventlog.Record) error {
+// timeline. The caller holds p.mu.
+func foldControl(p *Projection, r eventlog.Record) error {
 	switch {
 	case r.Class == eventlog.Input && r.Kind == eventlog.KindControl:
-		return p.ctl.input(r)
+		return p.tot.ctl.input(r)
 	case r.Class == eventlog.Decision && r.Kind == engine.KindControlled:
-		return p.ctl.answer(r)
+		return p.tot.ctl.answer(r)
 	}
 	return nil
 }
 
-// Controls is the steering the engine has applied.
-func (p *Projection) Controls() ControlState {
+// controlsOf is the steering the engine has applied. A function, not a
+// method, like attackOwner: Projection is at its member budget.
+func controlsOf(p *Projection) ControlState {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.ctl.view()
+	return p.tot.ctl.view()
 }
 
 // Profile returns the profile an actor spawned with, or "".
@@ -217,8 +219,8 @@ func (p *Projection) Proposal(id string, slots *sched.Slots, life uint64, profil
 	return d, nil
 }
 
-// SPOVotes counts each stake pool's votes in force, by pool id (hex).
-func (p *Projection) SPOVotes() map[string]int {
+// spoVotes counts each stake pool's votes in force, by pool id (hex).
+func spoVotes(p *Projection) map[string]int {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	out := map[string]int{}

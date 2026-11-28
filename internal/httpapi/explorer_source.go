@@ -73,16 +73,16 @@ func NewExplorer(o ExplorerOptions) *Explorer {
 		o.Logger = slog.New(slog.DiscardHandler)
 	}
 	e := &Explorer{opt: o, fold: newTxFold(), actors: newActorDir(o.Names, o.Now), log: o.Logger.With("component", "explorer")}
-	e.pools = newPoolTable(o.Kube, o.Tips, o.Now, e.issuer)
+	e.pools = newPoolTable(o.Kube, o.Tips, o.Now, func(hash string) (string, bool) { return issuerIn(e.idx, hash) })
 	e.idx = explorer.New(explorer.Config{
 		Keep: o.Keep, K: o.K, Slots: o.Slots, Limits: o.Limits, Pool: e.pools.resolve, Known: e.pools.known,
 	})
 	return e
 }
 
-// issuer is the issuer (hex pool id) of a block the index holds.
-func (e *Explorer) issuer(hash string) (string, bool) {
-	v, err := e.idx.Block(hash)
+// issuerIn is the issuer (hex pool id) of a block idx holds.
+func issuerIn(idx *explorer.Index, hash string) (string, bool) {
+	v, err := idx.Block(hash)
 	if err != nil || v.Issuer == "" {
 		return "", false
 	}
@@ -256,7 +256,7 @@ func (e *Explorer) Search(ctx context.Context, q string) (SearchResult, error) {
 		id := strings.TrimLeft(strings.TrimPrefix(q, "actor:"), "@")
 		return SearchResult{Kind: explorer.KindActor, ID: id, Route: "/actors/" + id}, nil
 	case explorer.KindPool:
-		if id, ok := e.stakePool(q); ok {
+		if id, ok := stakePoolOf(e, q); ok {
 			return SearchResult{Kind: explorer.KindPool, ID: id, Route: "/pools/" + id}, nil
 		}
 	default:
@@ -275,9 +275,9 @@ func (e *Explorer) Search(ctx context.Context, q string) (SearchResult, error) {
 	return SearchResult{}, fmt.Errorf("%w: nothing matches %q", view.ErrNotFound, q)
 }
 
-// stakePool is the pool id (hex) q names, hex or bech32, when the chain or
-// a node knows the pool.
-func (e *Explorer) stakePool(q string) (string, bool) {
+// stakePoolOf is the pool id (hex) q names, hex or bech32, when the chain
+// or a node knows the pool.
+func stakePoolOf(e *Explorer, q string) (string, bool) {
 	id, ok := view.PoolHex(q)
 	if !ok {
 		if id, ok = poolHexKey(q); !ok {
@@ -302,22 +302,19 @@ func poolHexKey(q string) (string, bool) {
 }
 
 // withKeys returns v with each forging node the source could not resolve
-// given the issuer of its last own block, if the index holds that block.
-func (e *Explorer) withKeys(v view.NodesView) view.NodesView {
+// given the issuer of its last own block, if idx holds that block.
+func withKeys(idx *explorer.Index, v view.NodesView) view.NodesView {
 	v.Nodes = slices.Clone(v.Nodes)
 	for i, n := range v.Nodes {
 		if n.StakePool != "" || n.Tier != string(v1alpha1.TierForging) || n.LastBlock == nil {
 			continue
 		}
-		if id, ok := e.issuer(n.LastBlock.Hash); ok {
+		if id, ok := issuerIn(idx, n.LastBlock.Hash); ok {
 			v.Nodes[i].StakePool = id
 		}
 	}
 	return v
 }
-
-// chainPools is every pool the index shows.
-func (e *Explorer) chainPools() []explorer.PoolStat { return e.idx.Pools() }
 
 func route(h explorer.Hit) string {
 	switch h.Kind {
