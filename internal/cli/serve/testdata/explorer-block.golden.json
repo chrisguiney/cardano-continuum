@@ -3,12 +3,12 @@
   "evicted": false,
   "ex_mem": 0,
   "ex_steps": 0,
-  "fees": 1683962,
+  "fees": 2021036,
   "fork": false,
-  "hash": "d2a00bc723f395b6321dad86a5ddf27d2023760d2ad20d624f134375a7855fed",
+  "hash": "8aeac880c5f9e59ed0eed2d7b066debb25407749818cec76f366e3c5a59b00d2",
   "header": {
-    "body_hash": "1ac0b1def4e9810609b84ee77d0c4b69db89a37204c7e24e2235ad07f17d57ea",
-    "body_size": 2942,
+    "body_hash": "9f56e4e2fd6b71deb97b00d3a8d4985be9c224a01cb7df2b2fbf1276127aeb19",
+    "body_size": 3536,
     "issuer_vkey": "0000000000000000000000000000000000000000000000000000000000000000",
     "kes_period": 0,
     "opcert_hot_vkey": "0000000000000000000000000000000000000000000000000000000000000000",
@@ -19,10 +19,10 @@
   },
   "height": 1,
   "issuer": "f9dca21a6c826ec8acb4cf395cbc24351937bfe6560b2683ab8b415f",
-  "next": "0a5db53d76efcad0cf3a88141413dc38dfeaecfc3a2daabc78ee67c2fc12d716",
+  "next": "9aa65ce3c534085003fcc9be0dff1288ddf5e4b0e49ae8bc064eceebb8191ada",
   "pools": [],
   "prev": "0000000000000000000000000000000000000000000000000000000000000000",
-  "size": 3792,
+  "size": 4386,
   "slot": 10,
   "stub": false,
   "time_ms": 10000,
@@ -41,11 +41,15 @@
     },
     {
       "fee": 168537,
-      "hash": "cbb41bacd76152f776135fa6f1c6fe70794396370c9a030cf7478da3533edd77"
+      "hash": "af3c3e4518b4fb8d0a91c71c7b6ced2729f4724df8b9824a4fb4cbc4f87afe9c"
     },
     {
       "fee": 168361,
       "hash": "4f37258b590722006da1b0d46cfdb02026bd80bcf219330b4bd4b5c3f4c7a005"
+    },
+    {
+      "fee": 168537,
+      "hash": "0a32868c9883a66485389fd720c6aa84e3df146d30aa2a5d1961319fe6687a61"
     },
     {
       "fee": 168361,
@@ -56,12 +60,16 @@
       "hash": "a152112cf9b6b1a38c220ad5f9ab76d891c9e3cbb3d47834c6630314a0239a26"
     },
     {
+      "fee": 168537,
+      "hash": "301e7e0c469225fed17e2b6b1b932d153307d862555a316ff974664144470e33"
+    },
+    {
       "fee": 168361,
       "hash": "b9e3e2c6b9eebe06ccd9f0195ffed3ce0510988095d06cc3d46ac4e74854762e"
     },
     {
       "fee": 168537,
-      "hash": "ec377ca4910afc743276ae0b886cdebd2d42f1c3416c357317e46a59d6356e11"
+      "hash": "e77360496ebef99c1c42d9a15c23ddbcd627cfdc38ceabb0e033b1abfd817759"
     },
     {
       "fee": 168361,
