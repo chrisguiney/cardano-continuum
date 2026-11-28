@@ -1,10 +1,10 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { epochLink, bytesText, lovelaceText, poolLink } from "../lib/explorer";
+import { epochLink, bytesText, lovelaceText } from "../lib/explorer";
 import type { EpochView } from "../lib/extypes";
 import { count } from "../lib/format";
 import { usePoll } from "../lib/hooks";
-import { ErrorNote, Link, Mono, Muted, Note, TableFrame, Title } from "./common";
-import { Facts, Section } from "./exparts";
+import { ErrorNote, Link, Note, TableFrame, Title } from "./common";
+import { Facts, PoolChip, Section } from "./exparts";
 
 /** EpochBody summarises an epoch: totals, and each pool's blocks against an equal share. */
 export function EpochBody({ e }: { e: EpochView }) {
@@ -27,7 +27,7 @@ export function EpochBody({ e }: { e: EpochView }) {
             <TableBody>
               {e.pools.map((p) => (
                 <TableRow key={p.pool}>
-                  <TableCell><Link to={poolLink(p.pool)}>{p.resolved ? <>{p.resolved.name} <Muted>({p.resolved.impl})</Muted></> : <Mono title={p.pool}>{p.pool.slice(0, 12)}…</Mono>}</Link></TableCell>
+                  <TableCell><PoolChip issuer={p.pool} pool={p.resolved} /></TableCell>
                   <TableCell>{p.blocks}</TableCell>
                   <TableCell>{p.expected.toFixed(1)}</TableCell>
                 </TableRow>

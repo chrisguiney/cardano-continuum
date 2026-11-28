@@ -12,7 +12,10 @@ export function blocksPath(offset: number, pool: string): string {
 export const blockLink = (hash: string) => `/explorer/blocks/${hash}`;
 export const txLink = (hash: string) => `/explorer/txs/${hash}`;
 export const addrLink = (addr: string) => `/explorer/addresses/${addr}`;
-export const poolLink = (id: string) => `/explorer/pools/${id}`;
+/** poolLink opens a stake pool (hex pool id); poolBlocksLink lists the blocks it issued; nodeLink opens a node by name. */
+export const poolLink = (id: string) => `/pools/${id}`;
+export const poolBlocksLink = (id: string) => `/explorer/pools/${id}`;
+export const nodeLink = (name: string) => `/nodes/${encodeURIComponent(name)}`;
 export const epochLink = (n: number) => `/explorer/epochs/${n}`;
 export const txCborPath = (hash: string) => `/api/explorer/txs/${hash}/cbor`;
 

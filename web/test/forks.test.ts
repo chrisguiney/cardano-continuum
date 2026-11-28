@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { forkLine, forkedImpls, forkedPools } from "../src/lib/forks";
-import type { PoolsView } from "../src/lib/types";
+import { forkLine, forkedImpls, forkedNodes } from "../src/lib/forks";
+import type { NodesView } from "../src/lib/types";
 
-const tip = (impl: string, slot: number, hash: string) => ({ impl, slot, hash, pools: 1 });
+const tip = (impl: string, slot: number, hash: string) => ({ impl, slot, hash, nodes: 1 });
 
 describe("fork detection from per-implementation tips", () => {
   it("sees no fork when implementations agree", () => {
@@ -22,37 +22,37 @@ describe("fork detection from per-implementation tips", () => {
     expect(forkedImpls([])).toEqual([]);
   });
 
-  const view = (over: Partial<PoolsView>): PoolsView => ({
-    pools: [
-      { id: "a", impl: "dingo", fork: false },
-      { id: "b", impl: "haskell", fork: false },
-      { id: "c", impl: "haskell", fork: true },
-    ] as PoolsView["pools"],
+  const view = (over: Partial<NodesView>): NodesView => ({
+    nodes: [
+      { name: "a", impl: "dingo", fork: false },
+      { name: "b", impl: "haskell", fork: false },
+      { name: "c", impl: "haskell", fork: true },
+    ] as NodesView["nodes"],
     tips: [],
     forks: [],
     topology: { mode: "mesh", nodes: [], edges: [] },
     ...over,
   });
 
-  it("marks pools of a forked implementation and any pool the server flagged", () => {
+  it("marks nodes of a forked implementation and any node the server flagged", () => {
     const v = view({ tips: [tip("dingo", 5, "aa"), tip("haskell", 5, "bb")] });
-    expect([...forkedPools(v)].sort()).toEqual(["a", "b", "c"]);
+    expect([...forkedNodes(v)].sort()).toEqual(["a", "b", "c"]);
   });
 
-  it("keeps the server's own pool and group marks when tips agree", () => {
-    const v = view({ tips: [tip("dingo", 5, "aa"), tip("haskell", 5, "aa")], forks: [{ slot: 5, groups: [{ hash: "x", pools: ["a"] }, { hash: "y", pools: ["b"] }] }] });
-    expect([...forkedPools(v)].sort()).toEqual(["a", "b", "c"]);
+  it("keeps the server's own node and group marks when tips agree", () => {
+    const v = view({ tips: [tip("dingo", 5, "aa"), tip("haskell", 5, "aa")], forks: [{ slot: 5, groups: [{ hash: "x", nodes: ["a"] }, { hash: "y", nodes: ["b"] }] }] });
+    expect([...forkedNodes(v)].sort()).toEqual(["a", "b", "c"]);
   });
 
-  it("marks only the lagging pools of a behind fork", () => {
-    const v = view({ forks: [{ slot: 0, reason: "behind", groups: [{ hash: "x", pools: ["b"] }, { hash: "y", pools: ["a"] }] }] });
-    expect([...forkedPools(v)].sort()).toEqual(["b", "c"]);
+  it("marks only the lagging nodes of a behind fork", () => {
+    const v = view({ forks: [{ slot: 0, reason: "behind", groups: [{ hash: "x", nodes: ["b"] }, { hash: "y", nodes: ["a"] }] }] });
+    expect([...forkedNodes(v)].sort()).toEqual(["b", "c"]);
   });
 
   it("describes a diverged fork by height and depth, and a behind one", () => {
-    const f = { slot: 90, height: 9, depth: 3, reason: "diverged" as const, groups: [{ hash: "x", pools: ["p0"] }, { hash: "y", pools: ["p3"] }] };
+    const f = { slot: 90, height: 9, depth: 3, reason: "diverged" as const, groups: [{ hash: "x", nodes: ["p0"] }, { hash: "y", nodes: ["p3"] }] };
     expect(forkLine(f)).toBe("p0 vs p3 hold different blocks at height 9, 3 blocks deep");
-    expect(forkLine({ slot: 0, reason: "behind", groups: [{ hash: "x", pools: ["p3"] }, { hash: "y", pools: ["p0"] }] })).toBe(
+    expect(forkLine({ slot: 0, reason: "behind", groups: [{ hash: "x", nodes: ["p3"] }, { hash: "y", nodes: ["p0"] }] })).toBe(
       "p3 behind the tip by more than k blocks",
     );
   });

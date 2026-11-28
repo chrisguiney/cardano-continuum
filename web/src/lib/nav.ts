@@ -8,7 +8,8 @@ export interface Capabilities {
 const BASE: NavItem[] = [
   ["/", "Overview"],
   ["/actors", "Actors"],
-  ["/pools", "Pools"],
+  ["/nodes", "Nodes"],
+  ["/pools", "Stake pools"],
 ];
 
 const TAIL: NavItem[] = [

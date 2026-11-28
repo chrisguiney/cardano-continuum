@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { blockLink, bytesText, epochLink, forkLines, lovelaceText, stateText } from "../lib/explorer";
+import { blockLink, bytesText, epochLink, forkLines, lovelaceText, nodeLink, stateText } from "../lib/explorer";
 import type { BlockDetail } from "../lib/extypes";
 import { simTime } from "../lib/format";
 import { usePoll } from "../lib/hooks";
@@ -8,17 +8,17 @@ import { ErrorNote, Link, Mono, Muted, Note, TableFrame, Title } from "./common"
 import { BlockHash, Facts, HashLink, PoolChip, Section, TxHash } from "./exparts";
 
 function PoolsOnBlock({ b }: { b: BlockDetail }) {
-  if (b.pools.length === 0) return <Note>No pool chains are followed here, so there is nothing to compare.</Note>;
+  if (b.pools.length === 0) return <Note>No node chains are followed here, so there is nothing to compare.</Note>;
   return (
     <>
       {forkLines(b.height, b.pools).map((l) => <p key={l} className="my-2 font-semibold text-destructive" role="status">{l}</p>)}
       <TableFrame>
         <Table>
-          <TableHeader><TableRow><TableHead>Pool</TableHead><TableHead>State</TableHead><TableHead>Its block at this height</TableHead></TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead>Node</TableHead><TableHead>State</TableHead><TableHead>Its block at this height</TableHead></TableRow></TableHeader>
           <TableBody>
             {b.pools.map((p) => (
               <TableRow key={p.pool}>
-                <TableCell><Link to="/pools">{p.pool}</Link></TableCell>
+                <TableCell><Link to={nodeLink(p.pool)}>{p.pool}</Link></TableCell>
                 <TableCell><Badge variant={p.state === "fork" ? "bad" : p.state === "on" ? "default" : "warn"}>{stateText(p.state)}</Badge></TableCell>
                 <TableCell>{p.hash ? (p.on_block ? <Muted>this block</Muted> : <BlockHash value={p.hash} />) : <Muted>none</Muted>}</TableCell>
               </TableRow>
@@ -35,7 +35,7 @@ export function BlockBody({ b }: { b: BlockDetail }) {
   const h = b.header;
   return (
     <>
-      {b.stub && <Note>This block is not in the index. It is known only because a pool's chain has it, so the details below are limited to what the tip carries.</Note>}
+      {b.stub && <Note>This block is not in the index. It is known only because a node's chain has it, so the details below are limited to what the tip carries.</Note>}
       {b.evicted && <Note>This block is older than the blocks the explorer keeps in full, so its header is not available.</Note>}
       <Section id="b-head" title="Block">
         <Facts rows={[
@@ -46,7 +46,7 @@ export function BlockBody({ b }: { b: BlockDetail }) {
           ["Hash", <HashLink value={b.hash} n={64} label="block hash" />],
           ["Previous", b.prev ? <BlockHash value={b.prev} n={64} /> : "none"],
           ["Next", b.next ? <BlockHash value={b.next} n={64} /> : <Muted>none yet</Muted>],
-          ["Issuer pool", <PoolChip issuer={b.issuer} pool={b.pool} />],
+          ["Issuer (stake pool)", <PoolChip issuer={b.issuer} pool={b.pool} />],
           ["Size", bytesText(b.size)],
           ["Fees", lovelaceText(b.fees)],
           ["ExUnits used", `${b.ex_mem.toLocaleString("en-US")} memory, ${b.ex_steps.toLocaleString("en-US")} steps`],
@@ -65,7 +65,7 @@ export function BlockBody({ b }: { b: BlockDetail }) {
           ]} />
         </Section>
       )}
-      <Section id="b-pools" title="Pools on this block">
+      <Section id="b-pools" title="Nodes on this block">
         <PoolsOnBlock b={b} />
       </Section>
       <Section id="b-txs" title={`Transactions (${b.txs.length})`}>

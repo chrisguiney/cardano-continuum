@@ -31,6 +31,8 @@ describe("top menu", () => {
         expect(nav.some(([p]) => p === "/explorer")).toBe(explorer);
         expect(nav.some(([p]) => p === "/controls")).toBe(controls);
         expect(new Set(nav.map(([p]) => p)).size).toBe(nav.length);
+        expect(nav).toContainEqual(["/nodes", "Nodes"]);
+        expect(nav).toContainEqual(["/pools", "Stake pools"]);
       }
     }
   });
@@ -84,7 +86,8 @@ describe("blocks list", () => {
   });
   it("links hashes, pools and epochs, with a copy button", () => {
     expect(html).toContain(`href="/explorer/blocks/${H1}"`);
-    expect(html).toContain(`href="/explorer/pools/${ISSUER}"`);
+    expect(html).toContain(`href="/pools/${ISSUER}"`);
+    expect(html).toContain('href="/nodes/p1"');
     expect(html).toContain('href="/explorer/epochs/1"');
     expect(html).toContain('aria-label="Copy block hash"');
   });
@@ -112,8 +115,10 @@ describe("block detail", () => {
   it("lists transactions as links", () => {
     expect(html).toContain(`href="/explorer/txs/${H2}"`);
   });
-  it("shows a fork as another pool on a different block, linking its block", () => {
+  it("shows a fork as another node on a different block, linking its block and the node", () => {
     expect(html).toContain("p3 is on a different block at height 7");
+    expect(html).toContain('href="/nodes/p3"');
+    expect(html).toContain("Nodes on this block");
     expect(html).toContain(`href="/explorer/blocks/${"9".repeat(64)}"`);
     expect(html).toContain("different block at this height");
   });

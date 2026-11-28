@@ -66,33 +66,40 @@ export interface Timeline {
   dropped: number;
   entries: TimelineEntry[];
 }
-export interface PoolRow {
-  id: string;
-  pool_id: string;
+/** NodeRow is one node process the operator runs (a ContinuumPool object), from GET /api/nodes. */
+export interface NodeRow {
+  name: string;
+  /** label is spec.poolId: shared by a forging node and its relays; a stake pool id only when it is 56 hex digits. */
+  label: string;
   impl: string;
   tier: string;
   phase: string;
   dark: boolean;
   tip: Point;
+  /** slot_lag is how many slots the tip trails the furthest node's tip. */
+  slot_lag: number;
   image?: string;
   fork: boolean;
-  stake: number | null;
-  blocks_made: number | null;
-  blocks_expected: number | null;
+  /** last_block is the newest block the node's own keys made; null when none was seen. */
+  last_block: Point | null;
+  /** stake_pool is the pool id (hex) whose keys the node runs; absent for a node without keys or one that has not forged yet. */
+  stake_pool?: string;
+  findings: number;
+  known_findings: number;
 }
 export interface ImplTip {
   impl: string;
   slot: number;
   hash: string;
   height?: number;
-  pools: number;
+  nodes: number;
 }
 export interface Fork {
   slot: number;
   height?: number;
   depth?: number;
   reason?: "diverged" | "behind";
-  groups: { hash: string; pools: string[] }[];
+  groups: { hash: string; nodes: string[] }[];
 }
 export interface TopoNode {
   id: string;
@@ -105,11 +112,52 @@ export interface Edge {
   from: string;
   to: string;
 }
-export interface PoolsView {
-  pools: PoolRow[];
+export interface NodesView {
+  nodes: NodeRow[];
   tips: ImplTip[];
   forks: Fork[];
   topology: { mode: string; nodes: TopoNode[]; edges: Edge[] };
+}
+/** PoolReg is a stake pool's latest registration certificate as the explorer read it. */
+export interface PoolReg {
+  pledge: number;
+  cost: number;
+  margin: number;
+  reward_account: string;
+  owners: number;
+  metadata_url?: string;
+  slot: number;
+}
+/** NodeRef names a node from a stake pool's row. */
+export interface NodeRef {
+  name: string;
+  impl: string;
+  tier: string;
+  phase: string;
+}
+/** StakePoolRow is one on-chain stake pool, from GET /api/pools. */
+export interface StakePoolRow {
+  id: string;
+  bech32: string;
+  /** actor is the pool actor operating it; null when no actor does. */
+  actor: number | null;
+  actor_name?: string;
+  profile?: string;
+  actor_state?: string;
+  /** registration is null for a genesis pool or when the server has no explorer. */
+  registration: PoolReg | null;
+  retire_epoch: number | null;
+  delegators: number;
+  /** delegated_lovelace sums the delegators' settled lovelace in the engine's planner ledger. */
+  delegated_lovelace: number;
+  /** blocks is null when the server has no explorer. */
+  blocks: number | null;
+  votes: number;
+  /** nodes run the pool's keys; empty when the pool exists only on chain. */
+  nodes: NodeRef[];
+}
+export interface StakePoolsView {
+  pools: StakePoolRow[];
 }
 export interface ImplVerdict {
   impl: string;

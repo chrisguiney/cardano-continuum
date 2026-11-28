@@ -58,7 +58,7 @@ export function Explorer({ pool = "" }: { pool?: string }) {
     <>
       <Title>{pool ? "Blocks by pool" : "Explorer"}</Title>
       <Blurb text={VIEW_BLURB.explorer!} />
-      {pool && <Note>Pool <Mono>{pool}</Mono>. <Link to="/pools">Pools view</Link></Note>}
+      {pool && <Note>Blocks issued by stake pool <Mono>{pool}</Mono>. <Link to={`/pools/${pool}`}>Stake pool</Link></Note>}
       <Note role="status">{live ? "Live: the newest blocks refresh every 3 seconds." : "Paused: go to the newest page to follow the chain."}</Note>
       <ErrorNote error={error} />
       {data && <BlockTable page={data} />}

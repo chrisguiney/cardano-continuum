@@ -3,7 +3,7 @@ import { MoonIcon, SunIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { getJSON } from "./lib/api";
-import { navigate, parseRoute } from "./lib/router";
+import { navigate, parseRoute, redirectFor } from "./lib/router";
 import { HelpTip } from "./views/fields";
 import { FIELD_HELP } from "./lib/help";
 import { Overview } from "./views/Overview";
@@ -30,7 +30,8 @@ const Findings = lazy(() => import("./views/Findings").then((m) => ({ default: m
 const GovAction = lazy(() => import("./views/GovAction").then((m) => ({ default: m.GovAction })));
 const Governance = lazy(() => import("./views/Governance").then((m) => ({ default: m.Governance })));
 const Help = lazy(() => import("./views/Help").then((m) => ({ default: m.Help })));
-const Pools = lazy(() => import("./views/Pools").then((m) => ({ default: m.Pools })));
+const Nodes = lazy(() => import("./views/Nodes").then((m) => ({ default: m.Nodes })));
+const StakePools = lazy(() => import("./views/StakePools").then((m) => ({ default: m.StakePools })));
 
 type Theme = "light" | "dark";
 
@@ -81,6 +82,13 @@ function usePath(): string {
     addEventListener("popstate", on);
     return () => removeEventListener("popstate", on);
   }, []);
+  // An old link is replaced, not pushed, so Back does not return to it.
+  useEffect(() => {
+    const to = redirectFor(location.pathname, location.search);
+    if (!to) return;
+    history.replaceState(null, "", to);
+    setPath(location.pathname);
+  }, [path]);
   return path;
 }
 
@@ -154,7 +162,10 @@ function Shell() {
           {route.name === "overview" && <Overview />}
           {route.name === "actors" && <Actors />}
           {route.name === "actor" && <Actor id={route.id} />}
-          {route.name === "pools" && <Pools />}
+          {route.name === "nodes" && <Nodes />}
+          {route.name === "node" && <Nodes name={route.key} />}
+          {route.name === "pools" && <StakePools />}
+          {route.name === "pool" && <StakePools id={route.key} />}
           {route.name === "governance" && <Governance />}
           {route.name === "govaction" && <GovAction tx={route.tx} index={route.index} />}
           {route.name === "decisions" && <Decisions />}

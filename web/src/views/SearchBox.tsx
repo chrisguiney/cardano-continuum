@@ -8,7 +8,7 @@ import { HelpTip } from "./fields";
 
 /**
  * SearchBox routes a block hash or height, slot, transaction hash, address,
- * pool id or actor id to the view that shows it.
+ * stake pool id, node name or actor id to the view that shows it.
  */
 export function SearchBox() {
   const [q, setQ] = useState("");

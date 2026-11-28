@@ -7,7 +7,7 @@ import { GLOSSARY, FIELD_HELP, VIEW_BLURB } from "../src/lib/help";
 import { optionsOf, type Enums } from "../src/lib/meta";
 import { parseQuery, buildQuery } from "../src/lib/query";
 import { initialPage, toQuery, fromSearch, setFilter } from "../src/lib/paging";
-import { ActorFilters, AdversaryFilterBar, DecisionFilterBar, FindingFilterBar, PoolFilterBar } from "../src/views/filterbars";
+import { ActorFilters, AdversaryFilterBar, DecisionFilterBar, FindingFilterBar, NodeFilterBar } from "../src/views/filterbars";
 import { findingsPath } from "../src/lib/findings";
 
 const enums: Enums = {
@@ -58,7 +58,7 @@ describe("every filter has help and every view a blurb", () => {
       expect(FIELD_HELP[k], k).toBeTruthy();
       expect(FIELD_HELP[k]!.label.length).toBeGreaterThan(0);
     }
-    for (const v of ["overview", "actors", "actor", "pools", "decisions", "findings", "adversaries", "controls"]) expect(VIEW_BLURB[v], v).toBeTruthy();
+    for (const v of ["overview", "actors", "actor", "pools", "nodes", "decisions", "findings", "adversaries", "controls"]) expect(VIEW_BLURB[v], v).toBeTruthy();
   });
 });
 
@@ -102,7 +102,7 @@ describe("filter bars", () => {
     ["actors", <ActorFilters page={initialPage()} enums={enums} profiles={{ hodl: 3 }} states={{}} onFilter={noop} onLimit={noop} onSort={noop} />, ["f-profile", "f-kind", "f-state", "f-delegated", "f-sort", "f-dir", "f-limit"], ["hodl (3)", "wallet", "dormant"]],
     ["findings", <FindingFilterBar f={{ known: "false", kind: "", severity: "" }} enums={enums} onChange={noop} />, ["f-known", "f-severity", "f-fkind"], ["fatal", "wrong_class"]],
     ["decisions", <DecisionFilterBar f={{ actor: "", profile: "", kind: "", intent: "" }} enums={enums} profiles={{}} onChange={noop} />, ["f-actor", "f-dprofile", "f-dkind", "f-intent"], ["IntentChosen", "vote"]],
-    ["pools", <PoolFilterBar f={{ impl: "", tier: "", phase: "" }} enums={enums} onChange={noop} />, ["f-impl", "f-tier", "f-phase"], ["cardano-node", "forging", "Forging"]],
+    ["nodes", <NodeFilterBar f={{ impl: "", tier: "", phase: "" }} enums={enums} onChange={noop} />, ["f-impl", "f-tier", "f-phase"], ["cardano-node", "forging", "Forging"]],
     ["adversaries", <AdversaryFilterBar f={{ attack: "", agenda: "" }} enums={enums} onChange={noop} />, ["f-attack", "f-agenda"], ["dust-flood", "dapp"]],
   ];
   for (const [name, node, ids, values] of bars) {

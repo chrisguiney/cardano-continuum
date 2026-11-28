@@ -67,13 +67,13 @@ export function DecisionFilterBar({ f, enums, profiles, onChange }: { f: Decisio
   );
 }
 
-export interface PoolFilterState {
+export interface NodeFilterState {
   impl: string;
   tier: string;
   phase: string;
 }
 
-export function PoolFilterBar({ f, enums, onChange }: { f: PoolFilterState; enums: Enums | null; onChange: (k: keyof PoolFilterState, v: string) => void }) {
+export function NodeFilterBar({ f, enums, onChange }: { f: NodeFilterState; enums: Enums | null; onChange: (k: keyof NodeFilterState, v: string) => void }) {
   const e = enums ?? EMPTY;
   return (
     <>

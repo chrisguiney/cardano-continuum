@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { addrLink, blockLink, poolLink, txLink, usage } from "../lib/explorer";
+import { addrLink, blockLink, nodeLink, poolLink, txLink, usage } from "../lib/explorer";
 import type { Asset, Output, PoolRef } from "../lib/extypes";
 import { short } from "../lib/format";
 import { Button } from "@/components/ui/button";
@@ -21,11 +21,16 @@ export const BlockHash = ({ value, n }: { value: string; n?: number }) => <HashL
 export const TxHash = ({ value, n }: { value: string; n?: number }) => <HashLink value={value} to={txLink(value)} n={n} label="transaction hash" />;
 export const Addr = ({ value }: { value: string }) => <HashLink value={value} to={addrLink(value)} n={18} label="address" />;
 
-/** PoolChip names the pool that issued a block: a continuum pool by name and implementation, else the id. */
+/**
+ * PoolChip names the stake pool that issued a block, linking the pool, and
+ * when a node runs its keys that node by name and implementation, linking
+ * the node.
+ */
 export function PoolChip({ issuer, pool }: { issuer: string; pool?: PoolRef }) {
   return (
-    <span className="inline-flex items-center whitespace-nowrap">
-      <Link to={poolLink(issuer)}>{pool ? <span title={issuer}>{pool.name} <Muted>({pool.impl})</Muted></span> : <Mono title={issuer}>{short(issuer, 10)}</Mono>}</Link>
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+      <Link to={poolLink(issuer)}><Mono title={issuer}>{short(issuer, pool ? 6 : 10)}</Mono></Link>
+      {pool && <Link to={nodeLink(pool.name)}>{pool.name} <Muted>({pool.impl})</Muted></Link>}
     </span>
   );
 }

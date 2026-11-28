@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildControl, newRequestId } from "../src/lib/controls";
 import { ada, count } from "../src/lib/format";
 import { layout } from "../src/lib/layout";
-import { parseRoute } from "../src/lib/router";
+import { parseRoute, redirectFor } from "../src/lib/router";
 
 describe("routes", () => {
   it("maps paths to views", () => {
@@ -15,6 +15,23 @@ describe("routes", () => {
     expect(parseRoute("/controls")).toEqual({ name: "controls" });
     expect(parseRoute("/actors/x")).toEqual({ name: "notfound" });
     expect(parseRoute("/nope")).toEqual({ name: "notfound" });
+  });
+
+  it("keeps nodes and stake pools apart", () => {
+    const id = "ab".repeat(28);
+    expect(parseRoute("/nodes")).toEqual({ name: "nodes" });
+    expect(parseRoute("/nodes/p3")).toEqual({ name: "node", key: "p3" });
+    expect(parseRoute(`/pools/${id}`)).toEqual({ name: "pool", key: id });
+    expect(parseRoute("/pools/p3")).toEqual({ name: "notfound" });
+    expect(parseRoute("/nodes/P3!")).toEqual({ name: "notfound" });
+    expect(parseRoute(`/explorer/pools/${id}`)).toEqual({ name: "xpool", key: id });
+  });
+
+  it("sends an old node-filtered pools link to the nodes view", () => {
+    expect(redirectFor("/pools", "?impl=dingo&tier=forging")).toBe("/nodes?impl=dingo&tier=forging");
+    expect(redirectFor("/pools", "?phase=Dark")).toBe("/nodes?phase=Dark");
+    expect(redirectFor("/pools", "")).toBeNull();
+    expect(redirectFor("/nodes", "?impl=dingo")).toBeNull();
   });
 });
 

@@ -1,16 +1,19 @@
 export type Route =
-  | { name: "overview" | "actors" | "pools" | "governance" | "decisions" | "findings" | "adversaries" | "controls" | "help" | "explorer" | "notfound" }
+  | { name: "overview" | "actors" | "pools" | "nodes" | "governance" | "decisions" | "findings" | "adversaries" | "controls" | "help" | "explorer" | "notfound" }
+  | { name: "pool" | "node"; key: string }
   | { name: "actor"; id: number }
   | { name: "govaction"; tx: string; index: number }
   | { name: "xblock" | "xtx" | "xaddr" | "xpool"; key: string }
   | { name: "xepoch"; n: number };
 
-const simple = new Set(["actors", "pools", "governance", "decisions", "findings", "adversaries", "controls", "help", "explorer"]);
+const simple = new Set(["actors", "pools", "nodes", "governance", "decisions", "findings", "adversaries", "controls", "help", "explorer"]);
 
 const reHash = /^[0-9a-fA-F]{64}$/;
 const reKey = /^(?:[0-9a-fA-F]{64}|\d{1,18})$/;
 const reAddr = /^[a-z0-9_]{8,200}$/;
 const rePool = /^[0-9a-f]{56}$/;
+// reNode is a Kubernetes object name, which a node's name is.
+const reNode = /^[a-z0-9](?:[-a-z0-9.]{0,251}[a-z0-9])?$/;
 
 // The explorer's routes validate their argument here so a view never
 // builds an API path from arbitrary text.
@@ -27,6 +30,8 @@ export function parseRoute(path: string): Route {
   if (parts.length === 0) return { name: "overview" };
   if (parts.length === 1 && head && simple.has(head)) return { name: head as "actors" };
   if (parts.length === 2 && head === "actors" && arg && /^\d+$/.test(arg)) return { name: "actor", id: Number(arg) };
+  if (parts.length === 2 && head === "pools" && arg) return rePool.test(arg) ? { name: "pool", key: arg } : { name: "notfound" };
+  if (parts.length === 2 && head === "nodes" && arg) return reNode.test(arg) ? { name: "node", key: arg } : { name: "notfound" };
   if (head === "governance" && parts.length === 3 && arg && key) return govRoute(arg, key);
   if (head === "explorer" && parts.length === 3 && arg && key) return explorerRoute(arg, key);
   return { name: "notfound" };
@@ -41,6 +46,17 @@ function explorerRoute(kind: string, key: string): Route {
   const r = exRoutes[kind];
   if (!r || !r[1].test(key)) return { name: "notfound" };
   return { name: r[0] as "xblock", key };
+}
+
+/**
+ * redirectFor is where an old link now lives, or null. /pools used to list
+ * the nodes, filtered by impl, tier and phase; it now lists stake pools,
+ * so a link carrying those filters goes to /nodes.
+ */
+export function redirectFor(path: string, search: string): string | null {
+  if (path !== "/pools") return null;
+  const q = new URLSearchParams(search);
+  return ["impl", "tier", "phase"].some((k) => q.has(k)) ? `/nodes${search}` : null;
 }
 
 /** navigate changes the client route without a reload and tells listeners. */
