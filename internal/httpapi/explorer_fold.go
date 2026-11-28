@@ -3,9 +3,13 @@ package httpapi
 import (
 	"cmp"
 	"encoding/hex"
+	"fmt"
+	"math/big"
 	"slices"
 	"strconv"
 	"sync"
+
+	"github.com/blinklabs-io/plutigo/data"
 
 	"github.com/chrisguiney/cardano-continuum/internal/contract"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
@@ -119,6 +123,9 @@ type tally struct {
 	last []RecentRun
 	// instances are the distinct instances seen.
 	instances map[string]bool
+	// contracts are the indices of the deployed contracts, which are the
+	// nonces their parameterised instances were applied to.
+	contracts map[uint64]bool
 }
 
 // scriptFold folds Submitted and Deployed records into the Contracts
@@ -141,7 +148,7 @@ func newScriptFold() *scriptFold {
 func (f *scriptFold) tally(name string) *tally {
 	t, ok := f.byName[name]
 	if !ok {
-		t = &tally{reasons: map[string]int{}, instances: map[string]bool{}}
+		t = &tally{reasons: map[string]int{}, instances: map[string]bool{}, contracts: map[uint64]bool{}}
 		f.byName[name] = t
 	}
 	return t
@@ -161,7 +168,11 @@ func (f *scriptFold) apply(r eventlog.Record) {
 			return
 		}
 		f.mu.Lock()
-		f.tally(d.Validator).instance(d.Address)
+		t := f.tally(d.Validator)
+		t.instance(d.Address)
+		if len(t.contracts) < maxInstance {
+			t.contracts[d.Contract] = true
+		}
 		f.mu.Unlock()
 	case engine.KindSubmitted:
 		var s engine.Submitted
@@ -284,4 +295,103 @@ func row(v contract.Validator, t *tally) ValidatorRow {
 		r.Last = append(r.Last, t.last[i])
 	}
 	return r
+}
+
+// maxListed bounds the instances a contract detail lists.
+const maxListed = 200
+
+// deployed returns the contract indices deployed for the validator name,
+// lowest first, at most maxListed.
+func (f *scriptFold) deployed(name string) []uint64 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	t := f.byName[name]
+	if t == nil {
+		return []uint64{}
+	}
+
+	out := make([]uint64, 0, len(t.contracts))
+	for c := range t.contracts {
+		out = append(out, c)
+	}
+	slices.Sort(out)
+	return out[:min(len(out), maxListed)]
+}
+
+// ContractDetail is one validator's source and compilation phases.
+type ContractDetail struct {
+	// Name is the validator's name.
+	Name string `json:"name"`
+	// Toolchain is the compiler that built it.
+	Toolchain string `json:"toolchain"`
+	// Params name the parameters an instance applies.
+	Params []string `json:"params,omitempty"`
+	// Sources are its Aiken module first, then the project modules it uses.
+	Sources []contract.Source `json:"sources"`
+	// Pipeline is the compiler's output, parameters unapplied.
+	Pipeline contract.Pipeline `json:"pipeline"`
+	// Instances are the indices of the deployed contracts, which are the
+	// nonces their instances were applied to; at most 200.
+	Instances []uint64 `json:"instances"`
+}
+
+// InstanceDetail is a validator applied to a deployed contract's nonce.
+type InstanceDetail struct {
+	// Name is the instance, "vesting#3".
+	Name string `json:"name"`
+	// Pipeline is the applied program's phases.
+	Pipeline contract.Pipeline `json:"pipeline"`
+}
+
+// contractDetail describes the validator called name; deployed lists the
+// contract indices deployed for it.
+func contractDetail(name string, deployed func(string) []uint64) (ContractDetail, error) {
+	v, ok := contract.Named(name)
+	if !ok {
+		return ContractDetail{}, fmt.Errorf("%w: no validator %q", view.ErrNotFound, name)
+	}
+
+	p, err := contract.Pipe(v)
+	if err != nil {
+		return ContractDetail{}, err
+	}
+	return ContractDetail{
+		Name:      v.Name,
+		Toolchain: contract.Toolchain,
+		Params:    v.Params,
+		Sources:   contract.SourcesOf(v),
+		Pipeline:  p,
+		Instances: deployed(v.Name),
+	}, nil
+}
+
+// instanceDetail applies the validator called name to the nonce n, the
+// way a deployed contract is made (build.Contract): the integer n for
+// each parameter.
+func instanceDetail(name, n string) (InstanceDetail, error) {
+	v, ok := contract.Named(name)
+	if !ok {
+		return InstanceDetail{}, fmt.Errorf("%w: no validator %q", view.ErrNotFound, name)
+	}
+
+	if len(v.Params) == 0 {
+		return InstanceDetail{}, fmt.Errorf("%w: %s takes no parameters", view.ErrBadRequest, name)
+	}
+
+	nonce, err := strconv.ParseUint(n, 10, 64)
+	if err != nil {
+		return InstanceDetail{}, fmt.Errorf("%w: instance %q is not a contract index", view.ErrBadRequest, n)
+	}
+
+	args := make([]data.PlutusData, len(v.Params))
+	for i := range args {
+		args[i] = data.NewInteger(new(big.Int).SetUint64(nonce))
+	}
+
+	p, err := contract.Pipe(v, args...)
+	if err != nil {
+		return InstanceDetail{}, err
+	}
+	return InstanceDetail{Name: name + "#" + strconv.FormatUint(nonce, 10), Pipeline: p}, nil
 }

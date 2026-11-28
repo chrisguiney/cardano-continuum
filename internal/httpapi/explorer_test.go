@@ -523,3 +523,53 @@ func TestContractsEndpointAndTxScripts(t *testing.T) {
 		t.Fatalf("contracts %d %+v", code, v)
 	}
 }
+
+func TestContractDetailEndpoint(t *testing.T) {
+	r := newRig(t, nil)
+	dep, err := eventlog.Encode(engine.Deployed{Contract: 3, Address: "addr", Validator: "vesting", Script: "cd"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.ex.Apply(eventlog.Record{Seq: 20, Class: eventlog.Decision, Kind: engine.KindDeployed, Body: dep})
+
+	var d ContractDetail
+	if code := r.get("/api/contracts/vesting", &d); code != 200 {
+		t.Fatalf("status %d", code)
+	}
+	v, _ := contract.Named("vesting")
+	if d.Name != "vesting" || d.Toolchain != contract.Toolchain || d.Pipeline.Hash != v.Hash.String() {
+		t.Fatalf("detail %q %q %q", d.Name, d.Toolchain, d.Pipeline.Hash)
+	}
+	if len(d.Sources) < 2 || d.Sources[0].Path != v.Module || !strings.Contains(d.Sources[0].Text, "validator vesting") {
+		t.Fatalf("sources %+v", d.Sources)
+	}
+	if len(d.Instances) != 1 || d.Instances[0] != 3 {
+		t.Fatalf("instances %v", d.Instances)
+	}
+}
+
+func TestContractInstanceEndpoint(t *testing.T) {
+	r := newRig(t, nil)
+	var in InstanceDetail
+	if code := r.get("/api/contracts/vesting/instances/3", &in); code != 200 {
+		t.Fatalf("status %d", code)
+	}
+	v, _ := contract.Named("vesting")
+	if in.Name != "vesting#3" || in.Pipeline.Hash == v.Hash.String() || !strings.Contains(in.Pipeline.UPLC, "(con data (I 3))") {
+		t.Fatalf("instance %q hash %s", in.Name, in.Pipeline.Hash)
+	}
+
+	for path, want := range map[string]int{
+		"/api/contracts/nope":                                                404,
+		"/api/contracts/nope/instances/1":                                    404,
+		"/api/contracts/free_mint/instances/1":                               400,
+		"/api/contracts/vesting/instances/x":                                 400,
+		"/api/contracts/vesting/instances/-1":                                400,
+		"/api/contracts/vesting/instances/1" + "0" + strings.Repeat("0", 30): 400,
+	} {
+		var e map[string]string
+		if code := r.get(path, &e); code != want {
+			t.Errorf("%s: status %d, want %d", path, code, want)
+		}
+	}
+}

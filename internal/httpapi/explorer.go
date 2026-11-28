@@ -27,15 +27,11 @@ type exRoutes struct{ *api }
 //	GET /api/explorer/epochs/{n}
 //	GET /api/explorer/search?q
 //	GET /api/contracts
+//	GET /api/contracts/{name}
+//	GET /api/contracts/{name}/instances/{n}
 func (a exRoutes) register(mux *http.ServeMux) {
 	ex := a.Explorer
-	mux.HandleFunc("GET /api/contracts", func(w http.ResponseWriter, r *http.Request) {
-		if _, err := exQuery(r); err != nil {
-			a.fail(w, err)
-			return
-		}
-		a.json(w, http.StatusOK, ex.fold.scripts.view())
-	})
+	a.contracts(mux)
 	mux.HandleFunc("GET /api/explorer/status", func(w http.ResponseWriter, r *http.Request) {
 		if _, err := exQuery(r); err != nil {
 			a.fail(w, err)
@@ -169,4 +165,31 @@ func parseBlockQuery(r *http.Request) (explorer.BlockQuery, error) {
 		return q, badf("pool must be 56 lowercase hex digits")
 	}
 	return q, nil
+}
+
+// contracts registers the validator endpoints: the run's view of every
+// validator, and one validator's compilation phases.
+func (a exRoutes) contracts(mux *http.ServeMux) {
+	ex := a.Explorer
+	mux.HandleFunc("GET /api/contracts", func(w http.ResponseWriter, r *http.Request) {
+		if _, err := exQuery(r); err != nil {
+			a.fail(w, err)
+			return
+		}
+		a.json(w, http.StatusOK, ex.fold.scripts.view())
+	})
+	mux.HandleFunc("GET /api/contracts/{name}", func(w http.ResponseWriter, r *http.Request) {
+		if _, err := exQuery(r); err != nil {
+			a.fail(w, err)
+			return
+		}
+		a.reply(w, func() (any, error) { return contractDetail(r.PathValue("name"), ex.fold.scripts.deployed) })
+	})
+	mux.HandleFunc("GET /api/contracts/{name}/instances/{n}", func(w http.ResponseWriter, r *http.Request) {
+		if _, err := exQuery(r); err != nil {
+			a.fail(w, err)
+			return
+		}
+		a.reply(w, func() (any, error) { return instanceDetail(r.PathValue("name"), r.PathValue("n")) })
+	})
 }
