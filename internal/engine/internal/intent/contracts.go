@@ -11,9 +11,14 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 )
 
+// Genesis is how many contracts exist from genesis: the shared
+// AlwaysSucceeds lock and one instance of each template (build.Template),
+// so every run calls the vesting and escrow validators.
+const Genesis = 3
+
 // Contracts are the deployed contracts.
 //
-// Contract 0 (build.AlwaysSucceeds) exists from genesis. A file with a
+// Contracts 0 to Genesis-1 exist from genesis. A file with a
 // contract population deploys more at its new_rate per genesis wallet per
 // day: a deployment is the moment its address becomes one wallets lock at,
 // so it has no transaction of its own. Each contract draws a usage weight
@@ -21,7 +26,7 @@ import (
 // proportion to the weights, so a few contracts take most calls.
 type Contracts struct {
 	core
-	// n is how many contracts are deployed (contract 0 from genesis); at is
+	// n is how many contracts are deployed (Genesis of them from genesis); at is
 	// the next deployment, drawn its draw.
 	n     uint64
 	at    sched.Time
@@ -55,7 +60,8 @@ func (ct *Contracts) Deploy(at sched.Time) error {
 		return err
 	}
 	ct.n++
-	ct.env.Journal.Emit(at, wire.KindDeployed, 0, wire.Deployed{Contract: i, Address: build.Contract(i).Name})
+	c := build.Contract(i)
+	ct.env.Journal.Emit(at, wire.KindDeployed, 0, wire.Deployed{Contract: i, Address: c.Name, Validator: c.Validator, Script: c.Hash().String()})
 	ct.schedule(at)
 	return nil
 }
@@ -67,7 +73,7 @@ func (ct *Contracts) book(i uint64) error {
 	return nil
 }
 
-// Count is the number of contracts deployed, contract 0 included.
+// Count is the number of contracts deployed, the genesis ones included.
 func (ct *Contracts) Count() int { return int(ct.n) }
 
 // usage is contract i's usage weight.
@@ -79,8 +85,8 @@ func (ct *Contracts) usage(i uint64) float64 {
 	return cp.Usage.Sample(ct.spec.Seed.Derive("contract", strconv.FormatUint(i, 10)).Rand())
 }
 
-// pick draws the contract a lock goes to. With one contract it
-// draws nothing, so a file without contracts locks as it always did.
+// pick draws the contract a lock goes to, in proportion to the
+// contracts' usage weights (uniform without a contract population).
 func (ct *Contracts) pick(r *rand.Rand) uint64 {
 	if ct.n <= 1 {
 		return 0
@@ -103,7 +109,7 @@ func (ct *Contracts) pick(r *rand.Rand) uint64 {
 
 // State is the deployment state a snapshot keeps.
 type State struct {
-	// N is how many contracts are deployed, at least one.
+	// N is how many contracts are deployed, at least Genesis.
 	N uint64 `json:"n,omitzero"`
 	// At is the next deployment.
 	At sched.Time `json:"at,omitzero"`
@@ -115,10 +121,11 @@ type State struct {
 func (ct *Contracts) Save() State { return State{N: ct.n, At: ct.at, Drawn: ct.drawn} }
 
 // Load restores the state of a snapshot: it books the deployed contracts'
-// addresses again and schedules the next deployment.
+// addresses again (the engine books the genesis ones) and schedules the
+// next deployment.
 func (ct *Contracts) Load(s State) error {
-	ct.n, ct.at, ct.drawn = max(s.N, 1), s.At, s.Drawn
-	for i := uint64(1); i < ct.n; i++ {
+	ct.n, ct.at, ct.drawn = max(s.N, Genesis), s.At, s.Drawn
+	for i := uint64(Genesis); i < ct.n; i++ {
 		if err := ct.book(i); err != nil {
 			return err
 		}

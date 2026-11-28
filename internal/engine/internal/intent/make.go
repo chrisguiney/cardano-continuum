@@ -4,12 +4,16 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/blinklabs-io/gouroboros/ledger/common"
+	"github.com/blinklabs-io/gouroboros/ledger/conway"
+
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/contract"
 	"github.com/chrisguiney/cardano-continuum/internal/plan"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
@@ -31,6 +35,7 @@ func (m *Maker) Submitted(at sched.Time, p *wire.Pending, built build.Built, inp
 	s := wire.Submitted{
 		Intent: p.ID, ID: wire.TxID(built.ID), To: p.To, Amount: p.Amount, Fee: built.Fee, TTL: p.TTL, Inputs: inputs, Tx: built.Tx, Kind: p.Kind,
 		Mistakes: p.Carried, Attack: attack, Action: p.GovType, Contract: p.Contract,
+		Validator: m.validator(p), Scripts: m.runs(built),
 	}
 	if (p.Kind == string(profile.IntentVote) || p.Kind == string(agenda.CommitteeVote)) && p.Action != nil {
 		_, s.Voter = Voter(m.env.Ring, population.ActorID(p.Actor))
@@ -41,6 +46,45 @@ func (m *Maker) Submitted(at sched.Time, p *wire.Pending, built build.Built, inp
 		s.Choice, s.Power = choiceNames[p.Choice], p.Power
 	}
 	m.env.Journal.Emit(at, wire.KindSubmitted, population.ActorID(p.Actor), s)
+}
+
+// validator names the script p's transaction pays to or runs.
+func (m *Maker) validator(p *wire.Pending) string {
+	switch p.Kind {
+	case LockKind, UnlockKind:
+		return build.Contract(p.Contract).Name
+	case string(profile.IntentMint), string(profile.IntentBurn):
+		return build.FreeMint.Name
+	}
+	return ""
+}
+
+// runs evaluates the script runs of the bytes submitted, resolving their
+// inputs from the chain view; a transaction without redeemers has none.
+// Evaluation is deterministic, so the record replays.
+func (m *Maker) runs(built build.Built) []contract.Run {
+	tx, err := conway.NewConwayTransactionFromCbor(built.Tx)
+	if err != nil {
+		return nil
+	}
+
+	if ws := tx.Witnesses(); ws == nil || ws.Redeemers() == nil {
+		return nil
+	}
+
+	v := m.env.Chain.View()
+	var utxos []common.Utxo
+	for _, in := range append(tx.Inputs(), tx.Collateral()...) {
+		if u, ok := v.Utxo(chain.Ref{Tx: chain.TxID(in.Id()), Index: in.Index()}); ok {
+			utxos = append(utxos, u)
+		}
+	}
+
+	rs, err := m.spec.Builder.Runs(built.Tx, utxos)
+	if err != nil {
+		return nil
+	}
+	return rs
 }
 
 // Attempt builds one attempt of p on inputs the planner offers its

@@ -1,7 +1,6 @@
 package intent
 
 import (
-	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
@@ -228,9 +227,10 @@ func (ch *Chooser) payee(a population.Actor, targets []population.ActorID, r *ra
 	return targets[r.IntN(len(targets))]
 }
 
-// prepareScript unlocks the actor's oldest locked output not already being
-// unlocked, contract by contract, or locks a new one at a contract drawn
-// by usage (Contracts.pick).
+// prepareScript unlocks the actor's oldest claimable locked output not
+// already being unlocked, contract by contract, or locks a new one at a
+// contract drawn by usage (Contracts.pick). A vesting position not yet
+// due is not claimable, so its owner locks again instead of idling.
 func (ch *Chooser) prepareScript(id population.ActorID, p *wire.Pending, r *rand.Rand) {
 	busy := map[wire.Ref]bool{}
 	for q := range ch.env.Flight.All() {
@@ -239,12 +239,13 @@ func (ch *Chooser) prepareScript(id population.ActorID, p *wire.Pending, r *rand
 			busy[*q.Locked] = true
 		}
 	}
-	want := DatumKey(ActorDatum(id))
+	owner := ch.env.Roster.Wallet(id).PaymentKeyHash()
+	now := ch.spec.Builder.SlotTime(ch.env.Chain.Tip().Slot)
 	for i := range ch.ct.n {
+		template := build.Template(i)
 		for _, u := range ch.env.Chain.View().UtxosAt(build.Contract(i).Address(ch.spec.NetworkID)) {
-			d := u.Output.Datum()
 			ref := wire.Ref{Tx: wire.TxID(u.Id.Id()), Index: u.Id.Index()}
-			if d == nil || busy[ref] || !bytes.Equal(DatumKey(*d), want) {
+			if busy[ref] || !claimable(template, u.Output.Datum(), id, owner, now) {
 				continue
 			}
 			p.Kind, p.Locked, p.Amount, p.Contract = UnlockKind, &ref, u.Output.Amount().Uint64(), uint64(i)

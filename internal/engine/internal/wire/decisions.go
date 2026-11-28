@@ -1,6 +1,7 @@
 package wire
 
 import (
+	"github.com/chrisguiney/cardano-continuum/internal/contract"
 	"github.com/chrisguiney/cardano-continuum/internal/mistake"
 	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
@@ -11,6 +12,10 @@ import (
 type Deployed struct {
 	Contract uint64 `json:"contract"`
 	Address  string `json:"address"`
+	// Validator is the registry validator the contract is an instance of.
+	Validator string `json:"validator,omitempty"`
+	// Script is the instance's script hash in hex.
+	Script string `json:"script,omitempty"`
 }
 
 // Controlled is the body of a Controlled decision: a Control input was
@@ -118,6 +123,12 @@ type Submitted struct {
 	// contract a lock or unlock calls.
 	Action   string `json:"action,omitempty"`
 	Contract uint64 `json:"contract,omitzero"`
+	// Validator names the script a lock pays to or a script call runs
+	// ("vesting#3", "free_mint"); empty for a transaction without one.
+	Validator string `json:"validator,omitempty"`
+	// Scripts are the attempt's script runs, one per redeemer, as the
+	// engine's evaluation of the submitted bytes gave them.
+	Scripts []contract.Run `json:"scripts,omitempty"`
 	// A vote's proposal ("txhash#index"), choice (yes, no or abstain),
 	// voter class (drep, spo or committee) and voting power: the lovelace
 	// the engine's chain view puts behind the voter when it votes.

@@ -137,9 +137,7 @@ var specs = map[string]kind{
 	string(profile.IntentBurn):       {need: none, headroom: ScriptHeadroom, deposit: noDeposit, build: buildMint, script: true},
 	LockKind: {need: func(_ *core, p *wire.Pending) uint64 { return p.Amount }, headroom: FeeHeadroom,
 		deposit: func(_ *core, p *wire.Pending) int64 { return 0 },
-		build: func(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, p *wire.Pending) (build.Built, error) {
-			return c.spec.Builder.Plutus().Lock(ctx, w, build.Lock{Spend: sp, Script: build.Contract(p.Contract), Amount: p.Amount, Datum: ActorDatum(population.ActorID(p.Actor))})
-		}},
+		build:   buildLock},
 	// A landed unlock's script input is gone, so its redeemer and script
 	// witness point at nothing.
 	UnlockKind: {need: none, headroom: ScriptHeadroom, deposit: noDeposit, build: buildUnlock, script: true,
@@ -274,12 +272,30 @@ func buildMint(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, p *w
 	return c.spec.Builder.Plutus().Mint(ctx, w, build.Mint{Spend: sp, Policy: build.FreeMint, Name: tokenName, Quantity: q, Redeemer: UnitDatum()})
 }
 
+// buildLock locks at contract p.Contract with the datum its template
+// takes; a vesting position opens vestDelay slots after the tip.
+func buildLock(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, p *wire.Pending) (build.Built, error) {
+	until := c.spec.Builder.SlotTime(c.env.Chain.Tip().Slot + vestDelay)
+	d := lockDatum(build.Template(p.Contract), population.ActorID(p.Actor), w.PaymentKeyHash(), until)
+	return c.spec.Builder.Plutus().Lock(ctx, w, build.Lock{Spend: sp, Script: build.Contract(p.Contract), Amount: p.Amount, Datum: d})
+}
+
+// buildUnlock claims p.Locked as its contract's template requires.
 func buildUnlock(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, p *wire.Pending) (build.Built, error) {
 	u, ok := c.env.Chain.View().Utxo(chain.Ref{Tx: chain.TxID(p.Locked.Tx), Index: p.Locked.Index})
 	if !ok {
 		return build.Built{}, fmt.Errorf("locked output %x#%d not in the view", p.Locked.Tx[:4], p.Locked.Index)
 	}
-	return c.spec.Builder.Plutus().Unlock(ctx, w, build.Unlock{Spend: sp, Script: build.Contract(p.Contract), Locked: u, Redeemer: UnitDatum()})
+
+	cl := claimArgs(build.Template(p.Contract), w.PaymentKeyHash(), p.ID, c.env.Chain.Tip().Slot)
+	return c.spec.Builder.Plutus().Unlock(ctx, w, build.Unlock{
+		Spend:    sp,
+		Script:   build.Contract(p.Contract),
+		Locked:   u,
+		Redeemer: cl.redeemer,
+		Signers:  cl.signers,
+		From:     cl.from,
+	})
 }
 
 func buildPool(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, p *wire.Pending) (build.Built, error) {

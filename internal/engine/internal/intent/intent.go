@@ -34,11 +34,11 @@ type Intent struct {
 	*Maker
 }
 
-// New returns the intent component with contract 0 deployed and no
-// deployment scheduled.
+// New returns the intent component with the genesis contracts deployed
+// and no deployment scheduled.
 func New(spec Spec, env Env) *Intent {
 	c := core{spec: spec, env: env}
-	ct := &Contracts{core: c, n: 1, at: never}
+	ct := &Contracts{core: c, n: Genesis, at: never}
 	kinds := make(map[string]kind, len(specs)+len(spec.Extra))
 	for k, v := range specs {
 		kinds[k] = v

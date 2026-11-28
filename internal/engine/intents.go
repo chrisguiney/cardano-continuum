@@ -129,7 +129,7 @@ const (
 	feeHeadroom    = intent.FeeHeadroom
 )
 
-// scriptActor owns the always-succeeds address in the view's book, so the
+// scriptActor owns every contract's address in the view's book, so the
 // view tracks locked outputs. It is above maxActors and below the faucet.
 const scriptActor = cohort.Script
 

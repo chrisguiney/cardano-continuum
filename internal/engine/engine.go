@@ -198,8 +198,10 @@ func newEmpty(cfg Config) (*Engine, error) {
 	for _, f := range funds {
 		genesis += f.Lovelace
 	}
-	if err := e.win.Book().AddAddress(build.AlwaysSucceeds.Address(cfg.NetworkID), scriptActor); err != nil {
-		return nil, fmt.Errorf("engine: book: %w", err)
+	for i := range uint64(intent.Genesis) {
+		if err := e.win.Book().AddAddress(build.Contract(i).Address(cfg.NetworkID), scriptActor); err != nil {
+			return nil, fmt.Errorf("engine: book contract %d: %w", i, err)
+		}
 	}
 	rootKeys, err := keys.New(cfg.Seed, cfg.NetworkID)
 	if err != nil {

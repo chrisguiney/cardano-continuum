@@ -65,19 +65,24 @@ func TestAgain(t *testing.T) {
 	}
 }
 
-func TestContractsStartWithTheGenesisOne(t *testing.T) {
+func TestContractsStartWithTheGenesisOnes(t *testing.T) {
 	t.Parallel()
 	in := New(Spec{}, Env{})
-	if in.Count() != 1 {
-		t.Fatalf("Count = %d, want 1", in.Count())
+	if in.Count() != Genesis {
+		t.Fatalf("Count = %d, want %d", in.Count(), Genesis)
 	}
-	if got := in.pick(rand.New(rand.NewPCG(1, 2))); got != 0 {
-		t.Fatalf("pick with one contract = %d, want 0", got)
+	seen := map[uint64]bool{}
+	r := rand.New(rand.NewPCG(1, 2))
+	for range 100 {
+		seen[in.pick(r)] = true
 	}
-	if s := in.Save(); s.N != 1 || s.At != population.Never || s.Drawn != 0 {
+	if len(seen) != Genesis {
+		t.Fatalf("100 picks reached contracts %v, want all %d genesis ones", seen, Genesis)
+	}
+	if s := in.Save(); s.N != Genesis || s.At != population.Never || s.Drawn != 0 {
 		t.Fatalf("Saved = %+v", s)
 	}
-	if err := in.Load(State{At: population.Never}); err != nil || in.Count() != 1 {
+	if err := in.Load(State{At: population.Never}); err != nil || in.Count() != Genesis {
 		t.Fatalf("Load of an empty state: %v, count %d", err, in.Count())
 	}
 }
