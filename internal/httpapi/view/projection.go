@@ -173,7 +173,7 @@ func (p *Projection) Snapshot(slots *sched.Slots) Snapshot {
 
 	if g := p.gov.proto; g != nil {
 		v := g.Version
-		s.Protocol = &v
+		s.Protocol, s.Fork, s.Plan = &v, g.Pending, g.Plan
 	}
 	if slots != nil {
 		e := slots.EpochAt(sched.Time(t.now))

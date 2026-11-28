@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
+	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 	"github.com/chrisguiney/cardano-continuum/internal/store"
 )
@@ -80,6 +81,11 @@ type Snapshot struct {
 	// Protocol is the protocol version in force at the tip, nil before
 	// the engine's first Protocol decision.
 	Protocol *protocol.Version `json:"protocol_version,omitempty"`
+	// Fork is a ratified hard fork waiting for the boundary that enacts
+	// it, and Plan the one the run proposes by itself until its version is
+	// in force; both nil when there is none.
+	Fork *engine.Fork       `json:"pending_fork,omitempty"`
+	Plan *protocol.Schedule `json:"scheduled_fork,omitempty"`
 }
 
 // Ada is the lovelace accounting visible in the log.

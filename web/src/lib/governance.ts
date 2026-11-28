@@ -1,14 +1,20 @@
 import { ada } from "./format";
-import type { GovernanceView, PendingFork, ProposalRow, ProtocolVersion, Tally, VoteRow } from "./types";
+import type { GovernanceView, PendingFork, ProposalRow, ProtocolVersion, ScheduledFork, Tally, VoteRow } from "./types";
 
 /** versionText renders a protocol version as major.minor, "unknown" when absent. */
 export function versionText(v?: ProtocolVersion): string {
   return v ? `${v.major}.${v.minor}` : "unknown";
 }
 
-/** forkLine says what hard fork is on its way: ratified and enacting at an epoch, or none. */
-export function forkLine(f?: PendingFork): string {
-  return f ? `hard fork to ${versionText(f.version)} ratified, in force from epoch ${f.at}` : "no hard fork pending";
+/**
+ * forkLine says where the hard fork stands: ratified and enacting at an epoch, proposed
+ * and open for votes (open: a hard-fork proposal is open), scheduled for an epoch, or none.
+ */
+export function forkLine(f?: PendingFork, plan?: ScheduledFork, open = false): string {
+  if (f) return `hard fork to ${versionText(f.version)} ratified, in force from epoch ${f.at}`;
+  if (plan && open) return `hard fork to ${versionText(plan.to)} proposed, open for votes`;
+  if (plan) return `hard fork to ${versionText(plan.to)} scheduled at epoch ≥${plan.epoch}`;
+  return "no hard fork pending";
 }
 
 /** The voter classes, in the order the view shows them. */

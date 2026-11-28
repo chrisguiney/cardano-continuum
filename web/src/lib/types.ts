@@ -25,6 +25,15 @@ export interface Snapshot {
   invariants: Invariant[];
   /** protocol_version is the version in force at the tip; absent before the engine logs one. */
   protocol_version?: ProtocolVersion;
+  /** pending_fork is a ratified hard fork waiting for the boundary that enacts it. */
+  pending_fork?: PendingFork;
+  /** scheduled_fork is the hard fork the run proposes by itself, until its version is in force. */
+  scheduled_fork?: ScheduledFork;
+}
+/** ScheduledFork is the hard fork a run proposes by itself: its version and the first epoch it may be proposed in. */
+export interface ScheduledFork {
+  to: ProtocolVersion;
+  epoch: number;
 }
 /** ProtocolVersion is a Cardano protocol version. */
 export interface ProtocolVersion {
@@ -417,6 +426,8 @@ export interface GovernanceView {
   protocol_version?: ProtocolVersion;
   /** pending_fork is a ratified hard fork waiting for the boundary that enacts it. */
   pending_fork?: PendingFork;
+  /** scheduled_fork is the hard fork the run proposes by itself, until its version is in force. */
+  scheduled_fork?: ScheduledFork;
 }
 
 /** GovParam is one protocol parameter a parameter-change action sets. */

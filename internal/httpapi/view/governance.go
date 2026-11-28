@@ -55,6 +55,9 @@ type GovernanceView struct {
 	// Fork is a ratified hard fork waiting for the boundary that enacts
 	// it; nil when none is.
 	Fork *engine.Fork `json:"pending_fork,omitempty"`
+	// Plan is the hard fork the run proposes by itself while its version is
+	// not yet in force; nil without a schedule.
+	Plan *protocol.Schedule `json:"scheduled_fork,omitempty"`
 }
 
 // ProposalRow is one governance action. Status is open or expired, or
@@ -383,7 +386,7 @@ func (g *govFold) view(slots *sched.Slots, tip uint64, life uint64, profileOf fu
 
 	if g.proto != nil {
 		v := g.proto.Version
-		out.Protocol, out.Fork = &v, g.proto.Pending
+		out.Protocol, out.Fork, out.Plan = &v, g.proto.Pending, g.proto.Plan
 	}
 	pools := map[uint64]int{}
 	for i := len(g.recent) - 1; i >= 0 && len(out.Votes) < maxRecentVotes; i-- {

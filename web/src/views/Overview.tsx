@@ -1,5 +1,5 @@
 import { ada, count, short, simTime } from "../lib/format";
-import { versionText } from "../lib/governance";
+import { forkLine, versionText } from "../lib/governance";
 import { usePoll } from "../lib/hooks";
 import type { Snapshot } from "../lib/types";
 import { VIEW_BLURB } from "../lib/help";
@@ -68,7 +68,7 @@ export function Overview() {
             <Stat help="Transactions confirmed per second of simulated time." label="Tx per second" value={s.tx_per_sec.toFixed(2)} sub={`${s.submit_per_sec.toFixed(2)} submitted/s`} />
             <Stat help="Blocks made so far; a rollback replaces recent blocks with a different branch." label="Blocks" value={count(s.blocks)} sub={`${count(s.rollbacks)} rollbacks`} />
             <Stat help="Simulated participants alive in the run." label="Actors" value={count(s.population.total)} />
-            <Stat help="The Cardano protocol version in force; a hard fork moves it (the hard_fork scenario on the Controls page)." label="Protocol version" value={versionText(s.protocol_version)} />
+            <Stat help="The Cardano protocol version in force; a hard fork moves it (a scheduled fork proposes itself; the hard_fork scenario on the Controls page forces one)." label="Protocol version" value={versionText(s.protocol_version)} sub={s.scheduled_fork || s.pending_fork ? forkLine(s.pending_fork, s.scheduled_fork) : undefined} />
           </Stats>
           <Panel>
             <Heading>ADA accounting</Heading>

@@ -84,6 +84,38 @@ func TestGovernanceFollowsProtocolDecisions(t *testing.T) {
 	}
 }
 
+// A run with a schedule says so on both views until its version is in
+// force: the Protocol decisions carry the plan, and the views show it with
+// the open hard-fork proposal's status between.
+func TestViewsShowTheScheduledFork(t *testing.T) {
+	p := NewProjection()
+	v10, v11 := protocol.Version{Major: 10}, protocol.Version{Major: 11}
+	plan := &protocol.Schedule{To: v11, Epoch: 3}
+	decide := func(seq uint64, pr engine.Protocol) {
+		p.Apply(eventlog.Record{Seq: seq, At: 10_000, Class: eventlog.Decision, Kind: engine.KindProtocol, Body: mustEncode(t, pr)})
+	}
+
+	if g := p.Governance(nil, 2); g.Plan != nil || p.Snapshot(nil).Plan != nil {
+		t.Fatal("a plan before any Protocol decision")
+	}
+
+	decide(1, engine.Protocol{Epoch: 0, Version: v10, Plan: plan})
+	g, s := p.Governance(nil, 2), p.Snapshot(nil)
+	if g.Plan == nil || *g.Plan != *plan || s.Plan == nil || *s.Plan != *plan {
+		t.Fatalf("scheduled: governance %+v, overview %+v", g.Plan, s.Plan)
+	}
+
+	decide(2, engine.Protocol{Epoch: 5, Version: v10, Pending: &engine.Fork{Proposal: "ab#0", Version: v11, At: 6}, Plan: plan})
+	if s := p.Snapshot(nil); s.Fork == nil || s.Fork.Version != v11 {
+		t.Fatalf("pending fork missing from the overview: %+v", s.Fork)
+	}
+
+	decide(3, engine.Protocol{Epoch: 6, Version: v11})
+	if g, s := p.Governance(nil, 2), p.Snapshot(nil); g.Plan != nil || s.Plan != nil || s.Fork != nil {
+		t.Fatalf("enacted: plan %+v %+v, fork %+v", g.Plan, s.Plan, s.Fork)
+	}
+}
+
 func mustEncode(t *testing.T, v any) []byte {
 	t.Helper()
 	b, err := eventlog.Encode(v)

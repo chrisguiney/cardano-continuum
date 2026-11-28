@@ -41,6 +41,15 @@ describe("governance view", () => {
     expect(forkLine({ proposal: "ab#0", version: { major: 11, minor: 0 }, at: 7 })).toBe("hard fork to 11.0 ratified, in force from epoch 7");
   });
 
+  it("says where a scheduled hard fork stands", () => {
+    const plan = { to: { major: 11, minor: 0 }, epoch: 3 };
+    const fork = { proposal: "ab#0", version: { major: 11, minor: 0 }, at: 7 };
+    expect(forkLine(undefined, plan)).toBe("hard fork to 11.0 scheduled at epoch ≥3");
+    expect(forkLine(undefined, plan, true)).toBe("hard fork to 11.0 proposed, open for votes");
+    expect(forkLine(fork, plan, true)).toBe("hard fork to 11.0 ratified, in force from epoch 7");
+    expect(forkLine(undefined, undefined, true)).toBe("no hard fork pending");
+  });
+
   it("renders a tally as counts with their power", () => {
     expect(choiceLine(tally())).toBe("no votes");
     expect(choiceLine(tally({ yes: 2, yes_power: 5_000_000, abstain: 1 }))).toBe("2 yes (5.00 ADA) · 1 abstain");
