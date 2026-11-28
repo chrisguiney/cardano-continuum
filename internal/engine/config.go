@@ -68,6 +68,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 	"github.com/chrisguiney/cardano-continuum/internal/policy"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
+	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 	"github.com/chrisguiney/cardano-continuum/internal/rng"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/submit"
@@ -134,6 +135,10 @@ type Chain struct {
 	// answers PastHorizon beyond. A script attempt's TTL stays inside it;
 	// zero means no bound.
 	Horizon uint64
+	// HardFork is the hard fork the network proposer proposes by itself
+	// (forkauto.go); the zero value schedules none. It is part of the log
+	// header.
+	HardFork protocol.Schedule
 }
 
 // Submit is how payments are chosen, retried and judged.
@@ -225,6 +230,15 @@ func (c *Submit) retry() submit.Policy {
 	return c.Retry
 }
 
+// hardFork is the schedule as the header names it, empty without one so a
+// log written before schedules existed keeps its genesis hash.
+func (c Config) hardFork() string {
+	if !c.HardFork.On() {
+		return ""
+	}
+	return c.HardFork.String()
+}
+
 func (c *Config) validate() error {
 	if c.Profiles == nil {
 		return fmt.Errorf("%w: no profiles", ErrConfig)
@@ -252,6 +266,9 @@ func (c *Config) validate() error {
 			// an actor of its own here.
 			return fmt.Errorf("%w: profile %q has kind %s; wallets, pools and DReps are supported", ErrConfig, n, p.Kind)
 		}
+	}
+	if at := c.Build.Protocol; c.HardFork.On() && at != (protocol.Version{}) && !protocol.CanFollow(c.HardFork.To, at) {
+		return fmt.Errorf("%w: hard fork to %v cannot follow the genesis version %v", ErrConfig, c.HardFork.To, at)
 	}
 	if c.Faucet > 0 && c.RefillEvery == 0 {
 		return fmt.Errorf("%w: a faucet needs RefillEvery", ErrConfig)
@@ -369,7 +386,8 @@ func (c *Config) Header() (eventlog.HeaderBody, error) {
 		Committee  int           `json:"committee,omitzero"`
 		Mistakes   bool          `json:"mistakes,omitzero"`
 		Horizon    uint64        `json:"horizon,omitzero"`
-	}{Mistakes: c.Mistakes, Horizon: c.Horizon, Committee: c.Committee, GPools: c.GenesisPools, GStake: c.GenesisPoolStake, NOpt: c.NOpt, GovLife: c.GovLifetime, Floor: c.floor().Floor, Margin: c.floor().Margin, SimPods: c.SimulatedPods, Format: logFormat, K: c.K, BlockEvery: c.BlockEvery, NetworkID: c.NetworkID, SlotMs: c.Slots.SlotStart(1),
+		HardFork   string        `json:"hard_fork,omitempty"`
+	}{HardFork: c.hardFork(), Mistakes: c.Mistakes, Horizon: c.Horizon, Committee: c.Committee, GPools: c.GenesisPools, GStake: c.GenesisPoolStake, NOpt: c.NOpt, GovLife: c.GovLifetime, Floor: c.floor().Floor, Margin: c.floor().Margin, SimPods: c.SimulatedPods, Format: logFormat, K: c.K, BlockEvery: c.BlockEvery, NetworkID: c.NetworkID, SlotMs: c.Slots.SlotStart(1),
 		EpochMs: c.Slots.EpochStart(1), TTL: c.TTL, Build: paramsOf(c.Build), Retry: c.retry(), Refill: c.RefillEvery}
 	if c.Scale != 0 && c.Scale != 1 {
 		g.Scale = c.Scale

@@ -105,14 +105,25 @@ func (r scenarioRoute) GoDark(at sched.Time, arg string) string {
 	return ""
 }
 
-// HotKeys implements steer.Scenarios.
+// HotKeys implements steer.Scenarios: it authorises the hot key of every
+// committee seat the chain has not, unless an authorisation is already in
+// flight, so a second call before the first settles adds nothing.
 func (r scenarioRoute) HotKeys(ctx context.Context, at sched.Time) (string, error) {
 	e := r.e
 	id, ok := r.proposer(func(population.ActorID) bool { return true })
 	if !ok {
 		return "no actor to pay", nil
 	}
+
+	if e.pay.Has(id, hotKind) {
+		return "", nil
+	}
+
 	for i := range e.cfg.Committee {
+		if e.win.View().HotAuthorized(i) {
+			continue
+		}
+
 		why, err := (starter{e}).start(ctx, at, &wire.Pending{Actor: uint64(id), Args: wire.Args{Kind: hotKind, To: uint64(i)}})
 		if err != nil || why != "" {
 			return why, err

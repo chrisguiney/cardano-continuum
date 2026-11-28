@@ -59,6 +59,7 @@ func Restore(cfg Config, raw []byte) (*Engine, error) {
 
 	// Between inputs the last Tick's time is the clock.
 	e.clk.Load(s.Now)
+	e.armFork(s.Now)
 	e.pc.Load(s.Market)
 	if err := e.in.Load(s.Contracts); err != nil {
 		return nil, err
@@ -124,7 +125,7 @@ func loadLedger(e *Engine, s snapshot) error {
 			return fmt.Errorf("engine: snapshot window: %w", err)
 		}
 	}
-	e.builder.Fork(forkState(e.win.View()).Version)
+	e.builder.Fork(forkState(e.win.View(), e.cfg.HardFork).Version)
 	return nil
 }
 
@@ -169,6 +170,9 @@ func (c evsched) Refill(at sched.Time) { c.Push(at, clock.Event{Kind: clock.Refi
 
 // Deploy implements intent.Clock.
 func (c evsched) Deploy(at sched.Time) { c.Push(at, clock.Event{Kind: clock.Deploy}) }
+
+// Fork schedules the run's own hard-fork step.
+func (c evsched) Fork(at sched.Time) { c.Push(at, clock.Event{Kind: clock.Fork}) }
 
 // Quote implements cohort.Scheduler.
 func (c evsched) Quote(at sched.Time) { c.Push(at, clock.Event{Kind: clock.Quote}) }

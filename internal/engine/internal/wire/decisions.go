@@ -38,6 +38,9 @@ type Protocol struct {
 	Version protocol.Version `json:"version"`
 	// Pending is the ratified hard fork waiting for its boundary.
 	Pending *Fork `json:"pending,omitempty"`
+	// Plan is the hard fork the run proposes by itself while its version is
+	// not yet in force; nil without a schedule or once enacted.
+	Plan *protocol.Schedule `json:"plan,omitempty"`
 }
 
 // Fork is a ratified hard fork: its proposal ("txhash#index"), the version

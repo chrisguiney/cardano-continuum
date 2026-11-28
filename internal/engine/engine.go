@@ -26,6 +26,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/plan"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
+	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/submit"
 )
@@ -153,6 +154,7 @@ func New(cfg Config) (*Engine, error) {
 	}
 	e.co.Births.Start(0)
 	e.in.Begin(0)
+	e.armFork(0)
 	e.jr.Drop() // genesis spawns are configuration, not decisions
 	return e, nil
 }
@@ -401,6 +403,8 @@ func (e *Engine) run(ctx context.Context, at sched.Time, ev clock.Event) error {
 		e.st.Adopt(at, ev.Intent)
 	case clock.Deploy:
 		return e.in.Deploy(at)
+	case clock.Fork:
+		return e.forkStep(ctx, at)
 	case clock.Quote:
 		e.co.Market.Quote(at)
 	}
@@ -492,7 +496,7 @@ func (e *Engine) submitResult(ctx context.Context, at sched.Time, r SubmitResult
 // A block with K successors is settled: its fees and foreign outputs count,
 // and the ledger reports the payments it settled or killed.
 func (e *Engine) applyBlock(ctx context.Context, at sched.Time, b wire.Block) error {
-	before, first := forkState(e.win.View()), e.win.View().Tip().IsOrigin()
+	before, first := forkState(e.win.View(), e.cfg.HardFork), e.win.View().Tip().IsOrigin()
 	lb, vb, err := e.win.Blocks(b, e.co)
 	if err != nil {
 		return err
@@ -549,7 +553,7 @@ func (e *Engine) rollback(ctx context.Context, p eventlog.ChainPoint) error {
 	if _, err := e.pay.Advance(ctx, chain.Event{Kind: chain.Backward, Point: c.To()}); err != nil {
 		return fmt.Errorf("engine: ledger: %w", err)
 	}
-	before := forkState(e.win.View())
+	before := forkState(e.win.View(), e.cfg.HardFork)
 	gone, err := e.win.Rollback(c)
 	if err != nil {
 		return fmt.Errorf("engine: view: %w", err)
@@ -559,10 +563,14 @@ func (e *Engine) rollback(ctx context.Context, p eventlog.ChainPoint) error {
 }
 
 // forkState is what a Protocol decision reports of the view: the version
-// in force at the tip's epoch and the ratified fork still pending.
-func forkState(v *chain.View) wire.Protocol {
+// in force at the tip's epoch, the ratified fork still pending and the
+// scheduled fork not yet reached.
+func forkState(v *chain.View, plan protocol.Schedule) wire.Protocol {
 	ep := v.Epoch()
 	p := wire.Protocol{Epoch: ep, Version: v.VersionAt(ep)}
+	if plan.On() && p.Version.Less(plan.To) {
+		p.Plan = &plan
+	}
 	if f, ok := v.PendingAt(ep); ok {
 		p.Pending = &wire.Fork{Proposal: f.ID.String(), Version: f.Version, At: f.At}
 	}
@@ -575,7 +583,7 @@ func forkState(v *chain.View) wire.Protocol {
 // version too. All are derived from the view, so a replay or a restart
 // logs the same records.
 func noteFork(e *Engine, at sched.Time, before wire.Protocol, first bool) {
-	now := forkState(e.win.View())
+	now := forkState(e.win.View(), e.cfg.HardFork)
 	e.builder.Fork(now.Version)
 	if !first && now.Version == before.Version && (now.Pending == nil) == (before.Pending == nil) &&
 		(now.Pending == nil || *now.Pending == *before.Pending) {

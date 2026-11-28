@@ -31,6 +31,8 @@ const (
 	Adopt
 	// Deploy opens the next contract.
 	Deploy
+	// Fork is the run's own hard-fork step, at an epoch boundary.
+	Fork
 	// Quote records the market. It runs last at its time, so a record
 	// reads the market every other same-time event saw.
 	Quote
