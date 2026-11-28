@@ -1,6 +1,6 @@
 import type { Receipt } from "./types";
 
-export type Op = "pause" | "resume" | "set_k" | "set_weights" | "inject";
+export type Op = "pause" | "resume" | "set_k" | "set_weights" | "clear_weights" | "inject";
 
 export interface ControlBody {
   request_id: string;
@@ -40,6 +40,7 @@ export function buildControl(op: Op, input: ControlInput): Built {
   switch (op) {
     case "pause":
     case "resume":
+    case "clear_weights":
       return { ok: true, body: { request_id, op } };
     case "set_k": {
       const k = Number(input.k);
@@ -70,6 +71,22 @@ function buildWeights(request_id: string, form: Record<string, string>): Built {
   const n = Object.keys(weights).length;
   if (n === 0 || n > MAX_WEIGHTS) return { ok: false, error: `set 1..${MAX_WEIGHTS} weights` };
   return { ok: true, body: { request_id, op: "set_weights", weights } };
+}
+
+/** ControlState mirrors GET /api/controls: the steering the engine has applied, folded from the log. */
+export interface ControlState {
+  paused: boolean;
+  /** k is the rate multiplier in force, 1 when none was set. */
+  k: number;
+  /** weights is the override by intent kind; empty when the profiles' own weights apply. */
+  weights: Record<string, number>;
+  /** last is the newest control the engine answered; why is set when it refused it. */
+  last: { request_id: string; op: string; seq: number; at: number; why?: string } | null;
+}
+
+/** formFromState is the form as the engine's state fills it; a weight with no override stays out, so its field shows the "profile" placeholder. */
+export function formFromState(s: ControlState): Pick<ControlInput, "k" | "weights"> {
+  return { k: String(s.k), weights: Object.fromEntries(Object.entries(s.weights).map(([k, v]) => [k, String(v)])) };
 }
 
 /** postControl sends a built body. A 200 is a duplicate of an earlier request and is still success. */
