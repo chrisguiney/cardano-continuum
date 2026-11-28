@@ -17,6 +17,7 @@ func profitScores(a population.Actor, v View) []Score {
 		{Kind: Idle, Value: 0.5, Why: "profit seeker waits"},
 		pick(profile.IntentSend, 0.1, bal, "trades"),
 	}
+	ss = append(ss, trade(a, v, bal)...)
 	if !v.StakeRegistered(a.ID) {
 		return append(ss,
 			pick(profile.IntentRegisterStake, 1, bal, "stake key not registered"),

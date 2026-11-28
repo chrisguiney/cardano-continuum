@@ -49,8 +49,8 @@ var choiceNames = map[uint8]string{common.GovVoteNo: "no", common.GovVoteYes: "y
 func (ch *Chooser) Prepare(at sched.Time, a population.Actor, in agenda.Intent, r *rand.Rand) (*wire.Pending, string) {
 	p := &wire.Pending{Actor: uint64(a.ID), Args: wire.Args{Kind: string(in.Kind), To: uint64(in.Target)}}
 	switch in.Kind {
-	case profile.IntentSend:
-		return ch.prepareSend(a, p, r)
+	case profile.IntentSend, profile.IntentBuyADA, profile.IntentSellADA:
+		return ch.preparePayment(at, a, p, r)
 	case profile.IntentRegisterStake:
 		// The view shows only registrations in blocks: a second one sent
 		// beside one in flight fails StakeKeyRegisteredDELEG.
@@ -155,6 +155,59 @@ func (ch *Chooser) prepareSend(a population.Actor, p *wire.Pending, r *rand.Rand
 	bal := ch.env.Flight.Spendable(uint64(a.ID))
 	floor := ch.spec.Builder.MinPayment(ch.env.Roster.Wallet(population.ActorID(p.To)).Address())
 	p.Amount = paymentSize(ch.env.Roster.Profile(a.ID).Amount, bal, floor, r)
+	return p, ""
+}
+
+// preparePayment prepares the kinds that are plain payments: a send, or a
+// trade on an exchange.
+func (ch *Chooser) preparePayment(at sched.Time, a population.Actor, p *wire.Pending, r *rand.Rand) (*wire.Pending, string) {
+	if p.Kind == string(profile.IntentSend) {
+		return ch.prepareSend(a, p, r)
+	}
+	return ch.prepareTrade(at, a, p, r)
+}
+
+// Trade sizing. A buy spends a drawn share of the wallet's budget in fiat,
+// at least minTrade; a sale sells a drawn share of the spendable balance,
+// and a sale under water (Order.Gain below -panicGain) a far larger one.
+const (
+	minTrade   = 5_000_000
+	buyShare   = 0.02
+	buySpread  = 0.08
+	panicGain  = 0.1
+	panicShare = 0.5
+)
+
+// prepareTrade quotes a buy or sale on the wallet's venue. A buy is the
+// exchange's payment of what the wallet bought, less the withdrawal fee;
+// a sale is the wallet's payment to the exchange.
+func (ch *Chooser) prepareTrade(at sched.Time, a population.Actor, p *wire.Pending, r *rand.Rand) (*wire.Pending, string) {
+	if ch.env.Market == nil {
+		return nil, "no market"
+	}
+	buy := p.Kind == string(profile.IntentBuyADA)
+	o, venue, ok := ch.env.Market.Order(at, a.ID, buy, r)
+	if !ok {
+		return nil, "no exchange quotes the wallet's currencies"
+	}
+	p.Order = &o
+
+	if buy {
+		gross := max(minTrade, uint64(float64(ch.env.Roster.Profile(a.ID).Budget)*(buyShare+buySpread*r.Float64())))
+		if o.Fee >= gross {
+			return nil, "withdrawal fee exceeds the purchase"
+		}
+		p.Actor, p.To, p.Amount = uint64(venue), uint64(a.ID), gross-o.Fee
+		return p, ""
+	}
+
+	bal := ch.env.Flight.Spendable(uint64(a.ID))
+	floor := ch.spec.Builder.MinPayment(ch.env.Roster.Wallet(venue).Address())
+	p.To = uint64(venue)
+	p.Amount = paymentSize(nil, bal, floor, r)
+	if o.Gain < -panicGain && bal > FeeHeadroom {
+		p.Amount = max(floor, uint64(float64(bal-FeeHeadroom)*(panicShare+(1-panicShare)*r.Float64())))
+	}
 	return p, ""
 }
 

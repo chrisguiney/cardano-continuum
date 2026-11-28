@@ -1,8 +1,10 @@
 package cohort
 
 import (
+	"math/rand/v2"
 	"strings"
 
+	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/market"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
@@ -18,6 +20,15 @@ type Trader struct {
 	// Extra are its other preferred currencies, drawn again from the
 	// actor's own stream on a restore.
 	Extra []int
+	// Basis is the wallet's average price per ADA in its primary currency:
+	// the mid when it was born, moved by every settled buy.
+	Basis float64
+	// Units is the lovelace Basis covers: its budget at birth, plus what it
+	// bought, less what it sold. It stands in for the holdings a basis is
+	// averaged over, so the basis needs no ledger read.
+	Units uint64
+	// Venue is the exchange it last traded on, or -1.
+	Venue int
 }
 
 // Market is the cohort's ADA market: the price paths (internal/market),
@@ -104,18 +115,18 @@ func (m *Market) Bind() {
 	m.venues = make([]population.ActorID, len(xs))
 	for _, id := range m.r.IDs() {
 		a, _ := m.r.Get(id)
-		if x, ok := m.exchangeOf(a.Profile); ok && m.venues[x] == 0 {
+		if x, ok := exchangeOf(m.path.Params(), a.Profile); ok && m.venues[x] == 0 {
 			m.venues[x] = id
 		}
 	}
 }
 
 // exchangeOf is the exchange whose actor has the named profile.
-func (m *Market) exchangeOf(name string) (int, bool) {
+func exchangeOf(ps profile.Markets, name string) (int, bool) {
 	if !strings.HasPrefix(name, market.ProfilePrefix) {
 		return 0, false
 	}
-	for i, x := range m.path.Params().Exchanges {
+	for i, x := range ps.Exchanges {
 		if market.ProfileName(x.Name) == name {
 			return i, true
 		}
@@ -147,14 +158,118 @@ func (m *Market) Join(a population.Actor, st *Actor, primary int) {
 	if primary < 0 {
 		primary = m.path.Primary(a.Stream("currency"))
 	}
-	st.Trader = &Trader{Primary: primary, Extra: m.path.Extras(a.Stream("currencies"), primary)}
+	st.Trader = &Trader{
+		Primary: primary,
+		Extra:   m.path.Extras(a.Stream("currencies"), primary),
+		Basis:   m.path.Mid(primary, a.Born),
+		Units:   uint64(st.Prof.Budget),
+		Venue:   -1,
+	}
+}
+
+// Position is the wallet's market position at t.
+func (m *Market) Position(id population.ActorID, t sched.Time) (agenda.Position, bool) {
+	st := m.r.Rec(id)
+	if !m.On() || st == nil || st.Trader == nil {
+		return agenda.Position{}, false
+	}
+	tr := st.Trader
+	return agenda.Position{
+		Currency: m.Code(tr.Primary),
+		Gain:     m.path.Mid(tr.Primary, t)/tr.Basis - 1,
+		Trend:    m.path.Trend(tr.Primary, t),
+	}, true
+}
+
+// Order quotes the wallet's buy or sale at its venue (market.Path.Venue)
+// and names the exchange's actor. It draws from r.
+func (m *Market) Order(at sched.Time, id population.ActorID, buy bool, r *rand.Rand) (wire.Order, population.ActorID, bool) {
+	pos, ok := m.Position(id, at)
+	if !ok {
+		return wire.Order{}, 0, false
+	}
+	tr := m.r.Rec(id).Trader
+	v, ok := m.path.Venue(r, market.Order{Buy: buy, Primary: tr.Primary, Extra: tr.Extra, At: at, Last: tr.Venue})
+	if !ok {
+		return wire.Order{}, 0, false
+	}
+	x := m.path.Params().Exchanges[v.Exchange]
+	o := wire.Order{
+		Wallet:   uint64(id),
+		Exchange: x.Name,
+		Currency: m.Code(v.Currency),
+		Rate:     v.Rate,
+		Primary:  v.Primary,
+		Gain:     pos.Gain,
+	}
+	if buy {
+		o.Fee = x.Fee
+	}
+	return o, m.venues[v.Exchange], true
+}
+
+// Settled settles the fiat side of a trade whose ADA is K deep: a buy
+// moves the wallet's basis, a sale realises its gain, and the wallet keeps
+// the exchange for next time. It records the trade as a Traded decision.
+func (m *Market) Settled(at sched.Time, p *wire.Pending) {
+	o := p.Order
+	st := m.r.Rec(population.ActorID(o.Wallet))
+	if st == nil || st.Trader == nil {
+		return
+	}
+	tr := st.Trader
+	t := wire.Traded{Intent: p.ID, Side: "sell", Exchange: o.Exchange, Currency: o.Currency, Lovelace: p.Amount, Rate: o.Rate}
+	if p.Kind == string(profile.IntentBuyADA) {
+		gross := p.Amount + o.Fee
+		t.Side, t.Fee = "buy", o.Fee
+		t.Fiat = float64(gross) / lovelace * o.Rate
+		held := float64(tr.Units) / lovelace
+		tr.Basis = (tr.Basis*held + float64(gross)/lovelace*o.Primary) / (held + float64(p.Amount)/lovelace)
+		tr.Units += p.Amount
+	} else {
+		t.Fiat = float64(p.Amount) / lovelace * o.Rate
+		t.Gain = o.Primary/tr.Basis - 1
+		tr.Units -= min(tr.Units, p.Amount)
+	}
+	t.Basis = tr.Basis
+	tr.Venue = venueOf(m.path.Params(), o.Exchange)
+	m.r.env.Emit.Emit(at, wire.KindTraded, population.ActorID(o.Wallet), t)
+}
+
+// lovelace is the lovelace in one ADA.
+const lovelace = 1_000_000
+
+// restore sets a wallet's basis, units and venue to a snapshot's.
+func (m *Market) restore(st *Actor, r wire.ActorRec) {
+	if st.Trader == nil {
+		return
+	}
+	st.Trader.Basis, st.Trader.Units, st.Trader.Venue = r.Basis, r.Units, venueOf(m.path.Params(), r.Venue)
+}
+
+// venueOf is the index of the named exchange, or -1.
+func venueOf(ps profile.Markets, name string) int {
+	for i, x := range ps.Exchanges {
+		if x.Name == name {
+			return i
+		}
+	}
+	return -1
+}
+
+// venueName is exchange x's name, empty for -1.
+func venueName(ps profile.Markets, x int) string {
+	if x < 0 {
+		return ""
+	}
+	return ps.Exchanges[x].Name
 }
 
 // Code is the code of currency c.
 func (m *Market) Code(c int) string { return m.path.Params().Currencies[c].Code }
 
 // currencyOf is the index of the code a snapshot recorded, or -1.
-func (m *Market) currencyOf(code string) int {
+func currencyOf(m *Market, code string) int {
 	if !m.On() || code == "" {
 		return -1
 	}

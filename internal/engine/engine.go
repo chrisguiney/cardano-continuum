@@ -609,5 +609,8 @@ func (e *Engine) settle(at sched.Time, p *wire.Pending, tx TxID) error {
 		// The lock's script output counted as foreign when it settled.
 		e.win.Reclaim(p.Amount)
 	}
+	if p.Order != nil {
+		e.co.Market.Settled(at, p)
+	}
 	return e.co.Life.Settled(at, population.ActorID(p.Actor), profile.IntentKind(p.Kind), tx)
 }

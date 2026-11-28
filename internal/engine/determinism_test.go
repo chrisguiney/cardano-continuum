@@ -273,3 +273,65 @@ func TestDeterminismMarkets(t *testing.T) {
 		t.Fatal("a crash mid-run changes a markets run's state")
 	}
 }
+
+// TestDeterminismMarketsTrades runs 40 market wallets for an epoch: they
+// buy ADA through the exchanges' on-chain payouts and sell it back, every
+// trade's fiat side settles in a Traded record once its ADA is K deep, and
+// the engine still accounts for every lovelace of genesis: fiat never
+// touches the chain.
+func TestDeterminismMarketsTrades(t *testing.T) {
+	t.Parallel()
+	cfg := marketsConfig(t, 22, 40)
+	w := newWorld(t, cfg)
+	until := cfg.Slots.EpochStart(1)
+	w.run(until, 200, nil)
+	p, err := w.start(nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.stop(t)
+	e := p.r.Engine()
+	if total := genesisTotal(t, cfg); e.Summary().Supply != total {
+		t.Fatalf("engine accounts for %d of %d lovelace", e.Summary().Supply, total)
+	}
+	if got, total := w.chain.UnspentLovelace()+w.chain.Fees(), genesisTotal(t, cfg); got != total {
+		t.Fatalf("chain holds %d of %d lovelace", got, total)
+	}
+
+	orders := map[uint64]Submitted{}
+	sides := map[string]int{}
+	for _, rec := range logRecords(t, w.log) {
+		switch rec.Kind {
+		case KindSubmitted:
+			var s Submitted
+			if err := eventlog.Decode(rec.Body, &s); err != nil {
+				t.Fatal(err)
+			}
+			if s.Kind == "buy_ada" || s.Kind == "sell_ada" {
+				orders[s.Intent] = s
+			}
+		case KindTraded:
+			var tr Traded
+			if err := eventlog.Decode(rec.Body, &tr); err != nil {
+				t.Fatal(err)
+			}
+			s, ok := orders[tr.Intent]
+			if !ok || tr.Lovelace != s.Amount || !(tr.Fiat > 0) || !(tr.Basis > 0) {
+				t.Fatalf("trade %+v of order %+v", tr, s)
+			}
+			// A buy is the exchange's payment to the wallet, a sale the
+			// wallet's to the exchange.
+			if wallet := uint64(rec.Actor); (tr.Side == "buy") != (s.To == wallet) {
+				t.Fatalf("%s by %d pays %d", tr.Side, wallet, s.To)
+			}
+			sides[tr.Side]++
+		}
+	}
+	if sides["buy"] == 0 || sides["sell"] == 0 {
+		t.Fatalf("trades settled %v, want buys and sells", sides)
+	}
+	if n := countKinds(t, w.log)["Finding"]; n > 0 {
+		t.Fatalf("the oracle raised %d findings in a markets run", n)
+	}
+	t.Logf("trades %v of %d orders", sides, len(orders))
+}

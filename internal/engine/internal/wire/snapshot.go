@@ -38,6 +38,11 @@ type ActorRec struct {
 	Waits uint8 `json:"waits,omitzero"`
 	// Currency is a wallet's primary currency when the run has a market.
 	Currency string `json:"currency,omitempty"`
+	// Basis, Units and Venue are a market wallet's cost basis, the
+	// lovelace it covers and the exchange it last traded on.
+	Basis float64 `json:"basis,omitzero"`
+	Units uint64  `json:"units,omitzero"`
+	Venue string  `json:"venue,omitempty"`
 }
 
 // BirthRec is one birth stream: its profile, next birth and draw count.

@@ -130,7 +130,7 @@ func intentSpec(e *Engine) intent.Spec {
 func intentEnv(e *Engine) intent.Env {
 	return intent.Env{
 		Roster: roster{e.co}, Ring: e.co.Ring, Chain: e.win, Flight: e.pay, Clock: evsched{&e.clk}, Journal: &e.jr,
-		Judge: e.jd, Spend: ihooks{e},
+		Judge: e.jd, Spend: ihooks{e}, Market: e.co.Market,
 	}
 }
 

@@ -39,6 +39,7 @@ type (
 	ProposalDigest  = wire.ProposalDigest
 	Fork            = wire.Fork
 	Quote           = wire.Quote
+	Traded          = wire.Traded
 	Ref             = wire.Ref
 	Refill          = wire.Refill
 	Refused         = wire.Refused
@@ -71,6 +72,7 @@ const (
 	KindPoolTier     = wire.KindPoolTier
 	KindProtocol     = wire.KindProtocol
 	KindQuote        = wire.KindQuote
+	KindTraded       = wire.KindTraded
 	KindRefill       = wire.KindRefill
 	KindRefused      = wire.KindRefused
 	KindReleased     = wire.KindReleased

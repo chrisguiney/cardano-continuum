@@ -57,6 +57,7 @@ func TestPendingRoundTrip(t *testing.T) {
 			Rivals: []Rival{{ID: TxID{4}}},
 			Jump:   true,
 		},
+		Order: &Order{Wallet: 1, Exchange: "x", Currency: "USD", Rate: 2, Primary: 3, Fee: 4, Gain: 5},
 	}
 	assertNoZero(t, reflect.ValueOf(p), "Pending")
 

@@ -17,10 +17,10 @@ const dappScore = 0.02
 // for a burst: chain users who mostly call scripts do so at a steady rate.
 func dappScores(a population.Actor, v View) []Score {
 	bal := purseOf(v, a.ID)
-	return []Score{
+	return append([]Score{
 		{Kind: Idle, Value: 1, Why: "script user waits"},
 		pick(profile.IntentSend, dappScore, bal, "pays"),
 		pick(profile.IntentScriptCall, dappScore, bal, "locks or unlocks a script output"),
 		pick(profile.IntentMint, dappScore, bal, "mints"),
-	}
+	}, trade(a, v, bal)...)
 }

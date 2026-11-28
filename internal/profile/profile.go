@@ -50,6 +50,10 @@ const (
 	IntentUpdatePool IntentKind = "update_pool"
 	// IntentRetireDRep deregisters a DRep, refunding its deposit.
 	IntentRetireDRep IntentKind = "retire_drep"
+	// IntentBuyADA buys ADA with fiat on an exchange, which pays it out on
+	// chain; IntentSellADA pays ADA to an exchange for fiat.
+	IntentBuyADA  IntentKind = "buy_ada"
+	IntentSellADA IntentKind = "sell_ada"
 )
 
 var intents = map[IntentKind]bool{
@@ -57,6 +61,7 @@ var intents = map[IntentKind]bool{
 	IntentWithdraw: true, IntentVote: true, IntentRegisterDRep: true, IntentDelegateDRep: true,
 	IntentPropose: true, IntentMint: true, IntentBurn: true, IntentScriptCall: true,
 	IntentRegisterPool: true, IntentRetirePool: true, IntentUpdatePool: true, IntentRetireDRep: true,
+	IntentBuyADA: true, IntentSellADA: true,
 }
 
 // Lovelace is an amount of ADA in lovelace.

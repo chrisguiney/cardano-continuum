@@ -78,11 +78,17 @@ func none(*core, *wire.Pending) uint64 { return 0 }
 
 func noDeposit(*core, *wire.Pending) int64 { return 0 }
 
+// payment is a plain payment of p.Amount to p.To: a send, an exchange's
+// payout of a buy, a wallet's deposit of a sale.
+var payment = kind{need: func(_ *core, p *wire.Pending) uint64 { return p.Amount }, headroom: FeeHeadroom, deposit: noDeposit,
+	build: func(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, p *wire.Pending) (build.Built, error) {
+		return c.spec.Builder.Pay(ctx, w, build.Payment{Inputs: sp.Inputs, TTL: sp.TTL, To: c.env.Roster.Wallet(population.ActorID(p.To)).Address(), Amount: p.Amount})
+	}}
+
 var specs = map[string]kind{
-	string(profile.IntentSend): {need: func(_ *core, p *wire.Pending) uint64 { return p.Amount }, headroom: FeeHeadroom, deposit: noDeposit,
-		build: func(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, p *wire.Pending) (build.Built, error) {
-			return c.spec.Builder.Pay(ctx, w, build.Payment{Inputs: sp.Inputs, TTL: sp.TTL, To: c.env.Roster.Wallet(population.ActorID(p.To)).Address(), Amount: p.Amount})
-		}},
+	string(profile.IntentSend):    payment,
+	string(profile.IntentBuyADA):  payment,
+	string(profile.IntentSellADA): payment,
 	string(profile.IntentRegisterStake): {need: func(c *core, _ *wire.Pending) uint64 { return c.spec.Build.KeyDeposit }, headroom: FeeHeadroom, again: againRegister,
 		deposit: func(c *core, _ *wire.Pending) int64 { return int64(c.spec.Build.KeyDeposit) },
 		build: func(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, _ *wire.Pending) (build.Built, error) {

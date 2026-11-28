@@ -3,12 +3,12 @@
   "evicted": false,
   "ex_mem": 0,
   "ex_steps": 0,
-  "fees": 673444,
+  "fees": 1010342,
   "fork": false,
-  "hash": "f54623c05bb76994f3bcc97d2b1bfe86786fbec889a3a5a49b93f63f6451abfe",
+  "hash": "86b49f11e5ef6d5a420fdb8c5ea2bf9fba73fe7cc399fbcf6cfda19062e92ae9",
   "header": {
-    "body_hash": "79a7cf8eccb483eca44530e9fb6ac006f6449c9063f422aab9e37b8146b75ca7",
-    "body_size": 1176,
+    "body_hash": "db15542181e91b8ba1652c1573e9303ace7d9414ddc17c603b90690612a0d82c",
+    "body_size": 1766,
     "issuer_vkey": "0000000000000000000000000000000000000000000000000000000000000000",
     "kes_period": 0,
     "opcert_hot_vkey": "0000000000000000000000000000000000000000000000000000000000000000",
@@ -19,10 +19,10 @@
   },
   "height": 1,
   "issuer": "f9dca21a6c826ec8acb4cf395cbc24351937bfe6560b2683ab8b415f",
-  "next": "b20629c592c2a2fd0d0384797839567d62f96693321af4e98dd2354e622d4118",
+  "next": "34cca860d65ee015e21c2bb16bce7a68b2315081a8cec090f857d509e98bb1f8",
   "pools": [],
   "prev": "0000000000000000000000000000000000000000000000000000000000000000",
-  "size": 2026,
+  "size": 2616,
   "slot": 10,
   "stub": false,
   "time_ms": 10000,
@@ -40,8 +40,16 @@
       "hash": "b0e643979db2c00e4a2135d64273116bddf9c7e5c4db92acfa10a05e2df0c871"
     },
     {
+      "fee": 168537,
+      "hash": "a357a846a0f8d43efa84dfb22790d62c7611c923e2a43fd6ce0976abada04fd4"
+    },
+    {
       "fee": 168361,
-      "hash": "485d61d1b305b5f894638d1cbcd04c4cba61e6f099899d9e94c5da41a62c2ee9"
+      "hash": "2df677ec981934e2109a8783517a201f1239df02c04be52f2b5e2485a4058d9b"
+    },
+    {
+      "fee": 168361,
+      "hash": "87b59348ede89b1cab8d081c67e8266c497b008acdc659544e3a7d223b8292f3"
     }
   ]
 }

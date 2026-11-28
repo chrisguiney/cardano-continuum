@@ -111,6 +111,9 @@ type Decision struct {
 	// actor; empty for an actor that chooses among every intent. The scores
 	// are then only that kind's, so a chance is within the clock.
 	Clock profile.IntentKind `json:"clock,omitempty"`
+	// Position is the actor's market position the scores read; nil
+	// without a market.
+	Position *Position `json:"position,omitempty"`
 }
 
 // Policy scores the intents available to an actor. It must be a pure function
@@ -144,13 +147,13 @@ var registry = map[profile.AgendaName]Policy{
 // engine's own steps (Idle, GoDark, GoLive) are not profile intents and are
 // left out. lab/agendas.py keeps a copy to pick a fitted cluster's agenda.
 var choosable = map[profile.AgendaName][]profile.IntentKind{
-	"hodl":        {profile.IntentSend},
-	"dapp":        {profile.IntentMint, profile.IntentScriptCall, profile.IntentSend},
-	"yield":       {profile.IntentDelegate, profile.IntentRegisterStake, profile.IntentWithdraw},
-	"profit":      {profile.IntentDelegate, profile.IntentRegisterStake, profile.IntentSend, profile.IntentWithdraw},
+	"hodl":        {profile.IntentBuyADA, profile.IntentSellADA, profile.IntentSend},
+	"dapp":        {profile.IntentBuyADA, profile.IntentMint, profile.IntentScriptCall, profile.IntentSellADA, profile.IntentSend},
+	"yield":       {profile.IntentBuyADA, profile.IntentDelegate, profile.IntentRegisterStake, profile.IntentSellADA, profile.IntentWithdraw},
+	"profit":      {profile.IntentBuyADA, profile.IntentDelegate, profile.IntentRegisterStake, profile.IntentSellADA, profile.IntentSend, profile.IntentWithdraw},
 	"civic":       {profile.IntentDelegateDRep, profile.IntentRegisterDRep, profile.IntentRegisterStake, profile.IntentRetireDRep, profile.IntentVote},
 	"operator":    {profile.IntentRegisterPool, profile.IntentRetirePool, profile.IntentUpdatePool, profile.IntentVote, profile.IntentWithdraw},
-	"opportunist": {profile.IntentDelegate, profile.IntentMint, profile.IntentRegisterStake, profile.IntentScriptCall, profile.IntentSend},
+	"opportunist": {profile.IntentBuyADA, profile.IntentDelegate, profile.IntentMint, profile.IntentRegisterStake, profile.IntentScriptCall, profile.IntentSellADA, profile.IntentSend},
 	"disrupt":     {profile.IntentSend},
 	"extract":     {profile.IntentSend, profile.IntentWithdraw},
 }
@@ -178,7 +181,11 @@ func For(name profile.AgendaName) (Policy, error) {
 // Decide scores the actor's intents and samples one using r.
 func Decide(a population.Actor, r *rand.Rand, v View, p Policy, w map[profile.IntentKind]float64) Decision {
 	in, ss := Choose(a.ID, r, p.Score(a, v), w)
-	return Decision{Intent: in, Scores: ss}
+	d := Decision{Intent: in, Scores: ss}
+	if pos, ok := positionOf(v, a.ID); ok {
+		d.Position = &pos
+	}
+	return d
 }
 
 // Choose samples an intent with probability proportional to score times the
@@ -254,6 +261,7 @@ var cost = map[profile.IntentKind]profile.Lovelace{
 	profile.IntentVote:          500_000,
 	profile.IntentScriptCall:    2_000_000,
 	profile.IntentMint:          2_000_000,
+	profile.IntentSellADA:       2_000_000,
 }
 
 // mainnetDeposits are the deposits an intent pays when the view does not

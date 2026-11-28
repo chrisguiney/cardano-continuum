@@ -145,14 +145,19 @@ func (c *Cohort) Save() ([]wire.ActorRec, []wire.BirthRec) {
 		for i, p := range st.Paid {
 			paid[i] = uint64(p)
 		}
-		var currency string
-		if st.Trader != nil {
-			currency = c.Market.Code(st.Trader.Primary)
+		var (
+			currency, venue string
+			basis           float64
+			units           uint64
+		)
+		if tr := st.Trader; tr != nil {
+			currency, venue, basis, units = c.Market.Code(tr.Primary), venueName(c.Market.path.Params(), tr.Venue), tr.Basis, tr.Units
 		}
 		actors = append(actors, wire.ActorRec{
 			ID: uint64(id), Profile: a.Profile, State: string(a.State), Born: a.Born, Changed: a.Changed,
 			Frustration: a.Frustration, Competence: a.Competence, HazardAt: st.HazardAt, HazardTo: string(st.HazardTo), ActAt: st.ActAt, Draws: st.Draws, Booting: st.Booting,
 			Owed: st.Owed, Paid: paid, FollowUp: st.FollowUp, Waits: st.Waits, Currency: currency,
+			Basis: basis, Units: units, Venue: venue,
 		})
 	}
 	var births []wire.BirthRec
@@ -205,7 +210,8 @@ func (c *Cohort) revive(ps Profiles, r wire.ActorRec) error {
 		return err
 	}
 	st := c.Register(a, p)
-	c.Market.Join(a, st, c.Market.currencyOf(r.Currency))
+	c.Market.Join(a, st, currencyOf(c.Market, r.Currency))
+	c.Market.restore(st, r)
 	st.HazardAt, st.HazardTo, st.ActAt, st.Draws = r.HazardAt, population.State(r.HazardTo), r.ActAt, r.Draws
 	st.Booting = r.Booting
 	st.Owed = r.Owed

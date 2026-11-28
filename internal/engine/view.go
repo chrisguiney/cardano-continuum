@@ -33,6 +33,7 @@ var (
 	_ agenda.Pods       = view{}
 	_ agenda.Deposits   = view{}
 	_ agenda.Committee  = view{}
+	_ agenda.Trading    = view{}
 	_ adversary.View    = view{}
 )
 
@@ -64,6 +65,11 @@ func (v view) Deposit(k profile.IntentKind) (profile.Lovelace, bool) {
 		return 0, false
 	}
 	return profile.Lovelace(d), true
+}
+
+// Position implements agenda.Trading.
+func (v view) Position(id population.ActorID) (agenda.Position, bool) {
+	return v.e.co.Market.Position(id, v.e.clk.Now())
 }
 
 // Burst implements agenda.Market.

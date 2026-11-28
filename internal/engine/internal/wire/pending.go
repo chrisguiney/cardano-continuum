@@ -47,6 +47,8 @@ type Pending struct {
 	Faults
 	// Strike is an adversary's step.
 	Strike
+	// Order is an exchange trade's quote; nil for any other intent.
+	Order *Order `json:"order,omitempty"`
 }
 
 // Attempt is the current attempt and the retry machine driving the intent.

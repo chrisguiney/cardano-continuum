@@ -3,6 +3,7 @@ package intent
 import (
 	"context"
 	"iter"
+	"math/rand/v2"
 
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 	"github.com/chrisguiney/cardano-continuum/internal/build"
@@ -96,6 +97,14 @@ type Spend interface {
 	Adversary(id population.ActorID) bool
 }
 
+// Market is the exchanges as a trade is priced on them.
+type Market interface {
+	// Order is the quote for the wallet's buy or sale and the actor of the
+	// exchange it trades on; ok is false when no exchange quotes the
+	// wallet's currencies. It draws from r.
+	Order(at sched.Time, wallet population.ActorID, buy bool, r *rand.Rand) (o wire.Order, venue population.ActorID, ok bool)
+}
+
 // Extra is a kind another component builds: its attempts go through the
 // same inputs, TTL and mistakes as the table's.
 type Extra struct {
@@ -146,4 +155,6 @@ type Env struct {
 	Journal Journal
 	Judge   Judge
 	Spend   Spend
+	// Market prices trades; nil in a run without a market.
+	Market Market
 }
