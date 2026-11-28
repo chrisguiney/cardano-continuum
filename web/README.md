@@ -11,6 +11,11 @@ holds it), so a UI change never changes the engine image.
 - `index.html`, `vite.config.ts`, `tsconfig.json`, `package.json`: the build.
   `npm run dev` proxies `/api` to `127.0.0.1:8088`. `@/` imports resolve to
   `src/`.
+- At startup the UI comes up before the engine: `src/views/startup.tsx` polls
+  `/api/_ui/status` (answered by `continuum-ui proxy` itself), shows one
+  "devnet is starting" banner and keeps each view's normal layout with empty
+  states instead of error banners until the engine answers. Servers without
+  that route (`continuum-ui serve`) behave as before.
 - `components.json`: the shadcn/ui CLI's settings (where components go, which
   CSS file holds the tokens).
 - [`src/`](src/README.md), [`test/`](test/README.md).

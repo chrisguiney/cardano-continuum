@@ -6,7 +6,9 @@ import { browserEnv, copyText } from "../lib/clipboard";
 import { navigate } from "../lib/router";
 import type { ActorFinding } from "../lib/types";
 import { cn } from "../lib/utils";
+import { quiet } from "../lib/engine";
 import { HelpTip } from "./fields";
+import { useEngine } from "./startup";
 
 export function Link({ to, children, className }: { to: string; children: ReactNode; className?: string }) {
   return (
@@ -106,8 +108,10 @@ export function Facts({ rows, muted = false, className }: { rows: [ReactNode, Re
   );
 }
 
+/** ErrorNote reports a failed load, except while the devnet starts: then the view shows its empty state and the startup banner says why. */
 export function ErrorNote({ error }: { error: string | null }) {
-  return error ? (
+  const { phase } = useEngine();
+  return error && !quiet(phase) ? (
     <p className="my-2 font-semibold text-destructive" role="alert">
       Could not load: {error}
     </p>

@@ -9,6 +9,7 @@ import { FIELD_HELP } from "./lib/help";
 import { Overview } from "./views/Overview";
 import { SearchBox } from "./views/SearchBox";
 import { Note } from "./views/common";
+import { EngineProvider, StartupBanner, useEngine } from "./views/startup";
 import { navFor, type Capabilities } from "./lib/nav";
 
 // Every view but the overview loads on first visit, so the landing page does
@@ -69,21 +70,30 @@ function usePath(): string {
   return path;
 }
 
-function useCapabilities(): Capabilities {
+function useCapabilities(phase: string): Capabilities {
   const [caps, setCaps] = useState<Capabilities>({ controls: false, explorer: false });
   useEffect(() => {
     getJSON<Partial<Capabilities>>("/api/capabilities").then(
       (c) => setCaps({ controls: !!c.controls, explorer: !!c.explorer }),
       () => setCaps({ controls: false, explorer: false }),
     );
-  }, []);
+  }, [phase === "up"]);
   return caps;
 }
 
 export function App() {
+  return (
+    <EngineProvider>
+      <Shell />
+    </EngineProvider>
+  );
+}
+
+function Shell() {
   const path = usePath();
   const [theme, toggle] = useTheme();
-  const caps = useCapabilities();
+  const { phase } = useEngine();
+  const caps = useCapabilities(phase);
   const controls = caps.controls;
   const route = parseRoute(path);
   const nav = navFor(caps);
@@ -123,6 +133,7 @@ export function App() {
         </div>
       </header>
       <main id="main" className="mx-auto max-w-[1200px] px-4 pb-12">
+        <StartupBanner />
         <Suspense fallback={<Note>Loading…</Note>}>
           {route.name === "overview" && <Overview />}
           {route.name === "actors" && <Actors />}

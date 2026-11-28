@@ -10,6 +10,8 @@ import type { Decision, Snapshot } from "../lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { quiet } from "../lib/engine";
+import { useEngine } from "./startup";
 import { Banner, Filters, Link, Mono, Muted, Note, Title } from "./common";
 import { Blurb, HelpTip, SelectField } from "./fields";
 import { DecisionFilterBar, type DecisionFilterState } from "./filterbars";
@@ -113,6 +115,7 @@ export function Decisions() {
   const [mode, setMode] = useState<IdleMode>("group");
   const [paused, setPaused] = useState(false);
   const [waiting, setWaiting] = useState(0);
+  const { phase } = useEngine();
   const enums = useEnums();
   const { data: snap } = usePoll<Snapshot>("/api/overview", 10000);
   const feed = useRef<Feed | null>(null);
@@ -186,7 +189,7 @@ export function Decisions() {
           </Button>
           <HelpTip id="f-pause-help" label={FIELD_HELP.pause!.label} text={FIELD_HELP.pause!.help} />
         </span>
-        <Badge variant={state === "live" && !paused ? "ok" : "warn"} className="mb-2.5" role="status">{paused ? "paused" : state}</Badge>
+        <Badge variant={state === "live" && !paused ? "ok" : "warn"} className="mb-2.5" role="status">{paused ? "paused" : state === "live" || !quiet(phase) ? state : "waiting for the devnet"}</Badge>
       </Filters>
       {gap && <Banner tone="warn">Some decisions were dropped before this connection could replay them.</Banner>}
       <Note>Newest first, last {CAP} rows shown.</Note>

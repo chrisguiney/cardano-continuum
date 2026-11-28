@@ -55,10 +55,13 @@ open http://127.0.0.1:8088
 (default `linux/` and this machine's architecture), pushes them and records
 their digests in `.tools/images`. It then applies the chart's CRDs, which
 Helm never upgrades, and runs `helm upgrade --install` with those digests
-and the variables below. It waits, bounded, for the genesis Job, for every
-pool to forge on one chain, for the engine and for the UI, and keeps a
-`kubectl port-forward` to the `continuum-ui` Service running on
-`127.0.0.1`. The UI is its own Deployment (`continuum-ui proxy`), which
+and the variables below. The UI comes up first: as soon as the `continuum-ui`
+Deployment is Ready, `make up` starts a `kubectl port-forward` to its Service
+on `127.0.0.1` and prints the URL, before the devnet has forged anything. The
+page shows a "devnet is starting" banner with empty views, polls the proxy's
+`/api/_ui/status`, and fills in by itself once the engine answers. `make up`
+then waits, bounded, for the genesis Job, for every pool to forge on one
+chain and for the engine, keeping the forward running. The UI is its own Deployment (`continuum-ui proxy`), which
 forwards `/api` to the engine's ClusterIP `continuum-api` Service, so a
 change to `web/` alone rolls the UI pod and keeps the run: the run identity
 names only the engine image, and the engine binary does not link the UI.

@@ -67,9 +67,11 @@ builds the operator, genesis, engine and UI images with ko and pushes them to
 `CONTINUUM_REGISTRY` (`make images`), applies the chart's CRDs and runs
 `helm upgrade --install`. The genesis Job pulls the node images, renders the
 genesis and publishes it; the operator starts the pools as their keys
-appear; the engine waits for pool 0. `make up` then waits for one chain (10
-blocks forged, every cardano-node tip within k), for the engine and the UI
-Deployment, and port-forwards the UI's Service. A second run upgrades the release in place.
+appear; the engine waits for pool 0. As soon as the UI Deployment is
+Ready, `make up` port-forwards the UI's Service and prints its URL: the UI
+comes up first and shows a "devnet is starting" banner until the engine
+answers (a few minutes). `make up` then waits for one chain (10 blocks
+forged, every cardano-node tip within k) and for the engine. A second run upgrades the release in place.
 
 An engine resumes its event log only under the binary, seed, profile set
 and attacks that wrote it; a pod given another refuses its log ("eventlog:

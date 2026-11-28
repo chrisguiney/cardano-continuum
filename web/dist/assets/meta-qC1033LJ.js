@@ -1,1 +1,0 @@
-import{V as e,ct as t,lt as n}from"./index-_VeaiX3y.js";var r=n(t(),1);function i(e,t){return e.map(e=>({value:e,label:t&&t[e]!==void 0?`${e} (${t[e]})`:e}))}var a=null;function o(){let[t,n]=(0,r.useState)(null);return(0,r.useEffect)(()=>{a??=e(`/api/meta/enums`),a.then(n,()=>{a=null})},[]),t}export{o as n,i as t};
