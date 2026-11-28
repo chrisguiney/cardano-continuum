@@ -6,32 +6,40 @@ import { buildQuery, parseQuery, writeQuery } from "../lib/query";
 import { count } from "../lib/format";
 import { usePoll } from "../lib/hooks";
 import type { Finding, FindingPage } from "../lib/types";
-import { ErrorNote } from "./common";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { EmptyRow, ErrorNote, Filters, Heading, Note, Panel, TableFrame, Title } from "./common";
 import { Blurb } from "./fields";
 import { FindingFilterBar } from "./filterbars";
 
 function badgeOf(f: Finding) {
   const b = reproBadge(f);
-  return b ? <span className={`tag ${b.tone}`} title={b.title}>{b.text}</span> : "yes";
+  return b ? <Badge variant={b.tone} title={b.title}>{b.text}</Badge> : "yes";
 }
 
 function Row({ f }: { f: Finding }) {
   return (
-    <tr>
-      <td>{f.id}</td>
-      <td><span className={`tag ${f.severity === "fatal" ? "bad" : f.severity === "error" ? "warn" : ""}`}>{f.severity}</span></td>
-      <td>{f.kind}</td>
-      <td>{f.summary}</td>
-      <td>{f.verdicts.map((v) => `${v.impl}: ${v.verdict}`).join("; ")}</td>
-      <td>{f.provenance ?? ""}</td>
-      <td>{badgeOf(f)}</td>
-      <td>{f.replay_command ? <code>{f.replay_command}</code> : ""}</td>
-    </tr>
+    <TableRow>
+      <TableCell>{f.id}</TableCell>
+      <TableCell><Badge variant={f.severity === "fatal" ? "bad" : f.severity === "error" ? "warn" : "default"}>{f.severity}</Badge></TableCell>
+      <TableCell>{f.kind}</TableCell>
+      <TableCell className="min-w-64 whitespace-normal">{f.summary}</TableCell>
+      <TableCell className="min-w-40 whitespace-normal">{f.verdicts.map((v) => `${v.impl}: ${v.verdict}`).join("; ")}</TableCell>
+      <TableCell>{f.provenance ?? ""}</TableCell>
+      <TableCell>{badgeOf(f)}</TableCell>
+      <TableCell>{f.replay_command ? <code className="text-[0.85em]">{f.replay_command}</code> : ""}</TableCell>
+    </TableRow>
   );
 }
 
 function Head() {
-  return <tr><th>Id</th><th>Severity</th><th>Kind</th><th>Summary</th><th>Verdicts</th><th>Build</th><th>Reproducible</th><th>Replay</th></tr>;
+  return (
+    <TableRow>
+      <TableHead>Id</TableHead><TableHead>Severity</TableHead><TableHead>Kind</TableHead><TableHead>Summary</TableHead>
+      <TableHead>Verdicts</TableHead><TableHead>Build</TableHead><TableHead>Reproducible</TableHead><TableHead>Replay</TableHead>
+    </TableRow>
+  );
 }
 
 const FILTER_DEFAULTS: FindingFilters = { known: "false", kind: "", severity: "" };
@@ -49,43 +57,41 @@ export function Findings() {
   const knownTotal = data?.known_total ?? 0;
   return (
     <>
-      <h1>Findings</h1>
+      <Title>Findings</Title>
       <Blurb text={VIEW_BLURB.findings!} />
-      <form className="filters" aria-label="Filter findings" onSubmit={(e) => e.preventDefault()}>
+      <Filters aria-label="Filter findings">
         <FindingFilterBar f={filt} enums={enums} onChange={(k, v) => setFilt((f) => ({ ...f, [k]: v }))} />
-      </form>
+      </Filters>
       <ErrorNote error={fresh.error} />
-      <div className="table-wrap">
-        <table>
-          <thead><Head /></thead>
-          <tbody>
+      <TableFrame>
+        <Table>
+          <TableHeader><Head /></TableHeader>
+          <TableBody>
             {data?.rows.map((f) => <Row key={f.id} f={f} />)}
-            {data && data.rows.length === 0 && (
-              <tr><td colSpan={8} className="empty">No findings match. Oracle disagreements will appear here.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-      {data && <p className="muted" role="status">{count(data.total)} findings shown</p>}
+            {data && data.rows.length === 0 && <EmptyRow cols={8}>No findings match. Oracle disagreements will appear here.</EmptyRow>}
+          </TableBody>
+        </Table>
+      </TableFrame>
+      {data && <Note role="status">{count(data.total)} findings shown</Note>}
       {knownTotal > 0 && filt.known === "false" && (
-        <section className="card">
-          <h2>Known issues</h2>
-          <p className="muted">
+        <Panel>
+          <Heading>Known issues</Heading>
+          <Note>
             {count(knownTotal)} findings are explained by an upstream issue ({knownSummary(data?.known_counts)}).{" "}
-            <button type="button" onClick={() => setShowKnown(!showKnown)}>{showKnown ? "Hide" : "Show"}</button>
-          </p>
+            <Button type="button" variant="outline" size="sm" onClick={() => setShowKnown(!showKnown)}>{showKnown ? "Hide" : "Show"}</Button>
+          </Note>
           {showKnown && groupKnown(known.data?.rows ?? []).map((g) => (
-            <details key={g.ref}>
-              <summary>{g.ref} ({count(data?.known_counts?.[g.ref] ?? g.rows.length)} findings)</summary>
-              <div className="table-wrap">
-                <table>
-                  <thead><Head /></thead>
-                  <tbody>{g.rows.map((f) => <Row key={f.id} f={f} />)}</tbody>
-                </table>
-              </div>
+            <details key={g.ref} className="my-1">
+              <summary className="cursor-pointer text-primary">{g.ref} ({count(data?.known_counts?.[g.ref] ?? g.rows.length)} findings)</summary>
+              <TableFrame>
+                <Table>
+                  <TableHeader><Head /></TableHeader>
+                  <TableBody>{g.rows.map((f) => <Row key={f.id} f={f} />)}</TableBody>
+                </Table>
+              </TableFrame>
             </details>
           ))}
-        </section>
+        </Panel>
       )}
     </>
   );
