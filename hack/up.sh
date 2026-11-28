@@ -188,6 +188,19 @@ check_run() {
   log "$reason; resetting the network"
   CONTEXT=$CONTEXT NAMESPACE=$NAMESPACE RELEASE=$RELEASE HELM=$HELM K_BIN=$K CONTINUUM_STATE_DIR=$state "$root/hack/down.sh" >&2 ||
     die "reset failed; run make down"
+  await_ns_gone
+}
+
+# await_ns_gone waits, bounded, until the namespace no longer exists, so the
+# install is never made into one that is still terminating. When it lingers
+# it says what holds it.
+await_ns_gone() {
+  local i
+  for ((i = 0; i < ${NS_GONE_TRIES:-60}; i++)); do
+    k get namespace "$NAMESPACE" >/dev/null 2>&1 || return 0
+    sleep "${NS_GONE_GAP:-3}"
+  done
+  die "namespace $NAMESPACE is still terminating: $(k get namespace "$NAMESPACE" -o jsonpath='{.status.conditions[*].message}' 2>/dev/null); objects with finalizers hold it (kubectl get ... -n $NAMESPACE)"
 }
 
 # install applies the CRDs, which Helm installs but never upgrades, then

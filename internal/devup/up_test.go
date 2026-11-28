@@ -237,3 +237,31 @@ func TestDownFailsWhenTheNamespaceDeleteTimesOut(t *testing.T) {
 		t.Errorf("a timed-out namespace delete passed:\n%s", out)
 	}
 }
+
+// TestUpWaitsForTheNamespaceToBeGone: after a reset the install waits for
+// the namespace to disappear, and says what holds it when it does not.
+func TestUpWaitsForTheNamespaceToBeGone(t *testing.T) {
+	t.Parallel()
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash is not installed")
+	}
+
+	// The stub kubectl reports the namespace for the first two reads only.
+	script := `
+n=0
+k() {
+  case "$*" in
+    *jsonpath*) echo "Some resources are remaining: pods"; return 0 ;;
+    *"get namespace"*) n=$((n+1)); [ "$n" -le "${PRESENT:-2}" ]; return ;;
+  esac
+}
+NS_GONE_GAP=0 NS_GONE_TRIES=5 await_ns_gone`
+	if out, ok := upRun(t, "a", "c", nil, script); !ok {
+		t.Errorf("a namespace that goes away was not awaited:\n%s", out)
+	}
+
+	out, ok := upRun(t, "a", "c", []string{"PRESENT=99"}, script)
+	if ok || !strings.Contains(out, "still terminating") || !strings.Contains(out, "Some resources are remaining") {
+		t.Errorf("a stuck namespace did not fail with its blockers:\n%s", out)
+	}
+}
