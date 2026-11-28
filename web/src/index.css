@@ -1,51 +1,21 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-/* The theme toggle sets data-theme on <html>; dark: utilities follow it. */
+/* The UI is dark only: index.html sets data-theme="dark" on <html>, and the
+   dark: utilities follow it. */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
-/* Two independent appearance axes on <html>: data-theme (light | dark) and
-   data-style (continuum | shadcn). index.html sets both before first paint;
-   an unset data-style means continuum. Each style defines the same variables
-   in a light and a dark block, and test/appearance.test.tsx fails if the four
-   blocks drift apart, so add a colour to all four.
+/* data-style on <html> picks the palette (continuum | shadcn); index.html sets
+   it before first paint, and an unset data-style means continuum. Both styles
+   define the same variables, and test/palette.test.ts fails if they drift
+   apart, so add a colour to both.
 
    The chart colours are Okabe-Ito in every style, which stays readable under
    the common colour-vision deficiencies. */
 
 /* continuum: the palette the UI had before the port. */
-[data-style="continuum"]:not([data-theme="dark"]),
-:root:not([data-style]):not([data-theme="dark"]) {
-  --radius: 0.5rem;
-  --background: #f6f7f9;
-  --foreground: #1b1f24;
-  --card: #ffffff;
-  --card-foreground: #1b1f24;
-  --popover: #ffffff;
-  --popover-foreground: #1b1f24;
-  --primary: #1d4e89;
-  --primary-foreground: #ffffff;
-  --secondary: #eef1f5;
-  --secondary-foreground: #1b1f24;
-  --muted: #f6f7f9;
-  --muted-foreground: #576170;
-  --accent: #eef1f5;
-  --accent-foreground: #1b1f24;
-  --destructive: #b3261e;
-  --destructive-foreground: #ffffff;
-  --ok: #176b3a;
-  --warn: #8a5a00;
-  --border: #d0d6de;
-  --input: #d0d6de;
-  --ring: #1d4e89;
-  --chart-a: #0072b2;
-  --chart-b: #009e73;
-  --chart-c: #cc79a7;
-  color-scheme: light;
-}
-
-[data-style="continuum"][data-theme="dark"],
-:root:not([data-style])[data-theme="dark"] {
+[data-style="continuum"],
+:root:not([data-style]) {
   --radius: 0.5rem;
   --background: #12161b;
   --foreground: #e6e9ed;
@@ -79,36 +49,7 @@
    served 2026-11-27 (shadcn CLI 4.23.1). shadcn defines no ok, warn or
    destructive-foreground; those use Tailwind v4's green-700/400 and
    amber-700/400 and the neutral foreground tones. */
-[data-style="shadcn"]:not([data-theme="dark"]) {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-  --ok: oklch(0.527 0.154 150.069);
-  --warn: oklch(0.555 0.163 48.998);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-a: #0072b2;
-  --chart-b: #009e73;
-  --chart-c: #cc79a7;
-  color-scheme: light;
-}
-
-[data-style="shadcn"][data-theme="dark"] {
+[data-style="shadcn"] {
   --radius: 0.625rem;
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);

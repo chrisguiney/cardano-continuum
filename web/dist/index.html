@@ -3,25 +3,23 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="light dark" />
+    <meta name="color-scheme" content="dark" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <script>
-      // Set the style and theme before first paint so there is no flash.
-      // Keys and values match src/lib/appearance.ts and src/app.tsx.
+      // Set the style before first paint so there is no flash. The key and
+      // values match src/lib/appearance.ts. The UI is dark only.
       (function () {
-        var d = document.documentElement, st = "continuum", th = "";
+        var d = document.documentElement, st = "continuum";
         try {
           if (localStorage.getItem("style") === "shadcn") st = "shadcn";
-          th = localStorage.getItem("theme") || "";
         } catch (e) {}
-        if (th !== "light" && th !== "dark") th = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
         d.dataset.style = st;
-        d.dataset.theme = th;
+        d.dataset.theme = "dark";
       })();
     </script>
     <title>continuum</title>
-    <script type="module" crossorigin src="/assets/index-B_T_EPq-.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-CdFTKs4j.css">
+    <script type="module" crossorigin src="/assets/index-C5Vn1Tfc.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-DeePbPSy.css">
   </head>
   <body>
     <div id="app"></div>

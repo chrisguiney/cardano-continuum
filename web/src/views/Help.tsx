@@ -9,7 +9,7 @@ const VIEWS: [string, string][] = [
   ["Findings", "findings"], ["Adversaries", "adversaries"], ["Controls", "controls"],
 ];
 
-const CONTROLS = ["profile", "state", "kind", "delegated", "limit", "sort", "dir", "known", "severity", "finding_kind", "impl", "tier", "phase", "attack", "agenda", "intent", "decision_kind", "voter_class", "action_type", "actor", "search", "theme"];
+const CONTROLS = ["profile", "state", "kind", "delegated", "limit", "sort", "dir", "known", "severity", "finding_kind", "impl", "tier", "phase", "attack", "agenda", "intent", "decision_kind", "voter_class", "action_type", "actor", "search"];
 
 function Glossary({ id, title, terms }: { id: string; title: string; terms: Term[] }) {
   return (

@@ -1,11 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import { MoonIcon, SunIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { getJSON } from "./lib/api";
 import { navigate, parseRoute, redirectFor } from "./lib/router";
-import { HelpTip } from "./views/fields";
-import { FIELD_HELP } from "./lib/help";
 import { Overview } from "./views/Overview";
 import { SearchBox } from "./views/SearchBox";
 import { Note } from "./views/common";
@@ -32,36 +28,6 @@ const Governance = lazy(() => import("./views/Governance").then((m) => ({ defaul
 const Help = lazy(() => import("./views/Help").then((m) => ({ default: m.Help })));
 const Nodes = lazy(() => import("./views/Nodes").then((m) => ({ default: m.Nodes })));
 const StakePools = lazy(() => import("./views/StakePools").then((m) => ({ default: m.StakePools })));
-
-type Theme = "light" | "dark";
-
-function initialTheme(): Theme {
-  try {
-    const saved = localStorage.getItem("theme");
-    if (saved === "light" || saved === "dark") return saved;
-  } catch {
-    // storage can be blocked; fall through to the system preference.
-  }
-  return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-}
-
-function useTheme(): [Theme, () => void] {
-  const [theme, setTheme] = useState<Theme>(initialTheme);
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-  }, [theme]);
-  const toggle = () =>
-    setTheme((t) => {
-      const next = t === "dark" ? "light" : "dark";
-      try {
-        localStorage.setItem("theme", next);
-      } catch {
-        // the choice then lasts for this page only.
-      }
-      return next;
-    });
-  return [theme, toggle];
-}
 
 function useStyle(): [Style, (s: Style) => void] {
   const [style, setStyle] = useState<Style>(loadStyle);
@@ -113,7 +79,6 @@ export function App() {
 
 function Shell() {
   const path = usePath();
-  const [theme, toggle] = useTheme();
   const { phase } = useEngine();
   const caps = useCapabilities(phase);
   const [style, chooseStyle] = useStyle();
@@ -147,13 +112,6 @@ function Shell() {
         <div className="ml-auto flex flex-wrap items-center gap-4">
           {caps.explorer && <SearchBox />}
           <StyleSelect style={style} onChange={chooseStyle} />
-          <span className="inline-flex items-center">
-            <Button type="button" variant="ghost" size="sm" onClick={toggle} aria-describedby="theme-help">
-              {theme === "dark" ? <SunIcon aria-hidden="true" /> : <MoonIcon aria-hidden="true" />}
-              {theme === "dark" ? "Light theme" : "Dark theme"}
-            </Button>
-            <HelpTip id="theme-help" label="Theme" text={FIELD_HELP.theme!.help} />
-          </span>
         </div>
       </header>
       <main id="main" className="mx-auto max-w-[1200px] px-4 pb-12">

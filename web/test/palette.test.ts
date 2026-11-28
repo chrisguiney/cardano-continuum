@@ -17,16 +17,18 @@ function blocks(match: RegExp): string[][] {
 }
 
 describe("style palettes", () => {
-  it("define the same variables in all four blocks", () => {
-    const four = {
-      "continuum light": blocks(/continuum"\]:not\(\[data-theme="dark"\]\)/),
-      "continuum dark": blocks(/continuum"\]\[data-theme="dark"\]/),
-      "shadcn light": blocks(/shadcn"\]:not\(\[data-theme="dark"\]\)/),
-      "shadcn dark": blocks(/shadcn"\]\[data-theme="dark"\]/),
+  it("define the same variables in both styles", () => {
+    const two = {
+      continuum: blocks(/\[data-style="continuum"\],/),
+      shadcn: blocks(/^\s*\[data-style="shadcn"\]\s*$/),
     };
-    for (const [name, found] of Object.entries(four)) expect(found, name).toHaveLength(1);
-    const ref = four["continuum light"][0]!;
+    for (const [name, found] of Object.entries(two)) expect(found, name).toHaveLength(1);
+    const ref = two.continuum[0]!;
     expect(ref.length).toBeGreaterThan(20);
-    for (const [name, found] of Object.entries(four)) expect(found[0], name).toEqual(ref);
+    expect(two.shadcn[0]).toEqual(ref);
+  });
+
+  it("has no light palette left", () => {
+    expect(css).not.toMatch(/color-scheme:\s*light/);
   });
 });

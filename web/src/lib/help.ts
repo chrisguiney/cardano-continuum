@@ -36,8 +36,7 @@ export const FIELD_HELP: Record<string, FieldHelp> = {
   weights: { label: "Weights", help: "How much the simulated wallets want each intent, against their profile. Leave a field empty to keep the profile's own weight; 0 turns that intent off, 2 doubles it. Set weights replaces any earlier override as a whole; Reset weights to profile drops it. A current tag shows the override the engine has in force. Pools and DReps act on their own fitted clocks and ignore weights." },
   scenario: { label: "Scenario", help: "A scripted event to start now, such as taking a pool offline or an upgrade wave. The table below says what each does. It is added to the event log, so the run stays replayable." },
   search: { label: "Search", help: "Find a block by hash, height or slot:N, a transaction by hash, an address (addr_test1...), a stake pool by its 56-digit or pool1 id, a node by its name, or an actor as actor:N. The matching view opens." },
-  style: { label: "Style", help: "The look of the page. Continuum is the original palette; shadcn/ui is the stock shadcn/ui theme. It combines with the light and dark choice and is remembered in this browser." },
-  theme: { label: "Theme", help: "Switch between the light and dark colour schemes. Your choice is remembered in this browser." },
+  style: { label: "Style", help: "The look of the page. Continuum is the original palette; shadcn/ui is the stock shadcn/ui theme. It is remembered in this browser." },
 };
 
 export const VIEW_BLURB: Record<string, string> = {
