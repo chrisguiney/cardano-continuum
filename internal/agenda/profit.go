@@ -26,7 +26,7 @@ func profitScores(a population.Actor, v View) []Score {
 	}
 	return append(ss,
 		off(profile.IntentRegisterStake, "stake key already registered"),
-		pick(profile.IntentWithdraw, 0.2, bal, "collect rewards promptly"),
+		withdraw(a, v, 0.2, bal, "collect rewards promptly"),
 		profitMove(a, v, bal))
 }
 

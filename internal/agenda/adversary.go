@@ -55,5 +55,5 @@ func extractCover(a population.Actor, v View) []Score {
 	if !v.StakeRegistered(a.ID) {
 		return append(ss, off(profile.IntentWithdraw, "stake key not registered"))
 	}
-	return append(ss, pick(profile.IntentWithdraw, 0.3, bal, "extracts rewards"))
+	return append(ss, withdraw(a, v, 0.3, bal, "extracts rewards"))
 }

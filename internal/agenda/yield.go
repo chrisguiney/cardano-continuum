@@ -21,7 +21,7 @@ func yieldScores(a population.Actor, v View) []Score {
 	}
 	ss = append(ss,
 		off(profile.IntentRegisterStake, "stake key already registered"),
-		pick(profile.IntentWithdraw, 0.05, bal, "collect rewards"))
+		withdraw(a, v, 0.05, bal, "collect rewards"))
 	return append(ss, delegateScore(a, v, bal))
 }
 

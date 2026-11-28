@@ -308,4 +308,14 @@ func pick(kind profile.IntentKind, value float64, bal purse, why string) Score {
 	return Score{Kind: kind, Value: value, Why: why}
 }
 
+// withdraw scores collecting rewards. Conway refuses a withdrawal from an
+// account with no vote delegation (ConwayWdrlNotDelegatedToDRep), so a view
+// that shows none scores it zero.
+func withdraw(a population.Actor, v View, value float64, bal purse, why string) Score {
+	if g, ok := v.(Governance); ok && !g.VoteDelegated(a.ID) {
+		return off(profile.IntentWithdraw, "withdrawal needs a vote delegation")
+	}
+	return pick(profile.IntentWithdraw, value, bal, why)
+}
+
 func off(kind profile.IntentKind, why string) Score { return Score{Kind: kind, Why: why} }

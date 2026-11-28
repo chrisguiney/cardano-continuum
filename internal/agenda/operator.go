@@ -37,7 +37,7 @@ func operatorScores(a population.Actor, v View) []Score {
 	ss := []Score{
 		off(profile.IntentRegisterPool, "pool already registered"),
 		{Kind: Idle, Value: 1, Why: "maintaining pool"},
-		pick(profile.IntentWithdraw, 0.05, bal, "collect rewards"),
+		withdraw(a, v, 0.05, bal, "collect rewards"),
 		pick(profile.IntentUpdatePool, poolUpdateScore, bal, "change pool parameters"),
 	}
 	if a.State == population.Retiring {

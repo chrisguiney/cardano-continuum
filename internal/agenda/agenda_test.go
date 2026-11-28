@@ -541,7 +541,7 @@ func TestDecideGolden(t *testing.T) {
 	v := fakeView{balance: 1000 * ada, stake: true, delegation: 10,
 		pools: []PoolInfo{{ID: 10, ROI: .03}, {ID: 11, ROI: .05}}}
 	a := actor(profile.Wallet, 0.01)
-	d := Decide(a, a.Stream("agenda"), ok(v), mustFor(t, "yield"), nil)
+	d := Decide(a, a.Stream("agenda"), world{fakeView: v, voteDeleg: true}, mustFor(t, "yield"), nil)
 	got, err := json.MarshalIndent(d, "", "  ")
 	if err != nil {
 		t.Fatal(err)
@@ -560,7 +560,7 @@ func TestDecideGolden(t *testing.T) {
 	if string(got) != string(want) {
 		t.Fatalf("golden mismatch:\n%s", got)
 	}
-	d2 := Decide(a, a.Stream("agenda"), ok(v), mustFor(t, "yield"), nil)
+	d2 := Decide(a, a.Stream("agenda"), world{fakeView: v, voteDeleg: true}, mustFor(t, "yield"), nil)
 	if string(mustJSON(t, d2)) != string(mustJSON(t, d)) {
 		t.Fatal("not deterministic")
 	}
@@ -703,5 +703,21 @@ func TestChooseRecordsWeights(t *testing.T) {
 	b, err := json.Marshal(out)
 	if err != nil || !strings.Contains(string(b), `"weight":0`) {
 		t.Errorf("zero weight must be encoded: %s %v", b, err)
+	}
+}
+
+// A withdrawal needs a vote delegation (Conway refuses one without), so
+// a registered wallet without one scores it zero with the reason instead
+// of choosing it and being skipped.
+func TestWithdrawNeedsVoteDelegation(t *testing.T) {
+	for _, name := range []profile.AgendaName{"yield", "profit"} {
+		v := fakeView{balance: 1000 * ada, stake: true}
+		a := actor(profile.Wallet, 1)
+		if got := value(mustFor(t, name).Score(a, world{fakeView: v}), profile.IntentWithdraw); got != 0 {
+			t.Errorf("%s withdraws at %v without a vote delegation", name, got)
+		}
+		if got := value(mustFor(t, name).Score(a, world{fakeView: v, voteDeleg: true}), profile.IntentWithdraw); got <= 0 {
+			t.Errorf("%s does not withdraw at %v with one", name, got)
+		}
 	}
 }
