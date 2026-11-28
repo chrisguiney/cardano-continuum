@@ -14,6 +14,7 @@ import (
 	"github.com/blinklabs-io/gouroboros/ledger/conway"
 	"github.com/blinklabs-io/ouroboros-mock/fixtures"
 
+	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
@@ -285,5 +286,52 @@ func TestProjectionObserveSeesEveryRecord(t *testing.T) {
 	p.Apply(eventlog.Record{Seq: 2, Class: eventlog.Decision, Kind: "Unknown"})
 	if len(seqs) != 2 || seqs[0] != 1 || seqs[1] != 2 {
 		t.Fatalf("observed %v", seqs)
+	}
+}
+
+// TestExplorerIssuerIsTheForgingNode: a block's issuer resolves to the node
+// whose keys forged it (the node whose last own block it is), not to a node
+// that merely follows a chain holding it. Every node follows every block,
+// so labelling by follower named whichever node reported it.
+func TestExplorerIssuerIsTheForgingNode(t *testing.T) {
+	slots := testSlots(t)
+	c := &xchain{t: t}
+	var raws [][]byte
+	var hashes []common.Blake2b256
+	for range 3 {
+		raw, h := c.next(nil, 7)
+		raws = append(raws, raw)
+		hashes = append(hashes, h)
+	}
+	blk, err := conway.NewConwayBlockFromCbor(raws[2])
+	if err != nil {
+		t.Fatal(err)
+	}
+	issuer := blk.IssuerVkey().Hash()
+
+	follow := xmark(3, hashes[2])
+	follow.Issuer = issuer
+	tips := exTips{"p1": {follow}}
+	pool := func(name, label string, impl v1alpha1.Implementation, last string) v1alpha1.ContinuumPool {
+		p := v1alpha1.ContinuumPool{Spec: v1alpha1.ContinuumPoolSpec{PoolID: label, Implementation: impl, Tier: v1alpha1.TierForging}}
+		p.Name, p.Status.LastBlock.Hash = name, last
+		return p
+	}
+	kube := fakeKube{pools: []v1alpha1.ContinuumPool{
+		pool("p1", "continuum-pool-1", v1alpha1.CardanoNode, ""),
+		pool("p3", "continuum-pool-3", v1alpha1.Dingo, hashes[2].String()),
+	}}
+	ex := NewExplorer(ExplorerOptions{Keep: 50, K: 2, Slots: &slots, Kube: kube, Tips: tips})
+	r := &explorerRig{t: t, ex: ex}
+	for _, raw := range raws {
+		r.feed(raw)
+	}
+
+	b, err := ex.Block(context.Background(), "3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.Pool == nil || b.Pool.Name != "p3" || b.Pool.Impl != "dingo" {
+		t.Fatalf("block 3 issuer %s resolved to %+v, want p3 / dingo", b.Issuer, b.Pool)
 	}
 }

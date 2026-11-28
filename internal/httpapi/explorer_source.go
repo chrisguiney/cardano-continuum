@@ -69,11 +69,21 @@ func NewExplorer(o ExplorerOptions) *Explorer {
 	if o.Logger == nil {
 		o.Logger = slog.New(slog.DiscardHandler)
 	}
-	e := &Explorer{opt: o, fold: newTxFold(), actors: newActorDir(o.Names, o.Now), log: o.Logger.With("component", "explorer"), pools: newPoolTable(o.Kube, o.Tips, o.Now)}
+	e := &Explorer{opt: o, fold: newTxFold(), actors: newActorDir(o.Names, o.Now), log: o.Logger.With("component", "explorer")}
+	e.pools = newPoolTable(o.Kube, o.Tips, o.Now, e.issuer)
 	e.idx = explorer.New(explorer.Config{
 		Keep: o.Keep, K: o.K, Slots: o.Slots, Limits: o.Limits, Pool: e.pools.resolve, Known: e.pools.known,
 	})
 	return e
+}
+
+// issuer is the issuer (hex pool id) of a block the index holds.
+func (e *Explorer) issuer(hash string) (string, bool) {
+	v, err := e.idx.Block(hash)
+	if err != nil || v.Issuer == "" {
+		return "", false
+	}
+	return v.Issuer, true
 }
 
 // Apply folds one log record: a block or rollback into the index, a
