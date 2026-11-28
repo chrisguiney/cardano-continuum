@@ -1,3 +1,4 @@
+/* Element rules skip shadcn/ui components, which carry data-slot. */
 :root {
   --bg: #f6f7f9;
   --surface: #ffffff;
@@ -30,8 +31,6 @@
   --c: #e8a0cb;
   color-scheme: dark;
 }
-* { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, sans-serif; }
 a { color: var(--link); }
 h1 { font-size: 1.5rem; margin: 1rem 0; }
 h2 { font-size: 1.1rem; margin: 0 0 .5rem; }
@@ -50,13 +49,13 @@ code, pre { font-family: ui-monospace, monospace; font-size: .85em; }
 .top nav a[aria-current="page"] { background: var(--link); color: var(--accent-text); font-weight: 600; }
 main { max-width: 1200px; margin: 0 auto; padding: 0 1rem 3rem; }
 
-button { font: inherit; padding: .35rem .8rem; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
-button:hover:not(:disabled) { border-color: var(--link); }
-button:disabled { opacity: .5; cursor: default; }
+button:not([data-slot]) { font: inherit; padding: .35rem .8rem; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
+button:not([data-slot]):hover:not(:disabled) { border-color: var(--link); }
+button:not([data-slot]):disabled { opacity: .5; cursor: default; }
 button.ghost { background: transparent; }
 button.danger { background: var(--bad); color: var(--bg); border-color: var(--bad); font-weight: 600; }
 button.th { border: 0; background: none; font-weight: 600; padding: 0; }
-input, select { font: inherit; padding: .3rem .5rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
+input:not([data-slot]), select:not([data-slot]) { font: inherit; padding: .3rem .5rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
 label { display: flex; flex-direction: column; gap: .15rem; font-size: .85rem; color: var(--muted-text); }
 
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin: 1rem 0; }
@@ -86,7 +85,7 @@ label { display: flex; flex-direction: column; gap: .15rem; font-size: .85rem; c
 .filters { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end; margin-bottom: 1rem; }
 .table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
 table { border-collapse: collapse; width: 100%; }
-th, td { text-align: left; padding: .4rem .7rem; border-bottom: 1px solid var(--border); white-space: nowrap; }
+th:not([data-slot]), td:not([data-slot]) { text-align: left; padding: .4rem .7rem; border-bottom: 1px solid var(--border); white-space: nowrap; }
 td.num { text-align: right; font-variant-numeric: tabular-nums; }
 tbody tr:last-child td { border-bottom: 0; }
 .empty { color: var(--muted-text); padding: 1rem; text-align: center; }

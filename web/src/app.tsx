@@ -90,8 +90,8 @@ export function App() {
     <TooltipProvider>
       <a href="#main" className="absolute -left-[9999px] z-10 rounded-md bg-card p-2 focus:top-2 focus:left-2">Skip to content</a>
       <header className="flex flex-wrap items-center gap-4 border-b bg-card px-4 py-2">
-        <strong className="tracking-wide">continuum</strong>
-        <nav aria-label="Views" className="flex flex-1 flex-wrap gap-1">
+        <strong className="mr-auto tracking-wide lg:mr-0">continuum</strong>
+        <nav aria-label="Views" className="order-last flex basis-full flex-wrap gap-1 lg:order-none lg:basis-auto lg:flex-1">
           {nav.map(([to, label]) => (
             <a
               key={to}

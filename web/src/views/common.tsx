@@ -1,8 +1,10 @@
 import { useState, type ComponentProps, type ReactNode } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { browserEnv, copyText } from "../lib/clipboard";
 import { navigate } from "../lib/router";
+import type { ActorFinding } from "../lib/types";
 import { cn } from "../lib/utils";
 import { HelpTip } from "./fields";
 
@@ -87,13 +89,16 @@ export function Banner({ tone, className, ...props }: ComponentProps<"div"> & { 
   return <div className={cn("my-2 rounded-md border border-current bg-card px-3 py-2 font-semibold [&_p]:my-0", color, className)} {...props} />;
 }
 
-/** Facts is a two-column list of names and values that stacks on a narrow screen. */
-export function Facts({ rows, className }: { rows: [string, ReactNode][]; className?: string }) {
+/**
+ * Facts is a two-column list of names and values that stacks on a narrow
+ * screen. A muted list is a record's traits; a bold one is a glossary.
+ */
+export function Facts({ rows, muted = false, className }: { rows: [ReactNode, ReactNode][]; muted?: boolean; className?: string }) {
   return (
     <dl className={cn("grid grid-cols-1 gap-x-5 gap-y-1.5 sm:grid-cols-[max-content_1fr]", className)}>
-      {rows.map(([k, v]) => (
-        <div key={k} className="contents">
-          <dt className="font-semibold">{k}</dt>
+      {rows.map(([k, v], i) => (
+        <div key={typeof k === "string" ? k : i} className="contents">
+          <dt className={muted ? "text-muted-foreground" : "font-semibold"}>{k}</dt>
           <dd className="mb-2 min-w-0 [overflow-wrap:anywhere] sm:mb-0">{v}</dd>
         </div>
       ))}
@@ -137,8 +142,21 @@ export function CopyButton({ value, label }: { value: string; label: string }) {
     });
   };
   return (
-    <Button type="button" variant="ghost" size="xs" className="ml-1 h-5 px-1.5 text-xs font-normal" onClick={click} aria-label={`Copy ${label}`}>
+    <Button type="button" variant="outline" size="xs" className="ml-1 h-5 px-1.5 text-xs font-normal shadow-none" onClick={click} aria-label={`Copy ${label}`}>
       {state === "ok" ? "Copied" : state === "fail" ? "Copy failed" : "Copy"}
     </Button>
+  );
+}
+
+/** FindingList is the findings that name an actor's transactions, fatal ones marked. */
+export function FindingList({ items }: { items: ActorFinding[] }) {
+  return (
+    <ul className="my-2">
+      {items.map((f) => (
+        <li key={f.id} className={cn("my-1 border-l-4 px-2 py-1", f.severity === "fatal" ? "border-destructive bg-muted" : "border-warn")}>
+          <Badge variant={f.severity === "fatal" ? "bad" : "warn"}>{f.severity}</Badge> <strong>{f.kind}</strong> {f.summary}
+        </li>
+      ))}
+    </ul>
   );
 }

@@ -21,7 +21,7 @@ export function HelpTip({ id, label, text }: { id: string; label: string; text: 
             type="button"
             aria-label={`About ${label}`}
             aria-describedby={id}
-            className="ml-1 inline-grid size-[1.15rem] cursor-help place-items-center rounded-full border border-primary text-[0.7rem] leading-none font-bold text-primary normal-case outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            className="ml-1 inline-flex size-[1.15rem] shrink-0 cursor-help items-center justify-center rounded-full p-0 border border-primary text-[0.7rem] leading-none font-bold text-primary normal-case outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
           >
             ?
           </button>
