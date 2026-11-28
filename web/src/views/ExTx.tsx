@@ -1,11 +1,14 @@
 import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { scriptRows, unitsText, type ScriptRow } from "../lib/contracts";
 import { blockLink, lovelaceText, metadataText, txCborPath } from "../lib/explorer";
+import { FIELD_HELP } from "../lib/help";
 import type { Cert, Input, Output, TxDetail } from "../lib/extypes";
 import { usePoll } from "../lib/hooks";
 import { CopyButton, ErrorNote, Link, Mono, Muted, Note, Subheading, TableFrame, Title } from "./common";
 import { Addr, Assets, Facts, HashLink, OutputCells, Section, TxHash } from "./exparts";
+import { HelpTip } from "./fields";
 
 // PRE is a block of raw bytes or JSON: it wraps anywhere and scrolls past 14rem.
 const PRE = "mt-2 max-h-56 overflow-auto rounded-md border bg-muted p-2.5 font-mono text-[0.85em] whitespace-pre-wrap [overflow-wrap:anywhere]";
@@ -109,19 +112,64 @@ function Tail({ tx }: { tx: TxDetail }) {
   );
 }
 
+function HeadTip({ k, id }: { k: string; id: string }) {
+  const h = FIELD_HELP[k]!;
+  return <TableHead>{h.label} <HelpTip id={id} label={h.label} text={h.help} /></TableHead>;
+}
+
+function Verdict({ r }: { r: ScriptRow }) {
+  if (r.ok === undefined) return <Muted>not evaluated by the run</Muted>;
+  return r.ok ? <Badge>passed</Badge> : <><Badge variant="bad">failed</Badge> <span className="[overflow-wrap:anywhere]">{r.error ?? ""}</span></>;
+}
+
+function Args({ r }: { r: ScriptRow }) {
+  if (!r.datum && !r.redeemer) return null;
+  return (
+    <details>
+      <summary className="cursor-pointer text-primary">data</summary>
+      {r.datum && <><Subheading>Datum</Subheading><pre className={PRE} tabIndex={0}>{r.datum}</pre></>}
+      {r.redeemer && <><Subheading>Redeemer</Subheading><pre className={PRE} tabIndex={0}>{r.redeemer}</pre></>}
+    </details>
+  );
+}
+
+/** Scripts lists each script run: the redeemer's purpose, the validator and its hash, both budgets and the verdict. */
 function Scripts({ tx }: { tx: TxDetail }) {
   if (tx.redeemers.length === 0 && tx.scripts.length === 0 && tx.required_signers.length === 0) return null;
+  const rows = scriptRows(tx);
   return (
-    <Section id="t-scripts" title="Scripts, redeemers and signers">
-      {tx.scripts.length > 0 && <ul className="space-y-1">{tx.scripts.map((s) => <li key={s.hash} className="[overflow-wrap:anywhere]"><Badge>{s.language}</Badge> <Mono>{s.hash}</Mono> ({s.size} bytes)</li>)}</ul>}
-      {tx.redeemers.length > 0 && (
+    <Section id="t-scripts" title="Scripts">
+      {rows.length > 0 && (
         <TableFrame>
           <Table>
-            <TableHeader><TableRow><TableHead>Purpose</TableHead><TableHead>Index</TableHead><TableHead>Memory</TableHead><TableHead>Steps</TableHead><TableHead>Data</TableHead></TableRow></TableHeader>
-            <TableBody>{tx.redeemers.map((r) => <TableRow key={r.tag + r.index}><TableCell>{r.tag}</TableCell><TableCell>{r.index}</TableCell><TableCell>{r.mem.toLocaleString("en-US")}</TableCell><TableCell>{r.steps.toLocaleString("en-US")}</TableCell><TableCell><Mono>{r.data_hex ?? ""}</Mono></TableCell></TableRow>)}</TableBody>
+            <TableHeader>
+              <TableRow>
+                <HeadTip k="script_purpose" id="t-s-purpose" />
+                <HeadTip k="validator" id="t-s-validator" />
+                <TableHead>Script hash</TableHead>
+                <HeadTip k="exunits_declared" id="t-s-declared" />
+                <HeadTip k="exunits_used" id="t-s-used" />
+                <TableHead>Result</TableHead>
+                <TableHead>Datum and redeemer</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((r) => (
+                <TableRow key={`${r.purpose}${r.index}`}>
+                  <TableCell>{r.purpose} #{r.index}</TableCell>
+                  <TableCell>{r.validator ? <Link to="/contracts">{r.validator}</Link> : <Muted>unknown</Muted>}</TableCell>
+                  <TableCell>{r.script ? <Mono title={r.script}>{r.script.slice(0, 16)}</Mono> : <Muted>not known</Muted>}</TableCell>
+                  <TableCell className="tabular-nums">{unitsText(r.declared)}</TableCell>
+                  <TableCell className="tabular-nums">{r.used ? unitsText(r.used) : <Muted>—</Muted>}</TableCell>
+                  <TableCell><Verdict r={r} /></TableCell>
+                  <TableCell><Args r={r} /></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
           </Table>
         </TableFrame>
       )}
+      {tx.scripts.length > 0 && <><Subheading>Witness scripts</Subheading><ul className="space-y-1">{tx.scripts.map((s) => <li key={s.hash} className="[overflow-wrap:anywhere]"><Badge>{s.language}</Badge> <Mono>{s.hash}</Mono> ({s.size} bytes)</li>)}</ul></>}
       {tx.required_signers.length > 0 && <p className="my-2 [overflow-wrap:anywhere]">Required signers: {tx.required_signers.map((s) => <Mono key={s}>{s} </Mono>)}</p>}
     </Section>
   );

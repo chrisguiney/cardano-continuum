@@ -24,7 +24,7 @@ const TAIL: NavItem[] = [
 export function navFor(caps: Capabilities): NavItem[] {
   return [
     ...BASE,
-    ...(caps.explorer ? ([["/explorer", "Explorer"]] as NavItem[]) : []),
+    ...(caps.explorer ? ([["/explorer", "Explorer"], ["/contracts", "Contracts"]] as NavItem[]) : []),
     ...TAIL,
     ...(caps.controls ? ([["/controls", "Controls"]] as NavItem[]) : []),
     ["/help", "Help"],

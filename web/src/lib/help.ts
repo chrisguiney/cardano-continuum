@@ -49,6 +49,12 @@ export const FIELD_HELP: Record<string, FieldHelp> = {
   weights: { label: "Weights", help: "How much the simulated wallets want each intent, against their profile. Leave a field empty to keep the profile's own weight; 0 turns that intent off, 2 doubles it. Set weights replaces any earlier override as a whole; Reset weights to profile drops it. A current tag shows the override the engine has in force. Pools and DReps act on their own fitted clocks and ignore weights." },
   scenario: { label: "Scenario", help: "A scripted event to start now, such as taking a pool offline or an upgrade wave. The table below says what each does. It is added to the event log, so the run stays replayable." },
   search: { label: "Search", help: "Find a block by hash, height or slot:N, a transaction by hash, an address (addr_test1...), a stake pool by its 56-digit or pool1 id, a node by its name, or an actor as actor:N. The matching view opens." },
+  validator: { label: "Validator", help: "A script that decides whether a transaction may spend an output locked at its address, mint under its policy, or take another scripted action. Continuum's validators are written in Aiken (contracts/); a deployed contract is an instance of one, such as vesting#3." },
+  script_purpose: { label: "Script purpose", help: "Why a script runs: spend (an output at its address is spent), mint (tokens of its policy are minted or burned), publish (a certificate), withdraw (rewards), vote or propose." },
+  exunits_declared: { label: "ExUnits declared", help: "The execution budget the transaction's redeemer declares for the script, in memory units and CPU steps. The fee pays for it, and the script fails if it needs more." },
+  exunits_used: { label: "ExUnits used", help: "The execution units the script actually spent when the engine evaluated the transaction it submitted (plutigo's evaluator, the code path the nodes use). Shown only for transactions the run submitted." },
+  datum: { label: "Datum", help: "Data stored with a script output that the validator reads when the output is spent, such as a vesting position's owner and opening time." },
+  redeemer: { label: "Redeemer", help: "The argument the transaction gives the validator, such as an escrow's release or refund, together with its declared execution budget." },
   style: { label: "Style", help: "The look of the page. Continuum is the original palette; shadcn/ui is the stock shadcn/ui theme. It is remembered in this browser." },
 };
 
@@ -64,6 +70,7 @@ export const VIEW_BLURB: Record<string, string> = {
   findings: "Disagreements and rule breaks the checkers found between node programs and expected results.",
   adversaries: "Simulated attackers: what they try, what it costs them and how honest actors are affected.",
   controls: "Change the running simulation. Every action is logged and asks for confirmation.",
+  contracts: "The Aiken validators the run deploys and calls: each one's hash and size, how often it ran, the execution units it used against what it declared, and why runs failed.",
   explorer: "Browse the chain the engine follows: blocks, transactions, addresses and epochs, with the run's own context beside each one.",
   help: "What the words and controls in this app mean.",
 };
@@ -105,6 +112,9 @@ export const GLOSSARY: Term[] = [
   { term: "Datum", def: "Data attached to an output for a script to read when the output is spent. It is either stored inline or referred to by its hash." },
   { term: "Redeemer", def: "The argument a transaction gives a script when it spends, mints or votes, together with the execution budget (ExUnits) the script may use." },
   { term: "ExUnits", def: "The execution budget of a script: memory and CPU steps. A block has a limit on the total its transactions may use; the Explorer shows the share used." },
+  { term: "Validator", def: FIELD_HELP.validator!.help },
+  { term: "Script purpose", def: FIELD_HELP.script_purpose!.help },
+  { term: "Script hash", def: "The hash identifying a script: its address and, for a minting policy, its policy id. A parameterised validator applied to different parameters has a different hash per instance." },
   { term: "Certificate", def: "A statement in a transaction that changes chain state: registering or delegating a stake key, registering or retiring a pool, or registering and delegating to a DRep." },
   { term: "Collateral", def: "Coins a transaction with scripts puts at risk. If a script fails after the transaction is in a block (isValid false), the collateral is spent as the fee and nothing else happens." },
   { term: "Adversary", def: "An actor built to attack the network, to check that honest users stay protected." },

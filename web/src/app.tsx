@@ -15,6 +15,7 @@ import { navFor, type Capabilities } from "./lib/nav";
 const Actor = lazy(() => import("./views/Actor").then((m) => ({ default: m.Actor })));
 const Actors = lazy(() => import("./views/Actors").then((m) => ({ default: m.Actors })));
 const Adversaries = lazy(() => import("./views/Adversaries").then((m) => ({ default: m.Adversaries })));
+const Contracts = lazy(() => import("./views/Contracts").then((m) => ({ default: m.Contracts })));
 const Controls = lazy(() => import("./views/Controls").then((m) => ({ default: m.Controls })));
 const Decisions = lazy(() => import("./views/Decisions").then((m) => ({ default: m.Decisions })));
 const ExAddress = lazy(() => import("./views/ExAddress").then((m) => ({ default: m.ExAddress })));
@@ -132,6 +133,7 @@ function Shell() {
           {route.name === "findings" && <Findings />}
           {route.name === "adversaries" && <Adversaries />}
           {route.name === "explorer" && <Explorer />}
+          {route.name === "contracts" && <Contracts />}
           {route.name === "xblock" && <ExBlock id={route.key} />}
           {route.name === "xtx" && <ExTx id={route.key} />}
           {route.name === "xaddr" && <ExAddress addr={route.key} />}

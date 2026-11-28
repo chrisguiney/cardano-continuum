@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Feed, foldDecisions, type EventSourceLike, type FeedFilter, type FeedRow, type FeedState, type IdleMode, type IdleRun } from "../lib/feed";
 import { chances, clamp, percent } from "../lib/chance";
 import { positionLine } from "../lib/markets";
+import { decisionScripts, unitsText, type DecisionScripts } from "../lib/contracts";
 import { simTime } from "../lib/format";
 import { FIELD_HELP, VIEW_BLURB } from "../lib/help";
 import { useEnums } from "../lib/meta";
@@ -45,8 +46,32 @@ function Th({ id, k, className }: { id: string; k: string; className?: string })
   return <TableHead className={className}>{h.label} <HelpTip id={id} label={h.label} text={h.help} /></TableHead>;
 }
 
+/** ScriptWhy names the validator a script call ran and lists its runs. */
+function ScriptWhy({ d, s }: { d: Decision; s: DecisionScripts }) {
+  return (
+    <details className="mt-1">
+      <summary className="cursor-pointer text-primary">why: {d.intent || "script"} at {s.validator}</summary>
+      <p className="my-1">
+        Validator <Link to="/contracts">{s.validator}</Link> <HelpTip id={`why-${d.id}-v`} label={FIELD_HELP.validator!.label} text={FIELD_HELP.validator!.help} />
+      </p>
+      {s.runs.length > 0 && (
+        <ul className="space-y-1">
+          {s.runs.map((r) => (
+            <li key={`${r.purpose}${r.index}`}>
+              {r.purpose} #{r.index}: used {unitsText(r.used)} of {unitsText(r.declared)}{" "}
+              {r.ok ? <Badge>passed</Badge> : <><Badge variant="bad">failed</Badge> {r.error ?? ""}</>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </details>
+  );
+}
+
 /** Why lists the scored options of a decision with the chance each had. */
 export function Why({ d }: { d: Decision }) {
+  const s = decisionScripts(d);
+  if (s) return <ScriptWhy d={d} s={s} />;
   if (!d.scores?.length && d.body === undefined) return null;
   const scores = d.scores ?? [];
   const pct = chances(scores);

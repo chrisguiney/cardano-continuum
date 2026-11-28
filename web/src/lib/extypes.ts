@@ -1,3 +1,5 @@
+import type { ScriptRun } from "./contracts";
+
 /** Shapes of the /api/explorer responses. */
 
 export interface PoolRef {
@@ -120,6 +122,12 @@ export interface Redeemer {
   mem: number;
   steps: number;
   data_hex?: string;
+  data_json?: string;
+  purpose?: string;
+  script?: string;
+  validator?: string;
+  datum_hex?: string;
+  datum_json?: string;
 }
 
 export interface Vote {
@@ -160,6 +168,8 @@ export interface TxContext {
   verdict?: string;
   reason?: string;
   findings: TxFinding[];
+  validator?: string;
+  scripts?: ScriptRun[];
 }
 
 export interface TxDetail {

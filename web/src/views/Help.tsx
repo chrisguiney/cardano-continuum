@@ -5,11 +5,11 @@ import { Facts, Heading, Note, Panel, Title } from "./common";
 import { Blurb } from "./fields";
 
 const VIEWS: [string, string][] = [
-  ["Overview", "overview"], ["Actors", "actors"], ["Pools", "pools"], ["Explorer", "explorer"], ["Governance", "governance"], ["Decisions", "decisions"],
+  ["Overview", "overview"], ["Actors", "actors"], ["Pools", "pools"], ["Explorer", "explorer"], ["Contracts", "contracts"], ["Governance", "governance"], ["Decisions", "decisions"],
   ["Findings", "findings"], ["Adversaries", "adversaries"], ["Controls", "controls"],
 ];
 
-const CONTROLS = ["profile", "state", "kind", "delegated", "limit", "sort", "dir", "known", "severity", "finding_kind", "impl", "tier", "phase", "attack", "agenda", "intent", "decision_kind", "voter_class", "action_type", "actor", "search"];
+const CONTROLS = ["profile", "state", "kind", "delegated", "limit", "sort", "dir", "known", "severity", "finding_kind", "impl", "tier", "phase", "attack", "agenda", "intent", "decision_kind", "voter_class", "action_type", "actor", "search", "validator", "script_purpose", "exunits_declared", "exunits_used", "datum", "redeemer"];
 
 function Glossary({ id, title, terms }: { id: string; title: string; terms: Term[] }) {
   return (

@@ -165,7 +165,7 @@ describe("transaction detail", () => {
     expect(html).toContain(`href="/governance/${H1}/0"`);
   });
   it("shows mint, metadata, redeemer ExUnits, scripts and signers", () => {
-    for (const t of ["Mint and burn", "-7 tok", "hello", "1,000", "2,000", "Scripts, redeemers and signers", "Required signers"]) expect(html).toContain(t);
+    for (const t of ["Mint and burn", "-7 tok", "hello", "1,000", "2,000", "Witness scripts", "Required signers"]) expect(html).toContain(t);
   });
   it("links the continuum actor and findings", () => {
     expect(html).toContain('href="/actors/4"');
