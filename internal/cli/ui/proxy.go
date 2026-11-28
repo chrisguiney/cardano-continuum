@@ -14,6 +14,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/chrisguiney/cardano-continuum/internal/cli/internal/serving"
 	"github.com/chrisguiney/cardano-continuum/internal/httpapi"
@@ -63,7 +64,7 @@ func Proxy(ctx context.Context, args []string, out io.Writer) error {
 
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil)).With("component", "ui")
 	log.Info("forwarding the api", "api", api.Redacted())
-	return httpapi.Serve(ctx, ln, newHandler(api, web.Handler(), log), log)
+	return httpapi.Serve(ctx, ln, newHandler(api, web.Handler(), newProber(api, probeTTL, time.Now), log), log)
 }
 
 // parseAPI accepts an http or https base URL with a host and nothing else:
@@ -86,12 +87,14 @@ func parseAPI(s string) (*url.URL, error) {
 }
 
 // newHandler routes /api/* to api and every other GET to ui. /healthz is
-// the proxy's own, so the UI's readiness does not follow the engine's.
+// the proxy's own, so the UI's readiness does not follow the engine's, and
+// so is /api/_ui/status, which the UI polls to tell a starting engine from a
+// broken one.
 //
 // Only a clean path under /api/ is forwarded: the target is fixed, and a
 // path that cleans elsewhere ("/api/../x") would otherwise reach engine
 // routes outside the API.
-func newHandler(api *url.URL, ui http.Handler, log *slog.Logger) http.Handler {
+func newHandler(api *url.URL, ui http.Handler, st *prober, log *slog.Logger) http.Handler {
 	rp := &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.SetURL(api)
@@ -111,6 +114,8 @@ func newHandler(api *url.URL, ui http.Handler, log *slog.Logger) http.Handler {
 		case p == "/healthz":
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = io.WriteString(w, `{"status":"ok"}`+"\n")
+		case p == statusPath:
+			writeStatus(w, r, st)
 		case strings.HasPrefix(p, "/api/"):
 			forward(w, r, rp)
 		case r.Method != http.MethodGet && r.Method != http.MethodHead:

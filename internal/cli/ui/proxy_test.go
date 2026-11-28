@@ -67,7 +67,7 @@ func front(t *testing.T, e *engine) *httptest.Server {
 	}
 
 	ui := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, "ui "+r.URL.Path) })
-	srv := httptest.NewServer(newHandler(api, ui, slog.New(slog.DiscardHandler)))
+	srv := httptest.NewServer(newHandler(api, ui, newProber(api, 0, time.Now), slog.New(slog.DiscardHandler)))
 	t.Cleanup(srv.Close)
 	return srv
 }
