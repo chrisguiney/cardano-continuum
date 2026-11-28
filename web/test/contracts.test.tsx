@@ -105,4 +105,9 @@ describe("decision why box", () => {
     expect(html).toContain("1,000 mem / 300,000 steps");
     expect(decisionScripts({ id: 5, at: 1, kind: "Submitted", actor: 1, body: { kind: "" } })).toBeNull();
   });
+  it("says what the call did with the contract", () => {
+    const d = { id: 6, at: 10, kind: "Submitted", actor: 3, intent: "unlock", body: { kind: "unlock", validator: "escrow#2", call: "release", scripts: [] } };
+    expect(decisionScripts(d)?.call).toBe("release");
+    expect(render(<Why d={d} />)).toContain("why: release at escrow#2");
+  });
 });

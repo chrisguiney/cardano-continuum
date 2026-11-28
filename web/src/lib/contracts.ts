@@ -111,15 +111,18 @@ export function scriptRows(tx: TxDetail): ScriptRow[] {
 /** DecisionScripts is what a script call's Submitted record says it ran. */
 export interface DecisionScripts {
   validator: string;
+  /** call is what the attempt did with the contract: lock, claim, release or refund; empty when not recorded. */
+  call: string;
   runs: ScriptRun[];
 }
 
 /** decisionScripts reads the validator and runs from a Submitted decision's body, or null for one without a script. */
 export function decisionScripts(d: Decision): DecisionScripts | null {
   if (d.kind !== "Submitted" || typeof d.body !== "object" || d.body === null) return null;
-  const b = d.body as { validator?: unknown; scripts?: unknown };
+  const b = d.body as { validator?: unknown; call?: unknown; scripts?: unknown };
   if (typeof b.validator !== "string" || b.validator === "") return null;
-  return { validator: b.validator, runs: Array.isArray(b.scripts) ? (b.scripts as ScriptRun[]) : [] };
+  const call = typeof b.call === "string" ? b.call : "";
+  return { validator: b.validator, call, runs: Array.isArray(b.scripts) ? (b.scripts as ScriptRun[]) : [] };
 }
 
 /** Pipeline is a script at each phase of its compilation (internal/contract Pipeline). */

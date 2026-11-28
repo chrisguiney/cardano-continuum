@@ -50,7 +50,7 @@ function Th({ id, k, className }: { id: string; k: string; className?: string })
 function ScriptWhy({ d, s }: { d: Decision; s: DecisionScripts }) {
   return (
     <details className="mt-1">
-      <summary className="cursor-pointer text-primary">why: {d.intent || "script"} at {s.validator}</summary>
+      <summary className="cursor-pointer text-primary">why: {s.call || d.intent || "script"} at {s.validator}</summary>
       <p className="my-1">
         Validator <Link to={contractPath(s.validator) ?? "/contracts"}>{s.validator}</Link> <HelpTip id={`why-${d.id}-v`} label={FIELD_HELP.validator!.label} text={FIELD_HELP.validator!.help} />
       </p>
