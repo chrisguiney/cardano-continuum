@@ -1,4 +1,8 @@
-# governance-change: the proposer's parameter-change chain
+# governance-change: the proposer's parameter-change chain and hard forks
+
+Two modules. `ParamChange.tla` (most of this file) checks the parameter-change
+chain against the ledger; `HardFork.tla` ([below](#hardforktla-the-hard-fork-purpose))
+adds the hard-fork purpose beside it, against the formal ledger spec.
 
 The network proposer walks a list of parameter changes: change one, and once
 the votes enact it, revert it, naming the change as its predecessor
@@ -71,8 +75,8 @@ Run it with `make models` (all models) or
   identically by both sides; how the engine prices deposits is a builder
   concern with its own Go tests.
 - Other action types. Voters never favour no-confidence, new-constitution
-  or committee-update actions, so the only purpose root that moves is the
-  parameter-change root.
+  or committee-update actions, so the only purpose roots that move are the
+  parameter-change root and the hard-fork root, which `HardFork.tla` checks.
 - Rollbacks and resubmission. A proposal is one intent; the planner
   (`planner-reservations`) and retry machine (`submit-retry`) guarantee that
   at most one attempt of it lands.
@@ -226,6 +230,117 @@ The Go tests covering the same rules are in `internal/engine/internal/intent`
 `internal/engine/gov_test.go`, and the fake chain's
 `TestParameterChangeEnactsThenReverts` and
 `TestEnactedChangeRemovedAtNextBoundary` (`internal/fakechain/epoch_test.go`).
+
+## HardFork.tla: the hard-fork purpose
+
+The `hard_fork` scenario proposes a HardForkInitiation; the committee, the
+DReps and the pools vote; the ledger ratifies it at one boundary and enacts
+it at the next. The engine never sees the ledger's enactment, so its chain
+view repeats the ratification, and the protocol version the view expects is
+what the oracle compares each node's version with
+(`protocol_version_mismatch`). `HardFork.tla` checks the three rules that
+keep the view's version and roots the ledger's:
+
+1. **Hard forks first, nothing after one.** The view ratifies hard forks
+   before parameter changes, and a ratified hard fork delays everything
+   after it at the same boundary.
+2. **The version moves a boundary later.** The view's protocol version
+   changes at the boundary after the one that ratified the fork, as the
+   ledger enacts it.
+3. **One hard fork at a time.** The scenario proposes a hard fork only
+   with none open in the view, none in flight and none ratified but not
+   yet enacted, naming the view's hard-fork root and the version after the
+   view's.
+
+The ledger side is the formal ledger spec, pinned below, read for this
+model rather than from memory: EPOCH applies the enact state the boundary
+before ratified (`fut`) and removes what that ratification took out, then
+runs RATIFIES over the rest; RATIFY accepts in priority order an action
+whose votes pass, whose predecessor is its purpose's root and that no
+earlier delaying action delays; GOV-Propose accepts a hard fork naming the
+enacted root with a version that can follow the enacted one, or a pending
+hard fork with a version that can follow its. Versions are majors only:
+the engine proposes `major.0`. Votes are one `Approve` per action, the same
+for the ledger and the view (`ParamChange.tla` checks the vote side).
+
+### Invariants
+
+| Invariant | Says | Broken by |
+|---|---|---|
+| `TypeOK` | every variable has its shape | - |
+| `VersionAgrees` | the view's protocol version is the ledger's, in every epoch | `HardForkEnactNowBug` |
+| `ForkRootAgrees` | with no fork pending in the view, its hard-fork root is the ledger's | - |
+| `ParamRootAgrees` | the view's parameter-change root is the one the ledger's last ratification left | `HardForkNoDelayBug`, `HardForkParamFirstBug` |
+| `ForkAccepted` | no hard fork the scenario proposes is refused | `HardForkNoPendingGuardBug`, `HardForkStaleVersionBug` |
+| `ParamAccepted` | no parameter change is refused for its predecessor | - |
+| `OneFork` | at most one hard fork is open, in flight or pending | - |
+
+TLC's deadlock check is on, with the same `Done` terminal as
+`ParamChange.tla`. There is no liveness config: enactment follows from the
+next `Tick`, which is the only step enabled at the end of every epoch.
+
+### Configs and state counts
+
+`Start = 10`, `Life = 1` unless noted. TLC 2.19, `-workers auto`, no
+symmetry (the action ids are numbers).
+
+| Config | Changes | Expected | TLC reported |
+|---|---|---|---|
+| `HardFork` | two hard forks, two parameter changes, `MaxEpoch = 6` | all hold | 63,308 distinct, depth 19 |
+| `HardForkLife2` | `Life = 2`, `MaxEpoch = 7` | all hold | 114,267 distinct, depth 20 |
+| `HardForkNoPendingGuardFixed` | `HardForkNoPendingGuardBug`'s bounds, the guard in place | all hold | 143 distinct, depth 11 |
+| `HardForkNoPendingGuardBug` | proposes while a fork is ratified and not enacted (`NoPendingGuard`); two forks, `MaxEpoch = 4` | `ForkAccepted` | violated, trace 7 |
+| `HardForkStaleVersionBug` | proposes the version after the genesis one (`StaleVersion`) | `ForkAccepted` | violated |
+| `HardForkNoDelayBug` | the view ratifies a change beside a fork (`NoDelay`) | `ParamRootAgrees` | violated |
+| `HardForkParamFirstBug` | the view ratifies changes before forks (`ParamFirst`) | `ParamRootAgrees` | violated |
+| `HardForkEnactNowBug` | the view moves the version at the ratifying boundary (`EnactNow`) | `VersionAgrees` | violated |
+| `HardForkProbeSecondForkBug` | probe | `ProbeNoSecondFork` | violated: reachable |
+| `HardForkProbeDelayedParamBug` | probe | `ProbeNoDelayedParam` | violated: reachable |
+
+The probes show the passing configs reach a second fork (11 then 12) and a
+parameter change delayed by a fork ratified at the same boundary.
+
+### Model first
+
+The model and its Bug and Fixed configs were committed before the chain
+view's hard-fork code. The Go tests that fail for the reasons TLC prints:
+`TestHardForkRatifiedThenEnacted` in `internal/chain/fork_test.go`
+(`HardForkNoDelayBug`, `HardForkParamFirstBug`, `HardForkEnactNowBug`:
+it fails with the delay removed or the version moved at once), and
+`TestHardForkThroughFakeChain` in `internal/engine/gov_test.go`, whose
+second `hard_fork` while the first is pending is refused
+(`HardForkNoPendingGuardBug`). The fake chain's
+`TestHardForkRatifiesThenEnacts` (`internal/fakechain/hardfork_test.go`)
+holds the ledger side to the same rules.
+
+### Code map
+
+Models cardano-continuum at `070d8ef`.
+
+| Model | Code | What |
+|---|---|---|
+| `ProposeFork` | `internal/engine/controls.go:130` (`scenarioRoute.HardFork`), `:158` (`forkBlocked`); `internal/engine/internal/intent/spec.go:250` (`hardFork`); `internal/build/gov.go:273` (`hardFork`), `internal/protocol/version.go:43` (`CanFollow`) | the guard, the root and the version |
+| `ProposeParam` | `internal/engine/internal/intent/spec.go:228` (`buildPropose`) | as in `ParamChange.tla` |
+| `Approve` | honest votes: `internal/engine/internal/intent/choose.go` (`alwaysFavoured`), committee `internal/engine/internal/pace/pop.go:219` (`committeeVote`) | abstracted |
+| `Land` (`ForkOk`, `ParamOk`) | gouroboros `conway.UtxoValidateProposalProcedures` and ancestry rules (v0.220.1) against `internal/fakechain/world.go:88` (`newLedgerView`, the roots at `:109`) | not continuum code |
+| `Tick`, view (`ViewRatify`) | `internal/chain/ratify.go:61` (`ratify`), `:84` (`ratifyForks`), `:108` (`forkPasses`); `internal/chain/gov.go:342` (`gov.ratifyFork`); `internal/chain/fork.go:39` (`forks.VersionAt`), `:50` (`PendingAt`), `:62` (`forkRoot`) | |
+| `Tick`, ledger (`LedgerRatify`) | the fake chain: `internal/fakechain/ratify.go:77` (`ratify`), `:121` (`enactFork`), `:154` (`ratifyFork`); removal `internal/fakechain/epoch.go:103` (`prune`) | |
+| `VersionAgrees` in code | `internal/oracle/checks.go:217` (`checkProtocol`), the view's version from `internal/engine/engine.go:552` (`forkState`), `:566` (`noteFork`) | the oracle's comparison |
+
+### Drift
+
+Formal ledger spec: [IntersectMBO/formal-ledger-specifications](https://github.com/IntersectMBO/formal-ledger-specifications)
+at `f8059737f1db`, `src/Ledger/Conway/Specification/`.
+
+| Id | Spec or code | Model | Why | Config |
+|---|---|---|---|---|
+| H1 | `Epoch.lagda.md` EPOCH: `es = EnactStateOf fut`, removal of `fut`'s actions, `RATIFIES` into `fut'` | the ledger as written | - | all |
+| H2 | `Ratify.lagda.md` RATIFY-Accept, `acceptConds`, `delayingAction`, `delayed`, `verifyPrev`; `Gov.lagda.md` `govActionPriority` | the ledger as written, hard forks (3) before parameter changes (4) | - | all |
+| H3 | `Ratify.lagda.md` `threshold` (TriggerHardFork: CC, P4, Q4), `AcceptedBySPO` `defaultVote` (a pool that did not vote is no) | one `Approve` per action | the thresholds are one rule both sides apply; `internal/chain/fork_test.go` and the fake chain's tests check them | all |
+| H4 | `Gov.lagda.md` GOV-Propose, `validHFAction`; `Core/Specification/ProtocolVersion.lagda.md` `pvCanFollow` | majors only: `pvCanFollowMinor` never holds | the engine proposes `major.0` | all |
+| H5 | `Enact.lagda.md` Enact-HF, Enact-PParams: the root moves at enactment | the view moves its roots at ratification | the scenario never proposes while a fork is pending (rule 3), and a pending change is still held, so naming it is accepted either way (as G1) | all |
+| H6 | the fake chain enacts a parameter change at the ratifying boundary, a hard fork at the next | the ledger enacts both at the next | the fake's parameter-change shortcut is `ParamChange.tla`'s G1 | all |
+| H7 | `ConwayBootstrap.md`: P4 and the DRep votes count only after the bootstrap phase (major 9) | not modelled | the devnet starts at 10 | - |
 
 ## Reading a formula literally
 
