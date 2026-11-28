@@ -146,3 +146,94 @@ main`)
 		t.Errorf("the UI line comes after the pool wait:\n%s", out)
 	}
 }
+
+// downStubs model a cluster in which a pool pod is held by the operator's
+// fence finalizer: it goes away only once the ContinuumNetwork is deleted
+// and the operator (the helm release) is still installed. STATE_DIR holds
+// marker files; CALLS logs each mutating call in order.
+var downStubs = map[string]string{
+	"kubectl": `#!/usr/bin/env bash
+case "$*" in
+  *"get namespace"*"jsonpath"*) echo "Some resources are remaining: pods has 1 resource instances" ;;
+  *"get namespace"*) [ ! -e "$STATE_DIR/ns-gone" ]; exit ;;
+  *"get pods"*)
+    if [ -n "${POD_STUCK:-}" ] || [ ! -e "$STATE_DIR/net-deleted" ] || [ -e "$STATE_DIR/uninstalled" ]; then echo pod/continuum-pool-0; fi ;;
+  *"delete continuumnetworks"*) touch "$STATE_DIR/net-deleted"; echo "delete networks" >>"$STATE_DIR/calls" ;;
+  *"delete continuumpools"*) echo "delete pools" >>"$STATE_DIR/calls" ;;
+  *"delete namespace"*)
+    echo "delete namespace" >>"$STATE_DIR/calls"
+    if [ -n "${NS_TIMEOUT:-}" ]; then echo "error: timed out waiting for the condition on namespaces/continuum" >&2; exit 1; fi
+    touch "$STATE_DIR/ns-gone" ;;
+esac
+exit 0
+`,
+	"helm": `#!/usr/bin/env bash
+case "$*" in
+  *" uninstall "*) touch "$STATE_DIR/uninstalled"; echo "uninstall" >>"$STATE_DIR/calls" ;;
+esac
+exit 0
+`,
+}
+
+// downRun runs hack/down.sh over downStubs with env and returns its output,
+// the mutating calls it made in order, and whether it exited 0.
+func downRun(t *testing.T, env ...string) (string, string, bool) {
+	t.Helper()
+	dir := t.TempDir()
+	for name, body := range downStubs {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cmd := exec.CommandContext(t.Context(), "bash", "../../hack/down.sh")
+	cmd.Env = append(os.Environ(),
+		"CONTEXT=test", "NAMESPACE=ns", "RELEASE=continuum", "GONE_TRIES=3", "GONE_GAP=0",
+		"HELM="+filepath.Join(dir, "helm"), "K_BIN="+filepath.Join(dir, "kubectl"),
+		"STATE_DIR="+dir, "CONTINUUM_STATE_DIR="+filepath.Join(dir, "state"),
+	)
+	cmd.Env = append(cmd.Env, env...)
+	out, err := cmd.CombinedOutput()
+	calls, _ := os.ReadFile(filepath.Join(dir, "calls"))
+	return string(out), strings.Join(strings.Fields(string(calls)), " "), err == nil
+}
+
+// TestDownRemovesPoolsBeforeTheOperator: the pool pod is held until the
+// network is deleted and goes only while the operator is installed, so the
+// release is uninstalled after the wait, not before it.
+func TestDownRemovesPoolsBeforeTheOperator(t *testing.T) {
+	t.Parallel()
+	out, calls, ok := downRun(t)
+	if !ok {
+		t.Fatalf("down failed:\n%s", out)
+	}
+
+	want := "delete networks delete pools uninstall delete namespace"
+	if calls != want {
+		t.Errorf("calls = %q, want %q", calls, want)
+	}
+}
+
+// TestDownFailsOnAStuckPod: a pod that outlasts the wait fails down with
+// the pod and the finalizer named, and the operator stays installed.
+func TestDownFailsOnAStuckPod(t *testing.T) {
+	t.Parallel()
+	out, calls, ok := downRun(t, "POD_STUCK=1")
+	if ok || !strings.Contains(out, "pod/continuum-pool-0") || !strings.Contains(out, "continuum.blinklabs.io/fence") {
+		t.Errorf("a stuck pod did not fail down with its name:\n%s", out)
+	}
+
+	if strings.Contains(calls, "uninstall") {
+		t.Errorf("the operator was uninstalled with a pod stuck: %q", calls)
+	}
+}
+
+// TestDownFailsWhenTheNamespaceDeleteTimesOut: a timed-out namespace delete
+// is a failure, not "done".
+func TestDownFailsWhenTheNamespaceDeleteTimesOut(t *testing.T) {
+	t.Parallel()
+	out, _, ok := downRun(t, "NS_TIMEOUT=1")
+	if ok || strings.Contains(out, "down: done") || !strings.Contains(out, "did not finish deleting") {
+		t.Errorf("a timed-out namespace delete passed:\n%s", out)
+	}
+}
