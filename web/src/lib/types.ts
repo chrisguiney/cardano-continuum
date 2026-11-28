@@ -97,6 +97,10 @@ export interface NodeRow {
   last_block: Point | null;
   /** stake_pool is the pool id (hex) whose keys the node runs; absent for a node without keys or one that has not forged yet. */
   stake_pool?: string;
+  /** forged counts the blocks on the selected chain, up to the node's tip, that its stake pool keys issued; null when the tip height or chain index is unknown. */
+  forged: number | null;
+  /** verified counts the other blocks on the chain up to the node's tip, validated and adopted from other producers; null as forged. */
+  verified: number | null;
   findings: number;
   known_findings: number;
 }

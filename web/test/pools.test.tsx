@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup as render } from "react-dom/server";
 import { NodeDetail, NodeTable } from "../src/views/Nodes";
 import { StakePoolDetail, StakePoolTable, statusText } from "../src/views/StakePools";
+import { sortNodes } from "../src/lib/nodesort";
+import { FIELD_HELP, GLOSSARY } from "../src/lib/help";
 import type { NodeRow, StakePoolRow } from "../src/lib/types";
 
 const POOL = "0a".repeat(28);
 const node = (over: Partial<NodeRow>): NodeRow => ({
   name: "p3", label: "continuum-pool-3", impl: "dingo", tier: "forging", phase: "Forging", dark: false,
-  tip: { slot: 100, hash: "aa".repeat(32), height: 20 }, slot_lag: 0, fork: false, last_block: null, findings: 0, known_findings: 0, ...over,
+  tip: { slot: 100, hash: "aa".repeat(32), height: 20 }, slot_lag: 0, fork: false, last_block: null, findings: 0, known_findings: 0, forged: 0, verified: 0, ...over,
 });
 const pool = (over: Partial<StakePoolRow>): StakePoolRow => ({
   id: POOL, bech32: "pool1pg9q5zs2pg9q5zs2pg9q5zs2pg9q5zs2pg9q5zs2pg9q5lc4t0t", actor: 7, actor_name: "pool-7", actor_state: "registered",
@@ -35,6 +37,35 @@ describe("nodes view", () => {
     expect(html).toContain("3 (2 known)");
     expect(html).toContain("continuum-pool-3");
     expect(html).toContain("on a disagreeing branch");
+  });
+});
+
+describe("node block counts", () => {
+  it("shows forged and verified in the table and the detail, with a dash when unknown", () => {
+    const rows = [node({ forged: 7, verified: 1234 }), node({ name: "r1", tier: "validating", forged: null, verified: null })];
+    const html = render(<NodeTable rows={rows} forked={new Set()} total={2} />);
+    expect(html).toContain("Forged");
+    expect(html).toContain("Verified");
+    expect(html).toContain('aria-describedby="nh-forged"');
+    expect(html).toContain(">1,234<");
+    expect(html).toContain("unknown");
+    const d = render(<NodeDetail n={node({ forged: 7, verified: 1234 })} forked={false} />);
+    expect(d).toContain(">7<");
+    expect(d).toContain(">1,234<");
+  });
+
+  it("sorts by a count, unknown last, without changing the input", () => {
+    const rows = [node({ name: "a", forged: 2 }), node({ name: "b", forged: null }), node({ name: "c", forged: 9 })];
+    expect(sortNodes(rows, "forged", true).map((n) => n.name)).toEqual(["c", "a", "b"]);
+    expect(sortNodes(rows, "forged", false).map((n) => n.name)).toEqual(["a", "c", "b"]);
+    expect(rows.map((n) => n.name)).toEqual(["a", "b", "c"]);
+    expect(sortNodes(rows, "name", false).map((n) => n.name)).toEqual(["a", "b", "c"]);
+  });
+
+  it("defines both counts in the help", () => {
+    expect(FIELD_HELP.forged!.help).toContain("selected chain");
+    expect(FIELD_HELP.verified!.help).toContain("other");
+    expect(GLOSSARY.map((g) => g.term)).toEqual(expect.arrayContaining(["Forged", "Verified"]));
   });
 });
 

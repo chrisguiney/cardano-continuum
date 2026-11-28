@@ -7,7 +7,11 @@ import { forkLine, forkedImpls, forkedNodes } from "../lib/forks";
 import { count, short } from "../lib/format";
 import { usePoll } from "../lib/hooks";
 import { layout } from "../lib/layout";
-import { Blurb } from "./fields";
+import { Blurb, HelpTip } from "./fields";
+import { FIELD_HELP } from "../lib/help";
+import { sortNodes, type NodeSortKey } from "../lib/nodesort";
+import { ArrowDownIcon, ArrowUpIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { NodeFilterBar, type NodeFilterState } from "./filterbars";
 import type { NodeRow, NodesView } from "../lib/types";
 import { Badge } from "@/components/ui/badge";
@@ -77,24 +81,52 @@ export function StakePoolCell({ n }: { n: NodeRow }) {
   return <Muted title="the pool is known once the node forges its first block">not forged yet</Muted>;
 }
 
+/** BlockCount is a node's forged or verified count, or says it is unknown. */
+function BlockCount({ v }: { v: number | null }) {
+  return v === null ? <Muted title="the node's tip height or the chain index is not known yet">unknown</Muted> : <>{count(v)}</>;
+}
+
 function findingsText(n: NodeRow): string {
   if (n.findings === 0) return "none";
   return n.known_findings > 0 ? `${count(n.findings)} (${count(n.known_findings)} known)` : count(n.findings);
 }
 
-/** NodeTable lists the nodes; each row links the node and the stake pool it runs. */
+const COLUMNS: { label: string; key?: NodeSortKey; num?: boolean; help?: string }[] = [
+  { label: "Node", key: "name" }, { label: "Impl", key: "impl" }, { label: "Tier", key: "tier" }, { label: "Phase", key: "phase" }, { label: "Stake pool" },
+  { label: "Tip" }, { label: "Slot lag", key: "slot_lag", num: true },
+  { label: "Forged", key: "forged", num: true, help: "forged" }, { label: "Verified", key: "verified", num: true, help: "verified" },
+  { label: "Findings" }, { label: "Fork" },
+];
+
+/** NodeTable lists the nodes, sortable by column; each row links the node and the stake pool it runs. */
 export function NodeTable({ rows, forked, total }: { rows: NodeRow[]; forked: Set<string>; total: number }) {
+  const [sort, setSort] = useState<{ key: NodeSortKey; desc: boolean } | null>(null);
+  const shown = sort ? sortNodes(rows, sort.key, sort.desc) : rows;
+  const click = (key: NodeSortKey) => setSort((s) => (s?.key === key ? { key, desc: !s.desc } : { key, desc: !!COLUMNS.find((c) => c.key === key)?.num }));
   return (
     <TableFrame>
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Node</TableHead><TableHead>Impl</TableHead><TableHead>Tier</TableHead><TableHead>Phase</TableHead><TableHead>Stake pool</TableHead>
-            <TableHead>Tip</TableHead><TableHead className="text-right">Slot lag</TableHead><TableHead>Findings</TableHead><TableHead>Fork</TableHead>
+            {COLUMNS.map((c) => {
+              const dir = !c.key || sort?.key !== c.key ? "none" : sort.desc ? "descending" : "ascending";
+              return (
+                <TableHead key={c.label} aria-sort={c.key ? dir : undefined} className={c.num ? "text-right" : undefined}>
+                  {c.key ? (
+                    <Button type="button" variant="ghost" size="xs" className="-ml-2 font-semibold" onClick={() => click(c.key!)}>
+                      {c.label}
+                      {dir === "descending" && <ArrowDownIcon aria-hidden="true" />}
+                      {dir === "ascending" && <ArrowUpIcon aria-hidden="true" />}
+                    </Button>
+                  ) : c.label}
+                  {c.help && <HelpTip id={`nh-${c.help}`} label={FIELD_HELP[c.help]!.label} text={FIELD_HELP[c.help]!.help} />}
+                </TableHead>
+              );
+            })}
           </TableRow>
         </TableHeader>
         <TableBody>
-          {rows.map((n) => (
+          {shown.map((n) => (
             <TableRow key={n.name} className={cn(n.dark && "opacity-60")}>
               <TableCell><Link to={nodeLink(n.name)}>{n.name}</Link></TableCell>
               <TableCell>{n.impl}</TableCell>
@@ -103,11 +135,13 @@ export function NodeTable({ rows, forked, total }: { rows: NodeRow[]; forked: Se
               <TableCell><StakePoolCell n={n} /></TableCell>
               <TableCell>{n.tip.height ? `${count(n.tip.height)} / ` : ""}{count(n.tip.slot)} <code className="text-[0.85em]">{short(n.tip.hash, 8)}</code></TableCell>
               <TableCell className="text-right tabular-nums">{count(n.slot_lag)}</TableCell>
+              <TableCell className="text-right tabular-nums"><BlockCount v={n.forged} /></TableCell>
+              <TableCell className="text-right tabular-nums"><BlockCount v={n.verified} /></TableCell>
               <TableCell>{findingsText(n)}</TableCell>
               <TableCell>{forked.has(n.name) ? <Badge variant="bad">fork</Badge> : ""}</TableCell>
             </TableRow>
           ))}
-          {total === 0 && <EmptyRow cols={9}>No nodes. A run without a cluster has only on-chain stake pools.</EmptyRow>}
+          {total === 0 && <EmptyRow cols={COLUMNS.length}>No nodes. A run without a cluster has only on-chain stake pools.</EmptyRow>}
         </TableBody>
       </Table>
     </TableFrame>
@@ -127,6 +161,8 @@ export function NodeDetail({ n, forked }: { n: NodeRow; forked: boolean }) {
         ["Label (spec.poolId)", <Mono>{n.label}</Mono>],
         ["Tip", <>{n.tip.height ? `block ${count(n.tip.height)}, ` : ""}slot {count(n.tip.slot)} <Mono>{short(n.tip.hash, 12)}</Mono></>],
         ["Slot lag", count(n.slot_lag)],
+        [<>Forged<HelpTip id="nd-forged" label={FIELD_HELP.forged!.label} text={FIELD_HELP.forged!.help} /></>, <BlockCount v={n.forged} />],
+        [<>Verified<HelpTip id="nd-verified" label={FIELD_HELP.verified!.label} text={FIELD_HELP.verified!.help} /></>, <BlockCount v={n.verified} />],
         ["Last own block", n.last_block ? <Link to={`/explorer/blocks/${n.last_block.hash}`}>{n.last_block.height ? `block ${count(n.last_block.height)}, ` : ""}slot {count(n.last_block.slot)}</Link> : <Muted>none seen</Muted>],
         ["Image", n.image ? <Mono>{n.image}</Mono> : <Muted>unknown</Muted>],
         ["Findings", <Link to="/findings">{findingsText(n)}</Link>],
