@@ -42,7 +42,7 @@
           "txs": 1
         },
         {
-          "seq": 1300,
+          "seq": 1301,
           "at": 61092,
           "intent": 30,
           "cost": 26423417,
@@ -81,7 +81,7 @@
       "rejected": 0,
       "recent": [
         {
-          "seq": 1638,
+          "seq": 1639,
           "at": 77274,
           "intent": 43,
           "cost": 175310,
@@ -133,7 +133,7 @@
           "txs": 1
         },
         {
-          "seq": 623,
+          "seq": 624,
           "at": 27757,
           "intent": 23,
           "mutation": "trailing",
@@ -141,7 +141,7 @@
           "txs": 1
         },
         {
-          "seq": 748,
+          "seq": 749,
           "at": 34130,
           "intent": 24,
           "mutation": "body-count",
@@ -149,7 +149,7 @@
           "txs": 1
         },
         {
-          "seq": 836,
+          "seq": 837,
           "at": 38075,
           "intent": 26,
           "mutation": "body-count",
@@ -157,7 +157,7 @@
           "txs": 1
         },
         {
-          "seq": 899,
+          "seq": 900,
           "at": 41518,
           "intent": 27,
           "mutation": "body-count",
@@ -165,7 +165,7 @@
           "txs": 1
         },
         {
-          "seq": 1336,
+          "seq": 1337,
           "at": 63049,
           "intent": 33,
           "mutation": "body-count",
@@ -173,7 +173,7 @@
           "txs": 1
         },
         {
-          "seq": 1500,
+          "seq": 1501,
           "at": 70572,
           "intent": 37,
           "mutation": "truncate",
@@ -181,7 +181,7 @@
           "txs": 1
         },
         {
-          "seq": 2104,
+          "seq": 2105,
           "at": 102463,
           "intent": 46,
           "mutation": "non-canonical",
@@ -189,7 +189,7 @@
           "txs": 1
         },
         {
-          "seq": 2218,
+          "seq": 2219,
           "at": 107730,
           "intent": 50,
           "mutation": "non-canonical",
@@ -197,7 +197,7 @@
           "txs": 1
         },
         {
-          "seq": 2248,
+          "seq": 2249,
           "at": 109600,
           "intent": 51,
           "mutation": "non-canonical",
@@ -274,7 +274,7 @@
           "txs": 3
         },
         {
-          "seq": 1452,
+          "seq": 1453,
           "at": 69082,
           "intent": 35,
           "cost": 2168537,
