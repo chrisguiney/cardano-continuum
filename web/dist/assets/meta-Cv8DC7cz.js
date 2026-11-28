@@ -1,0 +1,1 @@
+import{U as e,dt as t,ut as n}from"./index-B_T_EPq-.js";var r=t(n(),1);function i(e,t){return e.map(e=>({value:e,label:t&&t[e]!==void 0?`${e} (${t[e]})`:e}))}var a=null;function o(){let[t,n]=(0,r.useState)(null);return(0,r.useEffect)(()=>{a??=e(`/api/meta/enums`),a.then(n,()=>{a=null})},[]),t}export{o as n,i as t};
