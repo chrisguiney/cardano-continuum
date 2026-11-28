@@ -138,4 +138,8 @@ func TestStatusEndpointAnswersWithoutTheEngine(t *testing.T) {
 	if err := json.Unmarshal([]byte(body), &st); err != nil || st.Engine != "starting" || st.LastError == "" {
 		t.Fatalf("%q: %+v, %v", body, st, err)
 	}
+
+	if st.Now.IsZero() {
+		t.Errorf("status carries no now: %q", body)
+	}
 }

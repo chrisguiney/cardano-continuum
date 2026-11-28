@@ -31,6 +31,10 @@ type Status struct {
 	Engine string `json:"engine"`
 	// Since is when Engine last changed.
 	Since time.Time `json:"since"`
+	// Now is the proxy's clock when the status was read, so a browser can
+	// measure how long the engine has been in this state without trusting
+	// its own clock against the proxy's.
+	Now time.Time `json:"now"`
 	// LastError says why the latest probe failed; empty when Engine is up.
 	LastError string `json:"last_error,omitempty"`
 }
@@ -73,6 +77,7 @@ func (p *prober) Status(ctx context.Context) Status {
 	if !p.checked.IsZero() && p.now().Sub(p.checked) < p.ttl {
 		st := p.st
 		p.mu.Unlock()
+		st.Now = p.now()
 		return st
 	}
 	p.mu.Unlock()
@@ -95,7 +100,9 @@ func (p *prober) Status(ctx context.Context) Status {
 		p.st.Since = p.checked
 	}
 	p.st.Engine, p.st.LastError = engine, msg
-	return p.st
+	st := p.st
+	st.Now = p.checked
+	return st
 }
 
 // probe asks the engine one cheap question. Any answer below 500 means the
