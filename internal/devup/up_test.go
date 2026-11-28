@@ -103,3 +103,46 @@ func TestUpResetsOnlyForTheEngine(t *testing.T) {
 		t.Errorf("install does not pass the UI image and port to the chart:\n%s", out)
 	}
 }
+
+// TestUpStartsTheUIBeforeTheBlockWait: the UI port-forward and its URL come
+// right after the install, before the waits for the pools and for forged
+// blocks, so the UI is reachable while the devnet starts.
+func TestUpStartsTheUIBeforeTheBlockWait(t *testing.T) {
+	t.Parallel()
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash is not installed")
+	}
+
+	out, ok := upRun(t, "a", "c", nil, `
+preflight() { echo step:preflight; }
+check_run() { echo step:check_run; }
+install() { echo step:install; }
+forward() { echo step:forward; }
+wait_pools() { echo step:wait_pools; }
+require_one_chain() { echo step:require_one_chain; }
+main`)
+	if !ok {
+		t.Fatalf("main failed:\n%s", out)
+	}
+
+	var steps []string
+	for _, line := range strings.Split(out, "\n") {
+		if s, found := strings.CutPrefix(line, "step:"); found {
+			steps = append(steps, s)
+		}
+	}
+
+	want := "preflight check_run install forward wait_pools require_one_chain"
+	if got := strings.Join(steps, " "); got != want {
+		t.Errorf("steps = %q, want %q", got, want)
+	}
+
+	ui := strings.Index(out, "UI: http://127.0.0.1:8088")
+	if ui < 0 || !strings.Contains(out, "the devnet is still starting; the UI shows progress") {
+		t.Fatalf("no early UI line:\n%s", out)
+	}
+
+	if ui > strings.Index(out, "step:wait_pools") {
+		t.Errorf("the UI line comes after the pool wait:\n%s", out)
+	}
+}

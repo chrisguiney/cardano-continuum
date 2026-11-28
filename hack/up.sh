@@ -3,8 +3,9 @@
 # NAMESPACE of the cluster CONTEXT names: operator, genesis, a
 # ContinuumNetwork with POOLS cardano-node pools and DINGO_POOLS dingo pools,
 # the engine serving its live API, and the web UI (continuum-ui) in front of
-# it. Then wait, bounded, for the pools to share one chain and the engine and
-# the UI to be Ready, and keep a port-forward to the UI's Service running. Any Kubernetes distribution works; nothing here starts or
+# it. Then keep a port-forward to the UI's Service running as soon as the UI
+# is Ready, before the devnet is up, and wait, bounded, for the pools to share
+# one chain and the engine to be Ready. Any Kubernetes distribution works; nothing here starts or
 # configures a cluster.
 #
 # CONTEXT empty means kubectl's current context. It is read once and passed
@@ -301,17 +302,25 @@ forward() {
   retry 20 1 "the UI port-forward" curl -fsS -m 2 "http://127.0.0.1:$UI_PORT/healthz"
 }
 
+# start_ui waits for the UI Deployment alone, which does not need the
+# engine, and forwards it, so the UI is reachable while the devnet starts and
+# shows its progress. Its /api/* answers 502 until the engine serves.
+start_ui() {
+  k -n "$NAMESPACE" rollout status deployment/continuum-ui --timeout=3m >/dev/null || die "the UI Deployment did not become ready (kubectl -n $NAMESPACE logs deploy/continuum-ui)"
+  forward
+  log "UI: http://127.0.0.1:$UI_PORT (the devnet is still starting; the UI shows progress)"
+  log "port-forward to $NAMESPACE/svc/continuum-ui, listening on $UI_ADDRESS; from another host: ssh -L $UI_PORT:127.0.0.1:$UI_PORT <this host>, or rerun with UI_ADDRESS=0.0.0.0 (the API is unauthenticated)"
+}
+
 main() {
   preflight
   check_run
   install
+  start_ui
   wait_pools
   require_one_chain
   retry 60 5 "the engine pod to be Ready" k -n "$NAMESPACE" wait --for=condition=Ready --timeout=4s pod/continuum-engine-0
-  k -n "$NAMESPACE" rollout status deployment/continuum-ui --timeout=3m >/dev/null || die "the UI Deployment did not become ready (kubectl -n $NAMESPACE logs deploy/continuum-ui)"
-  forward
-  log "UI: http://127.0.0.1:$UI_PORT (port-forward to $NAMESPACE/svc/continuum-ui, listening on $UI_ADDRESS)"
-  log "from another host: ssh -L $UI_PORT:127.0.0.1:$UI_PORT <this host>, or rerun with UI_ADDRESS=0.0.0.0 (the API is unauthenticated)"
+  log "devnet ready: http://127.0.0.1:$UI_PORT"
 }
 
 [ "${BASH_SOURCE[0]}" != "$0" ] || main "$@"
