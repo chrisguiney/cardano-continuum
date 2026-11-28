@@ -106,8 +106,8 @@ func TestServeOverFinishedRun(t *testing.T) {
 		LastSeq    uint64 `json:"last_seq"`
 		Population struct{ Total int }
 	}
-	// The 20 wallets, and m1's three exchanges.
-	const actors = 23
+	// The 20 wallets, and m1's four exchanges.
+	const actors = 24
 	if code := srv.getJSON(t, "/api/overview", &snap); code != 200 || snap.LastSeq == 0 || snap.Population.Total != actors {
 		t.Fatalf("overview %d %+v", code, snap)
 	}

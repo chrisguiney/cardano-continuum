@@ -335,6 +335,9 @@ LAB_DATA ?= $(CURDIR)/lab/tests/fixtures
 lab-image: ## Build the lab image on top of the mithril2pq notebook image
 	docker build -f lab/Dockerfile --build-arg BASE=$(LAB_BASE) -t $(LAB_IMAGE) .
 
+market-snapshot: ## Refetch live FX rates and the ADA price into internal/profile/fxsnapshot.json (needs network; never run by the engine)
+	python3 -I hack/market-snapshot.py
+
 profiles-index: ## Rewrite profiles/index.json (profile hash to target) after refitting
 	go run ./cmd/continuum profiles index --out profiles/index.json
 

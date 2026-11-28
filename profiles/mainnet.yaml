@@ -324,25 +324,9 @@ network:
 markets:
   step: 10
   quote_every: 60
-  # ADA/USD: a log random walk whose drift flips between bull and bear,
-  # with downward-leaning jumps.
-  ada: {start: 0.6, vol: 0.8, drift: 0.4, regime_rate: 2, jump_rate: 3, jump_mean: -0.02, jump_sd: 0.08}
-  fx: {vol: 0.02, reversion: 1}
-  # Each wallet's primary currency is drawn by share; usd is the USD one
-  # unit buys at time zero.
-  currencies:
-    - {code: USD, share: 0.35, usd: 1}
-    - {code: EUR, share: 0.2, usd: 1.08}
-    - {code: JPY, share: 0.15, usd: 0.0067}
-    - {code: KRW, share: 0.1, usd: 0.00074}
-    - {code: GBP, share: 0.1, usd: 1.27}
-    - {code: BRL, share: 0.1, usd: 0.2}
-  # Spread is ask over bid; fee is the lovelace a withdrawal pays; float is
-  # the hot wallet's budget.
-  exchanges:
-    - {name: north, spread: 0.004, fee: 500000, float: 50000000000, currencies: [USD, EUR, GBP], basis_vol: 0.003, basis_reversion: 4}
-    - {name: harbor, spread: 0.006, fee: 300000, float: 50000000000, currencies: [USD, JPY, KRW], basis_vol: 0.003, basis_reversion: 4}
-    - {name: summit, spread: 0.01, fee: 200000, float: 50000000000, currencies: [EUR, BRL, GBP, USD], basis_vol: 0.003, basis_reversion: 4}
+  # ADA/USD, the currencies' rates and dynamics and the exchanges take their
+  # defaults: rates are seeded from a snapshot of live FX and ADA prices
+  # (make market-snapshot), the shares are synthetic.
   # The chance of each further preferred currency: most wallets have none.
   extra: 0.15
   venue: {conversion: 0.01, loyalty: 0.003, noise: 0.002}

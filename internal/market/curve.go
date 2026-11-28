@@ -129,13 +129,29 @@ func (c *curve) step(k int, s point) point {
 	}
 
 	for i, cur := range c.m.Currencies {
-		next.fx[i] = ou(r, s.fx[i], math.Log(cur.USD), c.m.FX.Reversion, c.m.FX.Vol, c.dt)
+		next.fx[i] = c.fx(r, i, cur, s.fx[i], k)
 	}
 
 	for i, x := range c.m.Exchanges {
 		next.basis[i] = ou(r, s.basis[i], 0, x.BasisReversion, x.BasisVol, c.dt)
 	}
 	return next
+}
+
+// fx is currency i's log USD rate after step k+1. It always takes one
+// normal draw, so a currency's dynamics never shift another's stream. USD is
+// the numeraire and stays at its level; the others follow an
+// Ornstein-Uhlenbeck process around a level that trends at their own drift.
+func (c *curve) fx(r *rand.Rand, i int, cur profile.Currency, x float64, k int) float64 {
+	z := r.NormFloat64()
+	if cur.Code == "USD" {
+		return math.Log(cur.USD)
+	}
+
+	vol, drift, theta := c.m.FXOf(cur)
+	level := math.Log(cur.USD) + drift*float64(k+1)*c.dt
+	a := math.Exp(-theta * c.dt)
+	return level + (x-level+drift*c.dt)*a + vol*math.Sqrt((1-a*a)/(2*theta))*z
 }
 
 // ou is one exact step of an Ornstein-Uhlenbeck process from x toward

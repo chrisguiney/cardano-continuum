@@ -62,12 +62,17 @@ type ADAPath struct {
 }
 
 // FXPath moves each currency's USD rate as a log Ornstein-Uhlenbeck
-// process around its Currency.USD level.
+// process around its Currency.USD level, which trends at Currency.Drift.
+// Vol and Reversion are the fallback for a currency that sets none.
 type FXPath struct {
 	// Vol is the volatility per √hour.
 	Vol float64 `yaml:"vol"`
 	// Reversion is the pull back to the level per hour.
 	Reversion float64 `yaml:"reversion"`
+	// DriftScale multiplies every currency's Drift: a fitted drift is per
+	// year, a run lasts hours, so the full value would collapse a weak
+	// currency within a run.
+	DriftScale float64 `yaml:"drift_scale"`
 }
 
 // Currency is one fiat currency.
@@ -78,6 +83,26 @@ type Currency struct {
 	Share float64 `yaml:"share"`
 	// USD is the USD one unit buys at time zero.
 	USD float64 `yaml:"usd"`
+	// Vol is the volatility per √hour; 0 takes FX.Vol.
+	Vol float64 `yaml:"vol"`
+	// Drift is the trend of the log USD rate per hour before FX.DriftScale;
+	// negative when the currency depreciates. 0 is no trend.
+	Drift float64 `yaml:"drift"`
+	// Reversion is the pull back to the trend per hour; 0 takes FX.Reversion.
+	Reversion float64 `yaml:"reversion"`
+}
+
+// FXOf is a currency's volatility, drift (scaled) and reversion, with the
+// section's fx values standing in for what the currency leaves out.
+func (m Markets) FXOf(c Currency) (vol, drift, reversion float64) {
+	vol, reversion = c.Vol, c.Reversion
+	if vol == 0 {
+		vol = m.FX.Vol
+	}
+	if reversion == 0 {
+		reversion = m.FX.Reversion
+	}
+	return vol, c.Drift * m.FX.DriftScale, reversion
 }
 
 // Exchange is one venue. Its quotes are the mid rate times its basis, a
@@ -134,28 +159,44 @@ const ada = 1_000_000
 
 // DefaultMarkets is the market a bare markets section gets.
 func DefaultMarkets() Markets {
+	snap := LoadSnapshot()
+	cs := make([]Currency, len(defaultShares))
+	for i, d := range defaultShares {
+		f := snap.Currencies[d.code]
+		cs[i] = Currency{Code: d.code, Share: d.share, USD: f.USD, Vol: f.Vol, Drift: f.Drift, Reversion: f.Reversion}
+		if d.code == "USD" {
+			cs[i] = Currency{Code: "USD", Share: d.share, USD: 1}
+		}
+	}
+
 	return Markets{
 		Step: 10, QuoteEvery: 60,
-		ADA: ADAPath{Start: 0.6, Vol: 0.8, Drift: 0.4, RegimeRate: 2, JumpRate: 3, JumpMean: -0.02, JumpSD: 0.08},
-		FX:  FXPath{Vol: 0.02, Reversion: 1},
-		Currencies: []Currency{
-			{Code: "USD", Share: 0.35, USD: 1},
-			{Code: "EUR", Share: 0.2, USD: 1.08},
-			{Code: "JPY", Share: 0.15, USD: 0.0067},
-			{Code: "KRW", Share: 0.1, USD: 0.00074},
-			{Code: "GBP", Share: 0.1, USD: 1.27},
-			{Code: "BRL", Share: 0.1, USD: 0.2},
-		},
+		ADA:        ADAPath{Start: snap.ADA.USD, Vol: 0.8, Drift: 0.4, RegimeRate: 2, JumpRate: 3, JumpMean: -0.02, JumpSD: 0.08},
+		FX:         FXPath{Vol: 0.02, Reversion: 1, DriftScale: 0.2},
+		Currencies: cs,
 		Exchanges: []Exchange{
-			{Name: "north", Spread: 0.004, Fee: ada / 2, Float: 50_000 * ada, Currencies: []string{"USD", "EUR", "GBP"}, BasisVol: 0.003, BasisReversion: 4},
-			{Name: "harbor", Spread: 0.006, Fee: 3 * ada / 10, Float: 50_000 * ada, Currencies: []string{"USD", "JPY", "KRW"}, BasisVol: 0.003, BasisReversion: 4},
-			{Name: "summit", Spread: 0.01, Fee: ada / 5, Float: 50_000 * ada, Currencies: []string{"EUR", "BRL", "GBP", "USD"}, BasisVol: 0.003, BasisReversion: 4},
+			{Name: "north", Spread: 0.004, Fee: ada / 2, Float: 50_000 * ada, Currencies: []string{"USD", "EUR", "GBP", "JPY", "ZAR"}, BasisVol: 0.003, BasisReversion: 4},
+			{Name: "harbor", Spread: 0.006, Fee: 3 * ada / 10, Float: 50_000 * ada, Currencies: []string{"USD", "JPY", "KRW", "INR", "IDR", "PHP", "VND"}, BasisVol: 0.003, BasisReversion: 4},
+			{Name: "summit", Spread: 0.01, Fee: ada / 5, Float: 50_000 * ada, Currencies: []string{"USD", "EUR", "GBP", "BRL", "MXN", "ARS", "TRY"}, BasisVol: 0.003, BasisReversion: 4},
+			{Name: "bazaar", Spread: 0.015, Fee: ada / 5, Float: 50_000 * ada, Currencies: []string{"NGN", "TRY", "ZAR", "INR", "ARS", "USD"}, BasisVol: 0.004, BasisReversion: 4},
 		},
 		Extra:  0.15,
 		Venue:  Venue{Conversion: 0.01, Loyalty: 0.003, Noise: 0.002},
 		Births: BirthResponse{Beta: 4, Window: 300, Min: 0.25, Max: 4},
 		Deaths: DeathResponse{Beta: 3, Window: 1800, Min: 0.5, Max: 4, Hodl: 0.5},
 	}
+}
+
+// defaultShares are the default currencies and their share of wallets.
+// The shares are rough and synthetic: they are not fitted to any data, and
+// are chosen to spread wallets over majors and volatile currencies alike.
+var defaultShares = []struct {
+	code  string
+	share float64
+}{
+	{"USD", 0.21}, {"EUR", 0.13}, {"GBP", 0.05}, {"JPY", 0.08}, {"KRW", 0.06},
+	{"BRL", 0.07}, {"MXN", 0.05}, {"ZAR", 0.03}, {"TRY", 0.05}, {"ARS", 0.03},
+	{"NGN", 0.05}, {"INR", 0.08}, {"IDR", 0.04}, {"PHP", 0.03}, {"VND", 0.04},
 }
 
 var codeRE = regexp.MustCompile(`^[A-Z]{3}$`)
@@ -180,6 +221,7 @@ func (m Markets) fill() Markets {
 	or(&m.ADA.JumpSD, d.ADA.JumpSD)
 	or(&m.FX.Vol, d.FX.Vol)
 	or(&m.FX.Reversion, d.FX.Reversion)
+	or(&m.FX.DriftScale, d.FX.DriftScale)
 	or(&m.Extra, d.Extra)
 	or(&m.Venue.Conversion, d.Venue.Conversion)
 	or(&m.Venue.Loyalty, d.Venue.Loyalty)
@@ -215,7 +257,7 @@ func (m Markets) validate() error {
 	}{
 		{"step", m.Step}, {"quote_every", m.QuoteEvery}, {"ada.start", m.ADA.Start}, {"ada.vol", m.ADA.Vol},
 		{"ada.regime_rate", m.ADA.RegimeRate}, {"ada.jump_rate", m.ADA.JumpRate}, {"ada.jump_sd", m.ADA.JumpSD},
-		{"fx.vol", m.FX.Vol}, {"fx.reversion", m.FX.Reversion}, {"venue.conversion", m.Venue.Conversion},
+		{"fx.vol", m.FX.Vol}, {"fx.reversion", m.FX.Reversion}, {"fx.drift_scale", m.FX.DriftScale}, {"venue.conversion", m.Venue.Conversion},
 		{"venue.loyalty", m.Venue.Loyalty}, {"venue.noise", m.Venue.Noise}, {"births.window", m.Births.Window},
 		{"births.min", m.Births.Min},
 	} {
@@ -262,6 +304,15 @@ func validateCurrencies(cs []Currency) error {
 		}
 		if !(c.USD > 0) || math.IsInf(c.USD, 0) {
 			return fieldErr(field+".usd", "must be > 0, got %s", ff(c.USD))
+		}
+		if err := finiteNonNeg(field+".vol", c.Vol); err != nil {
+			return err
+		}
+		if err := finiteNonNeg(field+".reversion", c.Reversion); err != nil {
+			return err
+		}
+		if math.IsNaN(c.Drift) || math.IsInf(c.Drift, 0) {
+			return fieldErr(field+".drift", "must be a finite number, got %s", ff(c.Drift))
 		}
 		sum += c.Share
 	}

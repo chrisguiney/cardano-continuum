@@ -93,8 +93,8 @@ func TestQuotes(t *testing.T) {
 			}
 		}
 	}
-	if _, _, ok := p.Quote(0, p.Currency("JPY"), at); ok {
-		t.Fatal("north quotes JPY")
+	if _, _, ok := p.Quote(0, p.Currency("KRW"), at); ok {
+		t.Fatal("north quotes KRW")
 	}
 	if p.Currency("XXX") != -1 {
 		t.Fatal("unknown code has an index")
@@ -286,5 +286,66 @@ func TestVenueSkipsUnableExchange(t *testing.T) {
 	o.Able = func(int) bool { return false }
 	if _, ok := p.Venue(r, o); ok {
 		t.Fatal("a venue with no able exchange")
+	}
+}
+
+func logUSD(p *Path, code string, at sched.Time) float64 {
+	for i, c := range profile.DefaultMarkets().Currencies {
+		if c.Code == code {
+			return math.Log(p.USD(i, at))
+		}
+	}
+	panic("no currency " + code)
+}
+
+// stepSD is the standard deviation of a currency's log change per step over
+// a day.
+func stepSD(p *Path, code string) float64 {
+	var sum, sq float64
+	n := 0
+	prev := logUSD(p, code, 0)
+	for at := sched.Time(10_000); at < 24*hour; at += 10_000 {
+		x := logUSD(p, code, at)
+		d := x - prev
+		sum, sq, prev = sum+d, sq+d*d, x
+		n++
+	}
+	mean := sum / float64(n)
+	return math.Sqrt(sq/float64(n) - mean*mean)
+}
+
+// Each currency moves by its own vol: a volatile one jitters more per step
+// than a steady one.
+func TestCurrenciesHaveOwnVol(t *testing.T) {
+	p := path(5)
+	steady, wild := stepSD(p, "TRY"), stepSD(p, "BRL")
+	if !(wild > 3*steady) {
+		t.Fatalf("BRL step sd %v, TRY %v: want BRL several times larger", wild, steady)
+	}
+}
+
+// A depreciating currency trends down against USD; a currency with no
+// fitted drift does not.
+func TestCurrencyDriftTrends(t *testing.T) {
+	p := path(5)
+	if got := logUSD(p, "TRY", 20*hour) - logUSD(p, "TRY", 0); got > -0.5 {
+		t.Fatalf("TRY log change over 20h %v, want a clear fall", got)
+	}
+	m := profile.DefaultMarkets()
+	m.Currencies = []profile.Currency{{Code: "USD", Share: 0.5, USD: 1}, {Code: "EUR", Share: 0.5, USD: 1.1}}
+	m.Exchanges = nil
+	flat := New(seed(5), m)
+	if got := math.Log(flat.USD(1, 20*hour) / 1.1); math.Abs(got) > 0.3 {
+		t.Fatalf("a currency with no drift moved %v", got)
+	}
+}
+
+// USD is the numeraire: it never moves.
+func TestUSDIsConstant(t *testing.T) {
+	p := path(5)
+	for at := sched.Time(0); at < 3*hour; at += 7 * 60_000 {
+		if got := logUSD(p, "USD", at); got != 0 {
+			t.Fatalf("USD at %d = %v", at, got)
+		}
 	}
 }
