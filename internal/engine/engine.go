@@ -384,6 +384,11 @@ func (e *Engine) run(ctx context.Context, at sched.Time, ev clock.Event) error {
 	case clock.Birth:
 		e.co.Births.Run(at, ev.Birth)
 	case clock.Hazard:
+		if e.co.Market.SellsOut(ev.Actor, e.co.Rec(ev.Actor).HazardTo) {
+			if err := (starter{e}).sellOut(ctx, at, ev.Actor); err != nil {
+				return err
+			}
+		}
 		return e.co.Life.Hazard(at, ev.Actor)
 	case clock.Act:
 		return e.act(ctx, at, ev.Actor)
@@ -610,7 +615,7 @@ func (e *Engine) settle(at sched.Time, p *wire.Pending, tx TxID) error {
 		e.win.Reclaim(p.Amount)
 	}
 	if p.Order != nil {
-		e.co.Market.Settled(at, p)
+		e.co.Desk.Settled(at, p)
 	}
 	return e.co.Life.Settled(at, population.ActorID(p.Actor), profile.IntentKind(p.Kind), tx)
 }

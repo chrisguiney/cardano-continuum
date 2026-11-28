@@ -76,6 +76,31 @@ func (s starter) start(ctx context.Context, at sched.Time, p *wire.Pending) (str
 	return "", e.adv.React(ctx, at, p, built.Fee)
 }
 
+// sellOut starts a wallet's sale of everything it can spend, as it
+// abandons: the intent of a market wallet leaving, decided by its hazard
+// rather than its agenda. A wallet with too little to sell skips it.
+func (s starter) sellOut(ctx context.Context, at sched.Time, id population.ActorID) error {
+	e := s.e
+	a, _ := e.co.Get(id)
+	st := e.co.Rec(id)
+	r := st.Draw(a, "sell_out")
+	in := agenda.Intent{Kind: profile.IntentSellADA, Actor: id}
+	p, why := e.in.Prepare(at, a, in, r)
+	if p != nil {
+		if bal := e.pay.Spendable(uint64(id)); bal > p.Amount+feeHeadroom {
+			p.Amount = bal - feeHeadroom
+		}
+		var err error
+		if why, err = s.start(ctx, at, p); err != nil {
+			return err
+		}
+	}
+	if why != "" {
+		e.jr.Emit(at, KindSkipped, id, Skipped{Kind: "sell_out", Why: why})
+	}
+	return nil
+}
+
 // move starts a recovery move: the engine's own delegation of a stranded
 // wallet onto a forging pool. It needs no agenda and is never guarded.
 func (s starter) move(ctx context.Context, at sched.Time, mv policy.Intent) error {
@@ -130,7 +155,7 @@ func intentSpec(e *Engine) intent.Spec {
 func intentEnv(e *Engine) intent.Env {
 	return intent.Env{
 		Roster: roster{e.co}, Ring: e.co.Ring, Chain: e.win, Flight: e.pay, Clock: evsched{&e.clk}, Journal: &e.jr,
-		Judge: e.jd, Spend: ihooks{e}, Market: e.co.Market,
+		Judge: e.jd, Spend: ihooks{e}, Market: e.co.Desk,
 	}
 }
 

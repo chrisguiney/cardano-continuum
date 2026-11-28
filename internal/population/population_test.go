@@ -613,3 +613,34 @@ func TestCensusNotAStakeSource(t *testing.T) {
 		}
 	}
 }
+
+// A modulation scales the dormancy and abandonment hazards: a constant
+// factor of 3 cuts the mean wait to a third.
+func TestNextHazardModulated(t *testing.T) {
+	p := profile.Profile{Kind: profile.Wallet, Hazards: profile.Hazards{Dormancy: profile.Const{V: 10}, Onset: 0.01, Abandon: 0.001}}
+	a := Actor{Kind: profile.Wallet, State: Active}
+	var plain, fast float64
+	const n = 4000
+	for i := range n {
+		r := rand.New(rand.NewPCG(uint64(i), 1))
+		at, _ := NextHazard(a, p, r, 0)
+		plain += float64(at)
+		r = rand.New(rand.NewPCG(uint64(i), 2))
+		at, _ = NextHazardIn(a, p, r, 0, constMod(3))
+		fast += float64(at)
+	}
+	if ratio := plain / fast; math.Abs(ratio-3) > 0.3 {
+		t.Fatalf("mean wait ratio %.2f, want 3", ratio)
+	}
+	r1, r2 := rand.New(rand.NewPCG(9, 9)), rand.New(rand.NewPCG(9, 9))
+	t1, s1 := NextHazard(a, p, r1, 5)
+	t2, s2 := NextHazardIn(a, p, r2, 5, nil)
+	if t1 != t2 || s1 != s2 {
+		t.Fatal("a nil modulation changes the draw")
+	}
+}
+
+type constMod float64
+
+func (c constMod) Factor(sched.Time) float64 { return float64(c) }
+func (c constMod) Max() float64              { return float64(c) }

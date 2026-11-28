@@ -36,6 +36,9 @@ type Markets struct {
 	Venue Venue `yaml:"venue"`
 	// Births is how the ADA rate in a currency moves that currency's births.
 	Births BirthResponse `yaml:"births"`
+	// Deaths is how a prolonged fall moves the dormancy and abandonment of
+	// the wallets whose profiles opt in (Hazards.Market).
+	Deaths DeathResponse `yaml:"deaths"`
 }
 
 // ADAPath is a regime-switching log random walk with jumps: per step of dt
@@ -115,6 +118,18 @@ type BirthResponse struct {
 	Max    float64 `yaml:"max"`
 }
 
+// DeathResponse scales an opted-in wallet's dormancy onset and abandonment
+// hazards by clamp(exp(-Beta * ln(rate now / rate Window seconds ago)),
+// Min, Max): a fall raises them. A hodl wallet takes the factor to the
+// power Hodl, in (0, 1], so it resists in both directions.
+type DeathResponse struct {
+	Beta   float64 `yaml:"beta"`
+	Window float64 `yaml:"window"`
+	Min    float64 `yaml:"min"`
+	Max    float64 `yaml:"max"`
+	Hodl   float64 `yaml:"hodl"`
+}
+
 const ada = 1_000_000
 
 // DefaultMarkets is the market a bare markets section gets.
@@ -139,6 +154,7 @@ func DefaultMarkets() Markets {
 		Extra:  0.15,
 		Venue:  Venue{Conversion: 0.01, Loyalty: 0.003, Noise: 0.002},
 		Births: BirthResponse{Beta: 4, Window: 300, Min: 0.25, Max: 4},
+		Deaths: DeathResponse{Beta: 3, Window: 1800, Min: 0.5, Max: 4, Hodl: 0.5},
 	}
 }
 
@@ -172,6 +188,11 @@ func (m Markets) fill() Markets {
 	or(&m.Births.Window, d.Births.Window)
 	or(&m.Births.Min, d.Births.Min)
 	or(&m.Births.Max, d.Births.Max)
+	or(&m.Deaths.Beta, d.Deaths.Beta)
+	or(&m.Deaths.Window, d.Deaths.Window)
+	or(&m.Deaths.Min, d.Deaths.Min)
+	or(&m.Deaths.Max, d.Deaths.Max)
+	or(&m.Deaths.Hodl, d.Deaths.Hodl)
 	if len(m.Currencies) == 0 {
 		m.Currencies = d.Currencies
 	}
@@ -213,6 +234,12 @@ func (m Markets) validate() error {
 	}
 	if !(m.Births.Min > 0 && m.Births.Min <= m.Births.Max) || math.IsInf(m.Births.Max, 0) {
 		return fieldErr("markets.births", "need 0 < min <= max, got min %s max %s", ff(m.Births.Min), ff(m.Births.Max))
+	}
+	if !(m.Deaths.Min > 0 && m.Deaths.Min <= m.Deaths.Max) || math.IsInf(m.Deaths.Max, 0) || !(m.Deaths.Window > 0) || math.IsNaN(m.Deaths.Beta) {
+		return fieldErr("markets.deaths", "need window > 0 and 0 < min <= max, got %+v", m.Deaths)
+	}
+	if !(m.Deaths.Hodl > 0 && m.Deaths.Hodl <= 1) {
+		return fieldErr("markets.deaths.hodl", "must be in (0, 1], got %s", ff(m.Deaths.Hodl))
 	}
 	if err := validateCurrencies(m.Currencies); err != nil {
 		return err

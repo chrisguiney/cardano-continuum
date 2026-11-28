@@ -232,3 +232,33 @@ func TestVenueConvertsToPrimary(t *testing.T) {
 		t.Fatalf("primary price %v, want the JPY ask %v", v.Primary, want)
 	}
 }
+
+// The death factor rises as ADA falls over the death window, mirrors the
+// birth factor's sign, and a hodl wallet feels a damped one.
+func TestDeathFactor(t *testing.T) {
+	p := path(3)
+	d := profile.DefaultMarkets().Deaths
+	usd := p.Currency("USD")
+	window := sched.Time(d.Window * 1000)
+	rose, fell := false, false
+	for at := window; at < 24*hour; at += 60_000 {
+		trend := math.Log(p.Mid(usd, at) / p.Mid(usd, at-window))
+		f, h := p.Death(usd, at, false), p.Death(usd, at, true)
+		if f < d.Min || f > d.Max {
+			t.Fatalf("factor %v outside bounds", f)
+		}
+		if want := math.Exp(-d.Beta * trend); want > d.Min && want < d.Max && math.Abs(f-want) > 1e-9 {
+			t.Fatalf("factor %v, want %v", f, want)
+		}
+		if f > 1 && !(h < f && h > 1) || f < 1 && !(h > f && h < 1) {
+			t.Fatalf("hodl factor %v does not damp %v", h, f)
+		}
+		rose, fell = rose || f > 1.5, fell || f < 0.8
+	}
+	if !rose || !fell {
+		t.Fatal("the death factor never moved both ways in a day")
+	}
+	if m := p.Deaths(usd, true); m.Max() != math.Pow(d.Max, d.Hodl) || m.Factor(hour) != p.Death(usd, hour, true) {
+		t.Fatal("Deaths is not the factor as a modulation")
+	}
+}

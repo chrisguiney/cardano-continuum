@@ -87,6 +87,22 @@ func (p *Path) Birth(c int, t sched.Time) float64 {
 	return min(b.Max, max(b.Min, math.Exp(b.Beta*p.Trend(c, t))))
 }
 
+// Death is the factor ADA's fall in currency c over the death window puts
+// on an opted-in wallet's dormancy and abandonment hazards at t, damped
+// for a hodl wallet.
+func (p *Path) Death(c int, t sched.Time, hodl bool) float64 {
+	d := p.c.m.Deaths
+	back := t - sched.Time(math.Round(d.Window*1000))
+	f := min(d.Max, max(d.Min, math.Exp(-d.Beta*math.Log(p.Mid(c, t)/p.Mid(c, max(0, back))))))
+	if hodl {
+		return math.Pow(f, d.Hodl)
+	}
+	return f
+}
+
+// Deaths is Death as a modulation for thinning.
+func (p *Path) Deaths(c int, hodl bool) sched.Modulation { return deaths{p: p, c: c, hodl: hodl} }
+
 // Births is currency c's birth factor as a modulation for thinning.
 func (p *Path) Births(c int) sched.Modulation { return births{p: p, c: c} }
 

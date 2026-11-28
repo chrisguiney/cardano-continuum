@@ -2,6 +2,7 @@ package engine
 
 import (
 	"bytes"
+	"math"
 	"strings"
 	"testing"
 
@@ -336,4 +337,129 @@ func mustHash(t *testing.T, c *Config) [32]byte {
 		t.Fatal(err)
 	}
 	return h
+}
+
+// newcomerYAML is a wallet profile that only arrives: a high birth rate
+// and nothing else, so a run counts births alone.
+const newcomerYAML = `version: 1
+profiles:
+  - name: newcomer
+    kind: wallet
+    agenda: hodl
+    traits: {competence: "beta(9, 1)", patience: "const(5)", learning_rate: "const(0)", care: "const(1)"}
+    budget: 100000000
+    hazards: {birth: 2}
+`
+
+// In a market run each currency's wallets are born at the profile's rate
+// times the currency's share times the market's birth factor: each
+// currency's count matches the integral of that hazard over the run, and a
+// birth records its currency.
+func TestMarketsBirthsByCurrency(t *testing.T) {
+	ps, err := profile.Parse(strings.NewReader(newcomerYAML))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg, err := profile.NewRegistry(ps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := testConfig(t, 31, 0)
+	cfg.Profiles, cfg.Cohorts = reg, nil
+	m := profile.DefaultMarkets()
+	if err := Populate(&cfg, profile.File{Markets: &m}); err != nil {
+		t.Fatal(err)
+	}
+	const until sched.Time = 1_200_000
+	w := newWorld(t, cfg)
+	w.run(until, 0, nil)
+
+	got := map[string]int{}
+	for _, rec := range logRecords(t, w.log) {
+		if rec.Kind != KindSpawned {
+			continue
+		}
+		var s Spawned
+		if err := eventlog.Decode(rec.Body, &s); err != nil {
+			t.Fatal(err)
+		}
+		if s.Currency == "" {
+			t.Fatalf("birth of %d records no currency", rec.Actor)
+		}
+		got[s.Currency]++
+	}
+
+	path := market.New(cfg.Seed, m)
+	for ci, c := range m.Currencies {
+		var want float64
+		for at := sched.Time(0); at < until; at += 1000 {
+			want += 2 * c.Share * path.Birth(ci, at)
+		}
+		if sd := math.Sqrt(want); math.Abs(float64(got[c.Code])-want) > 4*sd {
+			t.Errorf("%s: %d births, want %.0f ± %.0f", c.Code, got[c.Code], want, 4*sd)
+		}
+	}
+	t.Logf("births %v", got)
+}
+
+// quitterYAML is a market wallet that abandons quickly, on the market's
+// synthetic hazards.
+const quitterYAML = `version: 1
+profiles:
+  - name: quitter
+    kind: wallet
+    agenda: profit
+    traits: {competence: "beta(9, 1)", patience: "const(5)", learning_rate: "const(0)", care: "const(1)"}
+    budget: 100000000
+    hazards: {abandon: 0.01, market: true}
+`
+
+// An opted-in wallet that abandons sells its ADA to an exchange first.
+func TestMarketsAbandonSellsOut(t *testing.T) {
+	ps, err := profile.Parse(strings.NewReader(quitterYAML))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg, err := profile.NewRegistry(ps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := testConfig(t, 32, 0)
+	cfg.Profiles, cfg.Cohorts = reg, []Cohort{{Profile: "quitter", Count: 30}}
+	m := profile.DefaultMarkets()
+	if err := Populate(&cfg, profile.File{Markets: &m}); err != nil {
+		t.Fatal(err)
+	}
+	w := newWorld(t, cfg)
+	w.run(300_000, 0, nil)
+
+	sold := map[eventlog.ActorID]sched.Time{}
+	quits := 0
+	for _, rec := range logRecords(t, w.log) {
+		switch rec.Kind {
+		case KindSubmitted:
+			var s Submitted
+			if err := eventlog.Decode(rec.Body, &s); err != nil {
+				t.Fatal(err)
+			}
+			if s.Kind == "sell_ada" {
+				sold[rec.Actor] = rec.At
+			}
+		case KindTransition:
+			var tr Transition
+			if err := eventlog.Decode(rec.Body, &tr); err != nil {
+				t.Fatal(err)
+			}
+			if tr.To != "abandoned" {
+				continue
+			}
+			quits++
+			if at, ok := sold[rec.Actor]; !ok || at != rec.At {
+				t.Fatalf("actor %d abandons at %d without selling out", rec.Actor, rec.At)
+			}
+		}
+	}
+	if quits < 5 {
+		t.Fatalf("only %d wallets abandoned", quits)
+	}
 }

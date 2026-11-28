@@ -69,7 +69,7 @@ func (v view) Deposit(k profile.IntentKind) (profile.Lovelace, bool) {
 
 // Position implements agenda.Trading.
 func (v view) Position(id population.ActorID) (agenda.Position, bool) {
-	return v.e.co.Market.Position(id, v.e.clk.Now())
+	return v.e.co.Desk.Position(id, v.e.clk.Now())
 }
 
 // Burst implements agenda.Market.

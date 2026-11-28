@@ -112,6 +112,8 @@ type Cohort struct {
 	Idents *Idents
 	// Market is the ADA market the wallets trade in.
 	Market *Market
+	// Desk is the wallets' positions and trades on it.
+	Desk *Desk
 }
 
 // New returns an empty cohort.
@@ -126,6 +128,7 @@ func New(sp Spec, v Env) *Cohort {
 		Births: &Births{life: l, seed: sp.Seed, sched: v.Sched, emit: v.Emit},
 		Idents: &Idents{r: r, proposer: sp.Proposer, att: v.Att, chain: v.Chain},
 		Market: m,
+		Desk:   &Desk{m: m},
 	}
 }
 
@@ -163,7 +166,7 @@ func (c *Cohort) Save() ([]wire.ActorRec, []wire.BirthRec) {
 	var births []wire.BirthRec
 	for i := range c.Births.Len() {
 		name, at, n := c.Births.Stream(i)
-		births = append(births, wire.BirthRec{Profile: name, At: at, N: n})
+		births = append(births, wire.BirthRec{Profile: name, At: at, N: n, Currency: c.Births.Currency(i)})
 	}
 	return actors, births
 }
@@ -182,8 +185,8 @@ func (c *Cohort) Load(ps Profiles, actors []wire.ActorRec, births []wire.BirthRe
 		return fmt.Errorf("engine: snapshot has %d birth streams, config %d", len(births), c.Births.Len())
 	}
 	for i, r := range births {
-		if name, _, _ := c.Births.Stream(i); r.Profile != name {
-			return fmt.Errorf("engine: snapshot birth stream %q, config %q", r.Profile, name)
+		if name, _, _ := c.Births.Stream(i); r.Profile != name || r.Currency != c.Births.Currency(i) {
+			return fmt.Errorf("engine: snapshot birth stream %q %q, config %q %q", r.Profile, r.Currency, name, c.Births.Currency(i))
 		}
 		c.Births.Resume(i, r.At, r.N)
 	}
@@ -211,7 +214,7 @@ func (c *Cohort) revive(ps Profiles, r wire.ActorRec) error {
 	}
 	st := c.Register(a, p)
 	c.Market.Join(a, st, currencyOf(c.Market, r.Currency))
-	c.Market.restore(st, r)
+	c.Desk.restore(st, r)
 	st.HazardAt, st.HazardTo, st.ActAt, st.Draws = r.HazardAt, population.State(r.HazardTo), r.ActAt, r.Draws
 	st.Booting = r.Booting
 	st.Owed = r.Owed

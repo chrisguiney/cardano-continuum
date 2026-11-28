@@ -50,6 +50,8 @@ type BirthRec struct {
 	Profile string     `json:"profile"`
 	At      sched.Time `json:"at"`
 	N       uint64     `json:"n"`
+	// Currency is a market wallet stream's currency.
+	Currency string `json:"currency,omitempty"`
 }
 
 // ViewRec is chain.State in the snapshot. Outputs travel as CBOR, since a

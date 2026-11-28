@@ -1,10 +1,8 @@
 package cohort
 
 import (
-	"math/rand/v2"
 	"strings"
 
-	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/market"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
@@ -167,85 +165,24 @@ func (m *Market) Join(a population.Actor, st *Actor, primary int) {
 	}
 }
 
-// Position is the wallet's market position at t.
-func (m *Market) Position(id population.ActorID, t sched.Time) (agenda.Position, bool) {
+// deaths is the death factor an opted-in wallet's hazards thin against,
+// nil for every other actor.
+func (m *Market) deaths(st *Actor) sched.Modulation {
+	if !m.On() || st.Trader == nil || !st.Prof.Hazards.Market {
+		return nil
+	}
+	return m.path.Deaths(st.Trader.Primary, st.Prof.Agenda == "hodl")
+}
+
+// SellsOut reports that the actor, about to move to state to, sells its
+// ADA first: an opted-in market wallet that abandons.
+func (m *Market) SellsOut(id population.ActorID, to population.State) bool {
 	st := m.r.Rec(id)
-	if !m.On() || st == nil || st.Trader == nil {
-		return agenda.Position{}, false
-	}
-	tr := st.Trader
-	return agenda.Position{
-		Currency: m.Code(tr.Primary),
-		Gain:     m.path.Mid(tr.Primary, t)/tr.Basis - 1,
-		Trend:    m.path.Trend(tr.Primary, t),
-	}, true
-}
-
-// Order quotes the wallet's buy or sale at its venue (market.Path.Venue)
-// and names the exchange's actor. It draws from r.
-func (m *Market) Order(at sched.Time, id population.ActorID, buy bool, r *rand.Rand) (wire.Order, population.ActorID, bool) {
-	pos, ok := m.Position(id, at)
-	if !ok {
-		return wire.Order{}, 0, false
-	}
-	tr := m.r.Rec(id).Trader
-	v, ok := m.path.Venue(r, market.Order{Buy: buy, Primary: tr.Primary, Extra: tr.Extra, At: at, Last: tr.Venue})
-	if !ok {
-		return wire.Order{}, 0, false
-	}
-	x := m.path.Params().Exchanges[v.Exchange]
-	o := wire.Order{
-		Wallet:   uint64(id),
-		Exchange: x.Name,
-		Currency: m.Code(v.Currency),
-		Rate:     v.Rate,
-		Primary:  v.Primary,
-		Gain:     pos.Gain,
-	}
-	if buy {
-		o.Fee = x.Fee
-	}
-	return o, m.venues[v.Exchange], true
-}
-
-// Settled settles the fiat side of a trade whose ADA is K deep: a buy
-// moves the wallet's basis, a sale realises its gain, and the wallet keeps
-// the exchange for next time. It records the trade as a Traded decision.
-func (m *Market) Settled(at sched.Time, p *wire.Pending) {
-	o := p.Order
-	st := m.r.Rec(population.ActorID(o.Wallet))
-	if st == nil || st.Trader == nil {
-		return
-	}
-	tr := st.Trader
-	t := wire.Traded{Intent: p.ID, Side: "sell", Exchange: o.Exchange, Currency: o.Currency, Lovelace: p.Amount, Rate: o.Rate}
-	if p.Kind == string(profile.IntentBuyADA) {
-		gross := p.Amount + o.Fee
-		t.Side, t.Fee = "buy", o.Fee
-		t.Fiat = float64(gross) / lovelace * o.Rate
-		held := float64(tr.Units) / lovelace
-		tr.Basis = (tr.Basis*held + float64(gross)/lovelace*o.Primary) / (held + float64(p.Amount)/lovelace)
-		tr.Units += p.Amount
-	} else {
-		t.Fiat = float64(p.Amount) / lovelace * o.Rate
-		t.Gain = o.Primary/tr.Basis - 1
-		tr.Units -= min(tr.Units, p.Amount)
-	}
-	t.Basis = tr.Basis
-	tr.Venue = venueOf(m.path.Params(), o.Exchange)
-	m.r.env.Emit.Emit(at, wire.KindTraded, population.ActorID(o.Wallet), t)
+	return to == population.Abandoned && st != nil && m.deaths(st) != nil
 }
 
 // lovelace is the lovelace in one ADA.
 const lovelace = 1_000_000
-
-// restore sets a wallet's basis, units and venue to a snapshot's.
-func (m *Market) restore(st *Actor, r wire.ActorRec) {
-	if st.Trader == nil {
-		return
-	}
-	st.Trader.Basis, st.Trader.Units, st.Trader.Venue = r.Basis, r.Units, venueOf(m.path.Params(), r.Venue)
-}
 
 // venueOf is the index of the named exchange, or -1.
 func venueOf(ps profile.Markets, name string) int {

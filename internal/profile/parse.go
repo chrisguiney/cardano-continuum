@@ -77,6 +77,7 @@ type rawHazards struct {
 	Dormancy string  `yaml:"dormancy,omitempty"`
 	Abandon  float64 `yaml:"abandon,omitempty"`
 	Onset    float64 `yaml:"dormancy_onset,omitempty"`
+	Market   bool    `yaml:"market,omitempty"`
 }
 
 type rawAdversary struct {
@@ -342,7 +343,7 @@ func (rh rawHazards) validate(h *Hazards) error {
 	if err := finiteNonNeg("hazards.dormancy_onset", rh.Onset); err != nil {
 		return err
 	}
-	h.Birth, h.Abandon, h.Onset = rh.Birth, rh.Abandon, rh.Onset
+	h.Birth, h.Abandon, h.Onset, h.Market = rh.Birth, rh.Abandon, rh.Onset, rh.Market
 	if rh.Dormancy != "" {
 		d, err := parseDist(rh.Dormancy)
 		if err != nil {
@@ -432,7 +433,7 @@ func rawProfiles(ps []Profile) rawFile {
 				Tail:   p.Rates.Tail,
 			},
 			Weights: toRaw(p.Weights),
-			Hazards: rawHazards{Birth: p.Hazards.Birth, Abandon: p.Hazards.Abandon, Onset: p.Hazards.Onset},
+			Hazards: rawHazards{Birth: p.Hazards.Birth, Abandon: p.Hazards.Abandon, Onset: p.Hazards.Onset, Market: p.Hazards.Market},
 			Weight:  p.Weight,
 		}
 		if a := p.Amount; a != nil {

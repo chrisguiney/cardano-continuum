@@ -118,3 +118,30 @@ func TestM1MarketsAreTheDefaults(t *testing.T) {
 		t.Fatalf("m1 markets %+v, want DefaultMarkets", f.Markets)
 	}
 }
+
+func TestMarketHazardsOptIn(t *testing.T) {
+	in := strings.Replace(marketsHead, `care: "const(1)"}`, `care: "const(1)"}
+    hazards: {dormancy: "exp(1)", market: true}`, 1)
+	f, err := ParseFile(strings.NewReader(in))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !f.Profiles[0].Hazards.Market {
+		t.Fatal("hazards.market not read")
+	}
+	raw, err := MarshalFile(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	back, err := ParseFile(bytes.NewReader(raw))
+	if err != nil || !back.Profiles[0].Hazards.Market {
+		t.Fatalf("hazards.market lost in a round trip: %v\n%s", err, raw)
+	}
+	d := DefaultMarkets().Deaths
+	if !(d.Beta > 0 && d.Window > DefaultMarkets().Births.Window && d.Min > 0 && d.Min <= 1 && d.Max >= 1 && d.Hodl > 0 && d.Hodl < 1) {
+		t.Fatalf("death defaults %+v", d)
+	}
+	if _, err := ParseFile(strings.NewReader(marketsHead + "markets:\n  deaths: {hodl: 2}\n")); err == nil {
+		t.Fatal("a hodl exponent above 1 parsed")
+	}
+}

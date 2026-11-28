@@ -21,6 +21,8 @@ profiles:
       birth: 0.005
       dormancy: lognormal(5, 1)
       abandon: 0.00002
+      # Dormancy onset and abandonment follow the market (markets.deaths).
+      market: true
   # A busier spender with a smaller budget.
   - name: spender
     kind: wallet
@@ -41,6 +43,7 @@ profiles:
       birth: 0.002
       dormancy: lognormal(4, 0.8)
       abandon: 0.0001
+      market: true
 # The ADA market the wallets trade in (internal/market). A field left out
 # takes this value, its default; times are seconds and rates per hour of
 # simulated time, compressed so a run of minutes sees rallies and drawdowns.
@@ -71,3 +74,7 @@ markets:
   venue: {conversion: 0.01, loyalty: 0.003, noise: 0.002}
   # Births of a currency scale by exp(beta * log return over window), clamped.
   births: {beta: 4, window: 300, min: 0.25, max: 4}
+  # Opted-in wallets go dormant and abandon faster by exp(-beta * log
+  # return over window), clamped; a hodl wallet takes that to the power
+  # hodl, so it holds on. An abandoning wallet sells its ADA first.
+  deaths: {beta: 3, window: 1800, min: 0.5, max: 4, hodl: 0.5}

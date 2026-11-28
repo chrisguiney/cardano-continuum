@@ -48,6 +48,27 @@ func (b births) Factor(t sched.Time) float64 { return b.p.Birth(b.c, t) }
 // Max implements sched.Modulation.
 func (b births) Max() float64 { return b.p.c.m.Births.Max }
 
+// deaths is Path.Death as a sched.Modulation.
+type deaths struct {
+	// p is the market's paths.
+	p *Path
+	// c is the currency.
+	c int
+	// hodl damps the factor.
+	hodl bool
+}
+
+// Factor implements sched.Modulation.
+func (d deaths) Factor(t sched.Time) float64 { return d.p.Death(d.c, t, d.hodl) }
+
+// Max implements sched.Modulation.
+func (d deaths) Max() float64 {
+	if d.hodl {
+		return math.Pow(d.p.c.m.Deaths.Max, d.p.c.m.Deaths.Hodl)
+	}
+	return d.p.c.m.Deaths.Max
+}
+
 // byShare picks the currency at u in [0, 1) of the shares of those not
 // taken. A u past the last share, from rounding, picks the last one left.
 func byShare(cs []profile.Currency, u float64, taken []int) int {

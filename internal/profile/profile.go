@@ -137,6 +137,10 @@ type Hazards struct {
 	// Onset is the per-second rate at which an unfrustrated active actor
 	// goes dormant; frustration scales it. Zero means DefaultOnset.
 	Onset float64
+	// Market makes the dormancy onset and abandonment hazards synthetic
+	// in a market run: scaled by the market's death factor (Markets.Deaths)
+	// in place of being taken as fitted.
+	Market bool
 }
 
 // OnsetRate is Onset, or DefaultOnset when it is unset.

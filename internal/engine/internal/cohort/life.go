@@ -38,7 +38,7 @@ func (l *Life) Spawn(p profile.Profile, at sched.Time, currency int) population.
 
 // NextHazard draws the actor's next lifecycle hazard and schedules it.
 func (l *Life) NextHazard(a population.Actor, st *Actor, now sched.Time) {
-	st.HazardAt, st.HazardTo = population.NextHazard(a, st.Prof, st.Draw(a, "hazard"), now)
+	st.HazardAt, st.HazardTo = population.NextHazardIn(a, st.Prof, st.Draw(a, "hazard"), now, l.market.deaths(st))
 	if st.HazardAt != population.Never {
 		st.HazardH = l.r.env.Sched.Hazard(st.HazardAt, a.ID)
 	}
