@@ -37,6 +37,7 @@ type (
 	PoolTier        = wire.PoolTier
 	Protocol        = wire.Protocol
 	ProposalDigest  = wire.ProposalDigest
+	Fork            = wire.Fork
 	Ref             = wire.Ref
 	Refill          = wire.Refill
 	Refused         = wire.Refused

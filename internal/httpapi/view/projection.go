@@ -153,6 +153,11 @@ func (p *Projection) Snapshot(slots *sched.Slots) Snapshot {
 		tip := *t.tip
 		s.Tip = &tip
 	}
+
+	if g := p.gov.proto; g != nil {
+		v := g.Version
+		s.Protocol = &v
+	}
 	if slots != nil {
 		e := slots.EpochAt(sched.Time(t.now))
 		s.Epoch = &e

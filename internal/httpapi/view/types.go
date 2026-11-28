@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
+	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 	"github.com/chrisguiney/cardano-continuum/internal/store"
 )
 
@@ -76,6 +77,9 @@ type Snapshot struct {
 	Txs          TxCounts    `json:"txs"`
 	Population   Population  `json:"population"`
 	Invariants   []Invariant `json:"invariants"`
+	// Protocol is the protocol version in force at the tip, nil before
+	// the engine's first Protocol decision.
+	Protocol *protocol.Version `json:"protocol_version,omitempty"`
 }
 
 // Ada is the lovelace accounting visible in the log.

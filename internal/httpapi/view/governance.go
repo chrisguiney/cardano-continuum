@@ -7,6 +7,8 @@ import (
 	"strconv"
 
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
+	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
+	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 )
 
@@ -47,11 +49,18 @@ type GovernanceView struct {
 	Proposals []ProposalRow `json:"proposals"`
 	Votes     []VoteRow     `json:"votes"`
 	Pools     []PoolVotes   `json:"pools"`
+	// Protocol is the protocol version in force at the tip, as the
+	// engine's last Protocol decision reports it; nil before the first.
+	Protocol *protocol.Version `json:"protocol_version,omitempty"`
+	// Fork is a ratified hard fork waiting for the boundary that enacts
+	// it; nil when none is.
+	Fork *engine.Fork `json:"pending_fork,omitempty"`
 }
 
 // ProposalRow is one governance action. Status is open or expired, or
 // unknown without a slot schedule, or ratified when the votes the run saw
-// meet the thresholds (ratified).
+// meet the thresholds (ratified). A hard fork is ratified or enacted as
+// the engine's Protocol decisions report it.
 type ProposalRow struct {
 	ID           string           `json:"id"`
 	Type         string           `json:"type"`
@@ -146,10 +155,43 @@ type govFold struct {
 	votes  map[govVoteKey]VoteRow
 	recent []VoteRow // oldest first
 	undo   []govBlockUndo
+	// proto is the engine's last Protocol decision, nil before the first.
+	// The engine logs a new one for every change, rollbacks included, so
+	// the last is the state at the tip.
+	proto *engine.Protocol
+	// enacted are the hard forks a Protocol decision showed enacted.
+	enacted map[string]bool
 }
 
 func newGovFold() *govFold {
-	return &govFold{meta: map[engine.TxID]govMeta{}, props: map[string]*ProposalRow{}, votes: map[govVoteKey]VoteRow{}}
+	return &govFold{meta: map[engine.TxID]govMeta{}, props: map[string]*ProposalRow{}, votes: map[govVoteKey]VoteRow{}, enacted: map[string]bool{}}
+}
+
+// protocol folds a Protocol decision. A fork that was pending and whose
+// version is now in force was enacted.
+func (g *govFold) protocol(r eventlog.Record) error {
+	var p engine.Protocol
+	if err := eventlog.Decode(r.Body, &p); err != nil {
+		return err
+	}
+
+	if old := g.proto; old != nil && old.Pending != nil && p.Pending == nil && p.Version == old.Pending.Version {
+		g.enacted[old.Pending.Proposal] = true
+	}
+	g.proto = &p
+	return nil
+}
+
+// forkStatus is a hard fork's status from the Protocol decisions, empty
+// when they say nothing of it.
+func (g *govFold) forkStatus(id string) string {
+	switch {
+	case g.enacted[id]:
+		return "enacted"
+	case g.proto != nil && g.proto.Pending != nil && g.proto.Pending.Proposal == id:
+		return "ratified"
+	}
+	return ""
 }
 
 // submitted notes the actor behind a governance transaction.
@@ -333,6 +375,15 @@ func (g *govFold) view(slots *sched.Slots, tip uint64, life uint64, profileOf fu
 		if out.Proposals[i].Status != "unknown" && ratified(out.Proposals[i]) {
 			out.Proposals[i].Status = "ratified"
 		}
+
+		if st := g.forkStatus(out.Proposals[i].ID); st != "" {
+			out.Proposals[i].Status = st
+		}
+	}
+
+	if g.proto != nil {
+		v := g.proto.Version
+		out.Protocol, out.Fork = &v, g.proto.Pending
 	}
 	pools := map[uint64]int{}
 	for i := len(g.recent) - 1; i >= 0 && len(out.Votes) < maxRecentVotes; i-- {

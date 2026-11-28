@@ -481,7 +481,7 @@ func (e *Engine) submitResult(ctx context.Context, at sched.Time, r SubmitResult
 // A block with K successors is settled: its fees and foreign outputs count,
 // and the ledger reports the payments it settled or killed.
 func (e *Engine) applyBlock(ctx context.Context, at sched.Time, b wire.Block) error {
-	before := forkState(e.win.View())
+	before, first := forkState(e.win.View()), e.win.View().Tip().IsOrigin()
 	lb, vb, err := e.win.Blocks(b, e.co)
 	if err != nil {
 		return err
@@ -494,7 +494,7 @@ func (e *Engine) applyBlock(ctx context.Context, at sched.Time, b wire.Block) er
 	if err := e.win.Push(b, vb); err != nil {
 		return fmt.Errorf("engine: view: %w", err)
 	}
-	noteFork(e, at, before)
+	noteFork(e, at, before, first)
 	if err := e.retry.InBlock(ctx, at, b); err != nil {
 		return err
 	}
@@ -543,7 +543,7 @@ func (e *Engine) rollback(ctx context.Context, p eventlog.ChainPoint) error {
 	if err != nil {
 		return fmt.Errorf("engine: view: %w", err)
 	}
-	noteFork(e, e.clk.Now(), before)
+	noteFork(e, e.clk.Now(), before, false)
 	return e.retry.LeftView(ctx, e.clk.Now(), gone)
 }
 
@@ -559,13 +559,14 @@ func forkState(v *chain.View) wire.Protocol {
 }
 
 // noteFork moves the builder to the protocol version in force and logs a
-// Protocol decision when the input moved it, or ratified or took back a
-// fork. Both are derived from the view, so a replay or a restart logs the
-// same records.
-func noteFork(e *Engine, at sched.Time, before wire.Protocol) {
+// Protocol decision when the input moved it, ratified or took back a fork,
+// or was the chain's first block (first), so the log states the genesis
+// version too. All are derived from the view, so a replay or a restart
+// logs the same records.
+func noteFork(e *Engine, at sched.Time, before wire.Protocol, first bool) {
 	now := forkState(e.win.View())
 	e.builder.Fork(now.Version)
-	if now.Version == before.Version && (now.Pending == nil) == (before.Pending == nil) &&
+	if !first && now.Version == before.Version && (now.Pending == nil) == (before.Pending == nil) &&
 		(now.Pending == nil || *now.Pending == *before.Pending) {
 		return
 	}

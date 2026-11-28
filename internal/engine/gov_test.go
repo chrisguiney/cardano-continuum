@@ -584,8 +584,9 @@ func TestHardForkThroughFakeChain(t *testing.T) {
 	}
 
 	recs := protocolRecords(t, w.log)
-	if len(recs) < 2 || recs[0].Pending == nil || recs[len(recs)-1].Version != want || recs[len(recs)-1].Pending != nil {
-		t.Fatalf("protocol records %+v: want a pending fork, then 11.0", recs)
+	if len(recs) < 3 || recs[0].Version != (protocol.Version{Major: 10}) || recs[0].Pending != nil || recs[1].Pending == nil ||
+		recs[len(recs)-1].Version != want || recs[len(recs)-1].Pending != nil {
+		t.Fatalf("protocol records %+v: want 10.0 from genesis, a pending fork, then 11.0", recs)
 	}
 
 	if fork := v.Forks()[0]; recs[len(recs)-1].Epoch != fork.At {
