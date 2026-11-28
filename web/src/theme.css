@@ -56,7 +56,6 @@ button.ghost { background: transparent; }
 button.danger { background: var(--bad); color: var(--bg); border-color: var(--bad); font-weight: 600; }
 button.th { border: 0; background: none; font-weight: 600; padding: 0; }
 input:not([data-slot]), select:not([data-slot]) { font: inherit; padding: .3rem .5rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
-label { display: flex; flex-direction: column; gap: .15rem; font-size: .85rem; color: var(--muted-text); }
 
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin: 1rem 0; }
 .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1rem; }
