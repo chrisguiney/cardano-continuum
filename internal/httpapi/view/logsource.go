@@ -171,7 +171,7 @@ func (s *LogSource) Nodes(ctx context.Context) (NodesView, error) {
 	}
 	var findings map[string]findingCount
 	if s.cfg.Findings != nil || s.cfg.Projection != nil {
-		findings = nodeFindings(s.findingsSet())
+		findings = nodeFindings(findingsOf(s))
 	}
 	return buildNodes(ps, mode, nodeFacts{
 		tips:     tips,
@@ -365,7 +365,7 @@ func (s *LogSource) ActorDetail(ctx context.Context, id uint64) (ActorDetail, er
 		return ActorDetail{}, err
 	}
 	row := n[id]
-	d := ActorDetail{ID: id, Name: row.Name, Profile: l.info.profile, Timeline: l.timeline, Findings: ownedFindings(s.findingsSet(), s.cfg.Projection.TxOwner, id)}
+	d := ActorDetail{ID: id, Name: row.Name, Profile: l.info.profile, Timeline: l.timeline, Findings: ownedFindings(findingsOf(s), s.cfg.Projection.TxOwner, id)}
 	if d.Profile == "" {
 		d.Profile = row.Profile
 	}
@@ -395,7 +395,10 @@ func (s *LogSource) ActorDetail(ctx context.Context, id uint64) (ActorDetail, er
 	return d, nil
 }
 
-func (s *LogSource) findingsSet() Findings {
+// findingsOf is the findings the source answers from: the configured set,
+// or the projection's. A function, not a method: LogSource is at its
+// member budget.
+func findingsOf(s *LogSource) Findings {
 	if s.cfg.Findings != nil {
 		return s.cfg.Findings
 	}
@@ -432,7 +435,7 @@ func (s *LogSource) Adversaries(ctx context.Context) (AdversaryView, error) {
 				st = x
 			}
 		}
-		out.Adversaries = append(out.Adversaries, adversaryRow(id, st, n[id], idents[id], impact, now, s.cfg.Slots, ownedFindings(s.findingsSet(), func(tx []byte) (uint64, bool) { return attackOwner(s.cfg.Projection, tx) }, id)))
+		out.Adversaries = append(out.Adversaries, adversaryRow(id, st, n[id], idents[id], impact, now, s.cfg.Slots, ownedFindings(findingsOf(s), func(tx []byte) (uint64, bool) { return attackOwner(s.cfg.Projection, tx) }, id)))
 	}
 	return out, nil
 }
