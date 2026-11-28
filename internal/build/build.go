@@ -19,7 +19,8 @@
 //	register_pool    Pool().RegisterPool, Pool().UpdatePool
 //	retire_pool      Pool().RetirePool
 //	mint, burn       Plutus().Mint (negative Quantity burns)
-//	script_call      Plutus().Lock, Plutus().Unlock
+//	script_call      Plutus().Lock, Plutus().Unlock, Markets().Trade,
+//	                 Markets().OpenMarket
 //
 // Each intent family lives in its own file; the shared plumbing (protocol
 // parameters, the Apollo chain-context adapter, signing and exact fees) is
@@ -168,6 +169,9 @@ func (b *Builder) Pool() Pool { return Pool{b} }
 
 // Plutus returns the builder for script transactions.
 func (b *Builder) Plutus() Plutus { return Plutus{b} }
+
+// Markets returns the builder for market transactions.
+func (b *Builder) Markets() Markets { return Markets{b} }
 
 // spec is one transaction to build: the wallet paying fees and taking
 // change, the offered inputs, the extra keys that must witness it beyond the

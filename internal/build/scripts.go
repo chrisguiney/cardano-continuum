@@ -46,12 +46,19 @@ var (
 	// Disbursement is the one disbursement instance (nonce 0): treasury
 	// awards locked for milestone draws.
 	Disbursement = mustInstance("disbursement", 0)
+	// Market is the one market instance (nonce 0): the liquidity pool
+	// every trade races for.
+	Market = mustInstance("market", 0)
 )
 
 // DisburseContract is the contract index Contract and Template give the
 // Disbursement instance: far above any deployment a run makes, so the
 // deployed contracts 0, 1, 2, ... never reach it.
 const DisburseContract uint64 = 1 << 32
+
+// MarketContract is the contract index Contract and Template give the
+// Market instance, as DisburseContract is the Disbursement's.
+const MarketContract = DisburseContract + 1
 
 // known maps every script the builder has made, by hash, so a script run
 // names its validator and instance (Lookup).
@@ -172,6 +179,8 @@ func Template(i uint64) string {
 	switch {
 	case i == DisburseContract:
 		return Disbursement.Validator
+	case i == MarketContract:
+		return Market.Validator
 	case i == 0:
 		return AlwaysSucceeds.Validator
 	case i%2 == 1:
@@ -190,6 +199,8 @@ func Contract(i uint64) Script {
 		return AlwaysSucceeds
 	case DisburseContract:
 		return Disbursement
+	case MarketContract:
+		return Market
 	}
 
 	if s, ok := contracts.Load(i); ok {

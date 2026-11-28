@@ -167,6 +167,114 @@ func ParseEscrowDatum(d data.PlutusData) (EscrowDatum, bool) {
 	}, true
 }
 
+// MarketAction is the blueprint type continuum/types/MarketAction.
+//
+// What a market spend does: Trade is Constr 0, Provide 1, Retire 2.
+type MarketAction uint8
+
+// The MarketAction constructors, in index order.
+const (
+	// Trade is constructor 0 of MarketAction.
+	Trade MarketAction = iota
+	// Provide is constructor 1 of MarketAction.
+	Provide
+	// Retire is constructor 2 of MarketAction.
+	Retire
+)
+
+// Data encodes v as the validator reads it: Constr <index> with no fields.
+func (v MarketAction) Data() data.PlutusData { return data.NewConstr(uint64(v)) }
+
+// String names the constructor in snake case.
+func (v MarketAction) String() string {
+	switch v {
+	case Trade:
+		return "trade"
+	case Provide:
+		return "provide"
+	case Retire:
+		return "retire"
+	}
+	return "MarketAction(" + strconv.Itoa(int(v)) + ")"
+}
+
+// ParseMarketAction decodes the validator's encoding of MarketAction.
+func ParseMarketAction(d data.PlutusData) (MarketAction, bool) {
+	tag, ok := enumTag(d, 3)
+	return MarketAction(tag), ok
+}
+
+// MarketDatum is the blueprint type continuum/types/MarketDatum.
+//
+// A constant-product market (a liquidity pool) of ADA and one token: `owner` provides and
+//
+//	retires its liquidity; anyone trades against `ada` lovelace and
+//	`tokens` of (`policy`, `name`), which the pool output holds.
+type MarketDatum struct {
+	// Owner is the owner field (aiken/crypto/VerificationKeyHash).
+	Owner []byte
+	// Policy is the policy field (ByteArray).
+	Policy []byte
+	// Name is the name field (ByteArray).
+	Name []byte
+	// Ada is the ada field (Int).
+	Ada int64
+	// Tokens is the tokens field (Int).
+	Tokens int64
+}
+
+// Data encodes v as the validator reads it: Constr 0 with its fields in order.
+func (v MarketDatum) Data() data.PlutusData {
+	return data.NewConstr(0,
+		data.NewByteString(bytes.Clone(v.Owner)),
+		data.NewByteString(bytes.Clone(v.Policy)),
+		data.NewByteString(bytes.Clone(v.Name)),
+		data.NewInteger(big.NewInt(v.Ada)),
+		data.NewInteger(big.NewInt(v.Tokens)),
+	)
+}
+
+// ParseMarketDatum decodes the validator's encoding of MarketDatum.
+func ParseMarketDatum(d data.PlutusData) (MarketDatum, bool) {
+	fs, ok := record(d, 5)
+	if !ok {
+		return MarketDatum{}, false
+	}
+
+	f0, ok := bytesField(fs[0])
+	if !ok {
+		return MarketDatum{}, false
+	}
+
+	f1, ok := bytesField(fs[1])
+	if !ok {
+		return MarketDatum{}, false
+	}
+
+	f2, ok := bytesField(fs[2])
+	if !ok {
+		return MarketDatum{}, false
+	}
+
+	f3, ok := intField(fs[3])
+	if !ok {
+		return MarketDatum{}, false
+	}
+
+	f4, ok := intField(fs[4])
+	if !ok {
+		return MarketDatum{}, false
+	}
+
+	return MarketDatum{
+		Owner:  f0,
+		Policy: f1,
+		Name:   f2,
+		Ada:    f3,
+		Tokens: f4,
+	}, true
+}
+
 // VestingDatum is the blueprint type continuum/types/VestingDatum.
 //
 // A vesting position: `owner` may claim from `lock_until` (POSIX ms).

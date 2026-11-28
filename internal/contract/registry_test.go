@@ -99,6 +99,7 @@ func TestRegistryEntries(t *testing.T) {
 		"disbursement":    {Spend},
 		"escrow":          {Spend},
 		"free_mint":       {Mint},
+		"market":          {Spend},
 		"vesting":         {Spend},
 	}
 	var names []string

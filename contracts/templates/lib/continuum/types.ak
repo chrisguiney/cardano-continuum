@@ -35,3 +35,21 @@ pub type DisbursementDatum {
   period: Int,
   tranche: Int,
 }
+
+/// A constant-product market (a liquidity pool) of ADA and one token: `owner` provides and
+/// retires its liquidity; anyone trades against `ada` lovelace and
+/// `tokens` of (`policy`, `name`), which the pool output holds.
+pub type MarketDatum {
+  owner: VerificationKeyHash,
+  policy: ByteArray,
+  name: ByteArray,
+  ada: Int,
+  tokens: Int,
+}
+
+/// What a market spend does: Trade is Constr 0, Provide 1, Retire 2.
+pub type MarketAction {
+  Trade
+  Provide
+  Retire
+}

@@ -8,6 +8,7 @@ import (
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 
 	"github.com/chrisguiney/cardano-continuum/internal/contract"
+	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 )
 
@@ -316,5 +317,99 @@ func TestWithdrawalIntoAScript(t *testing.T) {
 	}
 	if at != 1 {
 		t.Fatalf("%d award outputs at the disbursement contract", at)
+	}
+}
+
+// market is the one output at the market address, and its datum.
+func market(h *harness) (common.Utxo, contract.MarketDatum) {
+	h.t.Helper()
+	us := h.chain.UtxosAt(Market.Address(0))
+	if len(us) != 1 {
+		h.t.Fatalf("%d outputs at the market", len(us))
+	}
+	d, ok := MarketDatumOf(us[0])
+	if !ok {
+		h.t.Fatal("the market output does not hold its datum's reserves")
+	}
+	return us[0], d
+}
+
+func TestFillKeepsTheProduct(t *testing.T) {
+	t.Parallel()
+	d := contract.MarketDatum{Ada: 1_000_000, Tokens: 5_000}
+	for _, buy := range []bool{true, false} {
+		next, out, err := Fill(d, buy, 1_000)
+		if err != nil || out == 0 {
+			t.Fatalf("buy %v: %v, out %d", buy, err, out)
+		}
+		if next.Ada*next.Tokens < d.Ada*d.Tokens {
+			t.Fatalf("buy %v: product fell from %d to %d", buy, d.Ada*d.Tokens, next.Ada*next.Tokens)
+		}
+	}
+	if _, _, err := Fill(d, true, 0); err == nil {
+		t.Fatal("filled an empty trade")
+	}
+}
+
+// Two traders race for the market: both build against the same output,
+// the first lands, the second is refused with BadInputs (phase 1, so no
+// collateral is taken) and, rebuilt against the market the first left,
+// lands too. A sale mints the tokens it sells; the owner provides more.
+func TestMarketRace(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	bob, carol := h.store.Wallet(2), h.store.Wallet(3)
+	h.fund(bob, 60_000_000)
+	h.fund(carol, 60_000_000)
+
+	got, err := h.b.Markets().OpenMarket(ctx, h.alice, MarketOpen{Spend: h.spend(), Ada: 100_000_000, Tokens: 50_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.commit(got)
+	m, d := market(h)
+
+	spendOf := func(w keys.Wallet) Spend {
+		return Spend{Inputs: h.chain.UtxosAt(w.Address()), TTL: h.chain.Slot() + 1000}
+	}
+	first, err := h.b.Markets().Trade(ctx, bob, Trade{Spend: spendOf(bob), Pool: m, Datum: d, Buy: true, Amount: 10_000_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := h.b.Markets().Trade(ctx, carol, Trade{Spend: spendOf(carol), Pool: m, Datum: d, Buy: true, Amount: 5_000_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.commit(first)
+	h.rejects(second.Tx, fakechain.BadInputs)
+	if left := h.chain.UtxosAt(carol.Address()); len(left) != 1 || left[0].Output.Amount().Uint64() != 60_000_000 {
+		t.Fatalf("the loser's outputs changed: %d", len(left))
+	}
+
+	m, d = market(h)
+	again, err := h.b.Markets().Trade(ctx, carol, Trade{Spend: spendOf(carol), Pool: m, Datum: d, Buy: true, Amount: 5_000_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.commit(again)
+
+	m, d = market(h)
+	sale, err := h.b.Markets().Trade(ctx, bob, Trade{Spend: spendOf(bob), Pool: m, Datum: d, Amount: 2_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.commit(sale)
+
+	m, d = market(h)
+	if _, err := h.b.Markets().OpenMarket(ctx, bob, MarketOpen{Spend: spendOf(bob), Ada: 1_000_000, Tokens: 10, Pool: &m, Datum: d}); err == nil {
+		t.Fatal("someone other than the owner provided")
+	}
+	more, err := h.b.Markets().OpenMarket(ctx, h.alice, MarketOpen{Spend: h.spend(), Ada: 20_000_000, Tokens: 1_000, Pool: &m, Datum: d})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.commit(more)
+	if _, after := market(h); after.Ada != d.Ada+20_000_000 || after.Tokens != d.Tokens+1_000 {
+		t.Fatalf("after providing %+v, before %+v", after, d)
 	}
 }
