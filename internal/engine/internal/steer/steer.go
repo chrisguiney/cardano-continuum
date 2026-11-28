@@ -27,14 +27,15 @@ import (
 
 // Scenarios an inject control names.
 const (
-	// ScenarioPropose: the richest actor with a registered stake key
+	// ScenarioPropose: the network proposer (the richest actor with a
+	// registered stake key when there is none)
 	// proposes an info action.
 	ScenarioPropose = "info_proposal"
 	// ScenarioGoDark: "go_dark" or "go_dark:<pool actor>" asks for a pool to
 	// go dark, through the stake-floor guard. Without an actor it is the
 	// lowest-numbered pool actor that is live.
 	ScenarioGoDark = "go_dark"
-	// ScenarioHotKeys: the richest actor pays to authorise a hot key for
+	// ScenarioHotKeys: the network proposer pays to authorise a hot key for
 	// every genesis committee member.
 	ScenarioHotKeys = "hot_keys"
 	// ScenarioSPOProbe: the richest registered pool votes on an open
@@ -47,7 +48,7 @@ const (
 	// holds colons of its own, so the epochs come first.
 	ScenarioUpgrade = "upgrade"
 	// ScenarioHardFork: "hard_fork" or "hard_fork:<major.minor>" has the
-	// richest registered actor propose a hard fork to that version, the
+	// network proposer propose a hard fork to that version, the
 	// next major by default.
 	ScenarioHardFork = "hard_fork"
 )
@@ -73,7 +74,7 @@ func Catalog() []ScenarioInfo {
 	return []ScenarioInfo{
 		{
 			Name:        ScenarioPropose,
-			Description: "The richest actor with a registered stake key proposes an info action, a governance poll that changes nothing, so voters have something to vote on.",
+			Description: "The network proposer proposes an info action, a governance poll that changes nothing, so voters have something to vote on.",
 		},
 		{
 			Name:        ScenarioGoDark,
@@ -84,7 +85,7 @@ func Catalog() []ScenarioInfo {
 		},
 		{
 			Name:        ScenarioHotKeys,
-			Description: "The richest actor pays to authorise a hot key for every genesis constitutional committee member, so the committee can vote.",
+			Description: "The network proposer pays to authorise a hot key for every genesis constitutional committee member, so the committee can vote.",
 		},
 		{
 			Name:        ScenarioSPOProbe,
@@ -95,7 +96,7 @@ func Catalog() []ScenarioInfo {
 			Arg:         "protocol version major.minor",
 			Optional:    true,
 			Example:     "11.0",
-			Description: "The richest actor with a registered stake key proposes a hard fork to the version (the next major by default). The committee, the DReps and the pools vote; once ratified at an epoch boundary the network moves to the version at the next, and every node must follow. Refused while a hard fork is open or ratified and not yet enacted.",
+			Description: "The network proposer proposes a hard fork to the version (the next major by default). The committee, the DReps and the pools vote; once ratified at an epoch boundary the network moves to the version at the next, and every node must follow. Refused while a hard fork is open or ratified and not yet enacted.",
 		},
 		{
 			Name:        ScenarioUpgrade,
@@ -111,16 +112,16 @@ const upgradeSteepness = 4
 
 // Scenarios routes an inject control to the intent that carries it out.
 type Scenarios interface {
-	// Propose has the richest registered actor propose an info action.
+	// Propose has the network proposer propose an info action.
 	Propose(ctx context.Context, at sched.Time) (string, error)
 	// SPOProbe has the richest registered pool vote where pools may not.
 	SPOProbe(ctx context.Context, at sched.Time) (string, error)
 	// GoDark asks the stake floor to take a pool dark (arg names the pool,
 	// empty for the first live one).
 	GoDark(at sched.Time, arg string) string
-	// HotKeys has the richest actor authorise every committee hot key.
+	// HotKeys has the network proposer authorise every committee hot key.
 	HotKeys(ctx context.Context, at sched.Time) (string, error)
-	// HardFork has the richest registered actor propose a hard fork to
+	// HardFork has the network proposer propose a hard fork to
 	// version arg ("major.minor"; empty for the next major).
 	HardFork(ctx context.Context, at sched.Time, arg string) (string, error)
 }

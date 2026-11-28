@@ -43,7 +43,7 @@ type scenarioRoute struct{ e *Engine }
 // Propose implements steer.Scenarios.
 func (r scenarioRoute) Propose(ctx context.Context, at sched.Time) (string, error) {
 	e := r.e
-	id, ok := r.richest(func(id population.ActorID) bool { return e.win.View().StakeRegistered(id) })
+	id, ok := r.proposer(func(id population.ActorID) bool { return e.win.View().StakeRegistered(id) })
 	if !ok {
 		return "no actor with a registered stake key", nil
 	}
@@ -108,7 +108,7 @@ func (r scenarioRoute) GoDark(at sched.Time, arg string) string {
 // HotKeys implements steer.Scenarios.
 func (r scenarioRoute) HotKeys(ctx context.Context, at sched.Time) (string, error) {
 	e := r.e
-	id, ok := r.richest(func(population.ActorID) bool { return true })
+	id, ok := r.proposer(func(population.ActorID) bool { return true })
 	if !ok {
 		return "no actor to pay", nil
 	}
@@ -121,8 +121,8 @@ func (r scenarioRoute) HotKeys(ctx context.Context, at sched.Time) (string, erro
 	return "", nil
 }
 
-// HardFork implements steer.Scenarios: the richest actor with a
-// registered stake key proposes a hard fork from the version in force to
+// HardFork implements steer.Scenarios: the network proposer proposes a
+// hard fork from the version in force to
 // arg (the next major when empty). It keeps one hard fork at a time, open,
 // being proposed or ratified and not yet enacted (models/specs/
 // governance-change HardFork.tla, rule 3; HardForkNoPendingGuardBug): a
@@ -145,7 +145,7 @@ func (r scenarioRoute) HardFork(ctx context.Context, at sched.Time, arg string) 
 		return why, nil
 	}
 
-	id, ok := r.richest(func(id population.ActorID) bool { return v.StakeRegistered(id) })
+	id, ok := r.proposer(func(id population.ActorID) bool { return v.StakeRegistered(id) })
 	if !ok {
 		return "no actor with a registered stake key", nil
 	}
@@ -177,6 +177,22 @@ func forkBlocked(e *Engine, cur, to protocol.Version) string {
 		}
 	}
 	return ""
+}
+
+// proposer is the network proposer, the actor that submits the network's
+// governance actions and holds the committee keys, when it is live and
+// passes ok; otherwise the richest actor that passes ok, so a profile set
+// without a proposer can still run the scenario.
+func (r scenarioRoute) proposer(ok func(population.ActorID) bool) (population.ActorID, bool) {
+	e := r.e
+	for _, id := range e.co.IDs() {
+		a, _ := e.co.Get(id)
+		if st := e.co.Rec(id); st != nil && st.Prof.Name == proposerName && a.State != population.Abandoned && ok(id) {
+			return id, true
+		}
+	}
+
+	return r.richest(ok)
 }
 
 // richest is the wallet or pool actor with the most to spend that passes

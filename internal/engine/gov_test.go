@@ -600,7 +600,57 @@ func TestHardForkThroughFakeChain(t *testing.T) {
 	if !slices.Contains(seen, want) {
 		t.Fatalf("the node never reported %v: %v", want, seen)
 	}
+
+	if by := forkProposers(t, w, p.r.Engine()); len(by) == 0 || slices.ContainsFunc(by, func(n string) bool { return n != proposerName }) {
+		t.Fatalf("hard fork proposed by profiles %v, want only the network proposer %q", by, proposerName)
+	}
 	jointVote(t, w, p.r.Engine())
+}
+
+// The network proposer submits an injected hard fork, info proposal and
+// committee hot keys even when another actor holds more: a wealthy staker
+// with a registered stake key must not become the network's proposer.
+func TestScenariosUseTheNetworkProposer(t *testing.T) {
+	t.Parallel()
+	rich := strings.Replace(govYAML, "budget: 1000000000", "budget: 900000000000000", 1)
+	if rich == govYAML {
+		t.Fatal("fixture no longer has the staker budget to raise")
+	}
+
+	cfg := populationConfig(t, 4, populationFile(t, rich))
+	cfg.Committee = 3
+	w := newWorld(t, cfg)
+	w.controls = &scriptControls{clock: w.clock, at: []sched.Time{3 * 3600 * 1000}, cs: []control{
+		{RequestID: "fork", Op: "inject", Scenario: steer.ScenarioHardFork},
+	}}
+	w.run(4*3600*1000, 50, nil)
+
+	p, err := w.start(nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if by := forkProposers(t, w, p.r.Engine()); len(by) == 0 || slices.ContainsFunc(by, func(n string) bool { return n != proposerName }) {
+		t.Fatalf("hard fork proposed by profiles %v, want only the network proposer %q", by, proposerName)
+	}
+}
+
+// forkProposers are the profile names of the actors whose submissions
+// proposed a hard fork.
+func forkProposers(t *testing.T, w *world, e *Engine) []string {
+	t.Helper()
+	var out []string
+	for _, rec := range logRecords(t, w.log) {
+		var s Submitted
+		if rec.Kind != KindSubmitted || eventlog.Decode(rec.Body, &s) != nil || s.Action != string(build.ActionHardFork) {
+			continue
+		}
+
+		if prof := (roster{e.co}).Profile(population.ActorID(rec.Actor)); prof != nil {
+			out = append(out, prof.Name)
+		}
+	}
+	return out
 }
 
 // From protocol version 11 the committee's votes carry their own hot-key
