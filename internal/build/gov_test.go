@@ -190,10 +190,9 @@ func TestProposeActionTypes(t *testing.T) {
 	}
 }
 
-// A committee vote that carries its seat's hot-key authorisation is
-// accepted before any separate authorisation: the certificate applies
-// before the vote, and the cold and hot keys both witness it.
-func TestCommitteeVoteAuthorisesItsHotKey(t *testing.T) {
+// A committee vote by a hot key the chain has not authorised is refused
+// from the mempool, as a cardano-node refuses it: authorise first.
+func TestCommitteeVoteBeforeAuthorisationRefused(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	h.registerStake()
@@ -202,16 +201,13 @@ func TestCommitteeVoteAuthorisesItsHotKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.commit(prop)
-	cold, hot := h.store.CommitteeSigners(0)
-	sp := h.spend()
-	vote := Vote{Spend: sp, Voter: hot, Role: RoleCommittee, Cold: &cold, Action: common.GovActionId{TransactionId: prop.ID}, Choice: common.GovVoteYes}
+	_, hot := h.store.CommitteeSigners(0)
+	vote := Vote{Spend: h.spend(), Voter: hot, Role: RoleCommittee, Action: common.GovActionId{TransactionId: prop.ID}, Choice: common.GovVoteYes}
 	got, err := h.b.Gov().Vote(ctx, h.alice, vote)
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.check(got, sp.Inputs, want{signers: []keys.Credential{h.alice.PaymentKeyHash(), cold.KeyHash(), hot.KeyHash()}},
-		func() (Built, error) { return h.b.Gov().Vote(ctx, h.alice, vote) })
-	h.commit(got)
+	h.rejects(got.Tx, fakechain.MempoolFailure)
 }
 
 func actionTypeOf(a common.GovAction) (ActionType, bool) {

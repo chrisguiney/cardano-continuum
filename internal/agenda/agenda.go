@@ -25,12 +25,22 @@ import (
 //
 // CommitteeVote is a constitutional committee seat's vote, which the
 // network proposer casts for the seat; the intent's Target is the seat.
+// CommitteeAuth authorises the seat's hot key, which the proposer does in
+// a transaction of its own before the seat's first vote: a cardano-node
+// mempool refuses a vote whose hot key the chain has not yet authorised,
+// even when the same transaction carries the authorisation.
 const (
 	Idle          profile.IntentKind = "idle"
 	GoDark        profile.IntentKind = "go_dark"
 	GoLive        profile.IntentKind = "go_live"
 	CommitteeVote profile.IntentKind = "committee_vote"
+	CommitteeAuth profile.IntentKind = "committee_auth"
 )
+
+// Kinds are the intents that are not profile intent kinds, sorted.
+func Kinds() []profile.IntentKind {
+	return []profile.IntentKind{CommitteeAuth, CommitteeVote, GoDark, GoLive, Idle}
+}
 
 // ErrUnknown is returned by For for a name with no agenda.
 var ErrUnknown = errors.New("unknown agenda")

@@ -47,12 +47,6 @@ type Vote struct {
 	Choice uint8
 	// Anchor is the vote's rationale, nil for none.
 	Anchor *common.GovAnchor
-	// Cold, for a committee vote, is the seat's cold key: the transaction
-	// then also authorises Voter as the seat's hot key. The ledger applies
-	// certificates before votes, so the vote counts, and re-authorising
-	// the same key changes nothing, so a voter that does not track whether
-	// it authorised can always send it.
-	Cold *keys.Signer
 }
 
 // Proposal submits a governance action of type Action (info when
@@ -172,18 +166,8 @@ func (f Gov) Vote(ctx context.Context, w keys.Wallet, v Vote) (Built, error) {
 		return Built{}, fmt.Errorf("build: unknown vote %d", v.Choice)
 	}
 	voter := common.Voter{Type: t, Hash: v.Voter.KeyHash()}
-	signers := []keys.Signer{v.Voter}
-	var certs []common.Certificate
-	if v.Cold != nil && v.Role == RoleCommittee {
-		signers = append(signers, *v.Cold)
-		certs = append(certs, &common.AuthCommitteeHotCertificate{
-			CertType:       uint(common.CertificateTypeAuthCommitteeHot),
-			ColdCredential: keyCred(v.Cold.KeyHash()), HotCredential: keyCred(v.Voter.KeyHash()),
-		})
-	}
-
 	return f.b.finish(ctx, w, spec{
-		sp: v.Spend, signers: signers, certs: certs,
+		sp: v.Spend, signers: []keys.Signer{v.Voter},
 		add: func(a *apollo.Apollo) (*apollo.Apollo, error) {
 			return a.AddVote(voter, v.Action, common.VotingProcedure{Vote: v.Choice, Anchor: v.Anchor}), nil
 		},

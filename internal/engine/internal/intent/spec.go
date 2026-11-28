@@ -116,6 +116,7 @@ var specs = map[string]kind{
 		}},
 	string(profile.IntentVote):   {need: none, headroom: FeeHeadroom, closing: lastEpoch, deposit: noDeposit, build: buildVote},
 	string(agenda.CommitteeVote): {need: none, headroom: FeeHeadroom, closing: lastEpoch, deposit: noDeposit, build: buildCommitteeVote},
+	string(agenda.CommitteeAuth): {need: none, headroom: FeeHeadroom, deposit: noDeposit, build: buildCommitteeAuth},
 	string(profile.IntentPropose): {need: func(c *core, _ *wire.Pending) uint64 { return c.spec.Build.GovActionDeposit }, headroom: FeeHeadroom,
 		deposit: func(c *core, _ *wire.Pending) int64 { return int64(c.spec.Build.GovActionDeposit) }, build: buildPropose},
 	string(profile.IntentRetireDRep): {need: none, headroom: FeeHeadroom,
@@ -194,12 +195,18 @@ func buildVote(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, p *w
 	return c.spec.Builder.Gov().Vote(ctx, w, v)
 }
 
-// buildCommitteeVote casts seat p.To's vote with its hot key, authorising
-// the key in the same transaction (build.Vote.Cold).
+// buildCommitteeVote casts seat p.To's vote with its hot key, which an
+// earlier committee_auth has authorised.
 func buildCommitteeVote(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, p *wire.Pending) (build.Built, error) {
 	act := common.GovActionId{TransactionId: common.Blake2b256(p.Action.Tx), GovActionIdx: p.Action.Index}
+	_, hot := c.env.Ring.Committee(uint32(p.To))
+	return c.spec.Builder.Gov().Vote(ctx, w, build.Vote{Spend: sp, Voter: hot, Role: build.RoleCommittee, Action: act, Choice: p.Choice})
+}
+
+// buildCommitteeAuth authorises seat p.To's hot key with its cold key.
+func buildCommitteeAuth(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, p *wire.Pending) (build.Built, error) {
 	cold, hot := c.env.Ring.Committee(uint32(p.To))
-	return c.spec.Builder.Gov().Vote(ctx, w, build.Vote{Spend: sp, Voter: hot, Role: build.RoleCommittee, Cold: &cold, Action: act, Choice: p.Choice})
+	return c.spec.Builder.Gov().AuthorizeHot(ctx, w, build.HotAuth{Spend: sp, Cold: cold, Hot: hot.KeyHash()})
 }
 
 // buildPropose submits the proposal; a parameter change is the one the

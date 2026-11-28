@@ -208,15 +208,54 @@ func (pp *Pop) clockRate(id population.ActorID, st Subject, c Clock) float64 {
 	return c.Rate
 }
 
-// committeeVote is the proposer's committee decision: the seat's vote due
-// soonest, or idle when none is.
+// committeeVote is the proposer's committee decision. A due seat whose hot
+// key the chain has not authorised gets its authorisation first, one at a
+// time; otherwise the authorised seat's vote due soonest; idle when none
+// is. A cardano-node mempool refuses a vote whose hot key is authorised
+// only by the same transaction (fakechain's unelected), so the two never
+// share one.
 func (pp *Pop) committeeVote(id population.ActorID) agenda.Decision {
 	due := pp.committeeDue()
 	if len(due) == 0 {
 		return agenda.Decision{Intent: agenda.Intent{Kind: agenda.Idle, Actor: id},
 			Scores: []agenda.Score{{Kind: agenda.CommitteeVote, Why: "no committee vote due"}}}
 	}
-	d := due[0]
+
+	c, _ := pp.env.Agenda.Agenda().(agenda.Committee)
+	i := slices.IndexFunc(due, func(d seatVote) bool { return !c.HotAuthorized(d.seat) })
+	if i >= 0 && !pp.env.Flight.InFlight(id, string(agenda.CommitteeAuth)) {
+		d := due[i]
+		s := agenda.Score{
+			Kind:   agenda.CommitteeAuth,
+			Value:  1,
+			Target: population.ActorID(d.seat),
+			Why:    fmt.Sprintf("seat %d's hot key is not authorised; its vote on %s waits for it", d.seat, d.proposal.ID),
+		}
+		in := agenda.Intent{
+			Kind:   s.Kind,
+			Actor:  id,
+			Target: s.Target,
+		}
+		return agenda.Decision{
+			Intent: in,
+			Scores: []agenda.Score{s},
+		}
+	}
+
+	i = slices.IndexFunc(due, func(d seatVote) bool { return c.HotAuthorized(d.seat) })
+	if i < 0 {
+		return agenda.Decision{
+			Intent: agenda.Intent{
+				Kind:  agenda.Idle,
+				Actor: id,
+			},
+			Scores: []agenda.Score{{
+				Kind: agenda.CommitteeVote,
+				Why:  "hot key authorisation in flight",
+			}},
+		}
+	}
+	d := due[i]
 	s := agenda.Score{Kind: agenda.CommitteeVote, Value: 1, Target: population.ActorID(d.seat), Proposal: d.proposal.ID,
 		Why: fmt.Sprintf("seat %d on %s proposal %s, expires epoch %d", d.seat, d.proposal.Type, d.proposal.ID, d.proposal.Expires)}
 	return agenda.Decision{Intent: agenda.Intent{Kind: s.Kind, Actor: id, Target: s.Target, Proposal: s.Proposal}, Scores: []agenda.Score{s}}

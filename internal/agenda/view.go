@@ -72,6 +72,9 @@ type Committee interface {
 	Seats() int
 	// CommitteeVoted reports that seat has a vote on p.
 	CommitteeVoted(seat int, p ProposalID) bool
+	// HotAuthorized reports that the chain has authorised seat's hot key,
+	// so the seat can vote.
+	HotAuthorized(seat int) bool
 }
 
 // Market is a signal of how busy the chain is.

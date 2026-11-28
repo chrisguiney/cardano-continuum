@@ -112,6 +112,9 @@ func (v govView) CommitteeVoted(seat int, p agenda.ProposalID) bool {
 	return v.e.win.View().CommitteeVoted(seat, p)
 }
 
+// HotAuthorized implements agenda.Committee.
+func (v govView) HotAuthorized(seat int) bool { return v.e.win.View().HotAuthorized(seat) }
+
 // advView is the adversaries' side of the view: adversary.Sight and the
 // cost ceiling left.
 type advView struct{ e *Engine }

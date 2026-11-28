@@ -75,6 +75,11 @@ const (
 	DisallowedVoters             Class = "DisallowedVoters"
 )
 
+// MempoolFailure is the LEDGER rule's ConwayMempoolFailure, which only a
+// node's mempool raises (eras/conway/impl/src/Cardano/Ledger/Conway/Rules/
+// Mempool.hs), with free text.
+const MempoolFailure Class = "ConwayMempoolFailure"
+
 // unmappedPrefix marks a failure from a gouroboros rule that has no
 // one-to-one cardano-ledger name. It is reported rather than dropped so a
 // rejection is never silently weaker than the rule set that produced it.
