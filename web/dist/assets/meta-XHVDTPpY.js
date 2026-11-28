@@ -1,1 +1,0 @@
-import{_t as e,dt as t,vt as n}from"./index-D0Sy5vif.js";var r=n(e(),1);function i(e,t){return e.map(e=>({value:e,label:t&&t[e]!==void 0?`${e} (${t[e]})`:e}))}var a=null;function o(){let[e,n]=(0,r.useState)(null);return(0,r.useEffect)(()=>{a??=t(`/api/meta/enums`),a.then(n,()=>{a=null})},[]),e}export{o as n,i as t};
