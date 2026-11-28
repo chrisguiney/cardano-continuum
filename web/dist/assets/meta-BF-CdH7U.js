@@ -1,1 +1,0 @@
-import{_t as e,gt as t,ut as n}from"./index-B2P2OPxL.js";var r=e(t(),1);function i(e,t){return e.map(e=>({value:e,label:t&&t[e]!==void 0?`${e} (${t[e]})`:e}))}var a=null;function o(){let[e,t]=(0,r.useState)(null);return(0,r.useEffect)(()=>{a??=n(`/api/meta/enums`),a.then(t,()=>{a=null})},[]),e}export{o as n,i as t};
