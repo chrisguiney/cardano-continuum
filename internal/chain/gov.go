@@ -13,6 +13,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
+	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 )
 
 // GovID names a governance action: the transaction that proposed it and the
@@ -64,12 +65,15 @@ type Proposal struct {
 	Type    string
 	Pools   bool
 	Deposit uint64
-	// Prev is a parameter change's predecessor (prevGovActionId), nil for
-	// none.
+	// Prev is a parameter change's or a hard fork's predecessor
+	// (prevGovActionId), nil for none.
 	Prev *GovID
 	// GovGroup reports that a parameter change touches the governance
 	// group, whose DRep threshold is the highest (govGroup).
 	GovGroup bool
+	// Version is the protocol version a hard fork moves to, nil for any
+	// other action.
+	Version *protocol.Version
 }
 
 // ProposalState is a tracked governance action: what it proposes, the
@@ -81,10 +85,13 @@ type ProposalState struct {
 	Type    string
 	Pools   bool
 	Deposit uint64
-	// Prev and GovGroup are the Proposal's.
+	// Prev, GovGroup and Version are the Proposal's.
 	Prev     *GovID
 	GovGroup bool
-	// Enacted is set at the epoch boundary that enacted the change.
+	Version  *protocol.Version
+	// Enacted is set at the epoch boundary that ratified the action: a
+	// parameter change takes effect there, a hard fork at the next
+	// (Fork.At).
 	Enacted bool
 }
 
@@ -97,9 +104,11 @@ type proposal struct {
 	pools bool
 	// deposit is the lovelace the proposer deposited.
 	deposit uint64
-	// prev and govGroup are the Proposal's Prev and GovGroup.
+	// prev, govGroup and version are the Proposal's Prev, GovGroup and
+	// Version.
 	prev     *GovID
 	govGroup bool
+	version  *protocol.Version
 	// enacted is set by ratify.
 	enacted bool
 }
@@ -108,6 +117,16 @@ type proposal struct {
 func proposalOf(id GovID, p common.ProposalProcedure) Proposal {
 	typ, pools := actionOf(p.GovAction())
 	prev, gov := changeOf(p.GovAction())
+	if fp, v := forkOf(p.GovAction()); v != nil {
+		return Proposal{
+			ID:      id,
+			Type:    typ,
+			Pools:   pools,
+			Deposit: p.Deposit(),
+			Prev:    fp,
+			Version: v,
+		}
+	}
 	return Proposal{
 		ID:       id,
 		Type:     typ,
@@ -199,10 +218,12 @@ type govUndo struct {
 	props map[GovID]proposal
 	votes map[voteKey]uint8
 	root  *GovID
+	forks []Fork
 }
 
 // gov is the view's governance state: every proposal seen, the votes of
-// the voters the book names on them, and the parameter-change root.
+// the voters the book names on them, the parameter-change root and the
+// hard forks ratified.
 type gov struct {
 	// book names the run's voters.
 	book *Book
@@ -213,15 +234,19 @@ type gov struct {
 	// root is the last parameter change ratify enacted, nil while none
 	// has been: the predecessor the ledger accepts for the next one.
 	root *GovID
+	// forks is the protocol-version history; its last fork is the
+	// hard-fork root.
+	forks
 }
 
-func newGov(b *Book) gov {
-	return gov{book: b, props: map[GovID]proposal{}, votes: map[voteKey]uint8{}}
+func newGov(b *Book, base protocol.Version) gov {
+	return gov{book: b, props: map[GovID]proposal{}, votes: map[voteKey]uint8{}, forks: forks{base: base}}
 }
 
 func (g gov) clone() gov {
 	g.props = maps.Clone(g.props)
 	g.votes = maps.Clone(g.votes)
+	g.list = slices.Clone(g.list)
 	return g
 }
 
@@ -242,6 +267,7 @@ func (g *gov) applyGov(tx Tx, expires uint64, u *undo) bool {
 			deposit:  p.Deposit,
 			prev:     p.Prev,
 			govGroup: p.GovGroup,
+			version:  p.Version,
 		}
 		seen = true
 	}
@@ -292,13 +318,13 @@ func (g *gov) CommitteeVoted(i int, p agenda.ProposalID) bool {
 // per touched block is cheaper than a per-key log.
 func (g *gov) touchGov(u *undo) {
 	if u.gov == nil {
-		u.gov = &govUndo{props: maps.Clone(g.props), votes: maps.Clone(g.votes), root: g.root}
+		u.gov = &govUndo{props: maps.Clone(g.props), votes: maps.Clone(g.votes), root: g.root, forks: slices.Clone(g.list)}
 	}
 }
 
 func (g *gov) restoreGov(u undo) {
 	if u.gov != nil {
-		g.props, g.votes, g.root = u.gov.props, u.gov.votes, u.gov.root
+		g.props, g.votes, g.root, g.list = u.gov.props, u.gov.votes, u.gov.root, u.gov.forks
 	}
 }
 
@@ -311,19 +337,30 @@ func (g *gov) enact(id GovID, u *undo) {
 	g.root = &id
 }
 
-// restoreRoot sets the root from the enacted changes after a restart:
-// each enacted change names the root as it stood, so they form one chain,
-// and the root is the one no other enacted change names.
+// ratifyFork marks the hard fork p ratified at the boundary into epoch
+// ep: it is the hard-fork root, and its version is in force from ep + 1.
+func (g *gov) ratifyFork(p ProposalState, ep uint64, u *undo) {
+	g.touchGov(u)
+	x := g.props[p.ID]
+	x.enacted = true
+	g.props[p.ID] = x
+	g.list = append(g.list, Fork{ID: p.ID, Version: *p.Version, At: ep + 1})
+}
+
+// restoreRoot sets the root from the enacted parameter changes after a
+// restart: each enacted change names the root as it stood, so they form
+// one chain, and the root is the one no other enacted change names. Hard
+// forks are ratified too, but have their own chain (forks).
 func (g *gov) restoreRoot() {
 	named := map[GovID]bool{}
 	for _, p := range g.props {
-		if p.enacted && p.prev != nil {
+		if p.enacted && p.typ == "parameter_change" && p.prev != nil {
 			named[*p.prev] = true
 		}
 	}
 
 	for id, p := range g.props {
-		if p.enacted && !named[id] {
+		if p.enacted && p.typ == "parameter_change" && !named[id] {
 			g.root = &id
 		}
 	}
@@ -340,6 +377,7 @@ func (g *gov) govState() ([]ProposalState, []VoteState) {
 			Deposit:  p.deposit,
 			Prev:     p.prev,
 			GovGroup: p.govGroup,
+			Version:  p.version,
 			Enacted:  p.enacted,
 		})
 	}

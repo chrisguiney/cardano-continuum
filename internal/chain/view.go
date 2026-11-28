@@ -14,6 +14,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/policy"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
+	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 )
 
@@ -40,6 +41,9 @@ type Config struct {
 	// GovLifetime is govActionLifetime in epochs: a proposal made in epoch e
 	// can be voted on through epoch e + GovLifetime.
 	GovLifetime uint64
+	// Version is the protocol version at genesis; hard forks the view
+	// ratifies move it (forks).
+	Version protocol.Version
 }
 
 // View is the engine's knowledge of the chain: the UTxOs, stake, pools and
@@ -152,6 +156,8 @@ type State struct {
 	Votes     []VoteState
 	// Hot are the book's committee hot keys authorised on the chain.
 	Hot []common.Blake2b224
+	// Forks are the hard forks ratified, oldest first.
+	Forks []Fork
 }
 
 // New returns a view holding s, with s.At as both tip and settled point.
@@ -167,7 +173,7 @@ func New(cfg Config, s State) (*View, error) {
 		accounts: newAccounts(cfg.Book),
 		registry: newRegistry(cfg.Book),
 		ep:       epochs{label: s.Label, frozen: s.Frozen, mark: slices.Clone(s.Mark), set: slices.Clone(s.Set)},
-		gov:      newGov(cfg.Book),
+		gov:      newGov(cfg.Book, cfg.Version),
 	}
 	for _, p := range s.Proposals {
 		v.props[p.ID] = proposal{
@@ -177,9 +183,11 @@ func New(cfg Config, s State) (*View, error) {
 			deposit:  p.Deposit,
 			prev:     p.Prev,
 			govGroup: p.GovGroup,
+			version:  p.Version,
 			enacted:  p.Enacted,
 		}
 	}
+	v.list = slices.Clone(s.Forks)
 	for _, x := range s.Votes {
 		v.votes[voteKey{x.Action, x.Voter}] = x.Choice
 	}
@@ -457,6 +465,7 @@ func (v *View) Snapshot() State {
 	s.Mark, s.Set = slices.Clone(v.ep.mark), slices.Clone(v.ep.set)
 	s.Proposals, s.Votes = v.govState()
 	s.Hot = sortedKeys(v.hot)
+	s.Forks = v.Forks()
 	return s
 }
 
