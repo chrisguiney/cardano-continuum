@@ -74,6 +74,11 @@ type ViewRec struct {
 	Hot []common.Blake2b224 `json:"hot,omitempty"`
 	// Forks are the hard forks the view ratified, oldest first.
 	Forks []chain.Fork `json:"forks,omitempty"`
+	// Treasury, Rewards and Payout are the view's treasury reckoning
+	// (chain.State).
+	Treasury uint64             `json:"treasury,omitzero"`
+	Rewards  []chain.Withdrawal `json:"rewards,omitempty"`
+	Payout   []chain.Withdrawal `json:"payout,omitempty"`
 }
 
 // UtxoRec is one output of the view, its CBOR as the block carried it.

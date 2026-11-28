@@ -158,6 +158,13 @@ type State struct {
 	Hot []common.Blake2b224
 	// Forks are the hard forks ratified, oldest first.
 	Forks []Fork
+	// Treasury is the treasury's lovelace as the view reckons it (purse);
+	// a new chain's is the genesis treasury. Rewards are the reward
+	// balances and Payout the withdrawals enacted but not yet paid, by
+	// stake credential.
+	Treasury uint64
+	Rewards  []Withdrawal
+	Payout   []Withdrawal
 }
 
 // New returns a view holding s, with s.At as both tip and settled point.
@@ -177,15 +184,25 @@ func New(cfg Config, s State) (*View, error) {
 	}
 	for _, p := range s.Proposals {
 		v.props[p.ID] = proposal{
-			expires:  p.Expires,
-			typ:      p.Type,
-			pools:    p.Pools,
-			deposit:  p.Deposit,
-			prev:     p.Prev,
-			govGroup: p.GovGroup,
-			version:  p.Version,
-			enacted:  p.Enacted,
+			expires:     p.Expires,
+			typ:         p.Type,
+			pools:       p.Pools,
+			deposit:     p.Deposit,
+			prev:        p.Prev,
+			govGroup:    p.GovGroup,
+			version:     p.Version,
+			withdrawals: p.Withdrawals,
+			enacted:     p.Enacted,
 		}
+	}
+
+	v.funds = s.Treasury
+	for _, w := range s.Rewards {
+		v.rewards[w.Cred] = w.Amount
+	}
+
+	for _, w := range s.Payout {
+		v.payout[w.Cred] = w.Amount
 	}
 	v.list = slices.Clone(s.Forks)
 	for _, x := range s.Votes {
@@ -392,6 +409,10 @@ func (v *View) applyTx(tx Tx, u *undo) []Effect {
 	if v.applyGov(tx, v.cfg.Slots.EpochOfSlot(u.point.Slot)+v.cfg.GovLifetime, u) {
 		eff = append(eff, Effect{Kind: GovSeen, Tx: tx.Hash})
 	}
+
+	if withdraw(v, tx.Withdrawals, u) {
+		eff = append(eff, Effect{Kind: GovSeen, Tx: tx.Hash})
+	}
 	if len(eff) == 0 {
 		return nil
 	}
@@ -466,6 +487,7 @@ func (v *View) Snapshot() State {
 	s.Proposals, s.Votes = v.govState()
 	s.Hot = sortedKeys(v.hot)
 	s.Forks = v.Forks()
+	s.Treasury, s.Rewards, s.Payout = v.funds, sortedWithdrawals(v.rewards), sortedWithdrawals(v.payout)
 	return s
 }
 

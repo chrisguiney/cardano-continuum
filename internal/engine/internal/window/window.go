@@ -85,6 +85,9 @@ type Saved struct {
 	Fees uint64 `json:"fees"`
 	// Foreign is the lovelace confirmed blocks paid outside the population.
 	Foreign uint64 `json:"foreign"`
+	// Inflow is the lovelace settled reward withdrawals took from reward
+	// accounts, from outside the genesis total.
+	Inflow uint64 `json:"inflow,omitzero"`
 }
 
 // Image is the window's section of a snapshot: its durable counters, the
@@ -248,6 +251,9 @@ func (w *Window) Points() []eventlog.ChainPoint {
 	return out
 }
 
+// Inflow counts n lovelace a settled reward withdrawal brought in.
+func (w *Window) Inflow(n uint64) { w.sv.Inflow += n }
+
 // Reclaim takes n back out of the foreign count, not below zero: value the
 // population got back from outside it after it had counted as foreign.
 func (w *Window) Reclaim(n uint64) { w.sv.Foreign -= min(w.sv.Foreign, n) }
@@ -325,7 +331,7 @@ func viewBlock(prev eventlog.ChainPoint, b wire.Block) (chain.Block, error) {
 }
 
 func viewTx(d wire.TxDigest) (chain.Tx, error) {
-	t := chain.Tx{Hash: chain.TxID(d.ID), Fee: d.Fee}
+	t := chain.Tx{Hash: chain.TxID(d.ID), Fee: d.Fee, Withdrawals: wire.Withdrawals(d.Withdrawals)}
 	for _, r := range d.Inputs {
 		t.Spends = append(t.Spends, chain.Ref{Tx: chain.TxID(r.Tx), Index: r.Index})
 	}
@@ -368,13 +374,14 @@ func viewProposal(id chain.GovID, g wire.ProposalDigest) chain.Proposal {
 		prev = &chain.GovID{Tx: chain.TxID(g.Prev.Tx), Index: g.Prev.Index}
 	}
 	return chain.Proposal{
-		ID:       id,
-		Type:     g.Type,
-		Pools:    g.Pools,
-		Deposit:  g.Deposit,
-		Prev:     prev,
-		GovGroup: g.GovGroup,
-		Version:  g.Version,
+		ID:          id,
+		Type:        g.Type,
+		Pools:       g.Pools,
+		Deposit:     g.Deposit,
+		Prev:        prev,
+		GovGroup:    g.GovGroup,
+		Version:     g.Version,
+		Withdrawals: wire.Withdrawals(g.Withdrawals),
 	}
 }
 

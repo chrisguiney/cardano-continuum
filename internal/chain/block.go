@@ -106,6 +106,9 @@ type Tx struct {
 	// transaction that failed phase-2 validation.
 	Proposals []Proposal
 	Votes     []Vote
+	// Withdrawals are the key-hash reward withdrawals; empty for a
+	// transaction that failed phase-2 validation.
+	Withdrawals []Withdrawal
 	// Fee is the lovelace the transaction moves to the fee pot: the body
 	// fee, or for an invalid transaction its forfeited total collateral.
 	Fee uint64
@@ -127,6 +130,7 @@ func TxFrom(tx common.Transaction) Tx {
 			out.Proposals = append(out.Proposals, proposalOf(GovID{Tx: out.Hash, Index: uint32(i)}, p))
 		}
 		out.Votes = votesOf(tx.VotingProcedures())
+		out.Withdrawals = txWithdrawals(tx)
 		if f := tx.Fee(); f != nil {
 			out.Fee = f.Uint64()
 		}

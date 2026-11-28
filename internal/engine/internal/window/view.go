@@ -16,6 +16,7 @@ func encodeView(s chain.State) (wire.ViewRec, error) {
 	r := wire.ViewRec{
 		At: s.At.Log(), Height: s.Height, Stake: s.Stake, Pools: s.Pools, DReps: s.DReps, Label: s.Label,
 		Frozen: s.Frozen, Mark: s.Mark, Set: s.Set, Proposals: s.Proposals, Votes: s.Votes, Hot: s.Hot, Forks: s.Forks,
+		Treasury: s.Treasury, Rewards: s.Rewards, Payout: s.Payout,
 	}
 	for _, u := range s.Utxos {
 		raw := u.Output.Cbor()
@@ -38,6 +39,7 @@ func decodeView(r wire.ViewRec) (chain.State, error) {
 	s := chain.State{
 		At: at, Height: r.Height, Stake: r.Stake, Pools: r.Pools, DReps: r.DReps, Label: r.Label,
 		Frozen: r.Frozen, Mark: r.Mark, Set: r.Set, Proposals: r.Proposals, Votes: r.Votes, Hot: r.Hot, Forks: r.Forks,
+		Treasury: r.Treasury, Rewards: r.Rewards, Payout: r.Payout,
 	}
 	for _, u := range r.Utxos {
 		out, err := ledger.NewTransactionOutputFromCbor(u.Out)

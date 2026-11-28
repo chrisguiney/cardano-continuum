@@ -32,14 +32,16 @@ func DigestOf(b chain.Block) ([]byte, error) {
 				prev = &Ref{Tx: TxID(p.Prev.Tx), Index: p.Prev.Index}
 			}
 			d.Gov = append(d.Gov, ProposalDigest{
-				Type:     p.Type,
-				Pools:    p.Pools,
-				Deposit:  p.Deposit,
-				Prev:     prev,
-				GovGroup: p.GovGroup,
-				Version:  p.Version,
+				Type:        p.Type,
+				Pools:       p.Pools,
+				Deposit:     p.Deposit,
+				Prev:        prev,
+				GovGroup:    p.GovGroup,
+				Version:     p.Version,
+				Withdrawals: withdrawalDigests(p.Withdrawals),
 			})
 		}
+		d.Withdrawals = withdrawalDigests(tx.Withdrawals)
 		if u := tx.Units; u.Memory != 0 || u.Steps != 0 {
 			d.Units = &Units{
 				Memory: u.Memory,
@@ -74,4 +76,21 @@ func DigestOf(b chain.Block) ([]byte, error) {
 		c.Txs = append(c.Txs, d)
 	}
 	return eventlog.Encode(c)
+}
+
+func withdrawalDigests(ws []chain.Withdrawal) []WithdrawalDigest {
+	var out []WithdrawalDigest
+	for _, w := range ws {
+		out = append(out, WithdrawalDigest{Cred: w.Cred, Amount: w.Amount})
+	}
+	return out
+}
+
+// Withdrawals are ws as the view reads them.
+func Withdrawals(ws []WithdrawalDigest) []chain.Withdrawal {
+	var out []chain.Withdrawal
+	for _, w := range ws {
+		out = append(out, chain.Withdrawal{Cred: w.Cred, Amount: w.Amount})
+	}
+	return out
 }

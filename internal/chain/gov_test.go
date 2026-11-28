@@ -325,3 +325,67 @@ func TestCommitteeHotKeyAuthorised(t *testing.T) {
 		t.Error("seat 0 still authorised after rolling the certificate back")
 	}
 }
+
+// A treasury withdrawal the committee and the DReps accept is enacted at
+// the boundary that ratifies it and paid at the next, as the fake chain
+// does (internal/fakechain TestTreasuryWithdrawalEnactsThenPays): actor
+// 2's registered account is credited, unregistered credential 3's share
+// stays in the treasury, a withdrawal takes the balance, and a rollback
+// and a restart keep the reckoning.
+func TestTreasuryWithdrawalEnactsThenPays(t *testing.T) {
+	t.Parallel()
+	v, blocks := delegated(t, 10)
+	v.cfg.GovLifetime = 1
+	v.cfg.Book.AddCommittee(hash224(50), 0)
+	v.funds = 1000
+	d := hash224(8)
+	b2 := nextAt(&blocks[0], 2, 2,
+		certTx(70, &common.RegistrationDrepCertificate{DrepCredential: credOf(8)}),
+		certTx(71, &common.VoteDelegationCertificate{
+			StakeCredential: credOf(2), Drep: common.Drep{Type: common.DrepTypeAddrKeyHash, Credential: d[:]},
+		}))
+	mustApply(t, v, b2)
+
+	id := GovID{Tx: txid(72)}
+	b3 := nextAt(&b2, 101, 3, Tx{Hash: txid(72),
+		Proposals: []Proposal{{ID: id, Type: "treasury_withdrawals", Withdrawals: []Withdrawal{{Cred: hash224(2), Amount: 300}, {Cred: hash224(3), Amount: 100}}}},
+		Votes: []Vote{
+			{Voter: Voter{Kind: common.VoterTypeDRepKeyHash, Hash: d}, Action: id, Choice: common.GovVoteYes},
+			{Voter: Voter{Kind: common.VoterTypeConstitutionalCommitteeHotKeyHash, Hash: hash224(50)}, Action: id, Choice: common.GovVoteYes},
+		}})
+	mustApply(t, v, b3)
+
+	b4 := nextAt(&b3, 201, 4)
+	mustApply(t, v, b4)
+	if ps := v.Proposals("treasury_withdrawals"); !ps[0].Enacted || v.Treasury() != 1000 || v.Rewards(hash224(2)) != 0 {
+		t.Fatalf("epoch 2: enacted %v, treasury %d, rewards %d; want enacted, unpaid", ps[0].Enacted, v.Treasury(), v.Rewards(hash224(2)))
+	}
+
+	b5 := nextAt(&b4, 301, 5)
+	mustApply(t, v, b5)
+	if v.Treasury() != 700 || v.Rewards(hash224(2)) != 300 {
+		t.Fatalf("epoch 3: treasury %d, rewards %d; want 700, 300", v.Treasury(), v.Rewards(hash224(2)))
+	}
+
+	b6 := nextAt(&b5, 302, 6, Tx{Hash: txid(73), Withdrawals: []Withdrawal{{Cred: hash224(2), Amount: 300}}})
+	mustApply(t, v, b6)
+	if v.Rewards(hash224(2)) != 0 {
+		t.Fatalf("rewards %d after the withdrawal", v.Rewards(hash224(2)))
+	}
+
+	if _, err := v.Rollback(b4.Point); err != nil {
+		t.Fatal(err)
+	}
+	if v.Treasury() != 1000 || v.Rewards(hash224(2)) != 0 || v.pending() != 400 {
+		t.Fatalf("rolled back: treasury %d, rewards %d, pending %d", v.Treasury(), v.Rewards(hash224(2)), v.pending())
+	}
+
+	mustApply(t, v, b5)
+	r, err := New(v.cfg, v.Snapshot())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Treasury() != 700 || r.Rewards(hash224(2)) != 300 || r.pending() != 0 {
+		t.Fatalf("restarted: treasury %d, rewards %d, pending %d", r.Treasury(), r.Rewards(hash224(2)), r.pending())
+	}
+}

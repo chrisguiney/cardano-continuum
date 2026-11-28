@@ -57,8 +57,13 @@ func govGroup(u conway.ConwayProtocolParameterUpdate) bool {
 // (Ratify.lagda.md delayingAction, delayed): models/specs/governance-change
 // HardFork.tla, rule 1.
 //
+// Treasury withdrawals come after parameter changes, as they do in
+// govActionPriority, and the withdrawals enacted at the boundary before
+// are paid first (payOut).
+//
 // Only the stake the book names counts, which on a devnet is all of it.
 func ratify(v *View, ep uint64, u *undo) {
+	payOut(v, u)
 	if ratifyForks(v, ep, u) {
 		return
 	}
@@ -75,6 +80,7 @@ func ratify(v *View, ep uint64, u *undo) {
 			v.enact(p.ID, u)
 		}
 	}
+	ratifyWithdrawals(v, ep, u)
 }
 
 // ratifyForks ratifies, at the boundary into ep, the first open hard fork

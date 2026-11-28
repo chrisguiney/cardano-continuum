@@ -38,6 +38,17 @@ type TxDigest struct {
 	// Units are the execution units the redeemers declare, nil without
 	// any.
 	Units *Units `json:"units,omitempty"`
+	// Withdrawals are the transaction's key-hash reward withdrawals.
+	Withdrawals []WithdrawalDigest `json:"withdrawals,omitempty"`
+}
+
+// WithdrawalDigest is lovelace paid to or withdrawn from the reward
+// account of a key-hash stake credential (chain.Withdrawal).
+type WithdrawalDigest struct {
+	// Cred is the stake credential's key hash.
+	Cred common.Blake2b224 `json:"cred"`
+	// Amount is the lovelace.
+	Amount uint64 `json:"amount"`
 }
 
 // Units are execution units, as common.ExUnits counts them. The gouroboros
@@ -64,6 +75,8 @@ type ProposalDigest struct {
 	GovGroup bool `json:"gov_group,omitzero"`
 	// Version is the protocol version a hard fork moves to.
 	Version *protocol.Version `json:"version,omitempty"`
+	// Withdrawals are a treasury withdrawal's key-hash payees.
+	Withdrawals []WithdrawalDigest `json:"withdrawals,omitempty"`
 }
 
 // Block is an applied block as the engine keeps it: its point, its

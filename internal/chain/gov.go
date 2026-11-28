@@ -74,6 +74,8 @@ type Proposal struct {
 	// Version is the protocol version a hard fork moves to, nil for any
 	// other action.
 	Version *protocol.Version
+	// Withdrawals are a treasury withdrawal's key-hash payees.
+	Withdrawals []Withdrawal
 }
 
 // ProposalState is a tracked governance action: what it proposes, the
@@ -89,6 +91,8 @@ type ProposalState struct {
 	Prev     *GovID
 	GovGroup bool
 	Version  *protocol.Version
+	// Withdrawals are the Proposal's.
+	Withdrawals []Withdrawal
 	// Enacted is set at the epoch boundary that ratified the action: a
 	// parameter change takes effect there, a hard fork at the next
 	// (Fork.At).
@@ -109,6 +113,8 @@ type proposal struct {
 	prev     *GovID
 	govGroup bool
 	version  *protocol.Version
+	// withdrawals are a treasury withdrawal's payees.
+	withdrawals []Withdrawal
 	// enacted is set by ratify.
 	enacted bool
 }
@@ -128,12 +134,13 @@ func proposalOf(id GovID, p common.ProposalProcedure) Proposal {
 		}
 	}
 	return Proposal{
-		ID:       id,
-		Type:     typ,
-		Pools:    pools,
-		Deposit:  p.Deposit(),
-		Prev:     prev,
-		GovGroup: gov,
+		ID:          id,
+		Type:        typ,
+		Pools:       pools,
+		Deposit:     p.Deposit(),
+		Prev:        prev,
+		GovGroup:    gov,
+		Withdrawals: withdrawalsOf(p.GovAction()),
 	}
 }
 
@@ -219,6 +226,7 @@ type govUndo struct {
 	votes map[voteKey]uint8
 	root  *GovID
 	forks []Fork
+	purse purse
 }
 
 // gov is the view's governance state: every proposal seen, the votes of
@@ -237,16 +245,25 @@ type gov struct {
 	// forks is the protocol-version history; its last fork is the
 	// hard-fork root.
 	forks
+	// purse is the treasury and the reward accounts.
+	purse
 }
 
 func newGov(b *Book, base protocol.Version) gov {
-	return gov{book: b, props: map[GovID]proposal{}, votes: map[voteKey]uint8{}, forks: forks{base: base}}
+	return gov{
+		book:  b,
+		props: map[GovID]proposal{},
+		votes: map[voteKey]uint8{},
+		forks: forks{base: base},
+		purse: purse{rewards: map[common.Blake2b224]uint64{}, payout: map[common.Blake2b224]uint64{}},
+	}
 }
 
 func (g gov) clone() gov {
 	g.props = maps.Clone(g.props)
 	g.votes = maps.Clone(g.votes)
 	g.list = slices.Clone(g.list)
+	g.purse = g.purse.clone()
 	return g
 }
 
@@ -261,13 +278,14 @@ func (g *gov) applyGov(tx Tx, expires uint64, u *undo) bool {
 	for _, p := range tx.Proposals {
 		g.touchGov(u)
 		g.props[p.ID] = proposal{
-			expires:  expires,
-			typ:      p.Type,
-			pools:    p.Pools,
-			deposit:  p.Deposit,
-			prev:     p.Prev,
-			govGroup: p.GovGroup,
-			version:  p.Version,
+			expires:     expires,
+			typ:         p.Type,
+			pools:       p.Pools,
+			deposit:     p.Deposit,
+			prev:        p.Prev,
+			govGroup:    p.GovGroup,
+			version:     p.Version,
+			withdrawals: p.Withdrawals,
 		}
 		seen = true
 	}
@@ -318,13 +336,13 @@ func (g *gov) CommitteeVoted(i int, p agenda.ProposalID) bool {
 // per touched block is cheaper than a per-key log.
 func (g *gov) touchGov(u *undo) {
 	if u.gov == nil {
-		u.gov = &govUndo{props: maps.Clone(g.props), votes: maps.Clone(g.votes), root: g.root, forks: slices.Clone(g.list)}
+		u.gov = &govUndo{props: maps.Clone(g.props), votes: maps.Clone(g.votes), root: g.root, forks: slices.Clone(g.list), purse: g.purse.clone()}
 	}
 }
 
 func (g *gov) restoreGov(u undo) {
 	if u.gov != nil {
-		g.props, g.votes, g.root, g.list = u.gov.props, u.gov.votes, u.gov.root, u.gov.forks
+		g.props, g.votes, g.root, g.list, g.purse = u.gov.props, u.gov.votes, u.gov.root, u.gov.forks, u.gov.purse
 	}
 }
 
@@ -370,15 +388,16 @@ func (g *gov) govState() ([]ProposalState, []VoteState) {
 	var ps []ProposalState
 	for id, p := range g.props {
 		ps = append(ps, ProposalState{
-			ID:       id,
-			Expires:  p.expires,
-			Type:     p.typ,
-			Pools:    p.pools,
-			Deposit:  p.deposit,
-			Prev:     p.prev,
-			GovGroup: p.govGroup,
-			Version:  p.version,
-			Enacted:  p.enacted,
+			ID:          id,
+			Expires:     p.expires,
+			Type:        p.typ,
+			Pools:       p.pools,
+			Deposit:     p.deposit,
+			Prev:        p.prev,
+			GovGroup:    p.govGroup,
+			Version:     p.version,
+			Withdrawals: p.withdrawals,
+			Enacted:     p.enacted,
 		})
 	}
 	slices.SortFunc(ps, func(a, b ProposalState) int { return a.ID.Compare(b.ID) })
