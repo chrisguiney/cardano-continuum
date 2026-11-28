@@ -41,7 +41,7 @@ describe("why box", () => {
   it("has the four columns, each with its tooltip text in the DOM", () => {
     for (const k of ["intent", "score", "weight", "chance"]) {
       const h = FIELD_HELP[k]!;
-      expect(html).toContain(`<th>${h.label} `);
+      expect(html).toMatch(new RegExp(`<th[^>]*>${h.label} `));
       const m = new RegExp(`aria-describedby="(why-7-${k})"`).exec(html);
       expect(m).not.toBeNull();
       expect(html).toContain(`id="why-7-${k}"`);
@@ -51,7 +51,8 @@ describe("why box", () => {
   it("shows chance percentages, highlights the chosen row and dashes the zero", () => {
     expect(html).toContain("25.0%");
     expect(html).toContain("75.0%");
-    expect(html).toContain('<tr class="chosen"><td>send (chosen)');
+    expect(html).toMatch(/<tr[^>]*data-chosen="true"[^>]*><td[^>]*>send \(chosen\)/);
+    expect(html.match(/data-chosen/g)).toHaveLength(1);
     expect(html).toContain("balance below cost. ");
     expect(html).toContain('id="why-7-z2"');
   });

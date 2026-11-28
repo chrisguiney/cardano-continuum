@@ -7,8 +7,11 @@ import { useEnums } from "../lib/meta";
 import { usePoll } from "../lib/hooks";
 import { buildQuery, parseQuery, writeQuery } from "../lib/query";
 import type { Decision, Snapshot } from "../lib/types";
-import { Link } from "./common";
-import { Blurb, HelpTip } from "./fields";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Banner, Filters, Link, Mono, Muted, Note, Title } from "./common";
+import { Blurb, HelpTip, SelectField } from "./fields";
 import { DecisionFilterBar, type DecisionFilterState } from "./filterbars";
 
 const CAP = 500;
@@ -17,22 +20,26 @@ const RAW_CAP = 5000;
 /** FLUSH_MS batches renders: one per interval however fast decisions arrive. */
 const FLUSH_MS = 300;
 
+const ROW = "border-b px-3 py-2 last:border-b-0";
+
+const IDLE_MODES = [{ value: "group", label: "group" }, { value: "hide", label: "hide" }, { value: "show", label: "show each" }];
+
 function IdleRow({ r }: { r: IdleRun }) {
   const span = r.from === r.to ? simTime(r.from) : `${simTime(r.from)} – ${simTime(r.to)}`;
   return (
-    <li className="idle-run">
-      <span className="when">{span}</span>
-      <span className="kind">idle</span>
-      <span className="muted">
+    <li className={`${ROW} text-[0.92em] text-muted-foreground`}>
+      <Mono className="mr-2">{span}</Mono>
+      <span className="mr-2 font-semibold">idle</span>
+      <span>
         {r.count.toLocaleString()} idle decision{r.count === 1 ? "" : "s"} from {r.actors.toLocaleString()} actor{r.actors === 1 ? "" : "s"}
       </span>
     </li>
   );
 }
 
-function Th({ id, k }: { id: string; k: string }) {
+function Th({ id, k, className }: { id: string; k: string; className?: string }) {
   const h = FIELD_HELP[k]!;
-  return <th>{h.label} <HelpTip id={id} label={h.label} text={h.help} /></th>;
+  return <TableHead className={className}>{h.label} <HelpTip id={id} label={h.label} text={h.help} /></TableHead>;
 }
 
 /** Why lists the scored options of a decision with the chance each had. */
@@ -42,43 +49,46 @@ export function Why({ d }: { d: Decision }) {
   const pct = chances(scores);
   const pre = `why-${d.id}`;
   return (
-    <details>
-      <summary>{scores.length ? `why (${scores.length} scored)` : "body"}</summary>
+    <details className="mt-1">
+      <summary className="cursor-pointer text-primary">{scores.length ? `why (${scores.length} scored)` : "body"}</summary>
       {scores.length ? (
         <>
-          <table className="scores">
-            <thead>
-              <tr>
+          <Table className="my-1 text-[0.9rem]">
+            <TableCaption className="mt-1 text-left">
+              Chance = score x weight / total; idle scores 1 as the baseline.
+              {d.clock ? ` Chosen among ${d.clock} options after its fitted clock fired.` : ""}
+            </TableCaption>
+            <TableHeader>
+              <TableRow>
                 <Th id={`${pre}-intent`} k="intent" />
-                <Th id={`${pre}-score`} k="score" />
-                <Th id={`${pre}-weight`} k="weight" />
-                <Th id={`${pre}-chance`} k="chance" />
-                <th>Why</th>
-              </tr>
-            </thead>
-            <tbody>
-              {scores.map((s, i) => (
-                <tr key={i} className={s.kind === d.intent ? "chosen" : undefined}>
-                  <td>{s.kind}{s.kind === d.intent ? " (chosen)" : ""}</td>
-                  <td className="num">{s.value.toFixed(3)}</td>
-                  <td className="num">{+clamp(s.weight ?? 1).toFixed(3)}</td>
-                  <td className="num">
-                    {pct[i]! > 0 ? percent(pct[i]!) : (
-                      <>— <HelpTip id={`${pre}-z${i}`} label="a zero chance" text={`${s.why}. ${FIELD_HELP.zero_score!.help}`} /></>
-                    )}
-                  </td>
-                  <td>{s.why}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p className="muted">
-            Chance = score x weight / total; idle scores 1 as the baseline.
-            {d.clock ? ` Chosen among ${d.clock} options after its fitted clock fired.` : ""}
-          </p>
+                <Th id={`${pre}-score`} k="score" className="text-right" />
+                <Th id={`${pre}-weight`} k="weight" className="text-right" />
+                <Th id={`${pre}-chance`} k="chance" className="text-right" />
+                <TableHead>Why</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {scores.map((s, i) => {
+                const chosen = s.kind === d.intent;
+                return (
+                  <TableRow key={i} data-chosen={chosen || undefined} className={chosen ? "bg-accent font-bold" : undefined}>
+                    <TableCell>{s.kind}{chosen ? " (chosen)" : ""}</TableCell>
+                    <TableCell className="text-right tabular-nums">{s.value.toFixed(3)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{+clamp(s.weight ?? 1).toFixed(3)}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {pct[i]! > 0 ? percent(pct[i]!) : (
+                        <>— <HelpTip id={`${pre}-z${i}`} label="a zero chance" text={`${s.why}. ${FIELD_HELP.zero_score!.help}`} /></>
+                      )}
+                    </TableCell>
+                    <TableCell className="min-w-48 whitespace-normal">{s.why}</TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
         </>
       ) : (
-        <pre>{JSON.stringify(d.body, null, 1)}</pre>
+        <pre className="mt-1 max-h-56 overflow-auto rounded-md border bg-muted p-2 font-mono text-[0.85em]">{JSON.stringify(d.body, null, 1)}</pre>
       )}
     </details>
   );
@@ -165,41 +175,37 @@ export function Decisions() {
 
   return (
     <>
-      <h1>Decisions</h1>
+      <Title>Decisions</Title>
       <Blurb text={VIEW_BLURB.decisions!} />
-      <form className="filters" aria-label="Filter decisions" onSubmit={(e) => e.preventDefault()}>
+      <Filters aria-label="Filter decisions">
         <DecisionFilterBar f={filt} enums={enums} profiles={snap?.population.by_profile ?? {}} onChange={(k, v) => setFilt((f) => ({ ...f, [k]: v }))} />
-        <label title={FIELD_HELP.idle!.help}>
-          {FIELD_HELP.idle!.label}{" "}
-          <select value={mode} onChange={(e) => setMode((e.target as HTMLSelectElement).value as IdleMode)}>
-            <option value="group">group</option>
-            <option value="hide">hide</option>
-            <option value="show">show each</option>
-          </select>
-        </label>
-        <button type="button" title={FIELD_HELP.pause!.help} aria-pressed={paused} onClick={() => setPaused((p) => !p)}>
-          {paused ? `Resume${waiting ? ` (${waiting.toLocaleString()} new)` : ""}` : "Pause"}
-        </button>
-        <span className={`tag ${state === "live" ? "ok" : "warn"}`} role="status">{paused ? "paused" : state}</span>
-      </form>
-      {gap && <p className="banner warn">Some decisions were dropped before this connection could replay them.</p>}
-      <p className="muted">Newest first, last {CAP} rows shown.</p>
-      <ul className="feed">
+        <SelectField id="f-idle" help={FIELD_HELP.idle!} value={mode} allLabel={null} options={IDLE_MODES} onChange={(v) => setMode(v as IdleMode)} />
+        <span className="inline-flex items-center">
+          <Button type="button" variant="outline" aria-pressed={paused} aria-describedby="f-pause-help" onClick={() => setPaused((p) => !p)}>
+            {paused ? `Resume${waiting ? ` (${waiting.toLocaleString()} new)` : ""}` : "Pause"}
+          </Button>
+          <HelpTip id="f-pause-help" label={FIELD_HELP.pause!.label} text={FIELD_HELP.pause!.help} />
+        </span>
+        <Badge variant={state === "live" && !paused ? "ok" : "warn"} className="mb-2.5" role="status">{paused ? "paused" : state}</Badge>
+      </Filters>
+      {gap && <Banner tone="warn">Some decisions were dropped before this connection could replay them.</Banner>}
+      <Note>Newest first, last {CAP} rows shown.</Note>
+      <ul className="rounded-lg border bg-card">
         {rows.map((r) =>
           r.type === "idle" ? (
             <IdleRow key={`i${r.key}`} r={r} />
           ) : (
-            <li key={r.d.id}>
-              <span className="when">{simTime(r.d.at)}</span>
-              <span className="kind">{r.d.kind}</span>
+            <li key={r.d.id} className={ROW}>
+              <Mono className="mr-2 text-muted-foreground">{simTime(r.d.at)}</Mono>
+              <span className="mr-2 font-semibold">{r.d.kind}</span>
               <Link to={`/actors/${r.d.actor}`}>actor {r.d.actor}</Link>
-              {r.d.profile && <span className="muted"> {r.d.profile}</span>}
+              {r.d.profile && <Muted> {r.d.profile}</Muted>}
               {r.d.intent && <strong> {r.d.intent}</strong>}
               <Why d={r.d} />
             </li>
           ),
         )}
-        {rows.length === 0 && <li className="empty">Waiting for decisions…</li>}
+        {rows.length === 0 && <li className="p-4 text-center text-muted-foreground">Waiting for decisions…</li>}
       </ul>
     </>
   );
