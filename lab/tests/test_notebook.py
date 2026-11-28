@@ -89,7 +89,7 @@ def test_guide_runs_on_fixtures_and_shows_the_mainnet_placeholder():
     printed = text_of(notebook)
     assert "test fixtures" in printed
     assert "preview: " in printed and "preprod: " in printed
-    assert images(notebook) >= 14
+    assert images(notebook) >= 18
     mainnet_fitted = os.path.exists(os.path.join(LAB, "..", "profiles", "mainnet.yaml"))
     assert ("mainnet: not fitted yet" in printed) != mainnet_fitted
 

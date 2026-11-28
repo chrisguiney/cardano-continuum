@@ -434,3 +434,150 @@ def cluster_weights(table: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
     by_units = table.groupby("cluster").size() / len(table)
     by_transactions = table.groupby("cluster").tx_count.sum() / table.tx_count.sum()
     return by_units, by_transactions.reindex(by_units.index)
+
+
+# --- markets: currencies, exchanges, synthetic lifecycle -----------------------
+#
+# A toy copy of internal/market and the trade scores of internal/agenda: the
+# same processes and parameters (read from profiles/m1.yaml's markets
+# section), drawn with numpy's generator, so a path here matches a run's in
+# shape, not draw for draw.
+
+# The agenda's trade constants (internal/agenda/trade.go).
+LOSS_GAIN = 0.1
+PANIC_SCORE = 0.2
+PATIENCE_SCALE = 3.0
+
+
+def markets_params() -> dict:
+    """The markets section of the shipped m1 profile: every default spelled out."""
+    with open(os.path.join(profiles_dir(), "m1.yaml")) as f:
+        return yaml.safe_load(f)["markets"]
+
+
+@dataclass
+class RatePath:
+    """A seeded market path: per step, ADA/USD, each currency's USD rate and
+    each exchange's log basis."""
+    t_hours: np.ndarray
+    ada: np.ndarray
+    usd: dict[str, np.ndarray]
+    basis: dict[str, np.ndarray]
+    params: dict
+
+    def mid(self, code: str) -> np.ndarray:
+        """ADA in the currency: units per ADA."""
+        return self.ada / self.usd[code]
+
+    def quotes(self, exchange: dict, code: str) -> tuple[np.ndarray, np.ndarray]:
+        """The exchange's bid and ask in the currency."""
+        mid = self.mid(code) * np.exp(self.basis[exchange["name"]])
+        half = exchange["spread"] / 2
+        return mid * (1 - half), mid * (1 + half)
+
+
+def _ou(x: float, level: float, theta: float, vol: float, dt: float, z: float) -> float:
+    a = np.exp(-theta * dt)
+    return level + (x - level) * a + vol * np.sqrt((1 - a * a) / (2 * theta)) * z
+
+
+def rate_path(seed: int, hours: float, params: dict | None = None) -> RatePath:
+    """ADA/USD as a regime-switching log random walk with jumps, each
+    currency as a log Ornstein-Uhlenbeck process around its level, and each
+    exchange's basis as one around zero: internal/market's curve."""
+    p = params or markets_params()
+    rng = np.random.default_rng(seed)
+    a, dt = p["ada"], p["step"] / 3600
+    n = int(hours / dt) + 1
+    ada, bull = np.empty(n), True
+    ada[0] = np.log(a["start"])
+    usd = {c["code"]: np.empty(n) for c in p["currencies"]}
+    basis = {x["name"]: np.zeros(n) for x in p["exchanges"]}
+    for c in p["currencies"]:
+        usd[c["code"]][0] = np.log(c["usd"])
+    for k in range(1, n):
+        drift = a["drift"] if bull else -a["drift"]
+        ada[k] = ada[k - 1] + (drift - a["vol"] ** 2 / 2) * dt + a["vol"] * np.sqrt(dt) * rng.standard_normal()
+        bull = bull != (rng.random() < 1 - np.exp(-a["regime_rate"] * dt))
+        jumps = rng.poisson(a["jump_rate"] * dt)
+        if jumps:
+            ada[k] += jumps * a["jump_mean"] + a["jump_sd"] * np.sqrt(jumps) * rng.standard_normal()
+        for c in p["currencies"]:
+            code = c["code"]
+            usd[code][k] = _ou(usd[code][k - 1], np.log(c["usd"]), p["fx"]["reversion"], p["fx"]["vol"], dt, rng.standard_normal())
+        for x in p["exchanges"]:
+            basis[x["name"]][k] = _ou(basis[x["name"]][k - 1], 0.0, x["basis_reversion"], x["basis_vol"], dt, rng.standard_normal())
+    return RatePath(np.arange(n) * dt, np.exp(ada), {c: np.exp(v) for c, v in usd.items()}, basis, p)
+
+
+def extra_currencies(seed: int, n: int, extra: float, currencies: int) -> np.ndarray:
+    """How many extra preferred currencies each of n wallets draws: one more
+    with probability extra each time, at most currencies - 1."""
+    rng = np.random.default_rng(seed)
+    out = np.zeros(n, dtype=int)
+    for i in range(n):
+        while out[i] < currencies - 1 and rng.random() < extra:
+            out[i] += 1
+    return out
+
+
+def _window_return(path: RatePath, series: np.ndarray, seconds: float) -> np.ndarray:
+    lag = int(round(seconds / path.params["step"]))
+    back = np.concatenate([np.full(lag, series[0]), series[:-lag]]) if lag else series
+    return np.log(series / back)
+
+
+def birth_factor(path: RatePath, code: str) -> np.ndarray:
+    """clamp(exp(beta * log return over the birth window)): ADA rising
+    against a currency brings that currency's wallets."""
+    b = path.params["births"]
+    return np.clip(np.exp(b["beta"] * _window_return(path, path.mid(code), b["window"])), b["min"], b["max"])
+
+
+def death_factor(path: RatePath, code: str, hodl: bool = False) -> np.ndarray:
+    """clamp(exp(-beta * log return over the longer death window)), to the
+    power hodl for a hodl wallet: a prolonged fall hastens dormancy and
+    abandonment, and holders resist."""
+    d = path.params["deaths"]
+    f = np.clip(np.exp(-d["beta"] * _window_return(path, path.mid(code), d["window"])), d["min"], d["max"])
+    return f ** d["hodl"] if hodl else f
+
+
+def largest_drawdown(series: np.ndarray) -> tuple[int, int, float]:
+    """The peak and trough indexes of the deepest fall, and its depth."""
+    peak, best = 0, (0, 0, 0.0)
+    for i, x in enumerate(series):
+        if x > series[peak]:
+            peak = i
+        if (depth := x / series[peak] - 1) < best[2]:
+            best = (peak, i, depth)
+    return best
+
+
+def sell_score(gain: float, loss_aversion: float, patience: float, hodl: bool) -> float:
+    """A wallet's score for selling under water (internal/agenda's sell):
+    zero for a hodl wallet, else grown with loss aversion, impatience and
+    the depth of the loss; above water, the standing 0.01."""
+    if gain > -LOSS_GAIN:
+        return 0.01
+    if hodl:
+        return 0.0
+    impatience = PATIENCE_SCALE / (PATIENCE_SCALE + patience)
+    return PANIC_SCORE * loss_aversion * impatience * -gain / LOSS_GAIN
+
+
+def drawdown_split(seed: int, wallets: int = 300, depth: float = -0.3, hodl_share: float = 2 / 3,
+                   decisions: int = 20) -> dict[str, int]:
+    """Wallets that wake decisions times under water at depth: a hodl wallet
+    never sells; a trader sells on a draw against its sell score over
+    sell score + 1 (idle). Traits as m1's trader: loss aversion beta(4, 3),
+    patience lognormal(0.5, 0.8)."""
+    rng = np.random.default_rng(seed)
+    out = {"hodl": 0, "held": 0, "sold": 0}
+    for _ in range(wallets):
+        if rng.random() < hodl_share:
+            out["hodl"] += 1
+            continue
+        s = sell_score(depth, rng.beta(4, 3), rng.lognormal(0.5, 0.8), False)
+        out["sold" if (rng.random(decisions) < s / (s + 1)).any() else "held"] += 1
+    return out

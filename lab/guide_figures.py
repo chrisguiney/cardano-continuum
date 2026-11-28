@@ -412,3 +412,82 @@ def fig_traits(nets: list[Network]):
         ax.set_title(title, fontsize=9)
     fig.tight_layout()
     return fig
+
+
+# --- section 9: currencies and exchanges ---------------------------------------
+
+
+def show_rate_path(seed: int = 4, hours: float = 6.0) -> None:
+    """ADA in each currency rebased to 100, and one currency's bids on each
+    exchange: the spreads and the drifting basis."""
+    path = guide_lib.rate_path(seed, hours)
+    fig, (left, right) = plt.subplots(1, 2, figsize=(11, 3.4))
+    for c in path.params["currencies"]:
+        mid = path.mid(c["code"])
+        left.plot(path.t_hours, 100 * mid / mid[0], lw=1, label=c["code"])
+    peak, trough, depth = guide_lib.largest_drawdown(path.ada)
+    left.axvspan(path.t_hours[peak], path.t_hours[trough], color=LIGHT_BLUE, label=f"drawdown {100 * depth:.0f}%")
+    left.set_xlabel("hours")
+    left.set_ylabel("ADA, rebased to 100")
+    left.set_title("one seeded market path")
+    left.legend(fontsize=7, ncol=2)
+    code = "USD"
+    for x, col in zip(path.params["exchanges"], (BLUE, ORANGE, GREEN)):
+        if code not in x["currencies"]:
+            continue
+        bid, ask = path.quotes(x, code)
+        right.plot(path.t_hours, bid, color=col, lw=1, label=f"{x['name']} bid")
+        right.plot(path.t_hours, ask, color=col, lw=0.6, ls="--", label=f"{x['name']} ask")
+    end = len(path.t_hours) // 6
+    right.set_xlim(0, path.t_hours[end])
+    right.set_xlabel("hours (first sixth)")
+    right.set_ylabel("USD per ADA")
+    right.set_title("exchanges quote slightly different rates")
+    right.legend(fontsize=7)
+    fig.tight_layout()
+    plt.show()
+
+
+def show_extra_currencies(extra: float = 0.15, seed: int = 2) -> None:
+    """Extra preferred currencies per wallet against (1-q) q^k."""
+    params = guide_lib.markets_params()
+    n = len(params["currencies"])
+    drawn = guide_lib.extra_currencies(seed, 5000, extra, n)
+    ks = np.arange(n)
+    fig, ax = plt.subplots(figsize=(6, 3))
+    ax.bar(ks, np.bincount(drawn, minlength=n)[:n] / len(drawn), color=LIGHT_BLUE, label="5,000 drawn wallets")
+    ax.plot(ks, (1 - extra) * extra ** ks, "o-", color=ORANGE, label="(1-q) q^k")
+    ax.set_yscale("log")
+    ax.set_xlabel("extra currencies beside the primary")
+    ax.set_ylabel("share of wallets")
+    ax.set_title(f"most wallets hold one currency (q = {extra:.2f})")
+    ax.legend()
+    plt.show()
+
+
+def show_lifecycle_factors(seed: int = 4, hours: float = 6.0) -> None:
+    """The synthetic birth and death factors one currency's path gives."""
+    path = guide_lib.rate_path(seed, hours)
+    code = "EUR"
+    fig, ax = plt.subplots(figsize=(10, 3))
+    mid = path.mid(code)
+    ax.plot(path.t_hours, mid / mid[0], color=GREY, lw=1, label=f"ADA in {code}, rebased to 1")
+    ax.plot(path.t_hours, guide_lib.birth_factor(path, code), color=GREEN, lw=1, label="birth factor")
+    ax.plot(path.t_hours, guide_lib.death_factor(path, code), color=RED, lw=1, label="death factor")
+    ax.plot(path.t_hours, guide_lib.death_factor(path, code, hodl=True), color=RED, lw=1, ls=":", label="death factor, hodl")
+    ax.set_xlabel("hours")
+    ax.set_ylabel("multiplier on the hazard")
+    ax.set_title("births follow gains, deaths a prolonged fall")
+    ax.legend(fontsize=7, ncol=2)
+    plt.show()
+
+
+def show_drawdown_split(depth: float = -0.3, seed: int = 5) -> None:
+    """Who sells and who holds when the market is depth under their cost."""
+    split = guide_lib.drawdown_split(seed, depth=depth)
+    fig, ax = plt.subplots(figsize=(6, 3))
+    labels = ["hodl wallets\n(hold by agenda)", "traders who held", "traders who sold"]
+    ax.bar(labels, [split["hodl"], split["held"], split["sold"]], color=[BLUE, LIGHT_BLUE, RED])
+    ax.set_ylabel("wallets")
+    ax.set_title(f"{100 * depth:.0f}% under water, twenty decisions each")
+    plt.show()
