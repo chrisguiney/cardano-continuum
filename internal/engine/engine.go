@@ -149,7 +149,7 @@ func New(cfg Config) (*Engine, error) {
 			return nil, fmt.Errorf("engine: genesis pool actor %d: %w", g.Actor, err)
 		}
 	}
-	gs.Treasury = cfg.treasury()
+	gs.Treasury = cfg.StartTreasury()
 	if err = e.win.Open(gs, window.Saved{}); err != nil {
 		return nil, fmt.Errorf("engine: view: %w", err)
 	}

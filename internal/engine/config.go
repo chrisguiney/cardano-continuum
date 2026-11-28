@@ -604,5 +604,5 @@ func ratio(r *cbor.Rat) string {
 // reserves in four epochs at rho 0.003 and tau 0.2.
 const DefaultTreasury = 100_000_000_000_000
 
-// treasury is c.Treasury, or DefaultTreasury when unset.
-func (c *Config) treasury() uint64 { return cmp.Or(c.Treasury, DefaultTreasury) }
+// StartTreasury is c.Treasury, or DefaultTreasury when unset.
+func (c *Config) StartTreasury() uint64 { return cmp.Or(c.Treasury, DefaultTreasury) }

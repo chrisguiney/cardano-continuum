@@ -127,10 +127,12 @@ type Spec struct {
 	// Again are the classes a kind's certificates fail with when the same
 	// transaction already landed.
 	Again func(kind string) []submit.Class
-	// Contended reports a kind whose attempts spend an output other
-	// actors race for (a market trade): "inputs spent" is expected from
-	// its first send (models/specs/dex-contention, rule 4).
-	Contended func(kind string) bool
+	// Contended reports an intent whose first send may honestly fail as a
+	// resend does (models/specs/dex-contention, rule 4): one that spends
+	// an output other actors race for (a market trade), or one built on
+	// the chain view's estimate of ledger state it cannot read (a
+	// treasury award's withdrawal amount).
+	Contended func(p *wire.Pending) bool
 }
 
 // Judge is the oracle bridge: the mistakes, the monitors and the findings
@@ -175,7 +177,7 @@ func (j *Judge) Answer(at sched.Time, p *wire.Pending, r wire.SubmitResult, out 
 	}
 	// An adversary racing for the same shared output may have spent it.
 	spent := p.M.Sent || len(p.Txs) > 1 || (p.Locked != nil && j.env.Race.Contested(*p.Locked)) ||
-		(j.spec.Contended != nil && j.spec.Contended(p.KindOf()))
+		(j.spec.Contended != nil && j.spec.Contended(p))
 	want := Expect(j.spec.Build, p.Carried, spent, j.spec.Again(p.KindOf()))
 	if p.Probe {
 		// The probe's honest bytes break only the GOV rule's voter check.

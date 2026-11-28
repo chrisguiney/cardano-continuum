@@ -581,7 +581,7 @@ func TestTreasuryAwards(t *testing.T) {
 	if calls["withdraw award"] == 0 || calls["draw"] == 0 || e.Summary().Inflow == 0 {
 		t.Fatalf("awards withdrawn %v, inflow %d", calls, e.Summary().Inflow)
 	}
-	if e.win.View().Treasury() >= cfg.treasury() {
+	if e.win.View().Treasury() >= cfg.StartTreasury() {
 		t.Fatalf("treasury %d never paid out", e.win.View().Treasury())
 	}
 
