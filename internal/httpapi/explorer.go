@@ -26,8 +26,16 @@ type exRoutes struct{ *api }
 //	GET /api/explorer/addresses/{addr}?limit&offset
 //	GET /api/explorer/epochs/{n}
 //	GET /api/explorer/search?q
+//	GET /api/contracts
 func (a exRoutes) register(mux *http.ServeMux) {
 	ex := a.Explorer
+	mux.HandleFunc("GET /api/contracts", func(w http.ResponseWriter, r *http.Request) {
+		if _, err := exQuery(r); err != nil {
+			a.fail(w, err)
+			return
+		}
+		a.json(w, http.StatusOK, ex.fold.scripts.view())
+	})
 	mux.HandleFunc("GET /api/explorer/status", func(w http.ResponseWriter, r *http.Request) {
 		if _, err := exQuery(r); err != nil {
 			a.fail(w, err)

@@ -188,6 +188,7 @@ func (e *Explorer) Tx(ctx context.Context, hash string) (TxDetail, error) {
 	c := &TxContext{Findings: fs}
 	if ok {
 		c.Intent, c.Kind, c.Amount, c.Attack, c.Verdict, c.Reason = sub.intent, sub.kind, sub.amount, sub.attack, ver.name, ver.reason
+		c.Validator, c.Scripts = sub.validator, sub.scripts
 		if c.Actor, err = e.actors.ofID(ctx, sub.actor); err != nil {
 			return TxDetail{}, err
 		}

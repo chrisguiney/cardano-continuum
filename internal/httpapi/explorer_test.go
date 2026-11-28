@@ -17,6 +17,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/contract"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/explorer"
@@ -425,5 +426,100 @@ func TestNodesCountForgedAndVerified(t *testing.T) {
 	}
 	if p3.Forged == nil || *p3.Forged != 3 || *p3.Verified != 0 {
 		t.Fatalf("p3 (all three blocks) %v %v", p3.Forged, p3.Verified)
+	}
+}
+
+func scriptRun(validator, instance string, ok bool, used, declared int64, why string) contract.Run {
+	return contract.Run{
+		Validator: validator, Instance: instance, Purpose: contract.Spend, Script: "ab",
+		Declared: contract.Units{Mem: declared, Steps: declared * 10}, Used: contract.Units{Mem: used, Steps: used * 10},
+		OK: ok, Error: why,
+	}
+}
+
+func scriptSubmitted(t *testing.T, seq uint64, at int64, id byte, runs ...contract.Run) eventlog.Record {
+	t.Helper()
+	var tx [32]byte
+	tx[0] = id
+	body, err := eventlog.Encode(engine.Submitted{Intent: seq, ID: tx, Kind: "unlock", Validator: runs[0].Instance, Scripts: runs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return eventlog.Record{Seq: seq, At: sched.Time(at), Class: eventlog.Decision, Kind: engine.KindSubmitted, Actor: 1, Body: body}
+}
+
+func rowOf(t *testing.T, v ContractsView, name string) ValidatorRow {
+	t.Helper()
+	for _, r := range v.Validators {
+		if r.Name == name {
+			return r
+		}
+	}
+	t.Fatalf("no validator %s in %+v", name, v.Validators)
+	return ValidatorRow{}
+}
+
+func TestContractsViewCountsRuns(t *testing.T) {
+	t.Parallel()
+	f := newScriptFold()
+	f.apply(scriptSubmitted(t, 1, 1000, 1, scriptRun("vesting", "vesting#1", true, 100, 120, "")))
+	f.apply(scriptSubmitted(t, 2, 2000, 2, scriptRun("vesting", "vesting#3", true, 300, 360, "")))
+	f.apply(scriptSubmitted(t, 3, 3000, 3, scriptRun("vesting", "vesting#1", false, 500, 400, "declared units below the units used")))
+	// A resend of the same bytes is the same transaction: not a new run.
+	f.apply(scriptSubmitted(t, 4, 4000, 3, scriptRun("vesting", "vesting#1", false, 500, 400, "declared units below the units used")))
+	dep, err := eventlog.Encode(engine.Deployed{Contract: 5, Address: "vesting#5", Validator: "vesting", Script: "cd"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.apply(eventlog.Record{Seq: 5, Class: eventlog.Decision, Kind: engine.KindDeployed, Body: dep})
+
+	v := f.view()
+	if v.Toolchain != contract.Toolchain || len(v.Validators) != len(contract.All()) {
+		t.Fatalf("view %q with %d validators", v.Toolchain, len(v.Validators))
+	}
+	r := rowOf(t, v, "vesting")
+	if r.Runs != 3 || r.Failures != 1 || r.Instances != 3 {
+		t.Fatalf("runs %d failures %d instances %d", r.Runs, r.Failures, r.Instances)
+	}
+	if r.Used.AvgMem != 300 || r.Used.MaxMem != 500 || r.Declared.MaxMem != 400 || r.Used.MaxSteps != 5000 {
+		t.Fatalf("units used %+v declared %+v", r.Used, r.Declared)
+	}
+	if len(r.Reasons) != 1 || r.Reasons[0].Count != 1 || r.Reasons[0].Reason != "declared units below the units used" {
+		t.Fatalf("reasons %+v", r.Reasons)
+	}
+	if len(r.Last) != 3 || r.Last[0].At != 3000 || r.Last[0].OK || r.Last[0].Instance != "vesting#1" || len(r.Last[0].Tx) != 64 {
+		t.Fatalf("last runs, newest first: %+v", r.Last)
+	}
+	if m := rowOf(t, v, "free_mint"); m.Runs != 0 || m.Size == 0 || m.Language != "plutus_v3" || m.Hash == "" || len(m.Last) != 0 || m.Reasons == nil || m.Last == nil {
+		t.Fatalf("an unused validator %+v", m)
+	}
+}
+
+func TestContractsViewKeepsTheLastRuns(t *testing.T) {
+	t.Parallel()
+	f := newScriptFold()
+	for i := range byte(lastRuns + 5) {
+		f.apply(scriptSubmitted(t, uint64(i)+1, int64(i), i+1, scriptRun("escrow", "escrow#2", true, 1, 2, "")))
+	}
+	r := rowOf(t, f.view(), "escrow")
+	if r.Runs != lastRuns+5 || len(r.Last) != lastRuns || r.Last[0].At != lastRuns+4 {
+		t.Fatalf("runs %d, kept %d, newest at %d", r.Runs, len(r.Last), r.Last[0].At)
+	}
+}
+
+func TestContractsEndpointAndTxScripts(t *testing.T) {
+	r := newRig(t, nil)
+	run := scriptRun("always_succeeds", "", true, 10, 12, "")
+	sub, _ := eventlog.Encode(engine.Submitted{Intent: 9, ID: mustTxID(t, r.tx), Kind: "unlock", Validator: "always_succeeds", Scripts: []contract.Run{run}})
+	r.ex.Apply(eventlog.Record{Seq: 10, Class: eventlog.Decision, Kind: engine.KindSubmitted, Actor: 4, Body: sub})
+
+	var tx TxDetail
+	if code := r.get("/api/explorer/txs/"+r.tx, &tx); code != 200 || tx.Continuum == nil || tx.Continuum.Validator != "always_succeeds" || len(tx.Continuum.Scripts) != 1 || tx.Continuum.Scripts[0].Used.Mem != 10 {
+		t.Fatalf("tx context %d %+v", code, tx.Continuum)
+	}
+
+	var v ContractsView
+	if code := r.get("/api/contracts", &v); code != 200 || rowOf(t, v, "always_succeeds").Runs != 1 {
+		t.Fatalf("contracts %d %+v", code, v)
 	}
 }
