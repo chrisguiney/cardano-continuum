@@ -1,30 +1,33 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { MoonIcon, SunIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { getJSON } from "./lib/api";
 import { navigate, parseRoute } from "./lib/router";
-import { Actor } from "./views/Actor";
-import { Actors } from "./views/Actors";
-import { Adversaries } from "./views/Adversaries";
-import { Controls } from "./views/Controls";
-import { Decisions } from "./views/Decisions";
-import { Findings } from "./views/Findings";
-import { Help } from "./views/Help";
 import { HelpTip } from "./views/fields";
 import { FIELD_HELP } from "./lib/help";
-import { Governance } from "./views/Governance";
-import { GovAction } from "./views/GovAction";
 import { Overview } from "./views/Overview";
-import { ExAddress } from "./views/ExAddress";
-import { ExBlock } from "./views/ExBlock";
-import { ExEpoch } from "./views/ExEpoch";
-import { ExTx } from "./views/ExTx";
-import { Explorer } from "./views/Explorer";
 import { SearchBox } from "./views/SearchBox";
 import { Note } from "./views/common";
 import { navFor, type Capabilities } from "./lib/nav";
-import { Pools } from "./views/Pools";
+
+// Every view but the overview loads on first visit, so the landing page does
+// not wait for the explorer's or the controls' code.
+const Actor = lazy(() => import("./views/Actor").then((m) => ({ default: m.Actor })));
+const Actors = lazy(() => import("./views/Actors").then((m) => ({ default: m.Actors })));
+const Adversaries = lazy(() => import("./views/Adversaries").then((m) => ({ default: m.Adversaries })));
+const Controls = lazy(() => import("./views/Controls").then((m) => ({ default: m.Controls })));
+const Decisions = lazy(() => import("./views/Decisions").then((m) => ({ default: m.Decisions })));
+const ExAddress = lazy(() => import("./views/ExAddress").then((m) => ({ default: m.ExAddress })));
+const ExBlock = lazy(() => import("./views/ExBlock").then((m) => ({ default: m.ExBlock })));
+const ExEpoch = lazy(() => import("./views/ExEpoch").then((m) => ({ default: m.ExEpoch })));
+const ExTx = lazy(() => import("./views/ExTx").then((m) => ({ default: m.ExTx })));
+const Explorer = lazy(() => import("./views/Explorer").then((m) => ({ default: m.Explorer })));
+const Findings = lazy(() => import("./views/Findings").then((m) => ({ default: m.Findings })));
+const GovAction = lazy(() => import("./views/GovAction").then((m) => ({ default: m.GovAction })));
+const Governance = lazy(() => import("./views/Governance").then((m) => ({ default: m.Governance })));
+const Help = lazy(() => import("./views/Help").then((m) => ({ default: m.Help })));
+const Pools = lazy(() => import("./views/Pools").then((m) => ({ default: m.Pools })));
 
 type Theme = "light" | "dark";
 
@@ -120,6 +123,7 @@ export function App() {
         </div>
       </header>
       <main id="main" className="mx-auto max-w-[1200px] px-4 pb-12">
+        <Suspense fallback={<Note>Loading…</Note>}>
         {route.name === "overview" && <Overview />}
         {route.name === "actors" && <Actors />}
         {route.name === "actor" && <Actor id={route.id} />}
@@ -138,6 +142,7 @@ export function App() {
         {route.name === "help" && <Help />}
         {route.name === "controls" && (controls ? <Controls /> : <Note className="p-4 text-center">Controls are not enabled on this server (start it with --controls).</Note>)}
         {route.name === "notfound" && <Note className="p-4 text-center">No such page.</Note>}
+        </Suspense>
       </main>
     </TooltipProvider>
   );
