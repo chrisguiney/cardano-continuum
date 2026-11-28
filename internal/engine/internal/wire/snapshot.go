@@ -60,6 +60,9 @@ type ViewRec struct {
 	Set       chain.Snapshot        `json:"set"`
 	Proposals []chain.ProposalState `json:"proposals"`
 	Votes     []chain.VoteState     `json:"votes"`
+	// Hot are the committee hot keys the view saw authorised; a record
+	// from before they were kept has none, and the engine authorises again.
+	Hot []common.Blake2b224 `json:"hot,omitempty"`
 }
 
 // UtxoRec is one output of the view, its CBOR as the block carried it.

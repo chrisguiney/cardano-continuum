@@ -150,6 +150,8 @@ type State struct {
 	// Proposals and Votes are the tracked governance state.
 	Proposals []ProposalState
 	Votes     []VoteState
+	// Hot are the book's committee hot keys authorised on the chain.
+	Hot []common.Blake2b224
 }
 
 // New returns a view holding s, with s.At as both tip and settled point.
@@ -193,6 +195,10 @@ func New(cfg Config, s State) (*View, error) {
 	}
 	for _, d := range s.DReps {
 		v.dreps[d] = true
+	}
+
+	for _, h := range s.Hot {
+		v.hot[h] = true
 	}
 	return v, nil
 }
@@ -430,6 +436,7 @@ func (v *View) unwind(u undo) []Effect {
 	restore(u.stake, v.stake)
 	restore(u.pools, v.pools)
 	restore(u.dreps, v.dreps)
+	restore(u.hot, v.hot)
 	v.ep.restore(u)
 	v.restoreGov(u)
 	v.tip, v.height = u.prev, u.prevH
@@ -449,6 +456,7 @@ func (v *View) Snapshot() State {
 	s.Label, s.Frozen = v.ep.label, v.ep.frozen
 	s.Mark, s.Set = slices.Clone(v.ep.mark), slices.Clone(v.ep.set)
 	s.Proposals, s.Votes = v.govState()
+	s.Hot = sortedKeys(v.hot)
 	return s
 }
 
@@ -491,6 +499,7 @@ type undo struct {
 	stake map[common.Blake2b224]prior[StakeState]
 	pools map[common.Blake2b224]prior[PoolState]
 	dreps map[common.Blake2b224]prior[bool]
+	hot   map[common.Blake2b224]prior[bool]
 	// epoch is set when the block moved the epoch state, gov when it
 	// touched proposals or votes; each holds what to put back.
 	epoch *epochs

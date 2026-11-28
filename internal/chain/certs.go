@@ -10,21 +10,30 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 )
 
-// accounts is the view's stake credentials and DReps: registrations,
-// pool delegations and vote delegations of the credentials the book names.
+// accounts is the view's stake credentials, DReps and committee hot keys:
+// registrations, pool delegations and vote delegations of the credentials
+// the book names, and which of its committee hot keys are authorised.
 type accounts struct {
 	book  *Book
 	stake map[common.Blake2b224]StakeState
 	dreps map[common.Blake2b224]bool
+	// hot holds the book's committee hot keys a certificate has authorised.
+	hot map[common.Blake2b224]bool
 }
 
 func newAccounts(b *Book) accounts {
-	return accounts{book: b, stake: map[common.Blake2b224]StakeState{}, dreps: map[common.Blake2b224]bool{}}
+	return accounts{
+		book:  b,
+		stake: map[common.Blake2b224]StakeState{},
+		dreps: map[common.Blake2b224]bool{},
+		hot:   map[common.Blake2b224]bool{},
+	}
 }
 
 func (a accounts) clone() accounts {
 	a.stake = maps.Clone(a.stake)
 	a.dreps = maps.Clone(a.dreps)
+	a.hot = maps.Clone(a.hot)
 	return a
 }
 
@@ -72,8 +81,32 @@ func applyCert(a *accounts, r *registry, c common.Certificate, u *undo) bool {
 		return a.editDRep(c.DrepCredential, u, true)
 	case *common.DeregistrationDrepCertificate:
 		return a.editDRep(c.DrepCredential, u, false)
+	case *common.AuthCommitteeHotCertificate:
+		return a.authHot(c.HotCredential, u)
 	}
 	return false
+}
+
+// authHot records a book-named hot key as authorised (formal-ledger-
+// specifications f8059737f1db, src/Ledger/Conway/Specification/
+// Certs.lagda.md, GOVCERT-ccreghot). The book names hot keys, not cold
+// ones, so a resignation or a re-authorisation to another hot key is not
+// seen; the engine does neither.
+func (a *accounts) authHot(cred common.Credential, u *undo) bool {
+	k := cred.Credential
+	if _, ok := a.book.committee[k]; !ok {
+		return false
+	}
+	remember(&u.hot, a.hot, k)
+	a.hot[k] = true
+	return true
+}
+
+// HotAuthorized reports whether committee seat i's hot key has been
+// authorised on the chain.
+func (a *accounts) HotAuthorized(i int) bool {
+	h, ok := a.book.seats[i]
+	return ok && a.hot[h]
 }
 
 type stakeEdit func(*StakeState)

@@ -133,3 +133,20 @@ func TestDigestKeepsParameterChange(t *testing.T) {
 		t.Fatalf("proposal %+v after the digest, want %+v", got, want)
 	}
 }
+
+// The snapshot keeps the committee hot keys the view saw authorised, so a
+// restarted engine does not authorise them again.
+func TestViewRecordKeepsHotKeys(t *testing.T) {
+	s := chain.State{Hot: []common.Blake2b224{{1}, {2}}}
+	r, err := encodeView(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := decodeView(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Hot) != 2 || got.Hot[0] != s.Hot[0] || got.Hot[1] != s.Hot[1] {
+		t.Fatalf("hot keys %v after the record, want %v", got.Hot, s.Hot)
+	}
+}

@@ -286,3 +286,42 @@ func TestChangeOf(t *testing.T) {
 		t.Fatalf("info: prev %v, governance group %t", prev, gov)
 	}
 }
+
+// The view records a seat's hot key as authorised once a block carries its
+// authorisation, forgets it on a rollback past that block, keeps it in the
+// state a restart resumes from, and ignores a hot key the book does not
+// name.
+func TestCommitteeHotKeyAuthorised(t *testing.T) {
+	v, chain := delegated(t, 10)
+	v.cfg.Book.AddCommittee(hash224(50), 0)
+	v.cfg.Book.AddCommittee(hash224(51), 1)
+	if v.HotAuthorized(0) {
+		t.Fatal("seat 0 authorised before any certificate")
+	}
+	auth := func(cold, hot byte) common.Certificate {
+		return &common.AuthCommitteeHotCertificate{ColdCredential: credOf(cold), HotCredential: credOf(hot)}
+	}
+	b2 := nextAt(&chain[0], 2, 2, certTx(70, auth(40, 50), auth(42, 52)))
+	mustApply(t, v, b2)
+	if !v.HotAuthorized(0) || v.HotAuthorized(1) {
+		t.Fatalf("seat 0 %t, seat 1 %t; want only seat 0", v.HotAuthorized(0), v.HotAuthorized(1))
+	}
+	if got := v.Snapshot().Hot; !slices.Equal(got, []common.Blake2b224{hash224(50)}) {
+		t.Errorf("snapshot hot keys %v, want only 50", got)
+	}
+
+	resumed, err := New(v.cfg, v.Snapshot())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !resumed.HotAuthorized(0) {
+		t.Error("a view resumed from the snapshot lost seat 0's authorisation")
+	}
+
+	if _, err := v.Rollback(chain[0].Point); err != nil {
+		t.Fatal(err)
+	}
+	if v.HotAuthorized(0) {
+		t.Error("seat 0 still authorised after rolling the certificate back")
+	}
+}
