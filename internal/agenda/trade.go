@@ -18,6 +18,9 @@ type Position struct {
 	// Trend is the log change of ADA in the currency over the market's
 	// window: positive is a rally.
 	Trend float64 `json:"trend"`
+	// Dry is true when no exchange has ADA free to pay a buy out, so the
+	// wallet cannot buy now.
+	Dry bool `json:"dry,omitempty"`
 }
 
 // Trading is the ADA market as the agendas see it. A view without it, or
@@ -69,6 +72,9 @@ func trade(a population.Actor, v View, bal purse, hodl bool) []Score {
 	pull := min(trendCeil, max(trendFloor, math.Exp(trendGain*finite0(pos.Trend))))
 	buy := Score{Kind: profile.IntentBuyADA, Value: buyScore * pull,
 		Why: fmt.Sprintf("ADA %+.1f%% in %s over the window: buys at %.2fx", 100*pos.Trend, pos.Currency, pull)}
+	if pos.Dry {
+		buy = off(profile.IntentBuyADA, "no exchange has free ADA to pay a buy out")
+	}
 	return []Score{buy, sell(a, pos, bal, hodl)}
 }
 

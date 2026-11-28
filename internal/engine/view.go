@@ -3,6 +3,7 @@ package engine
 import (
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
+	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/intent"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/protocol"
@@ -69,7 +70,10 @@ func (v view) Deposit(k profile.IntentKind) (profile.Lovelace, bool) {
 
 // Position implements agenda.Trading.
 func (v view) Position(id population.ActorID) (agenda.Position, bool) {
-	return v.e.co.Desk.Position(id, v.e.clk.Now())
+	now := v.e.clk.Now()
+	pos, ok := v.e.co.Desk.Position(id, now)
+	pos.Dry = ok && v.e.co.Desk.Dry(id, now, func(x population.ActorID) uint64 { return v.e.pay.Spendable(uint64(x)) }, intent.MinTrade+feeHeadroom)
+	return pos, ok
 }
 
 // Burst implements agenda.Market.

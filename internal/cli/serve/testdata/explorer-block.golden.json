@@ -3,12 +3,12 @@
   "evicted": false,
   "ex_mem": 0,
   "ex_steps": 0,
-  "fees": 1515425,
+  "fees": 1852499,
   "fork": false,
-  "hash": "fe1df12ec899cfa5d6c5b2c4b9f085892017e83c6ba2bbb1985f552ec4cd8562",
+  "hash": "d03d39f4368af78f00b7cd5cd6b8f360a6b0c5c739c70d5ea2f4e2691ac05780",
   "header": {
-    "body_hash": "1e20943118dc237ffb60f64f34eabdd7966a4c507d7e0eb792c6352d3d1fe182",
-    "body_size": 2645,
+    "body_hash": "d47d67e5b964ca0137d876f762f03f43f3cbba62f867224c0013c8ced504bf4c",
+    "body_size": 3239,
     "issuer_vkey": "0000000000000000000000000000000000000000000000000000000000000000",
     "kes_period": 0,
     "opcert_hot_vkey": "0000000000000000000000000000000000000000000000000000000000000000",
@@ -19,10 +19,10 @@
   },
   "height": 1,
   "issuer": "f9dca21a6c826ec8acb4cf395cbc24351937bfe6560b2683ab8b415f",
-  "next": "9a183a593165b51605f5f97c0efe449a9cfca0ac8a8b3c4b294f2995e0c2b9d6",
+  "next": "953e45d0d4f0b9bf1a460767cf0ecb9a640651650e5ecb4b5efeb5aa9d1314f9",
   "pools": [],
   "prev": "0000000000000000000000000000000000000000000000000000000000000000",
-  "size": 3495,
+  "size": 4089,
   "slot": 10,
   "stub": false,
   "time_ms": 10000,
@@ -41,11 +41,15 @@
     },
     {
       "fee": 168537,
-      "hash": "a357a846a0f8d43efa84dfb22790d62c7611c923e2a43fd6ce0976abada04fd4"
+      "hash": "ce15553b86f16f5a457b26b9d4a9da76c68d636c0edae66c39dbdb833d618264"
     },
     {
       "fee": 168361,
       "hash": "bbd35e83a5446c60fe38721cfb8e072e1b82ab64d1f779759fd7b603399fb3c9"
+    },
+    {
+      "fee": 168537,
+      "hash": "411ca78b69295dc74cc30a8c986c18daf9092dabd57efffa813916caa8d0a8b6"
     },
     {
       "fee": 168361,
@@ -56,8 +60,12 @@
       "hash": "2df677ec981934e2109a8783517a201f1239df02c04be52f2b5e2485a4058d9b"
     },
     {
+      "fee": 168537,
+      "hash": "962151e3cb35bd8f8f0879f346447d9f917aa0c3f5ba3fc7e76f133e4b6c114b"
+    },
+    {
       "fee": 168361,
-      "hash": "87b59348ede89b1cab8d081c67e8266c497b008acdc659544e3a7d223b8292f3"
+      "hash": "485d61d1b305b5f894638d1cbcd04c4cba61e6f099899d9e94c5da41a62c2ee9"
     },
     {
       "fee": 168361,

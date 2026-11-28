@@ -132,3 +132,17 @@ func why(ss []Score, k profile.IntentKind) string {
 	}
 	return ""
 }
+
+// A wallet does not choose to buy while no exchange has ADA free to pay
+// out: the buy scores zero with the reason, so the actor idles.
+func TestTradeBuyScoresZeroWhenExchangesAreDry(t *testing.T) {
+	for _, name := range tradeAgendas {
+		ss := mustFor(t, name).Score(actor(profile.Wallet, 1), market(Position{Currency: "EUR", Dry: true}))
+		if v := value(ss, profile.IntentBuyADA); v != 0 {
+			t.Fatalf("%s buys at %v with dry exchanges", name, v)
+		}
+		if value(ss, profile.IntentSellADA) <= 0 {
+			t.Fatalf("%s: a dry exchange stops a sale too", name)
+		}
+	}
+}

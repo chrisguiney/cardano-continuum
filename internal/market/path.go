@@ -140,6 +140,9 @@ func (p *Path) Venue(r *rand.Rand, o Order) (Venue, bool) {
 	bestCost, found := math.Inf(1), false
 
 	for x := range p.c.m.Exchanges {
+		if o.Able != nil && !o.Able(x) {
+			continue
+		}
 		for _, c := range held {
 			cand, cost, ok := p.offer(o, x, c)
 			if !ok {

@@ -101,8 +101,9 @@ type Spend interface {
 type Market interface {
 	// Order is the quote for the wallet's buy or sale and the actor of the
 	// exchange it trades on; ok is false when no exchange quotes the
-	// wallet's currencies. It draws from r.
-	Order(at sched.Time, wallet population.ActorID, buy bool, r *rand.Rand) (o wire.Order, venue population.ActorID, ok bool)
+	// wallet's currencies. able, if not nil, says which exchange actors can
+	// fill it. It draws from r.
+	Order(at sched.Time, wallet population.ActorID, buy bool, able func(population.ActorID) bool, r *rand.Rand) (o wire.Order, venue population.ActorID, ok bool)
 }
 
 // Extra is a kind another component builds: its attempts go through the

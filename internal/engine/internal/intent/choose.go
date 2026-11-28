@@ -167,10 +167,10 @@ func (ch *Chooser) preparePayment(at sched.Time, a population.Actor, p *wire.Pen
 }
 
 // Trade sizing. A buy spends a drawn share of the wallet's budget in fiat,
-// at least minTrade; a sale sells a drawn share of the spendable balance,
+// at least MinTrade; a sale sells a drawn share of the spendable balance,
 // and a sale under water (Order.Gain below -panicGain) a far larger one.
 const (
-	minTrade   = 5_000_000
+	MinTrade   = 5_000_000
 	buyShare   = 0.02
 	buySpread  = 0.08
 	panicGain  = 0.1
@@ -185,14 +185,27 @@ func (ch *Chooser) prepareTrade(at sched.Time, a population.Actor, p *wire.Pendi
 		return nil, "no market"
 	}
 	buy := p.Kind == string(profile.IntentBuyADA)
-	o, venue, ok := ch.env.Market.Order(at, a.ID, buy, r)
+	var (
+		gross uint64
+		able  func(population.ActorID) bool
+	)
+	if buy {
+		// The exchange pays the buy, so only one with the ADA free can be
+		// the venue, and it fills no more than it has free.
+		gross = max(MinTrade, uint64(float64(ch.env.Roster.Profile(a.ID).Budget)*(buyShare+buySpread*r.Float64())))
+		able = func(x population.ActorID) bool { return ch.env.Flight.Spendable(uint64(x)) >= MinTrade+FeeHeadroom }
+	}
+	o, venue, ok := ch.env.Market.Order(at, a.ID, buy, able, r)
 	if !ok {
+		if buy {
+			return nil, "no exchange with free ADA quotes the wallet's currencies"
+		}
 		return nil, "no exchange quotes the wallet's currencies"
 	}
 	p.Order = &o
 
 	if buy {
-		gross := max(minTrade, uint64(float64(ch.env.Roster.Profile(a.ID).Budget)*(buyShare+buySpread*r.Float64())))
+		gross = min(gross, ch.env.Flight.Spendable(uint64(venue))-FeeHeadroom)
 		if o.Fee >= gross {
 			return nil, "withdrawal fee exceeds the purchase"
 		}

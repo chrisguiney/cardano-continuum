@@ -20,6 +20,9 @@ type Order struct {
 	At sched.Time
 	// Last is the exchange the wallet last traded on, or -1.
 	Last int
+	// Able reports whether exchange x can fill the order, as a buy needs
+	// the exchange to have ADA to pay out; nil means every exchange can.
+	Able func(x int) bool
 }
 
 // Venue is where an order trades.

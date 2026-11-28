@@ -262,3 +262,29 @@ func TestDeathFactor(t *testing.T) {
 		t.Fatal("Deaths is not the factor as a modulation")
 	}
 }
+
+// An exchange that cannot pay is no venue for a buyer: Able removes it
+// from the candidates, and no able exchange leaves no venue.
+func TestVenueSkipsUnableExchange(t *testing.T) {
+	m := profile.DefaultMarkets()
+	m.Venue.Noise, m.Venue.Loyalty = 0, 0
+	p := New(seed(1), m)
+	r := rand.New(rand.NewPCG(1, 2))
+	usd := p.Currency("USD")
+	o := Order{Buy: true, Primary: usd, At: 2 * hour, Last: -1}
+	v, ok := p.Venue(r, o)
+	if !ok {
+		t.Fatal("no venue for a USD buyer")
+	}
+
+	o.Able = func(x int) bool { return x != v.Exchange }
+	got, ok := p.Venue(r, o)
+	if ok && got.Exchange == v.Exchange {
+		t.Fatalf("venue %d chosen though it cannot pay", got.Exchange)
+	}
+
+	o.Able = func(int) bool { return false }
+	if _, ok := p.Venue(r, o); ok {
+		t.Fatal("a venue with no able exchange")
+	}
+}

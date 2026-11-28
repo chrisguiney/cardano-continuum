@@ -35,14 +35,15 @@ func (d *Desk) Position(id population.ActorID, t sched.Time) (agenda.Position, b
 }
 
 // Order quotes the wallet's buy or sale at its venue (market.Path.Venue)
-// and names the exchange's actor. It draws from r.
-func (d *Desk) Order(at sched.Time, id population.ActorID, buy bool, r *rand.Rand) (wire.Order, population.ActorID, bool) {
+// and names the exchange's actor. able, if not nil, says which exchange
+// actors can fill it. It draws from r.
+func (d *Desk) Order(at sched.Time, id population.ActorID, buy bool, able func(population.ActorID) bool, r *rand.Rand) (wire.Order, population.ActorID, bool) {
 	pos, ok := d.Position(id, at)
 	if !ok {
 		return wire.Order{}, 0, false
 	}
 	tr := d.m.r.Rec(id).Trader
-	v, ok := d.m.path.Venue(r, market.Order{Buy: buy, Primary: tr.Primary, Extra: tr.Extra, At: at, Last: tr.Venue})
+	v, ok := d.m.path.Venue(r, market.Order{Buy: buy, Primary: tr.Primary, Extra: tr.Extra, At: at, Last: tr.Venue, Able: func(x int) bool { return able == nil || able(d.m.venues[x]) }})
 	if !ok {
 		return wire.Order{}, 0, false
 	}
@@ -59,6 +60,25 @@ func (d *Desk) Order(at sched.Time, id population.ActorID, buy bool, r *rand.Ran
 		o.Fee = x.Fee
 	}
 	return o, d.m.venues[v.Exchange], true
+}
+
+// Dry reports whether no exchange that quotes one of the wallet's
+// currencies has at least need lovelace free, as free reports it: the
+// wallet's buy has no venue.
+func (d *Desk) Dry(id population.ActorID, at sched.Time, free func(population.ActorID) uint64, need uint64) bool {
+	tr := d.m.r.Rec(id).Trader
+	held := append([]int{tr.Primary}, tr.Extra...)
+	for x, v := range d.m.venues {
+		if free(v) < need {
+			continue
+		}
+		for _, c := range held {
+			if _, _, ok := d.m.path.Quote(x, c, at); ok {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // Settled settles the fiat side of a trade whose ADA is K deep: a buy
