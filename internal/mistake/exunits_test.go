@@ -140,3 +140,59 @@ func TestWrongAddressNotOnScriptSpend(t *testing.T) {
 		t.Fatalf("wrong_address on a script spend: %v, want not applicable", err)
 	}
 }
+
+// A script spend's validator may read the outputs it pays (the
+// disbursement compares a whole address), so wrong_network edits the change
+// output, which no validator reads.
+func TestWrongNetworkTargetsChangeOnScriptSpend(t *testing.T) {
+	t.Parallel()
+	wd, _ := fakeWorld(t)
+	wd.prepare(t)
+	for _, tt := range []struct {
+		name string
+		tx   []byte
+		want func(m *mutant) int
+	}{
+		{"script spend", wd.base(t, ExUnitsOverDeclared).Tx, func(m *mutant) int { return m.change }},
+		{"payment", wd.base(t, FeeTooSmall).Tx, func(*mutant) int { return 0 }},
+	} {
+		m, err := parse(tt.tx, wd.ctx(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, want := m.networkTarget(), tt.want(m); got != want || got < 0 {
+			t.Errorf("%s: target %d, want %d", tt.name, got, want)
+		}
+	}
+}
+
+func TestRunsScript(t *testing.T) {
+	t.Parallel()
+	wd, _ := fakeWorld(t)
+	wd.prepare(t)
+	if !RunsScript(wd.base(t, ExUnitsLow).Tx) || RunsScript(wd.base(t, FeeTooSmall).Tx) {
+		t.Fatal("RunsScript must be true for an unlock and false for a payment")
+	}
+	if RunsScript([]byte{0x80}) {
+		t.Fatal("garbage runs a script")
+	}
+}
+
+// A bad input makes the script context unbuildable, so a node running a
+// script adds CollectErrors beside BadInputs.
+func TestCollectErrorsBesideBadInputs(t *testing.T) {
+	t.Parallel()
+	wd, _ := fakeWorld(t)
+	wd.prepare(t)
+	unlock, pay := wd.base(t, ExUnitsLow).Tx, wd.base(t, FeeTooSmall).Tx
+	e := Expect(Of(StaleInput), false)
+	if !WithCollectErrors(e, unlock).Allows(submit.CollectErrors) {
+		t.Error("a script spend with a bad input must allow CollectErrors")
+	}
+	if WithCollectErrors(e, pay).Allows(submit.CollectErrors) {
+		t.Error("a payment runs no script, so it has no CollectErrors")
+	}
+	if WithCollectErrors(Expect(Of(FeeTooSmall), false), unlock).Allows(submit.CollectErrors) {
+		t.Error("CollectErrors needs a bad input to expect")
+	}
+}

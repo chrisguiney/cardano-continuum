@@ -57,6 +57,11 @@ const (
 	// ValidationTagMismatch: a script failed while the transaction declared
 	// its scripts pass (or the reverse); a node refuses it from its mempool.
 	ValidationTagMismatch Class = "ValidationTagMismatch"
+	// CollectErrors: the script context could not be built, because an
+	// input or reference input is missing from the UTXO set. A node running
+	// a script names it beside BadInputsUTxO (cardano-ledger
+	// Alonzo/Rules/Utxos.hs, collectPlutusScriptsWithContext).
+	CollectErrors Class = "CollectErrors"
 
 	// EraMismatch: the transaction's era is not the ledger's era.
 	EraMismatch Class = "HardForkApplyTxErrWrongEra"

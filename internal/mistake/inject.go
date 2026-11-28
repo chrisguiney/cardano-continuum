@@ -124,6 +124,22 @@ func Inject(tx []byte, ks KindSet, c Ctx) ([]byte, Expected, error) {
 	return m.encode(), want, nil
 }
 
+// RunsScript reports whether tx carries redeemers, so a node runs a Plutus
+// script for it. Bytes that are not a transaction run none.
+func RunsScript(tx []byte) bool {
+	parts, err := splitArray(tx)
+	if err != nil || len(parts) != 4 {
+		return false
+	}
+	wits, err := splitFields(parts[1])
+	if err != nil {
+		return false
+	}
+	_, ok := wits.get(witRedeemers)
+
+	return ok
+}
+
 // Applicable returns the mistakes Inject can make on tx alone.
 func Applicable(tx []byte, c Ctx) KindSet {
 	var s KindSet
@@ -213,12 +229,12 @@ func (m *mutant) make(k Kind) error {
 		m.fs = m.fs.set(keyTTL, encUint(m.c.Slot))
 		return nil
 	case WrongNetwork:
-		return m.readdress(func(a []byte) { a[0] ^= 1 })
+		return m.readdress(m.networkTarget(), func(a []byte) { a[0] ^= 1 })
 	case WrongAddress:
 		if _, ok := m.wits.get(witRedeemers); ok {
 			return fmt.Errorf("%w: a script spend validates its outputs", ErrNotApplicable)
 		}
-		return m.readdress(func(a []byte) {
+		return m.readdress(0, func(a []byte) {
 			h := common.Blake2b224Hash(a[1:29])
 			copy(a[1:29], h[:])
 		})
@@ -276,20 +292,37 @@ func (m *mutant) dust() error {
 	return nil
 }
 
-// readdress edits the first output's Shelley address in place.
-func (m *mutant) readdress(edit func(a []byte)) error {
-	a, err := m.outs[0].address()
+// networkTarget is the output wrong_network edits. A script spend's
+// validator may read any output it pays (the disbursement compares a whole
+// address), so there the edit goes to the change output, which no validator
+// reads; a failed script would add ValidationTagMismatch to the class the
+// mistake is meant to cause.
+func (m *mutant) networkTarget() int {
+	if _, ok := m.wits.get(witRedeemers); ok {
+		return m.change
+	}
+
+	return 0
+}
+
+// readdress edits output i's Shelley address in place.
+func (m *mutant) readdress(i int, edit func(a []byte)) error {
+	if i < 0 {
+		return fmt.Errorf("%w: no change output to readdress", ErrNotApplicable)
+	}
+
+	a, err := m.outs[i].address()
 	if err != nil {
 		return err
 	}
 	// Types 0-7 are payment addresses: a header, a 28-byte payment
 	// credential, then the delegation part (CIP-19).
 	if len(a) < 29 || a[0]>>4 > 7 {
-		return fmt.Errorf("%w: first output is not a Shelley payment address", ErrNotApplicable)
+		return fmt.Errorf("%w: output %d is not a Shelley payment address", ErrNotApplicable, i)
 	}
 	a = bytes.Clone(a)
 	edit(a)
-	m.outs[0] = m.outs[0].with(0, encBytes(a))
+	m.outs[i] = m.outs[i].with(0, encBytes(a))
 	return nil
 }
 

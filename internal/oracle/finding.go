@@ -153,8 +153,8 @@ type Verdict struct {
 	// Verdict is "accepted", "rejected" or "unreached".
 	Verdict string         `json:"verdict"`
 	Classes []submit.Class `json:"classes,omitempty"`
-	// Detail is the node's own text for the classes the decoder could not
-	// map.
+	// Detail is the node's own text for each failure, "Class: text" joined
+	// by "; ".
 	Detail string `json:"detail,omitempty"`
 }
 

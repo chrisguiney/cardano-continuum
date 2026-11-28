@@ -19,10 +19,12 @@ const conwayMempoolFailure = 7
 
 // utxosValidationTagMismatch is the UTXOS constructor tag of
 // ValidationTagMismatch (Cardano.Ledger.Alonzo.Rules.Utxos, kept by Conway):
-// a script's result disagrees with the transaction's is_valid flag. Tag 1,
-// CollectErrors, means the script context could not be built and stays
-// Unknown with its text.
-const utxosValidationTagMismatch = 0
+// a script's result disagrees with the transaction's is_valid flag.
+// utxosCollectErrors, tag 1, means the script context could not be built.
+const (
+	utxosValidationTagMismatch = 0
+	utxosCollectErrors         = 1
+)
 
 // ledgerRejection decodes a local-tx-submission rejection into failures.
 func ledgerRejection(err error) ([]Failure, bool) {
@@ -198,8 +200,12 @@ func utxosClass(e *ledger.UtxosFailure) (Class, bool) {
 	if !ok || len(parts) == 0 {
 		return "", false
 	}
-	if tag, ok := parts[0].(uint64); ok && tag == utxosValidationTagMismatch {
+	tag, ok := parts[0].(uint64)
+	switch {
+	case ok && tag == utxosValidationTagMismatch:
 		return ValidationTagMismatch, true
+	case ok && tag == utxosCollectErrors:
+		return CollectErrors, true
 	}
 	return "", false
 }

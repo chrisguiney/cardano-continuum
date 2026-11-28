@@ -293,6 +293,20 @@ func ExpectOn(ks KindSet, spent bool, p build.Params) Expected {
 	return e
 }
 
+// WithCollectErrors is e plus CollectErrors when e allows BadInputs and tx
+// runs a script: the node cannot build the script context over a missing
+// input, and names that beside BadInputsUTxO.
+func WithCollectErrors(e Expected, tx []byte) Expected {
+	if !e.Allows(submit.BadInputs) || !RunsScript(tx) {
+		return e
+	}
+	e.Classes = append(slices.Clone(e.Classes), submit.CollectErrors)
+	slices.Sort(e.Classes)
+	e.Classes = slices.Compact(e.Classes)
+
+	return e
+}
+
 // overDeclared is the memory an over-declaration declares in total: one
 // unit past the block's budget.
 func overDeclared(p build.Params) int64 { return p.MaxBlockExUnits.Memory + 1 }

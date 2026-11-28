@@ -3,6 +3,7 @@ package oracle
 import (
 	"bytes"
 	"slices"
+	"strings"
 	"testing"
 
 	"go.uber.org/goleak"
@@ -218,5 +219,32 @@ func TestFindingNonReproducibleFromDirty(t *testing.T) {
 	clean := attempt(a.Expected, Answer{Node: node("dingo", "p2"), Outcome: accepted()})
 	if fs := Judge(clean, run); len(fs) != 1 || !fs[0].Reproducible {
 		t.Fatalf("a clean build's finding is not reproducible: %+v", fs)
+	}
+}
+
+// A node with no pool name (a live run's single node) must not leave a
+// gap in the summary.
+func TestSummaryWithoutPool(t *testing.T) {
+	t.Parallel()
+	got := Judge(attempt(expect(0, false), Answer{Node: Node{Impl: "node"}, Outcome: rejected(submit.FeeTooSmall)}), run)
+	if len(got) != 1 {
+		t.Fatalf("findings %v", kinds(got))
+	}
+	if strings.Contains(got[0].Summary, "  ") || strings.HasPrefix(got[0].Summary, "node on ") {
+		t.Fatalf("summary %q", got[0].Summary)
+	}
+}
+
+// Every rejected failure's text reaches the verdict, so a reader sees why
+// a node refused, not only which rule.
+func TestVerdictCarriesEveryFailureText(t *testing.T) {
+	t.Parallel()
+	got := Judge(attempt(expect(0, false), Answer{Node: node("cardano-node", "p1"), Outcome: rejected(submit.FeeTooSmall, submit.WrongNetwork)}), run)
+	if len(got) != 1 || len(got[0].Verdicts) != 1 {
+		t.Fatalf("findings %v", got)
+	}
+	d := got[0].Verdicts[0].Detail
+	if !strings.Contains(d, "text of FeeTooSmallUTxO") || !strings.Contains(d, "text of WrongNetwork") {
+		t.Fatalf("detail %q", d)
 	}
 }

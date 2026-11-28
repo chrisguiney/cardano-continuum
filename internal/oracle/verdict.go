@@ -105,6 +105,19 @@ func classDetail(o submit.Outcome, cs []submit.Class) string {
 	return strings.Join(ds, "; ")
 }
 
+// failureDetail joins the node's text for every failure, class first, so a
+// verdict says why the node refused as well as which rules it named.
+func failureDetail(o submit.Outcome) string {
+	var ds []string
+	for _, f := range o.Failures {
+		if f.Detail != "" {
+			ds = append(ds, string(f.Class)+": "+f.Detail)
+		}
+	}
+
+	return strings.Join(ds, "; ")
+}
+
 // unknownDetail joins the node's text for every unmapped failure.
 func unknownDetail(o submit.Outcome) (string, bool) {
 	var ds []string
@@ -134,9 +147,8 @@ func verdictFinding(a Attempt, ans Answer, j judgement) Finding {
 	}
 	return Finding{
 		Kind: j.kind, Severity: j.sev,
-		Summary: fmt.Sprintf("%s on %s %s tx %s; expected %s",
-			ans.Node.Impl, ans.Node.Pool, got, short(a.ID), e),
-		Tx: a.Tx, TxHash: slices.Clone(a.ID[:]), Expected: &e, Verdicts: verdicts(a.Answers), Facts: facts,
+		Summary: fmt.Sprintf("%s %s tx %s; expected %s", nodeName(ans.Node), got, short(a.ID), e),
+		Tx:      a.Tx, TxHash: slices.Clone(a.ID[:]), Expected: &e, Verdicts: verdicts(a.Answers), Facts: facts,
 		Nodes: []Node{ans.Node},
 	}
 }
@@ -213,6 +225,16 @@ func split(a, b []string) bool {
 	return false
 }
 
+// nodeName is the implementation, and "on <pool>" when the node has a pool
+// name; a live run's single node has none.
+func nodeName(n Node) string {
+	if n.Pool == "" {
+		return n.Impl
+	}
+
+	return n.Impl + " on " + n.Pool
+}
+
 func expectation(e mistake.Expected) Expectation {
 	return Expectation{Classes: slices.Clone(e.Classes), Accept: e.Accept}
 }
@@ -224,7 +246,7 @@ func verdicts(as []Answer) []Verdict {
 		for _, f := range a.Outcome.Failures {
 			v.Classes = append(v.Classes, f.Class)
 		}
-		v.Detail, _ = unknownDetail(a.Outcome)
+		v.Detail = failureDetail(a.Outcome)
 		out = append(out, v)
 	}
 	return out

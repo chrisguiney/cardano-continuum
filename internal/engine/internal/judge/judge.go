@@ -31,6 +31,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/eventlog"
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
+	"github.com/chrisguiney/cardano-continuum/internal/mistake"
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 	"github.com/chrisguiney/cardano-continuum/internal/policy"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
@@ -176,7 +177,7 @@ func (j *Judge) Answer(at sched.Time, p *wire.Pending, r wire.SubmitResult, out 
 	// An adversary racing for the same shared output may have spent it.
 	spent := p.M.Sent || len(p.Txs) > 1 || (p.Locked != nil && j.env.Race.Contested(*p.Locked)) ||
 		(j.spec.Contended != nil && j.spec.Contended(p.KindOf()))
-	want := Expect(j.spec.Build, p.Carried, spent, j.spec.Again(p.KindOf()))
+	want := mistake.WithCollectErrors(Expect(j.spec.Build, p.Carried, spent, j.spec.Again(p.KindOf())), p.Cbor)
 	if p.Probe {
 		// The probe's honest bytes break only the GOV rule's voter check.
 		want.Accept = false
@@ -195,7 +196,7 @@ func (j *Judge) Answer(at sched.Time, p *wire.Pending, r wire.SubmitResult, out 
 		fs = append(fs, f)
 	}
 	if r.Again != nil {
-		again := Expect(j.spec.Build, p.Carried, true, j.spec.Again(p.KindOf()))
+		again := mistake.WithCollectErrors(Expect(j.spec.Build, p.Carried, true, j.spec.Again(p.KindOf())), p.Cbor)
 		a.Expected, a.Answers = &again, []oracle.Answer{{Node: node, Outcome: AnswerOutcome(*r.Again)}}
 		fs = append(fs, oracle.Judge(a, j.spec.Run)...)
 	}
