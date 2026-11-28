@@ -24,6 +24,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/genesis"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
+	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 	"github.com/chrisguiney/cardano-continuum/internal/rng"
 	"github.com/chrisguiney/cardano-continuum/internal/submit"
 )
@@ -201,7 +202,7 @@ func (n *node) params(t *testing.T) build.Params {
 		},
 		MaxTxExUnits:      common.ExUnits{Memory: pp.MaxTxExecutionUnits.Memory, Steps: pp.MaxTxExecutionUnits.Steps},
 		CollateralPercent: pp.CollateralPercentage, MaxCollateralInputs: pp.MaxCollateralInputs,
-		ProtocolMajor: pp.ProtocolVersion.Major, PlutusV3: pp.CostModels.PlutusV3,
+		Protocol: protocol.Version{Major: pp.ProtocolVersion.Major}, PlutusV3: pp.CostModels.PlutusV3,
 	}
 }
 

@@ -52,6 +52,7 @@ import (
 	mockledger "github.com/blinklabs-io/ouroboros-mock/ledger"
 
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
+	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 )
 
 // Params are the protocol parameters the builder needs. They are inputs, never
@@ -80,10 +81,9 @@ type Params struct {
 	MaxBlockExUnits     common.ExUnits
 	CollateralPercent   uint
 	MaxCollateralInputs uint
-	// ProtocolMajor and ProtocolMinor are the protocol version; the major
-	// selects the script semantics local evaluation uses.
-	ProtocolMajor uint
-	ProtocolMinor uint
+	// Protocol is the protocol version; its major selects the script
+	// semantics local evaluation uses.
+	Protocol protocol.Version
 	// PlutusV3 is the PlutusV3 cost model in ledger parameter order.
 	PlutusV3 []int64
 
@@ -103,7 +103,7 @@ func ParamsFromConway(pp *conway.ConwayProtocolParameters, networkID uint8) Para
 		MinPoolCost: pp.MinPoolCost, MaxRetireEpochs: uint64(pp.MaxEpoch),
 		Prices: pp.ExecutionCosts, MaxTxExUnits: pp.MaxTxExUnits, MaxBlockExUnits: pp.MaxBlockExUnits,
 		CollateralPercent: pp.CollateralPercentage, MaxCollateralInputs: pp.MaxCollateralInputs,
-		ProtocolMajor: pp.ProtocolVersion.Major, ProtocolMinor: pp.ProtocolVersion.Minor, PlutusV3: pp.CostModels[2],
+		Protocol: protocol.Version{Major: pp.ProtocolVersion.Major, Minor: pp.ProtocolVersion.Minor}, PlutusV3: pp.CostModels[2],
 	}
 }
 
@@ -151,6 +151,11 @@ type Builder struct {
 // New returns a Builder for the given protocol parameters.
 func New(p Params) *Builder { return &Builder{params: p} }
 
+// Fork moves the builder to protocol version v after a hard fork: local
+// script evaluation and script contexts follow the version the chain is
+// at (plutigo picks Plutus V3 semantics by the major).
+func (b *Builder) Fork(v protocol.Version) { b.params.Protocol = v }
+
 // Stake returns the builder for stake-key transactions.
 func (b *Builder) Stake() Stake { return Stake{b} }
 
@@ -197,7 +202,7 @@ func (b *Builder) protocolParams() backend.ProtocolParameters {
 		MaxCollateralInputs:  int(p.MaxCollateralInputs),
 		MaxTxExMem:           strconv.FormatInt(p.MaxTxExUnits.Memory, 10),
 		MaxTxExSteps:         strconv.FormatInt(p.MaxTxExUnits.Steps, 10),
-		ProtocolMajorVersion: int(p.ProtocolMajor),
+		ProtocolMajorVersion: int(p.Protocol.Major),
 	}
 	// Apollo's prices are floats; they only seed its fee estimate, which
 	// finish replaces with the exact ledger minimum.
@@ -528,7 +533,7 @@ func (b *Builder) evaluate(txCbor []byte, utxos []common.Utxo) (map[common.Redee
 		WithTimeToSlot(func(t time.Time) (uint64, error) { return uint64(t.Sub(start) / slot), nil }).
 		Build()
 	budget := b.params.MaxTxExUnits
-	used, err := script.EvaluatePlutusScripts(tx, ls, b.params.ProtocolMajor,
+	used, err := script.EvaluatePlutusScripts(tx, ls, b.params.Protocol.Major,
 		map[uint][]int64{2: b.params.PlutusV3}, 3, conway.EraNameConway, &budget)
 	if err != nil {
 		return nil, fmt.Errorf("build: evaluate: %w", err)
