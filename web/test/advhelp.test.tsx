@@ -51,7 +51,7 @@ describe("adversary definitions", () => {
     expect(ADV_HELP.honest_failure_rate!.help).toMatch(/released over ended/);
     expect(ADV_HELP.honest_retries!.help).toMatch(/after an intent's first/);
     expect(ADV_HELP.honest_value_grabbed_ada!.help).toMatch(/shared script address/);
-    expect(ADV_HELP.utxo_growth!.help).toMatch(/created less the outputs they spent/);
+    expect(ADV_HELP.utxo_growth!.help).toMatch(/created minus the outputs they spent/);
   });
 
   it("describes every metric the impact table shows, in a tip tied to its row", () => {
