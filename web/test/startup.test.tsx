@@ -29,6 +29,11 @@ describe("waitedText", () => {
     expect(waitedText(125_000)).toBe("2 min 5 s");
     expect(waitedText(-5)).toBe("0 s");
   });
+
+  it("says nothing it cannot measure", () => {
+    expect(waitedText(Number.NaN)).toBe("");
+    expect(waitedText(Number.POSITIVE_INFINITY)).toBe("");
+  });
 });
 
 /** fakeApi answers /api/_ui/status from status and every other path with other. */

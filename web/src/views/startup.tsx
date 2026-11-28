@@ -68,9 +68,11 @@ export function StartupBanner() {
         <p>
           Everything is working — the simulation engine begins once the first blocks are forged (usually a few minutes). Data will appear here automatically.
         </p>
-        <p>
-          Engine: {status.engine}, waiting {waitedText(waited)}.
-        </p>
+        {status.engine && waitedText(waited) && (
+          <p>
+            Engine: {status.engine}, waiting {waitedText(waited)}.
+          </p>
+        )}
       </AlertDescription>
     </Alert>
   );

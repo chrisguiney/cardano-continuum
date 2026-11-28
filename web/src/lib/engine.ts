@@ -34,6 +34,8 @@ export const quiet = (p: Phase): boolean => p === "checking" || p === "starting"
 
 /** waitedText formats a wait of ms milliseconds, "2 min 5 s". */
 export function waitedText(ms: number): string {
+  // A status without parseable times gives NaN: say nothing rather than "NaN s".
+  if (!Number.isFinite(ms)) return "";
   const s = Math.max(0, Math.floor(ms / 1000));
   return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`;
 }
