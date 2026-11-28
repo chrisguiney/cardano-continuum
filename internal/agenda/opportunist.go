@@ -24,7 +24,7 @@ func opportunistScores(a population.Actor, v View) []Score {
 		pick(profile.IntentScriptCall, 0.5*excess, bal, why),
 		pick(profile.IntentMint, 0.2*excess, bal, why),
 	}
-	ss = append(ss, trade(a, v, bal)...)
+	ss = append(ss, trade(a, v, bal, false)...)
 	if !v.StakeRegistered(a.ID) {
 		return append(ss, pick(profile.IntentRegisterStake, 0.2, bal, "stake key not registered"))
 	}

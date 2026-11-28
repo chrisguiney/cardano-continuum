@@ -74,22 +74,37 @@ type Traits struct {
 	Patience     Dist
 	LearningRate Dist
 	Care         Dist
+	// LossAversion is how readily the actor sells ADA under water, in
+	// [0, 1]; nil means DefaultLossAversion, with no draw.
+	LossAversion Dist
 }
+
+// DefaultLossAversion is the loss aversion of a profile that sets none.
+const DefaultLossAversion = 0.5
 
 // SampledTraits are one actor's drawn traits.
 type SampledTraits struct {
 	Competence, Patience, LearningRate, Care float64
+	// LossAversion is the actor's loss aversion.
+	LossAversion float64
 }
 
 // Sample draws one actor's traits. The draw order is fixed (competence,
-// patience, learning rate, care) so a given stream reproduces the same actor.
+// patience, learning rate, care, then loss aversion when the profile sets
+// it) so a given stream reproduces the same actor, and a profile without
+// loss aversion draws as it did before the trait existed.
 func (t Traits) Sample(src Source) SampledTraits {
-	return SampledTraits{
+	s := SampledTraits{
 		Competence:   t.Competence.Sample(src),
 		Patience:     t.Patience.Sample(src),
 		LearningRate: t.LearningRate.Sample(src),
 		Care:         t.Care.Sample(src),
+		LossAversion: DefaultLossAversion,
 	}
+	if t.LossAversion != nil {
+		s.LossAversion = t.LossAversion.Sample(src)
+	}
+	return s
 }
 
 // Hawkes parameterises self-excitation of an actor's activity. The zero value

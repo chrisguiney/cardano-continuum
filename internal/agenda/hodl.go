@@ -12,5 +12,5 @@ func hodlScores(a population.Actor, v View) []Score {
 	return append([]Score{
 		pick(profile.IntentSend, 0.02, bal, "holder spends rarely"),
 		{Kind: Idle, Value: 1, Why: "holder waits"},
-	}, trade(a, v, bal)...)
+	}, trade(a, v, bal, true)...)
 }

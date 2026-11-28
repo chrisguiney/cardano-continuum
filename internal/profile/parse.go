@@ -58,6 +58,7 @@ type rawTraits struct {
 	Patience     string `yaml:"patience"`
 	LearningRate string `yaml:"learning_rate"`
 	Care         string `yaml:"care"`
+	LossAversion string `yaml:"loss_aversion,omitempty"`
 }
 
 type rawRates struct {
@@ -285,6 +286,13 @@ func (rt rawTraits) validate(t *Traits) error {
 		}
 		*f.dst = d
 	}
+	if rt.LossAversion != "" {
+		d, err := parseDist(rt.LossAversion)
+		if err != nil {
+			return fieldErr("traits.loss_aversion", "%v", err)
+		}
+		t.LossAversion = d
+	}
 	return nil
 }
 
@@ -376,6 +384,14 @@ func (ra rawAdversary) validate() (*AdversarySpec, error) {
 	}, nil
 }
 
+// distString is d's text, empty for nil.
+func distString(d Dist) string {
+	if d == nil {
+		return ""
+	}
+	return d.String()
+}
+
 // Marshal renders ps in the file format Parse reads. Parse(Marshal(ps)) yields
 // a value equal to ps.
 func Marshal(ps []Profile) ([]byte, error) {
@@ -425,6 +441,7 @@ func rawProfiles(ps []Profile) rawFile {
 			Traits: rawTraits{
 				Competence: p.Traits.Competence.String(), Patience: p.Traits.Patience.String(),
 				LearningRate: p.Traits.LearningRate.String(), Care: p.Traits.Care.String(),
+				LossAversion: distString(p.Traits.LossAversion),
 			},
 			Budget: int64(p.Budget),
 			Rates: rawRates{

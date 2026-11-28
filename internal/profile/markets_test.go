@@ -145,3 +145,32 @@ func TestMarketHazardsOptIn(t *testing.T) {
 		t.Fatal("a hodl exponent above 1 parsed")
 	}
 }
+
+func TestLossAversionTrait(t *testing.T) {
+	in := strings.Replace(marketsHead, `care: "const(1)"}`, `care: "const(1)", loss_aversion: "const(0.8)"}`, 1)
+	ps, err := Parse(strings.NewReader(in))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := ps[0].Traits.Sample(constSource{}).LossAversion; got != 0.8 {
+		t.Fatalf("loss aversion %v, want 0.8", got)
+	}
+	raw, err := Marshal(ps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if back, err := Parse(bytes.NewReader(raw)); err != nil || back[0].Traits.LossAversion.String() != "const(0.8)" {
+		t.Fatalf("loss aversion lost in a round trip: %v\n%s", err, raw)
+	}
+	ps, err = Parse(strings.NewReader(marketsHead))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := ps[0].Traits.Sample(constSource{}).LossAversion; got != DefaultLossAversion {
+		t.Fatalf("unset loss aversion %v, want %v", got, DefaultLossAversion)
+	}
+}
+
+type constSource struct{}
+
+func (constSource) Float64() float64 { return 0.5 }

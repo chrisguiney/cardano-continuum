@@ -12,7 +12,7 @@ import (
 // (in ROI units, so the same scale as PoolInfo.ROI).
 func yieldScores(a population.Actor, v View) []Score {
 	bal := purseOf(v, a.ID)
-	ss := append([]Score{{Kind: Idle, Value: 1, Why: "yield farmer waits"}}, trade(a, v, bal)...)
+	ss := append([]Score{{Kind: Idle, Value: 1, Why: "yield farmer waits"}}, trade(a, v, bal, false)...)
 	if !v.StakeRegistered(a.ID) {
 		return append(ss,
 			pick(profile.IntentRegisterStake, 1, bal, "stake key not registered"),

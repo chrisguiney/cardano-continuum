@@ -44,6 +44,35 @@ profiles:
       dormancy: lognormal(4, 0.8)
       abandon: 0.0001
       market: true
+  # A market trader: buys ADA on rallies and takes profit, and in a
+  # drawdown sells or holds by its loss aversion and patience, where the
+  # hodl profiles above always hold.
+  - name: trader
+    kind: wallet
+    agenda: profit
+    traits:
+      competence: beta(8, 2)
+      patience: lognormal(0.5, 0.8)
+      learning_rate: const(0.05)
+      care: beta(2, 2)
+      loss_aversion: beta(4, 3)
+    budget: 500000000
+    rates:
+      base:
+        send: 0.2
+      diurnal: 0.3
+    weights:
+      send: 0.4
+      buy_ada: 0.3
+      sell_ada: 0.3
+      register_stake: 0
+      delegate: 0
+      withdraw_rewards: 0
+    hazards:
+      birth: 0.003
+      dormancy: lognormal(4, 0.8)
+      abandon: 0.0001
+      market: true
 # The ADA market the wallets trade in (internal/market). A field left out
 # takes this value, its default; times are seconds and rates per hour of
 # simulated time, compressed so a run of minutes sees rallies and drawdowns.

@@ -22,5 +22,5 @@ func dappScores(a population.Actor, v View) []Score {
 		pick(profile.IntentSend, dappScore, bal, "pays"),
 		pick(profile.IntentScriptCall, dappScore, bal, "locks or unlocks a script output"),
 		pick(profile.IntentMint, dappScore, bal, "mints"),
-	}, trade(a, v, bal)...)
+	}, trade(a, v, bal, false)...)
 }
