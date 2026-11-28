@@ -1,0 +1,6 @@
+config	verdict	property	distinct	depth	secs
+FiatEscrow.cfg	pass	-	140	8	0
+FiatEscrowDebitAtSettleBug.cfg	fails	AvailableNonNegative	-	-	1
+FiatEscrowLive.cfg	pass	-	140	8	1
+FiatEscrowReleaseLeakBug.cfg	fails	HoldsMatchOpenOrders	-	-	0
+FiatEscrowStoredHoldBug.cfg	fails	Conservation	-	-	1
