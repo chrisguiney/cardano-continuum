@@ -20,3 +20,7 @@ CONTINUUM_REGISTRY=<registry>` (see the [README](../../README.md#end-to-end-test
 are pinned by commit SHA; the `static` job reads the golangci-lint version from
 the Makefile's `GOLANGCI_LINT_VERSION`. Each Go job restores and saves its own
 module and build cache, saving even when the job fails.
+
+`.github/` has no README of its own on purpose: GitHub shows a
+`.github/README.md` on the repository's front page in place of the root
+[README](../../README.md).
