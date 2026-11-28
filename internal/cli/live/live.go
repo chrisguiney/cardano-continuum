@@ -32,6 +32,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/genesis"
 	"github.com/chrisguiney/cardano-continuum/internal/oracle"
 	"github.com/chrisguiney/cardano-continuum/internal/policy"
+	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/rng"
 	"github.com/chrisguiney/cardano-continuum/internal/sched"
 	"github.com/chrisguiney/cardano-continuum/internal/store"
@@ -102,18 +103,14 @@ func liveConfig(sf simflags.Flags, lf Flags, g chain.Genesis, np nodeParams, see
 		return engine.Config{}, err
 	}
 	bp.SystemStart, bp.SlotLength = g.Start, g.SlotLength
-	// The guard needs every genesis pool's stake, so a run with operators
-	// operates all of them; one without has no pools to guard.
 	mistakes, err := sf.MistakesOn(fitted)
 	if err != nil {
 		return engine.Config{}, err
 	}
-	gpools := 0
-	if sf.Pools > 0 {
-		if sf.Pools < lf.GPools {
-			return engine.Config{}, fmt.Errorf("--pools %d cannot operate the %d genesis pools", sf.Pools, lf.GPools)
-		}
-		gpools = lf.GPools
+
+	gpools, err := genesisOperated(sf.Pools+populationPools(file), lf.GPools)
+	if err != nil {
+		return engine.Config{}, err
 	}
 	cfg := engine.Config{
 		Seed: seed, Profiles: reg, Fitted: fitted, Scale: sf.Scale, Cohorts: cohorts, Slots: slots, K: g.SecurityParam, TTL: sf.TTL,
@@ -128,6 +125,36 @@ func liveConfig(sf simflags.Flags, lf Flags, g chain.Genesis, np nodeParams, see
 		return engine.Config{}, err
 	}
 	return cfg, nil
+}
+
+// genesisOperated is how many of the devnet's gpools genesis pools a run
+// with ops pool actors operates. The guard needs every genesis pool's
+// stake, so a run with pool actors operates all of them; one without has
+// no pools to guard. The genesis pools hold the devnet's delegated stake,
+// so a pool actor left to register a pool of its own has none: its SPO
+// votes would carry no power.
+func genesisOperated(ops, gpools int) (int, error) {
+	if ops == 0 {
+		return 0, nil
+	}
+
+	if ops < gpools {
+		return 0, fmt.Errorf("%d pool actors (--pools and the profiles' pool populations) cannot operate the %d genesis pools", ops, gpools)
+	}
+	return gpools, nil
+}
+
+// populationPools counts the pool actors f's populations add, which
+// engine.Populate makes cohorts of, as the fake chain's run does
+// (simflags Config).
+func populationPools(f profile.File) int {
+	n := 0
+	for _, p := range f.Populations {
+		if p.Kind == profile.Pool {
+			n += p.Count
+		}
+	}
+	return n
 }
 
 // Run runs the engine against the live node lf names until epochs end (0:

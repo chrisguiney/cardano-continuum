@@ -109,8 +109,9 @@ engine:
   wallets: 100
   # Multiplies every profile's activity rates.
   scale: 200
-  # Pool operators the engine simulates; preprod and preview have no pool
-  # profile, so 0 there.
+  # Pool operators the engine simulates beside the profiles' pool
+  # populations; preprod and preview have no operator profile, so 0 there.
+  # The first pool actors operate the genesis pools either way.
   pools: 0
   # Tier-1 attacks, one adversary each. The default is every attack a stock
   # genesis supports; exunits-block-gap also needs genesis.overrides.

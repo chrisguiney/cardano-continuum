@@ -69,8 +69,10 @@ VALUES=${VALUES:-}
 MIN_MEM_GIB=${MIN_MEM_GIB:-48}
 UI_PORT=${UI_PORT:-8088}
 UI_ADDRESS=${UI_ADDRESS:-127.0.0.1}
-# ENGINE_POOLS is the number of pool operators the engine simulates; the
-# preprod and preview profiles have no pool profile, so it must stay 0 there.
+# ENGINE_POOLS is the number of pool operators the engine simulates beside
+# the profiles' pool populations; the preprod and preview profiles have no
+# operator profile, so it must stay 0 there (their pool population operates
+# the genesis pools).
 ENGINE_POOLS=${ENGINE_POOLS:-0}
 K=${K_BIN:-kubectl}
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)

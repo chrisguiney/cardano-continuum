@@ -78,3 +78,30 @@ func TestServeRemote(t *testing.T) {
 		}
 	}
 }
+
+// TestLivePopulationPoolsOperateGenesisPools: a profile set whose pools
+// come from a population (preprod, with --pools 0, as the chart deploys
+// it) operates the devnet's genesis pools, as the fake chain's run does.
+// Left unoperated, the genesis pools hold every delegated lovelace while
+// the population's pools register from nothing with no delegators, so
+// every SPO vote the run casts carries no stake.
+func TestLivePopulationPoolsOperateGenesisPools(t *testing.T) {
+	t.Parallel()
+	g := chain.Genesis{Magic: 42, Start: time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC),
+		EpochLength: 500, SecurityParam: 5, SlotLength: time.Second}
+	var seed rng.Seed
+	sf := simflags.Flags{Population: simflags.Population{Wallets: 20, Scale: 1, Profiles: "preprod"}, Chain: simflags.Chain{TTL: 120}}
+	lf := Flags{Faucet: 1_000_000, RefillEvery: 20, GPools: 4, PoolStake: 10_000_000_000_000}
+	bp := nodeParams{build: build.Params{MinFeeA: 44, MinFeeB: 155381, CoinsPerUtxoByte: 4310, MaxTxSize: 16384}, nOpt: 3, govLifetime: 6}
+	cfg, err := liveConfig(sf, lf, g, bp, seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.GenesisPools != 4 {
+		t.Fatalf("%d genesis pools operated, want all 4", cfg.GenesisPools)
+	}
+	actors, err := cfg.GenesisPoolActors()
+	if err != nil || len(actors) != 4 {
+		t.Fatalf("genesis pool actors %v, %v", actors, err)
+	}
+}
