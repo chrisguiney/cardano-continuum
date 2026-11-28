@@ -177,7 +177,8 @@ func (s *Steer) Paused() bool { return s.paused }
 // RateK is the rate multiplier; less than one reads as one.
 func (s *Steer) RateK() uint32 { return s.rateK }
 
-// Weights are the intent weights the controls override, by kind.
+// Weights are the intent weights the controls override, by kind; nil when
+// no override is in force (none was set, or clear_weights dropped it).
 func (s *Steer) Weights() map[profile.IntentKind]float64 { return s.weights }
 
 // Control applies one control input and acknowledges it with a Controlled
@@ -200,6 +201,8 @@ func (s *Steer) Control(ctx context.Context, at sched.Time, c wire.Control) erro
 		for k, w := range c.Weights {
 			s.weights[profile.IntentKind(k)] = w
 		}
+	case "clear_weights":
+		s.weights = nil
 	case "inject":
 		var err error
 		if why, err = s.inject(ctx, at, c.Scenario); err != nil {

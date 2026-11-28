@@ -207,3 +207,27 @@ func TestCatalogNamesInjectableScenarios(t *testing.T) {
 		}
 	}
 }
+
+// TestClearWeightsRestoresProfiles: clear_weights drops the whole override,
+// so the profiles' own weights apply again, and a snapshot carries no
+// override afterwards.
+func TestClearWeightsRestoresProfiles(t *testing.T) {
+	t.Parallel()
+	s, j, _, _ := newSteer(t)
+	ctx := context.Background()
+	if err := s.Control(ctx, 0, wire.Control{RequestID: "a", Op: "set_weights", Weights: map[string]float64{"send": 2}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Control(ctx, 0, wire.Control{RequestID: "b", Op: "clear_weights"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := controlled(t, j); got.Why != "" || got.Op != "clear_weights" {
+		t.Fatalf("clear_weights: %+v", got)
+	}
+	if s.Weights() != nil {
+		t.Fatalf("weights %v, want none", s.Weights())
+	}
+	if w := s.Save().Weights; w != nil {
+		t.Fatalf("saved weights %v, want none", w)
+	}
+}
