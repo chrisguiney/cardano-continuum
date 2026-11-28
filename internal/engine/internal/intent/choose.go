@@ -117,6 +117,14 @@ func (ch *Chooser) Prepare(at sched.Time, a population.Actor, in agenda.Intent, 
 	case profile.IntentRetirePool:
 		p.Epoch = ch.spec.Slots.EpochAt(at) + 1
 	case profile.IntentWithdraw:
+		// The view takes a withdrawal out of the balance only once a block
+		// holds it: a second one sent beside one in flight withdraws the
+		// same balance, which the ledger's mempool already took
+		// (WithdrawalsNotInRewards).
+		if ch.env.Flight.Has(a.ID, string(profile.IntentWithdraw)) {
+			return nil, "withdrawal in flight"
+		}
+
 		// Conway refuses a withdrawal from an account with no vote
 		// delegation (ConwayWdrlNotDelegatedToDRep).
 		if !ch.env.Chain.View().VoteDelegated(a.ID) {
