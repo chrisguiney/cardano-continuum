@@ -7,7 +7,7 @@ import (
 	"github.com/blinklabs-io/gouroboros/ledger/common"
 )
 
-//go:generate go run ./internal/gen -in ../../contracts/templates/plutus.json -out registry_gen.go
+//go:generate go run ./internal/gen -in ../../contracts/templates/plutus.json -out registry_gen.go -src ../../contracts/templates -srcout sources_gen.go
 
 // Purpose is what a validator validates: the handler names of CIP-57 and
 // Aiken, which the ledger calls script purposes (spending an output,
