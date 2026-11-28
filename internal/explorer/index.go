@@ -145,3 +145,11 @@ func (x *Index) GovVotes(tx string, idx uint32) []VoteAnchor {
 	defer x.mu.Unlock()
 	return append([]VoteAnchor(nil), x.st.gov.notes[govKey{h, idx}]...)
 }
+
+// Pools lists every pool the chain shows, by id: each block issuer and each
+// pool a certificate names.
+func (x *Index) Pools() []PoolStat {
+	x.mu.Lock()
+	defer x.mu.Unlock()
+	return x.st.pools.stats(x.st.byIssuer)
+}

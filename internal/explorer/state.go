@@ -25,6 +25,8 @@ type state struct {
 	hist   *history
 	eps    *epochs
 	gov    *govBook
+	// pools keeps the chain's pool certificates.
+	pools *poolBook
 }
 
 // txLoc is where a transaction sits: its block's position and its index.
@@ -35,7 +37,7 @@ type txLoc struct {
 func newState(cfg Config) *state {
 	return &state{
 		cfg: cfg, byHash: map[[32]byte]int{}, byHeight: map[uint64]int{}, byIssuer: map[[28]byte][]int{},
-		txs: map[[32]byte]txLoc{}, utxos: newUtxoSet(), hist: newHistory(), eps: newEpochs(), gov: newGovBook(),
+		txs: map[[32]byte]txLoc{}, utxos: newUtxoSet(), hist: newHistory(), eps: newEpochs(), gov: newGovBook(), pools: newPoolBook(),
 	}
 }
 
@@ -69,6 +71,7 @@ func (st *state) add(blk *conway.ConwayBlock, raw []byte) error {
 		st.txs[t.id] = txLoc{block: pos, idx: i}
 	}
 	st.gov.add(hash, m.slot, blk.Transactions())
+	st.pools.add(hash, m.slot, blk.Transactions())
 	st.eps.add(st.epochOf(m.slot), m)
 	st.evict()
 	return nil
@@ -139,6 +142,7 @@ func (st *state) pop() {
 		st.byIssuer[m.issuer] = l[:len(l)-1]
 	}
 	st.gov.drop(m.hash)
+	st.pools.drop(m.hash)
 	st.eps.sub(st.epochOf(m.slot), m)
 	st.metas = st.metas[:n]
 	st.oldest = min(st.oldest, n)
