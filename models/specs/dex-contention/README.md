@@ -11,7 +11,7 @@ its reservation, and is never reported by the oracle for losing a fair race.
 Run it with `make models` (all models) or
 `models/scripts/run-model.sh specs/dex-contention`.
 
-Models cardano-continuum at `PIN`.
+Models cardano-continuum at `1194438`.
 
 ## The result in one paragraph
 
@@ -58,9 +58,9 @@ rule breaks an invariant, as the [configs](#configs) show.
 | `Include` | internal/fakechain (UTXO rule, then the script), contracts/templates/validators/market.ak:22 | a valid trade lands; the validator checks the next datum against the one spent |
 | `Reject` | internal/engine/internal/pay/retry.go:123 `Retry.Answer`; internal/engine/internal/judge/judge.go:178 (`Contended`) | a refusal with BadInputs; the oracle's expected set |
 | `Sync` | internal/chain/view.go:357 `View.Apply`, :426 `View.Rollback` | the view catches up |
-| `Settle` | internal/engine/engine.go:661 (`Reclaim(p.Held)`) | the market output spent leaves the foreign count |
+| `Settle` | internal/engine/engine.go:669 (`Reclaim(p.Held)`) | the market output spent leaves the foreign count |
 | `GiveUp` | internal/engine/internal/pay/retry.go:371 `Retry.rebuild` (patience in submit.Machine) | the actor stops; the reservation goes |
-| choice of call | internal/engine/internal/intent/choose.go:270 `Chooser.prepareMarket` | who trades, buys or sells, opens or provides |
+| choice of call | internal/engine/internal/intent/choose.go:283 `Chooser.prepareMarket` | who trades, buys or sells, opens or provides |
 
 ## Drift
 
