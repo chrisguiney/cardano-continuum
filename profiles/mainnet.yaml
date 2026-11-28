@@ -45,6 +45,9 @@ profiles:
     hazards:
       dormancy: lognormal(13.1189, 1.12573)
       dormancy_onset: 9.47877e-05
+      birth: 0.0001
+      abandon: 0.00002
+      market: true
   - name: holder-mid
     kind: wallet
     agenda: hodl
@@ -69,6 +72,9 @@ profiles:
     hazards:
       dormancy: lognormal(13.1189, 1.12573)
       dormancy_onset: 9.47877e-05
+      birth: 0.00082
+      abandon: 0.00002
+      market: true
   - name: holder-mid-2
     kind: wallet
     agenda: hodl
@@ -93,6 +99,9 @@ profiles:
     hazards:
       dormancy: lognormal(13.1189, 1.12573)
       dormancy_onset: 9.47877e-05
+      birth: 0.001
+      abandon: 0.00002
+      market: true
   - name: holder-mid-3
     kind: wallet
     agenda: dapp
@@ -119,6 +128,9 @@ profiles:
     hazards:
       dormancy: lognormal(6.84949, 1.23842)
       dormancy_onset: 0.0436762
+      birth: 0.00052
+      abandon: 0.00002
+      market: true
   - name: holder-mid-4
     kind: wallet
     agenda: dapp
@@ -145,6 +157,9 @@ profiles:
     hazards:
       dormancy: lognormal(13.7864, 1.11285)
       dormancy_onset: 1.80736e-05
+      birth: 0.00048
+      abandon: 0.00002
+      market: true
   - name: occasional-payer
     kind: wallet
     agenda: hodl
@@ -169,6 +184,9 @@ profiles:
     hazards:
       dormancy: lognormal(12.7139, 0.896322)
       dormancy_onset: 1.08547e-05
+      birth: 0.00017
+      abandon: 0.00002
+      market: true
   - name: script-user
     kind: wallet
     agenda: dapp
@@ -195,6 +213,9 @@ profiles:
     hazards:
       dormancy: lognormal(13.2597, 1.24951)
       dormancy_onset: 3.1059e-05
+      birth: 0.00046
+      abandon: 0.00002
+      market: true
   - name: staker
     kind: wallet
     agenda: yield
@@ -219,6 +240,9 @@ profiles:
     hazards:
       dormancy: lognormal(13.5821, 1.0037)
       dormancy_onset: 5.71107e-05
+      birth: 0.0002
+      abandon: 0.00002
+      market: true
   - name: voter
     kind: wallet
     agenda: civic
@@ -286,3 +310,45 @@ network:
     info: 0.0222222
     parameter_change: 0.0111111
     treasury_withdrawals: 0.0666667
+# markets: hand-added after the fit (see lab/README.md); refitting does not
+# write it. Every trading cluster (all but the civic voter, whose agenda has
+# no trade intents) opts into the market lifecycle, and gets a synthetic
+# birth rate of 0.004 per second spread by cluster weight, plus a synthetic
+# abandonment hazard of 0.00002 per second; neither is fitted from chain
+# data. buy_ada and sell_ada keep the default weight 1, so the fitted
+# weights still sum to 1; hodl clusters only buy and sell at a gain, and the
+# dapp and yield clusters are the sellers in a drawdown.
+# The ADA market the wallets trade in (internal/market). A field left out
+# takes this value, its default; times are seconds and rates per hour of
+# simulated time, compressed so a run of minutes sees rallies and drawdowns.
+markets:
+  step: 10
+  quote_every: 60
+  # ADA/USD: a log random walk whose drift flips between bull and bear,
+  # with downward-leaning jumps.
+  ada: {start: 0.6, vol: 0.8, drift: 0.4, regime_rate: 2, jump_rate: 3, jump_mean: -0.02, jump_sd: 0.08}
+  fx: {vol: 0.02, reversion: 1}
+  # Each wallet's primary currency is drawn by share; usd is the USD one
+  # unit buys at time zero.
+  currencies:
+    - {code: USD, share: 0.35, usd: 1}
+    - {code: EUR, share: 0.2, usd: 1.08}
+    - {code: JPY, share: 0.15, usd: 0.0067}
+    - {code: KRW, share: 0.1, usd: 0.00074}
+    - {code: GBP, share: 0.1, usd: 1.27}
+    - {code: BRL, share: 0.1, usd: 0.2}
+  # Spread is ask over bid; fee is the lovelace a withdrawal pays; float is
+  # the hot wallet's budget.
+  exchanges:
+    - {name: north, spread: 0.004, fee: 500000, float: 50000000000, currencies: [USD, EUR, GBP], basis_vol: 0.003, basis_reversion: 4}
+    - {name: harbor, spread: 0.006, fee: 300000, float: 50000000000, currencies: [USD, JPY, KRW], basis_vol: 0.003, basis_reversion: 4}
+    - {name: summit, spread: 0.01, fee: 200000, float: 50000000000, currencies: [EUR, BRL, GBP, USD], basis_vol: 0.003, basis_reversion: 4}
+  # The chance of each further preferred currency: most wallets have none.
+  extra: 0.15
+  venue: {conversion: 0.01, loyalty: 0.003, noise: 0.002}
+  # Births of a currency scale by exp(beta * log return over window), clamped.
+  births: {beta: 4, window: 300, min: 0.25, max: 4}
+  # Opted-in wallets go dormant and abandon faster by exp(-beta * log
+  # return over window), clamped; a hodl wallet takes that to the power
+  # hodl, so it holds on. An abandoning wallet sells its ADA first.
+  deaths: {beta: 3, window: 1800, min: 0.5, max: 4, hodl: 0.5}
