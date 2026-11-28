@@ -9,6 +9,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
+	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/httpapi/view"
@@ -36,6 +37,7 @@ func getEnums(t *testing.T) Enums {
 func TestEnumsMatchAllowlists(t *testing.T) {
 	e := getEnums(t)
 	intents := append(strs(profile.IntentKinds()), strs(adversary.Names())...)
+	intents = append(intents, strs(agenda.Kinds())...)
 	slices.Sort(intents)
 	want := map[string][]string{
 		"actor_kind":    engine.ActorKinds(),
@@ -102,6 +104,14 @@ func TestFiltersByEnumValue(t *testing.T) {
 	}
 	if _, err := parseFilter(map[string][]string{"intent": {"bogus"}}); err == nil {
 		t.Error("bogus intent accepted")
+	}
+
+	// The committee's intents are decided by the engine, not by a
+	// profile's rates, and are still filterable.
+	for _, k := range []string{"committee_vote", "committee_auth"} {
+		if _, err := parseFilter(map[string][]string{"intent": {k}}); err != nil {
+			t.Errorf("intent %s refused: %v", k, err)
+		}
 	}
 }
 

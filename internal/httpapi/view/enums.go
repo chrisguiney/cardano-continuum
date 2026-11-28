@@ -5,6 +5,7 @@ import (
 
 	"github.com/chrisguiney/cardano-continuum/api/v1alpha1"
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
+	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/engine"
 	"github.com/chrisguiney/cardano-continuum/internal/mistake"
@@ -63,9 +64,11 @@ func mistakeKinds() []string {
 }
 
 // BuildEnums collects the allowlists. Intent kinds include the attacks,
-// which score as intents.
+// which score as intents, and the agenda's own intents (the committee's,
+// the pool lifecycle steps, idle), which have no profile rate.
 func BuildEnums() Enums {
 	intents := append(strs(profile.IntentKinds()), strs(adversary.Names())...)
+	intents = append(intents, strs(agenda.Kinds())...)
 	slices.Sort(intents)
 	sev := make([]string, 0, 3)
 	for _, s := range oracle.Severities() {
