@@ -23,7 +23,6 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
-	"github.com/chrisguiney/cardano-continuum/internal/profile"
 	"github.com/chrisguiney/cardano-continuum/internal/submit"
 )
 
@@ -57,15 +56,9 @@ func New(spec Spec, env Env) *Intent {
 // spent" from a resend.
 func Again(kind string) []submit.Class { return specs[kind].again }
 
-// Contended reports an intent whose first send may honestly be refused
-// as a resend is: a market trade or provision races other actors for the
-// market output, and an award withdrawal takes the reward balance the
-// view reckons by repeating the ledger's ratification from the votes and
-// stake it folds, which can enact a withdrawal the ledger does not (then
-// WithdrawalsNotInRewards, the kind's again class).
-func Contended(p *wire.Pending) bool {
-	return specs[p.KindOf()].contended || p.KindOf() == string(profile.IntentWithdraw) && p.Amount > 0
-}
+// Contended reports a kind whose attempts race other actors for an
+// output: a market trade or provision.
+func Contended(kind string) bool { return specs[kind].contended }
 
 // AllAgain is Again over every kind of the table.
 func AllAgain() []submit.Class {
