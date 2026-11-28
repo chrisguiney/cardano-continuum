@@ -14,8 +14,8 @@ make down
 
 Variables: `CONTEXT`, `NAMESPACE`, `RELEASE`, `PROFILES`, `POOLS` (cardano-node),
 `DINGO_POOLS`, `WALLETS`, `SCALE`, `SEED` (64 hex), `ENGINE_POOLS` (pool operators the
-engine simulates; keep 0 with `preprod` and `preview`, which have no pool
-profile), `ATTACKS`, `VALUES`, `IMAGE_REF`, `PLATFORM`, `UI_PORT`, `UI_ADDRESS`.
+engine simulates; keep 0 with `preprod`, `preview` and `mainnet`, which have no
+operator profile), `ATTACKS`, `VALUES`, `IMAGE_REF`, `PLATFORM`, `UI_PORT`, `UI_ADDRESS`.
 
 ## Adversaries
 

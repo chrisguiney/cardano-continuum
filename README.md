@@ -80,7 +80,7 @@ Variables, passed as `make up NAME=value`:
 | `SCALE` | `200` | multiplier on every profile's activity rates |
 | `SEED` | fixed 64-hex value | run seed for the genesis and the population |
 | `ATTACKS` | every tier-1 attack | comma-separated list, or `none` |
-| `ENGINE_POOLS` | `0` | pool operators the engine simulates beside the profiles' pool populations, which operate the genesis pools (keep 0 with `preprod` and `preview`) |
+| `ENGINE_POOLS` | `0` | pool operators the engine simulates beside the profiles' pool populations, which operate the genesis pools (keep 0 with `preprod`, `preview` and `mainnet`) |
 | `CONTEXT` | the current context | kubectl context; read once, never switched |
 | `NAMESPACE`, `RELEASE` | `continuum`, `continuum` | where to install, and the Helm release |
 | `VALUES` | none | an extra chart values file (the variables above take precedence) |
@@ -112,6 +112,28 @@ pulled the node images and published the genesis, which on a first pull can
 outlast Helm's default timeout: with `--wait`, pass a `--timeout` of 15
 minutes or more. Every value is described in
 [`charts/continuum/values.yaml`](charts/continuum/values.yaml).
+
+### Running on the mainnet profile with markets
+
+`profiles/mainnet.yaml` (like `preprod` and `preview`) carries a `markets:`
+section, so a devnet run off it has the ADA market: every wallet cluster
+except the voters trades, opts into the market lifecycle and has synthetic
+birth and abandonment rates, and three exchange wallets are funded at genesis.
+The mainnet profile has no operator profile, so `ENGINE_POOLS` stays 0:
+
+```sh
+export CONTINUUM_REGISTRY=registry.example.com/continuum
+make up CONTEXT=my-cluster PROFILES=mainnet ENGINE_POOLS=0
+```
+
+`SCALE` multiplies the fitted rates, which are slow (a wallet sends about
+once in half an hour at scale 1); the default 200 gives a market that moves.
+Switching `PROFILES` resets the network, as for any change of profiles. A
+fake run for a quick look:
+
+```sh
+go run ./cmd/continuum run --fake --seed 7 --wallets 100 --scale 200 --profiles mainnet --epochs 12 --out run1
+```
 
 ## Protocol version and hard forks
 
