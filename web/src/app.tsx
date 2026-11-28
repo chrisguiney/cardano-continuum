@@ -10,6 +10,8 @@ import { Overview } from "./views/Overview";
 import { SearchBox } from "./views/SearchBox";
 import { Note } from "./views/common";
 import { EngineProvider, StartupBanner, useEngine } from "./views/startup";
+import { loadStyle, saveStyle, type Style } from "./lib/appearance";
+import { StyleSelect } from "./views/StyleSelect";
 import { navFor, type Capabilities } from "./lib/nav";
 
 // Every view but the overview loads on first visit, so the landing page does
@@ -60,6 +62,18 @@ function useTheme(): [Theme, () => void] {
   return [theme, toggle];
 }
 
+function useStyle(): [Style, (s: Style) => void] {
+  const [style, setStyle] = useState<Style>(loadStyle);
+  useEffect(() => {
+    document.documentElement.dataset.style = style;
+  }, [style]);
+  const choose = (s: Style) => {
+    saveStyle(s);
+    setStyle(s);
+  };
+  return [style, choose];
+}
+
 function usePath(): string {
   const [path, setPath] = useState(location.pathname);
   useEffect(() => {
@@ -94,6 +108,7 @@ function Shell() {
   const [theme, toggle] = useTheme();
   const { phase } = useEngine();
   const caps = useCapabilities(phase);
+  const [style, chooseStyle] = useStyle();
   const controls = caps.controls;
   const route = parseRoute(path);
   const nav = navFor(caps);
@@ -123,6 +138,7 @@ function Shell() {
         </nav>
         <div className="ml-auto flex flex-wrap items-center gap-4">
           {caps.explorer && <SearchBox />}
+          <StyleSelect style={style} onChange={chooseStyle} />
           <span className="inline-flex items-center">
             <Button type="button" variant="ghost" size="sm" onClick={toggle} aria-describedby="theme-help">
               {theme === "dark" ? <SunIcon aria-hidden="true" /> : <MoonIcon aria-hidden="true" />}

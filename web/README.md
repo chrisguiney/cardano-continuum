@@ -37,9 +37,20 @@ a rule written for one table or label cannot leak into another.
 
 Colours are the tokens in `src/index.css`, in shadcn/ui's names (`bg-card`,
 `text-muted-foreground`, `border-border`, `text-destructive`) plus `ok`,
-`warn` and `chart-a/b/c`. Dark mode is `[data-theme="dark"]` on `<html>`, set
-by the theme toggle; `dark:` utilities follow it. Use the tokens rather than
-raw colours so both themes stay readable.
+`warn` and `chart-a/b/c`. Use the tokens rather than raw colours so every
+appearance stays readable.
+
+Appearance has two independent axes on `<html>`: `data-theme` (`light` or
+`dark`, set by the theme button) and `data-style` (`continuum`, the default,
+or `shadcn`, the stock shadcn/ui theme, set by the style selector). Both are
+remembered in `localStorage` (`theme`, `style`) and applied by the inline
+script in `index.html` before first paint. `dark:` utilities follow
+`data-theme`.
+
+To add a colour, define it in all four variable blocks of `src/index.css`
+(continuum and shadcn, each light and dark), then map it under
+`@theme inline`. `test/palette.test.ts` fails if the blocks define different
+variable names.
 
 ## Adding a shadcn/ui component
 
