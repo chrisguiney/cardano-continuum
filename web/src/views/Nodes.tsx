@@ -13,7 +13,7 @@ import { sortNodes, type NodeSortKey } from "../lib/nodesort";
 import { ArrowDownIcon, ArrowUpIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NodeFilterBar, type NodeFilterState } from "./filterbars";
-import type { NodeRow, NodesView } from "../lib/types";
+import type { NodeRow, NodesView, RollbackRow } from "../lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "../lib/utils";
@@ -86,6 +86,19 @@ function BlockCount({ v }: { v: number | null }) {
   return v === null ? <Muted title="the node's tip height or the chain index is not known yet">unknown</Muted> : <>{count(v)}</>;
 }
 
+function depthText(r: RollbackRow): string {
+  return `${r.beyond ? "at least " : ""}${count(r.blocks)} ${r.blocks === 1 ? "block" : "blocks"} (${count(r.slots)} slots)`;
+}
+
+/** DepthCell is a rollback's depth, or says there was none. */
+function DepthCell({ r }: { r: RollbackRow | null }) {
+  return r ? <>{depthText(r)}</> : <Muted>no rollback</Muted>;
+}
+
+function LastCell({ r }: { r: RollbackRow | null }) {
+  return r ? <>slot {count(r.from.slot)}</> : <Muted>no rollback</Muted>;
+}
+
 function findingsText(n: NodeRow): string {
   if (n.findings === 0) return "none";
   return n.known_findings > 0 ? `${count(n.findings)} (${count(n.known_findings)} known)` : count(n.findings);
@@ -95,6 +108,8 @@ const COLUMNS: { label: string; key?: NodeSortKey; num?: boolean; help?: string 
   { label: "Node", key: "name" }, { label: "Impl", key: "impl" }, { label: "Tier", key: "tier" }, { label: "Phase", key: "phase" }, { label: "Stake pool" },
   { label: "Tip" }, { label: "Slot lag", key: "slot_lag", num: true },
   { label: "Forged", key: "forged", num: true, help: "forged" }, { label: "Verified", key: "verified", num: true, help: "verified" },
+  { label: "Rollbacks", key: "rollbacks", num: true, help: "rollbacks" }, { label: "Deepest", key: "deepest", help: "deepest_rollback" },
+  { label: "Last rollback", key: "last_rollback", help: "last_rollback" },
   { label: "Findings" }, { label: "Fork" },
 ];
 
@@ -137,6 +152,9 @@ export function NodeTable({ rows, forked, total }: { rows: NodeRow[]; forked: Se
               <TableCell className="text-right tabular-nums">{count(n.slot_lag)}</TableCell>
               <TableCell className="text-right tabular-nums"><BlockCount v={n.forged} /></TableCell>
               <TableCell className="text-right tabular-nums"><BlockCount v={n.verified} /></TableCell>
+              <TableCell className="text-right tabular-nums">{count(n.rollbacks)}</TableCell>
+              <TableCell><DepthCell r={n.deepest_rollback} /></TableCell>
+              <TableCell><LastCell r={n.last_rollback} /></TableCell>
               <TableCell>{findingsText(n)}</TableCell>
               <TableCell>{forked.has(n.name) ? <Badge variant="bad">fork</Badge> : ""}</TableCell>
             </TableRow>
@@ -151,6 +169,7 @@ export function NodeTable({ rows, forked, total }: { rows: NodeRow[]; forked: Se
 /** NodeDetail is one node in full, with a link to the stake pool it runs. */
 export function NodeDetail({ n, forked }: { n: NodeRow; forked: boolean }) {
   return (
+    <>
     <Panel>
       <Heading>Node {n.name}</Heading>
       <Facts rows={[
@@ -163,11 +182,43 @@ export function NodeDetail({ n, forked }: { n: NodeRow; forked: boolean }) {
         ["Slot lag", count(n.slot_lag)],
         [<>Forged<HelpTip id="nd-forged" label={FIELD_HELP.forged!.label} text={FIELD_HELP.forged!.help} /></>, <BlockCount v={n.forged} />],
         [<>Verified<HelpTip id="nd-verified" label={FIELD_HELP.verified!.label} text={FIELD_HELP.verified!.help} /></>, <BlockCount v={n.verified} />],
+        [<>Rollbacks<HelpTip id="nd-rollbacks" label={FIELD_HELP.rollbacks!.label} text={FIELD_HELP.rollbacks!.help} /></>, count(n.rollbacks)],
+        [<>Deepest<HelpTip id="nd-deepest" label={FIELD_HELP.deepest_rollback!.label} text={FIELD_HELP.deepest_rollback!.help} /></>, <DepthCell r={n.deepest_rollback} />],
+        [<>Last rollback<HelpTip id="nd-last-rollback" label={FIELD_HELP.last_rollback!.label} text={FIELD_HELP.last_rollback!.help} /></>, n.last_rollback ? `slot ${count(n.last_rollback.from.slot)}, ${depthText(n.last_rollback)}` : <Muted>no rollback</Muted>],
         ["Last own block", n.last_block ? <Link to={`/explorer/blocks/${n.last_block.hash}`}>{n.last_block.height ? `block ${count(n.last_block.height)}, ` : ""}slot {count(n.last_block.slot)}</Link> : <Muted>none seen</Muted>],
         ["Image", n.image ? <Mono>{n.image}</Mono> : <Muted>unknown</Muted>],
         ["Findings", <Link to="/findings">{findingsText(n)}</Link>],
         ["Fork", forked ? <Badge variant="bad">on a disagreeing branch</Badge> : "no"],
       ]} />
+    </Panel>
+    <RecentRollbacks rows={n.recent_rollbacks ?? []} />
+    </>
+  );
+}
+
+const pointText = (p: { slot: number; height?: number }) => `${p.height ? `block ${count(p.height)}, ` : ""}slot ${count(p.slot)}`;
+
+/** RecentRollbacks lists a node's newest rollbacks: the tip it held, the point it went back to, and the depth. */
+export function RecentRollbacks({ rows }: { rows: RollbackRow[] }) {
+  return (
+    <Panel>
+      <Heading>Recent rollbacks</Heading>
+      {rows.length === 0 ? <Muted>no rollbacks seen</Muted> : (
+        <TableFrame>
+          <Table>
+            <TableHeader><TableRow><TableHead>From tip</TableHead><TableHead>To</TableHead><TableHead>Depth</TableHead></TableRow></TableHeader>
+            <TableBody>
+              {rows.map((r) => (
+                <TableRow key={`${r.from.hash}-${r.to.hash}`}>
+                  <TableCell>{pointText(r.from)}</TableCell>
+                  <TableCell>{r.beyond ? `slot ${count(r.to.slot)}` : pointText(r.to)}</TableCell>
+                  <TableCell>{depthText(r)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableFrame>
+      )}
     </Panel>
   );
 }

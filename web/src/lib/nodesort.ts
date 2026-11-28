@@ -1,7 +1,7 @@
 import type { NodeRow } from "./types";
 
 /** NodeSortKey is a Nodes table column that can be sorted. */
-export type NodeSortKey = "name" | "impl" | "tier" | "phase" | "slot_lag" | "forged" | "verified";
+export type NodeSortKey = "name" | "impl" | "tier" | "phase" | "slot_lag" | "forged" | "verified" | "rollbacks" | "deepest" | "last_rollback";
 
 function value(n: NodeRow, key: NodeSortKey): string | number | null {
   switch (key) {
@@ -11,6 +11,12 @@ function value(n: NodeRow, key: NodeSortKey): string | number | null {
       return n.forged;
     case "verified":
       return n.verified;
+    case "rollbacks":
+      return n.rollbacks;
+    case "deepest":
+      return n.deepest_rollback?.blocks ?? null;
+    case "last_rollback":
+      return n.last_rollback?.from.slot ?? null;
     default:
       return n[key];
   }

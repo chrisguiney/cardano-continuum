@@ -4,17 +4,70 @@ import { NodeDetail, NodeTable } from "../src/views/Nodes";
 import { StakePoolDetail, StakePoolTable, statusText } from "../src/views/StakePools";
 import { sortNodes } from "../src/lib/nodesort";
 import { FIELD_HELP, GLOSSARY } from "../src/lib/help";
-import type { NodeRow, StakePoolRow } from "../src/lib/types";
+import type { NodeRow, RollbackRow, StakePoolRow } from "../src/lib/types";
 
 const POOL = "0a".repeat(28);
 const node = (over: Partial<NodeRow>): NodeRow => ({
   name: "p3", label: "continuum-pool-3", impl: "dingo", tier: "forging", phase: "Forging", dark: false,
-  tip: { slot: 100, hash: "aa".repeat(32), height: 20 }, slot_lag: 0, fork: false, last_block: null, findings: 0, known_findings: 0, forged: 0, verified: 0, ...over,
+  tip: { slot: 100, hash: "aa".repeat(32), height: 20 }, slot_lag: 0, fork: false, last_block: null, findings: 0, known_findings: 0, forged: 0, verified: 0,
+  rollbacks: 0, deepest_rollback: null, last_rollback: null, recent_rollbacks: [], ...over,
 });
 const pool = (over: Partial<StakePoolRow>): StakePoolRow => ({
   id: POOL, bech32: "pool1pg9q5zs2pg9q5zs2pg9q5zs2pg9q5zs2pg9q5zs2pg9q5lc4t0t", actor: 7, actor_name: "pool-7", actor_state: "registered",
   registration: { pledge: 1_000_000_000, cost: 340_000_000, margin: 0.05, reward_account: "21".repeat(28), owners: 1, slot: 5 },
   retire_epoch: null, delegators: 2, delegated_lovelace: 11_000_000, blocks: 3, votes: 1, nodes: [], ...over,
+});
+
+const rb = (blocks: number, slots: number, over: Partial<RollbackRow> = {}): RollbackRow => ({
+  from: { slot: 500, hash: "cc".repeat(32), height: 50 }, to: { slot: 500 - slots, hash: "dd".repeat(32), height: 50 - blocks },
+  blocks, slots, beyond: false, ...over,
+});
+
+describe("node rollbacks", () => {
+  const rolled = node({ name: "r", rollbacks: 3, deepest_rollback: rb(4, 40), last_rollback: rb(1, 10), recent_rollbacks: [rb(1, 10), rb(4, 40)] });
+
+  it("shows the count, the deepest depth and the last slot in the table", () => {
+    const html = render(<NodeTable rows={[rolled, node({ name: "q" })]} forked={new Set()} total={2} />);
+    expect(html).toContain("Rollbacks");
+    expect(html).toContain("4 blocks (40 slots)");
+    expect(html).toContain("slot 500");
+    expect(html).toContain("no rollback");
+  });
+
+  it("marks a depth that is only a lower bound", () => {
+    const html = render(<NodeTable rows={[node({ rollbacks: 1, deepest_rollback: rb(9, 90, { beyond: true }), last_rollback: rb(9, 90, { beyond: true }) })]} forked={new Set()} total={1} />);
+    expect(html).toContain("at least 9 blocks");
+  });
+
+  it("explains each column with a tooltip", () => {
+    const html = render(<NodeTable rows={[rolled]} forked={new Set()} total={1} />);
+    expect(html).toContain("nh-rollbacks");
+    expect(html).toContain("nh-deepest_rollback");
+    expect(html).toContain("nh-last_rollback");
+  });
+
+  it("sorts by count, depth and last slot with unknowns last", () => {
+    const rows = [
+      node({ name: "a", rollbacks: 1, deepest_rollback: rb(2, 20), last_rollback: rb(2, 20, { from: { slot: 900, hash: "", height: 1 } }) }),
+      node({ name: "b" }),
+      node({ name: "c", rollbacks: 5, deepest_rollback: rb(7, 70), last_rollback: rb(1, 10) }),
+    ];
+    expect(sortNodes(rows, "rollbacks", true).map((n) => n.name)).toEqual(["c", "a", "b"]);
+    expect(sortNodes(rows, "deepest", true).map((n) => n.name)).toEqual(["c", "a", "b"]);
+    expect(sortNodes(rows, "last_rollback", true).map((n) => n.name)).toEqual(["a", "c", "b"]);
+    expect(sortNodes(rows, "deepest", false).map((n) => n.name)).toEqual(["a", "c", "b"]);
+  });
+
+  it("lists the recent rollbacks on the node page", () => {
+    const html = render(<NodeDetail n={rolled} forked={false} />);
+    expect(html).toContain("Recent rollbacks");
+    expect(html).toContain("block 50, slot 500");
+    expect(html).toContain("block 46, slot 460");
+  });
+
+  it("says when a node has not rolled back", () => {
+    expect(render(<NodeDetail n={node({})} forked={false} />)).toContain("no rollbacks seen");
+  });
 });
 
 describe("nodes view", () => {

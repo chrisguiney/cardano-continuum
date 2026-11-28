@@ -103,6 +103,25 @@ export interface NodeRow {
   verified: number | null;
   findings: number;
   known_findings: number;
+  /** rollbacks counts the times the node moved its selected chain back to a point behind its tip, as the engine's chain-sync follower saw it. */
+  rollbacks: number;
+  /** deepest_rollback is the rollback that dropped the most blocks; null when none. */
+  deepest_rollback: RollbackRow | null;
+  /** last_rollback is the newest rollback; null when none. */
+  last_rollback: RollbackRow | null;
+  /** recent_rollbacks are the newest rollbacks, newest first. */
+  recent_rollbacks: RollbackRow[];
+}
+/** RollbackRow is one rollback of a node's selected chain. */
+export interface RollbackRow {
+  /** from is the tip the node held when it rolled back. */
+  from: Point;
+  /** to is the point it rolled back to; its height is 0 when beyond. */
+  to: Point;
+  blocks: number;
+  slots: number;
+  /** beyond reports the target older than the blocks the follower keeps, so blocks and slots are lower bounds. */
+  beyond: boolean;
 }
 export interface ImplTip {
   impl: string;
