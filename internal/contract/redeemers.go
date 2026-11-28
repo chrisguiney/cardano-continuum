@@ -91,7 +91,7 @@ func target(tx common.Transaction, k common.RedeemerKey, resolve Resolver) (comm
 		}
 
 		o, ok := resolve(ins[k.Index])
-		if !ok {
+		if !ok || o.Address().Type()&common.AddressTypeScriptBit == 0 {
 			return common.Blake2b224{}, nil, false
 		}
 

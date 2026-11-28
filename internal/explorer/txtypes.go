@@ -68,6 +68,20 @@ type RedeemerView struct {
 	Steps uint64 `json:"steps"`
 	// DataHex is the redeemer datum's CBOR.
 	DataHex string `json:"data_hex,omitempty"`
+	// DataJSON is the redeemer in detailed-schema JSON.
+	DataJSON string `json:"data_json,omitempty"`
+	// Purpose is the script purpose (spend, mint, publish, withdraw, vote,
+	// propose).
+	Purpose string `json:"purpose,omitempty"`
+	// Script is the hash of the script the redeemer runs, when the index
+	// can tell: a spend of an indexed script output, or a mint.
+	Script string `json:"script,omitempty"`
+	// Validator is the registry validator with that hash, if any.
+	Validator string `json:"validator,omitempty"`
+	// DatumHex and DatumJSON are a spend's datum.
+	DatumHex string `json:"datum_hex,omitempty"`
+	// DatumJSON is DatumHex in detailed-schema JSON.
+	DatumJSON string `json:"datum_json,omitempty"`
 }
 
 // VoteView is one vote a transaction casts.

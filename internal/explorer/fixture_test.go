@@ -105,8 +105,8 @@ func pay(t *testing.T, in []byte, idx uint32, to byte, coin uint64) []byte {
 }
 
 // rich is a Conway tx with a stake delegation, a pool retirement, a DRep
-// registration, a vote, a proposal, a Plutus V2 script with a redeemer, a
-// mint, a required signer and a reference input.
+// registration, a vote, a proposal, a Plutus V2 script with a spend and a
+// mint redeemer, a mint, a required signer and a reference input.
 func rich(t *testing.T, in []byte) (raw []byte, policy []byte) {
 	policy = fill(0x33, 28)
 	script := []byte{0x4e, 0x4d, 0x01, 0x00, 0x00, 0x22, 0x22, 0x01}
@@ -134,7 +134,10 @@ func rich(t *testing.T, in []byte) (raw []byte, policy []byte) {
 	}
 	raw = txSpec{body: body, wits: map[uint]any{
 		6: []any{script},
-		5: []any{[]any{uint(0), uint(0), uint(0), []any{uint64(1000), uint64(2000)}}},
+		5: []any{
+			[]any{uint(0), uint(0), uint(0), []any{uint64(1000), uint64(2000)}},
+			[]any{uint(1), uint(0), uint(0), []any{uint64(300), uint64(400)}},
+		},
 	}}.cbor(t)
 	return raw, policy
 }

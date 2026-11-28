@@ -1,6 +1,7 @@
 package explorer
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -53,7 +54,7 @@ func TestBlocksLatestFirst(t *testing.T) {
 	if pg.Rows[1].Txs != 1 || pg.Rows[1].Epoch != 0 || pg.Rows[1].Size == 0 {
 		t.Fatalf("row 2: %+v", pg.Rows[1])
 	}
-	if pg.Rows[1].ExMem != 1000 || pg.Rows[1].ExSteps != 2000 {
+	if pg.Rows[1].ExMem != 1300 || pg.Rows[1].ExSteps != 2400 {
 		t.Fatalf("exunits %d/%d", pg.Rows[1].ExMem, pg.Rows[1].ExSteps)
 	}
 	if pg.Limits.MaxMem != 14_000_000 {
@@ -137,8 +138,13 @@ func TestTxRichDecoding(t *testing.T) {
 	if len(tx.Proposals) != 1 || tx.Proposals[0].Kind != "info" || tx.Proposals[0].Deposit != 100_000_000_000 {
 		t.Fatalf("proposals: %+v", tx.Proposals)
 	}
-	if len(tx.Redeemers) != 1 || tx.Redeemers[0].Tag != "spend" || tx.Redeemers[0].Mem != 1000 || tx.Redeemers[0].Steps != 2000 {
+	if len(tx.Redeemers) != 2 || tx.Redeemers[1].Tag != "spend" || tx.Redeemers[1].Mem != 1000 || tx.Redeemers[1].Steps != 2000 {
 		t.Fatalf("redeemers: %+v", tx.Redeemers)
+	}
+	// The spend redeemer's input sits at a key address, so it runs no
+	// script; the mint redeemer runs the policy it mints under.
+	if tx.Redeemers[1].Script != "" || tx.Redeemers[0].Tag != "mint" || tx.Redeemers[0].Script != hex.EncodeToString(fill(0x33, 28)) || tx.Redeemers[0].Purpose != "mint" {
+		t.Fatalf("redeemer scripts: %+v", tx.Redeemers)
 	}
 	if len(tx.Scripts) != 1 || tx.Scripts[0].Language != "plutus_v2" || len(tx.Scripts[0].Hash) != 56 {
 		t.Fatalf("scripts: %+v", tx.Scripts)

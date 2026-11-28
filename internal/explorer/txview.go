@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/blinklabs-io/gouroboros/ledger/common"
+
+	"github.com/chrisguiney/cardano-continuum/internal/contract"
 )
 
 // resolver gives the output an input spends, if the index knows it.
@@ -82,7 +84,28 @@ func txView(tx common.Transaction, resolve resolver) TxView {
 	v.Votes = voteViews(tx.VotingProcedures())
 	v.Proposals = proposalViews(tx.ProposalProcedures())
 	witnessViews(&v, tx.Witnesses())
+	targetViews(v.Redeemers, contract.Redeemers(tx, contract.Resolver(resolve), contract.Registered))
 	return v
+}
+
+// targetViews fills in each redeemer's purpose, script and datum from
+// runs, both in tag-then-index order.
+func targetViews(rs []RedeemerView, runs []contract.Run) {
+	for i := range rs {
+		j := slices.IndexFunc(runs, func(r contract.Run) bool { return redeemerTag(tagOf(r)) == rs[i].Tag && r.Index == rs[i].Index })
+		if j < 0 {
+			continue
+		}
+
+		r := runs[j]
+		rs[i].Purpose, rs[i].Script, rs[i].Validator = string(r.Purpose), r.Script, r.Validator
+		rs[i].DataJSON, rs[i].DatumHex, rs[i].DatumJSON = r.RedeemerJSON, r.Datum, r.DatumJSON
+	}
+}
+
+func tagOf(r contract.Run) common.RedeemerTag {
+	t, _ := r.Tag()
+	return t
 }
 
 func inputViews(ins []common.TransactionInput, resolve resolver) []InputView {
