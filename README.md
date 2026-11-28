@@ -104,7 +104,7 @@ Pass them as `make up NAME=value`.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `PROFILES` | `preprod` | behaviour profile set from `profiles/` (`preprod`, `preview`, `mainnet`, `m1`, `m3`) |
+| `PROFILES` | `preprod` | behaviour profile set from `profiles/` (`preprod`, `preview`, `mainnet`, `m1`, `m3`); every set includes synthetic humans |
 | `POOLS` | `3` | cardano-node pools |
 | `DINGO_POOLS` | `1` | dingo pools |
 | `WALLETS` | `100` | simulated wallets at the start |
@@ -156,6 +156,11 @@ governance proposals, plus the ADA market. Its fitted rates are slow (a wallet
 sends about once in half an hour at scale 1), so the default `SCALE=200`
 speeds everything up enough to watch.
 
+Every shipped set also has a `humans:` section: the wallets belong to
+simulated people. A fitted wallet is one on-chain unit; a human owns one or
+more of them, gives them its motivation and temperament, and keeps a
+household budget beside them (see [Humans](#humans)).
+
 The devnet starts at protocol 10.0 and forks to 11.0 by itself: from epoch 3,
 once the committee holds hot keys and the pools hold stake, the network
 proposer proposes the fork and the voters ratify it. `HARD_FORK=none` disables
@@ -187,7 +192,62 @@ which spells out every default) give the wallets an ADA market:
   aversion and impatience.
 
 The Markets page shows the prices, the trades by exchange, new wallets by
-currency, and who sold or held in the largest drawdown.
+currency, and who sold or held in the largest drawdown. With humans it also
+charts the fiat flows per currency: pay, bills, purchases from income,
+purchases the agendas chose, and sales.
+
+## Humans
+
+A profile's `humans:` section makes the wallets belong to people. A human
+owns one or more wallets: richer humans and power users keep more, with
+savings apart from spending and stake split over pools. The human holds
+the motivation (the agenda every wallet it owns scores with), the traits
+and the money; each wallet keeps its own keys, clock, balance and
+delegations, and a **purpose** (savings, spending, staking, governance,
+trading) that limits what it does. New wallets still appear at the fitted
+rates; a new wallet joins a living human of its motivation that wants
+another, or founds a new one.
+
+Every human has a household: monthly pay (or a benefit while out of work),
+monthly bills paid from fiat, and an investment strategy that buys ADA with
+a share of what is left, twice a month, through the exchanges into its
+savings wallet. Fiat never goes below zero: unpaid bills frustrate the
+human's wallets and force a sale of ADA. An open buy holds its fiat until
+its ADA settles (`models/specs/fiat-escrow`); the fake run's summary checks
+that fiat is conserved. Moves between one owner's wallets are labelled
+`transfer` and are not payments between people.
+
+Everything about humans is synthetic, not fitted: pay, bills, savings,
+employment, wallets per human and the investment share are drawn from the
+section's distributions. A profile without the section runs each wallet as
+its own owner, as before. The People page lists the humans; an actor's page
+names its owner, and the Decisions page's why box the owner's motivation
+and the wallet's purpose.
+
+The section's fields (`profiles/m1.yaml` writes every default out; a field
+left out takes it):
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `month` | `300` | simulated seconds per month (a realistic run sets 2592000) |
+| `max_wallets` | `12` | most wallets one human keeps (at most 64) |
+| `spread` | `beta(2, 2)` | how far an owner spreads its wallets over pools, 0 to 1 |
+| `tiers[].name` | `low`, `mid`, `high`, `whale` | wealth tier |
+| `tiers[].share` | 0.45, 0.35, 0.15, 0.05 | share of humans in the tier; shares sum to 1 |
+| `tiers[].wallets` | 0.2, 0.6, 1.5, 3 | mean extra wallets beyond the first (Poisson) |
+| `tiers[].income` | `lognormal(8.2, 0.3)` (mid) | monthly pay in USD, converted at birth |
+| `tiers[].expenses` | `beta(17, 3)` (mid) | monthly bills as a share of pay |
+| `tiers[].fiat` | `lognormal(7.5, 1)` (mid) | starting savings in USD |
+| `tiers[].layoff`, `hire` | 0.02, 0.3 (mid) | monthly chances of losing and finding a job |
+| `tiers[].benefit` | 0.3 (mid) | share of pay received while out of work |
+| `invest.share` | `beta(2, 8)` | share of disposable income invested, per human |
+| `invest.every` | `0.5` | months between purchases |
+| `invest.buffer` | `1` | months of bills kept in fiat before investing |
+
+A tier that sets only some fields takes the rest from the default tier of
+the same name, or from `mid`. The fake summary's `humans:` and
+`household:` lines report the humans, wallets per human, paydays, unpaid
+bills, purchases from income and the fiat check.
 
 ## Running without a cluster
 
