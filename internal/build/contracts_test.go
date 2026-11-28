@@ -49,7 +49,7 @@ func (h *harness) vestingLock(amount uint64, until int64) common.Utxo {
 	h.t.Helper()
 	c := Contract(1)
 	owner := h.alice.PaymentKeyHash()
-	d := contract.Vesting{Owner: owner[:], Until: until}
+	d := contract.VestingDatum{Owner: owner[:], LockUntil: until}
 	got, err := h.b.Plutus().Lock(ctx, h.alice, Lock{Spend: h.spend(), Script: c, Amount: amount, Datum: common.Datum{Data: d.Data()}})
 	if err != nil {
 		h.t.Fatal(err)
@@ -119,7 +119,7 @@ func TestEscrowReleaseAndRefund(t *testing.T) {
 	me := pkh[:]
 	for _, act := range []contract.EscrowAction{contract.Release, contract.Refund} {
 		c := Contract(2)
-		d := contract.Escrow{Depositor: me, Beneficiary: me}
+		d := contract.EscrowDatum{Depositor: me, Beneficiary: me}
 		lock, err := h.b.Plutus().Lock(ctx, h.alice, Lock{Spend: h.spend(), Script: c, Amount: 5_000_000, Datum: common.Datum{Data: d.Data()}})
 		if err != nil {
 			t.Fatal(err)

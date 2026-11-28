@@ -1,5 +1,5 @@
-// Command gen writes internal/contract/registry_gen.go from a CIP-57
-// blueprint: go generate runs it with -in and -out.
+// Command gen writes internal/contract/registry_gen.go and types_gen.go
+// from a CIP-57 blueprint: go generate runs it with -in, -out and -types.
 package main
 
 import (
@@ -14,11 +14,12 @@ import (
 
 func main() {
 	in := flag.String("in", "", "the plutus.json to read")
-	out := flag.String("out", "", "the Go file to write")
+	out := flag.String("out", "", "the registry Go file to write")
+	types := flag.String("types", "", "the datum and redeemer types Go file to write")
 	src := flag.String("src", "", "the Aiken project whose sources to snapshot")
 	srcOut := flag.String("srcout", "", "the Go file to write the source snapshot to")
 	flag.Parse()
-	if err := run(*in, *out); err != nil {
+	if err := run(*in, *out, *types); err != nil {
 		fmt.Fprintln(os.Stderr, "gen:", err)
 		os.Exit(1)
 	}
@@ -29,7 +30,7 @@ func main() {
 	}
 }
 
-func run(in, out string) error {
+func run(in, out, types string) error {
 	raw, err := os.ReadFile(in)
 	if err != nil {
 		return fmt.Errorf("read blueprint: %w", err)
@@ -54,6 +55,15 @@ func run(in, out string) error {
 
 	if err := os.WriteFile(out, code, 0o644); err != nil {
 		return fmt.Errorf("write registry: %w", err)
+	}
+
+	tcode, err := contract.RenderTypes(bp, src)
+	if err != nil {
+		return err
+	}
+
+	if err := os.WriteFile(types, tcode, 0o644); err != nil {
+		return fmt.Errorf("write types: %w", err)
 	}
 	return nil
 }

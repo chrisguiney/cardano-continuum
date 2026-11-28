@@ -37,9 +37,9 @@ const refundEvery = 4
 func lockDatum(template string, id population.ActorID, owner keys.Credential, until int64) common.Datum {
 	switch template {
 	case "vesting":
-		return common.Datum{Data: contract.Vesting{Owner: owner[:], Until: until}.Data()}
+		return common.Datum{Data: contract.VestingDatum{Owner: owner[:], LockUntil: until}.Data()}
 	case "escrow":
-		return common.Datum{Data: contract.Escrow{Depositor: owner[:], Beneficiary: owner[:]}.Data()}
+		return common.Datum{Data: contract.EscrowDatum{Depositor: owner[:], Beneficiary: owner[:]}.Data()}
 	}
 	return ActorDatum(id)
 }
@@ -53,10 +53,10 @@ func claimable(template string, d *common.Datum, id population.ActorID, owner ke
 
 	switch template {
 	case "vesting":
-		v, ok := contract.ParseVesting(d.Data)
-		return ok && bytes.Equal(v.Owner, owner[:]) && v.Until <= now
+		v, ok := contract.ParseVestingDatum(d.Data)
+		return ok && bytes.Equal(v.Owner, owner[:]) && v.LockUntil <= now
 	case "escrow":
-		e, ok := contract.ParseEscrow(d.Data)
+		e, ok := contract.ParseEscrowDatum(d.Data)
 		return ok && bytes.Equal(e.Depositor, owner[:])
 	}
 	return bytes.Equal(DatumKey(*d), DatumKey(ActorDatum(id)))

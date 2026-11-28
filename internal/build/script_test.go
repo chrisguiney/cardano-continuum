@@ -205,7 +205,7 @@ func TestContractsHaveTheirOwnAddresses(t *testing.T) {
 	c := Contract(7)
 	owner := h.alice.PaymentKeyHash()
 	now := h.chain.Slot()
-	vest := contract.Vesting{Owner: owner[:], Until: h.b.SlotTime(now)}
+	vest := contract.VestingDatum{Owner: owner[:], LockUntil: h.b.SlotTime(now)}
 	got, err := h.b.Plutus().Lock(ctx, h.alice, Lock{Spend: h.spend(), Script: c, Amount: 5_000_000, Datum: common.Datum{Data: vest.Data()}})
 	if err != nil {
 		t.Fatal(err)

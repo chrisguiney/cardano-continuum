@@ -15,7 +15,9 @@ Aiken validators the engine deploys and calls. The compiled blueprint
 | `free_mint` | mint | nothing | every `mint` and `burn` |
 
 Datum and redeemer types are in `templates/lib/continuum/types.ak`; their
-Go encoders are in `internal/contract/datum.go`. `nonce` does nothing on
+Go types are generated from the blueprint's definitions into
+`internal/contract/types_gen.go` (records and enums only; any other shape
+fails `make contracts`). `nonce` does nothing on
 chain: applying a different one gives each deployed contract its own script
 hash and address (`contract.Apply`, `build.Contract`). Contracts 0 to 2
 exist from genesis.

@@ -4,11 +4,12 @@
 // templates take, and the record of one script run.
 //
 // The blueprint is compiled by the pinned Aiken (contracts/tools.lock) and
-// committed; registry_gen.go is generated from it (make contracts), so a
+// committed; registry_gen.go and the datum and redeemer types in
+// types_gen.go are generated from it (make contracts), so a
 // Go build needs no Aiken. Tests fail when the two drift apart and when a
 // blueprint hash differs from gouroboros' hash of the same bytes.
 //
-//	contracts/templates/*.ak --aiken build--> plutus.json --go generate--> registry_gen.go
+//	contracts/templates/*.ak --aiken build--> plutus.json --go generate--> registry_gen.go, types_gen.go
 //	contracts/templates/*.ak ------------------go generate--> sources_gen.go
 //
 // sources_gen.go snapshots the Aiken sources for the UI, and Pipe renders a

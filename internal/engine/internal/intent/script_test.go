@@ -17,11 +17,11 @@ func TestLockDatumByTemplate(t *testing.T) {
 	if got := lockDatum("always_succeeds", 7, me, 99); !bytes.Equal(DatumKey(got), DatumKey(ActorDatum(7))) {
 		t.Fatal("the shared lock does not carry the actor datum")
 	}
-	v, ok := contract.ParseVesting(lockDatum("vesting", 7, me, 99).Data)
-	if !ok || !bytes.Equal(v.Owner, me[:]) || v.Until != 99 {
+	v, ok := contract.ParseVestingDatum(lockDatum("vesting", 7, me, 99).Data)
+	if !ok || !bytes.Equal(v.Owner, me[:]) || v.LockUntil != 99 {
 		t.Fatalf("vesting datum %+v, %v", v, ok)
 	}
-	e, ok := contract.ParseEscrow(lockDatum("escrow", 7, me, 99).Data)
+	e, ok := contract.ParseEscrowDatum(lockDatum("escrow", 7, me, 99).Data)
 	if !ok || !bytes.Equal(e.Depositor, me[:]) || !bytes.Equal(e.Beneficiary, me[:]) {
 		t.Fatalf("escrow datum %+v, %v", e, ok)
 	}

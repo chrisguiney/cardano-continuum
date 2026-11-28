@@ -19,6 +19,9 @@ type Blueprint struct {
 	// Validators has one entry per validator handler: Aiken titles them
 	// module.validator.purpose, with "else" for the fallback handler.
 	Validators []Entry `json:"validators"`
+	// Definitions are the schemas of the types the validators' datums,
+	// redeemers and parameters use, by name ("continuum/types/EscrowDatum").
+	Definitions map[string]Definition `json:"definitions"`
 }
 
 // Preamble is a blueprint's header.
