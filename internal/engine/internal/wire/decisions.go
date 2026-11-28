@@ -43,6 +43,17 @@ type Protocol struct {
 	Plan *protocol.Schedule `json:"plan,omitempty"`
 }
 
+// Treasury is a move of the treasury the chain view reckons: enacted
+// withdrawals paid out at an epoch boundary, or a rollback taking a
+// payout back.
+type Treasury struct {
+	// Epoch is the tip's epoch after the move.
+	Epoch uint64 `json:"epoch"`
+	// Before and After are the treasury's lovelace either side of it.
+	Before uint64 `json:"before"`
+	After  uint64 `json:"after"`
+}
+
 // Fork is a ratified hard fork: its proposal ("txhash#index"), the version
 // it moves to and the first epoch at that version.
 type Fork struct {

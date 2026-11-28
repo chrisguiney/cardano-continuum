@@ -38,7 +38,7 @@ func NewFakeChain(cfg *Config, faults ...fakechain.Scheduled) (*fakechain.Chain,
 	return fakechain.New(fakechain.Config{
 		Committee: seats,
 		Slots:     cfg.Slots, NetworkID: cfg.NetworkID, K: cfg.K, BlockEvery: cfg.BlockEvery, Genesis: append(gs, owners...),
-		Faults: faults, Staking: staking, Params: cfg.ChainParams,
+		Faults: faults, Staking: staking, Params: cfg.ChainParams, Treasury: cfg.treasury(),
 	})
 }
 

@@ -52,7 +52,11 @@ type Value struct {
 	// adds its fees and deposits; an engine passing it here leaves those
 	// parts zero.
 	Utxo, Fees, Deposits, Rewards, Treasury, Reserves uint64
-	At                                                chain.Point
+	// Inflow is lovelace that entered from outside the parts: reward
+	// withdrawals, which treasury awards pay, when the treasury and the
+	// rewards are not among the parts.
+	Inflow uint64
+	At     chain.Point
 }
 
 // End is an intent's attempt settling, or the planner writing the intent

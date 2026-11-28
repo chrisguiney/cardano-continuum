@@ -33,7 +33,7 @@ func (j *Monitors) Watch(at sched.Time, from eventlog.ChainPoint, views []oracle
 	res := oracle.ReservationsOf(j.env.Ledger.Holders())
 	s := oracle.Snapshot{
 		Seq: j.env.Journal.Seq(), Run: j.spec.Run,
-		Value:        &oracle.Value{Genesis: j.spec.Genesis, Utxo: j.env.Ledger.Supply(), At: conf},
+		Value:        &oracle.Value{Genesis: j.spec.Genesis, Utxo: j.env.Ledger.Supply(), Inflow: j.env.Ledger.Inflow(), At: conf},
 		Ends:         j.env.Journal.Ends(),
 		Reservations: &res,
 		Settled:      &oracle.SettledMove{From: before, To: conf},

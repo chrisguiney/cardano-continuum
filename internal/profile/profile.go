@@ -25,6 +25,7 @@ type AgendaName string
 var agendas = map[AgendaName]bool{
 	"hodl": true, "dapp": true, "yield": true, "profit": true, "civic": true,
 	"operator": true, "opportunist": true, "disrupt": true, "extract": true,
+	"grantee": true,
 }
 
 // IntentKind names something an actor can try to do.

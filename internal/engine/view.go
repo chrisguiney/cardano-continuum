@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"github.com/blinklabs-io/gouroboros/ledger/common"
+
 	"github.com/chrisguiney/cardano-continuum/internal/adversary"
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/intent"
@@ -36,6 +38,7 @@ var (
 	_ agenda.Committee  = view{}
 	_ agenda.Trading    = view{}
 	_ agenda.Positions  = view{}
+	_ agenda.Awards     = view{}
 	_ adversary.View    = view{}
 )
 
@@ -75,6 +78,11 @@ func (v view) Position(id population.ActorID) (agenda.Position, bool) {
 	pos, ok := v.e.co.Desk.Position(id, now)
 	pos.Dry = ok && v.e.co.Desk.Dry(id, now, func(x population.ActorID) uint64 { return v.e.pay.Spendable(uint64(x)) }, intent.MinTrade+feeHeadroom)
 	return pos, ok
+}
+
+// Rewards implements agenda.Awards.
+func (v view) Rewards(id population.ActorID) profile.Lovelace {
+	return profile.Lovelace(v.e.win.View().Rewards(common.Blake2b224(v.e.co.Wallet(id).StakeKeyHash())))
 }
 
 // Calls implements agenda.Positions.

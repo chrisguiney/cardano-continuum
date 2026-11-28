@@ -92,6 +92,17 @@ func TestValueConserved(t *testing.T) {
 	v = value()
 	v.Utxo = ^uint64(0)
 	fires(t, "value", Snapshot{Value: v}, ValueNotConserved, Fatal)
+
+	// Lovelace that came in from reward accounts (treasury awards) is
+	// accounted beside the genesis total, not as a surplus.
+	v = value()
+	v.Utxo += 25
+	v.Inflow = 25
+	quiet(t, "value", Snapshot{Value: v})
+	v.Inflow = 24
+	if f := fires(t, "value", Snapshot{Value: v}, ValueNotConserved, Fatal); !hasFact(f, "delta", "1") {
+		t.Fatalf("surplus not named: %+v", f.Facts)
+	}
 }
 
 func TestPaidOnce(t *testing.T) {

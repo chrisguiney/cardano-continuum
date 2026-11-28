@@ -56,6 +56,10 @@ func (m *Maker) validator(p *wire.Pending) string {
 	case string(profile.IntentMint), string(profile.IntentBurn):
 		return build.FreeMint.Name
 	}
+
+	if p.Call == callAward {
+		return build.Disbursement.Name
+	}
 	return ""
 }
 

@@ -138,6 +138,7 @@ var registry = map[profile.AgendaName]Policy{
 	"civic":       descriptor{civicScores},
 	"operator":    descriptor{operatorScores},
 	"opportunist": descriptor{opportunistScores},
+	"grantee":     descriptor{granteeScores},
 	"disrupt":     adversary{cover: disruptCover},
 	"extract":     adversary{cover: extractCover},
 }
@@ -154,6 +155,7 @@ var choosable = map[profile.AgendaName][]profile.IntentKind{
 	"civic":       {profile.IntentDelegateDRep, profile.IntentRegisterDRep, profile.IntentRegisterStake, profile.IntentRetireDRep, profile.IntentVote},
 	"operator":    {profile.IntentRegisterPool, profile.IntentRetirePool, profile.IntentUpdatePool, profile.IntentVote, profile.IntentWithdraw},
 	"opportunist": {profile.IntentBuyADA, profile.IntentDelegate, profile.IntentMint, profile.IntentRegisterStake, profile.IntentScriptCall, profile.IntentSellADA, profile.IntentSend},
+	"grantee":     {profile.IntentDelegateDRep, profile.IntentRegisterStake, profile.IntentScriptCall, profile.IntentWithdraw},
 	"disrupt":     {profile.IntentSend},
 	"extract":     {profile.IntentSend, profile.IntentWithdraw},
 }

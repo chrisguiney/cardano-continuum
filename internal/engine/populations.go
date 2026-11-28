@@ -2,11 +2,13 @@ package engine
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/cohort"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/pace"
+	"github.com/chrisguiney/cardano-continuum/internal/grants"
 	"github.com/chrisguiney/cardano-continuum/internal/market"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
 )
@@ -141,6 +143,34 @@ func populationProfiles(f profile.File, bp build.Params) []profile.Profile {
 			Rates:  profile.Rates{Base: map[profile.IntentKind]float64{profile.IntentPropose: total / secondsPerDay}},
 		})
 	}
+	if f.Network.Proposals[string(build.ActionTreasuryWithdrawals)] > 0 {
+		out = append(out, recipientProfiles(traits, bp)...)
+	}
+	return out
+}
+
+// recipientRates are a treasury recipient's per-second clocks: it acts
+// within minutes of being able to, since its only steps are taking what it
+// was awarded.
+var recipientRates = map[profile.IntentKind]float64{
+	profile.IntentRegisterStake: 1.0 / 600,
+	profile.IntentDelegateDRep:  1.0 / 600,
+	profile.IntentWithdraw:      1.0 / 600,
+	profile.IntentScriptCall:    1.0 / 300,
+}
+
+// recipientProfiles are the treasury recipients' profiles, one actor of
+// each type (grants.Kinds), when the network proposes treasury
+// withdrawals: the network proposer's withdrawals pay them.
+func recipientProfiles(traits profile.Traits, bp build.Params) []profile.Profile {
+	var out []profile.Profile
+	for _, k := range grants.Kinds() {
+		out = append(out, profile.Profile{
+			Name: k.Profile, Kind: profile.Wallet, Agenda: "grantee", Traits: traits,
+			Budget: profile.Lovelace(bp.KeyDeposit + feeBudget),
+			Rates:  profile.Rates{Base: maps.Clone(recipientRates)},
+		})
+	}
 	return out
 }
 
@@ -200,7 +230,7 @@ func deployRate(c *Config) float64 {
 	}
 	wallets := 0
 	for _, co := range c.Cohorts {
-		if p, _ := c.Profiles.Get(co.Profile); p.Kind == profile.Wallet && co.Profile != proposerName && !c.exchange(co.Profile) {
+		if p, _ := c.Profiles.Get(co.Profile); p.Kind == profile.Wallet && co.Profile != proposerName && !c.exchange(co.Profile) && p.Agenda != "grantee" {
 			wallets += co.Count
 		}
 	}

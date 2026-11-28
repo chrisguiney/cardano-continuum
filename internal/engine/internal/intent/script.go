@@ -24,6 +24,12 @@ import (
 //	                 depositor's signature beside its own; the depositor
 //	                 refunds it from the deadline on
 //
+//	disbursement     datum (beneficiary, administrator, next, period,
+//	                 tranche); a treasury recipient's award, which the
+//	                 recipient locks as it withdraws it (callAward) and
+//	                 draws a tranche of from each milestone on, with the
+//	                 governance administrator's signature beside its own
+//
 // A depositor approves most escrows (approved): the rest are disputes,
 // which the beneficiary leaves alone and the depositor refunds.
 
@@ -33,6 +39,8 @@ const (
 	callClaim   = "claim"
 	callRelease = "release"
 	callRefund  = "refund"
+	callAward   = "award"
+	callDraw    = "draw"
 )
 
 // vestDelay is how many slots after its lock a vesting position opens;
@@ -40,6 +48,15 @@ const (
 const (
 	vestDelay    = 60
 	escrowWindow = 600
+)
+
+// milestones is how many tranches an award is drawn in, milestoneEvery
+// the slots between milestones, and minTranche the smallest tranche worth
+// locking: a smaller award is taken at once.
+const (
+	milestones     = 4
+	milestoneEvery = 600
+	minTranche     = 5_000_000
 )
 
 // disputeEvery makes one escrow in disputeEvery a dispute.
@@ -81,6 +98,12 @@ func callFor(template string, d *common.Datum, id population.ActorID, owner keys
 		return ""
 	case "escrow":
 		return escrowCall(d, owner, now, approved)
+	case "disbursement":
+		a, ok := contract.ParseDisbursementDatum(d.Data)
+		if ok && bytes.Equal(a.Beneficiary, owner[:]) && a.Next <= now {
+			return callDraw
+		}
+		return ""
 	}
 
 	if bytes.Equal(DatumKey(*d), DatumKey(ActorDatum(id))) {
@@ -125,6 +148,19 @@ func claimArgs(template, call string, owner keys.Credential, tip uint64) claim {
 		return claim{redeemer: common.Datum{Data: contract.Release.Data()}}
 	case call == callRefund:
 		return claim{redeemer: common.Datum{Data: contract.Refund.Data()}, signers: me, from: tip}
+	case call == callDraw:
+		return claim{redeemer: UnitDatum(), signers: me, from: tip}
 	}
 	return claim{redeemer: UnitDatum()}
+}
+
+// drawRest is what a draw of the award a, holding held lovelace, pays
+// back to the contract and the datum it carries: the award less a tranche
+// with the milestone moved on, or nothing for the last tranche.
+func drawRest(a contract.DisbursementDatum, held uint64) (uint64, common.Datum) {
+	if held <= uint64(a.Tranche) {
+		return 0, common.Datum{}
+	}
+	a.Next += a.Period
+	return held - uint64(a.Tranche), common.Datum{Data: a.Data()}
 }

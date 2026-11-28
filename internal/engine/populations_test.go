@@ -542,3 +542,53 @@ func TestEscrowTwoParties(t *testing.T) {
 		t.Errorf("%d oracle findings, the first %+v", len(fs), fs[0])
 	}
 }
+
+// Treasury withdrawals pay the recipient types: the network proposer's
+// actions name registered recipients, the votes enact some, the fake
+// chain pays them from its treasury, recipients withdraw their awards (a
+// milestone recipient straight into the disbursement contract) and draw
+// tranches with the administrator's signature, and value is conserved
+// with the awards counted as inflow.
+func TestTreasuryAwards(t *testing.T) {
+	t.Parallel()
+	f := populationFile(t, populationYAML)
+	cfg := populationConfig(t, 4, f)
+	// The committee must vote for a withdrawal to be ratified.
+	cfg.Committee = 3
+	w := newWorld(t, cfg)
+	p := cleanRun(t, w, 12*3600*1000)
+	e := p.r.Engine()
+
+	calls := map[string]int{}
+	for _, rec := range logRecords(t, p.log) {
+		var s Submitted
+		if rec.Kind != KindSubmitted || eventlog.Decode(rec.Body, &s) != nil {
+			continue
+		}
+		switch {
+		case s.Kind == "withdraw_rewards" && s.Amount > 0:
+			calls["withdraw "+cmpOr(s.Call, "direct")]++
+		case s.Call == "draw":
+			calls["draw"]++
+		}
+	}
+	t.Logf("treasury %d, inflow %d, calls %v", e.win.View().Treasury(), e.Summary().Inflow, calls)
+	// The view reckons the treasury from blocks; the fake chain keeps its
+	// own. Payouts fall on epoch boundaries, where the two meet.
+	if got, _ := w.chain.Treasury(); got != e.win.View().Treasury() {
+		t.Errorf("fake treasury %d, view %d", got, e.win.View().Treasury())
+	}
+	if calls["withdraw award"] == 0 || calls["draw"] == 0 || e.Summary().Inflow == 0 {
+		t.Fatalf("awards withdrawn %v, inflow %d", calls, e.Summary().Inflow)
+	}
+	if e.win.View().Treasury() >= cfg.treasury() {
+		t.Fatalf("treasury %d never paid out", e.win.View().Treasury())
+	}
+
+	if s, g := e.Summary().Supply, genesisTotal(t, cfg)+e.Summary().Inflow; s != g {
+		t.Errorf("supply %d, genesis plus inflow %d", s, g)
+	}
+	if fs := findings(t, p.log); len(fs) > 0 {
+		t.Errorf("%d oracle findings, the first %+v", len(fs), fs[0])
+	}
+}

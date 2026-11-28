@@ -40,6 +40,7 @@ func bodies() map[string]any {
 		KindTraded:         &Traded{},
 		KindAttack:         &Attack{},
 		KindProtocol:       &Protocol{},
+		KindTreasury:       &Treasury{},
 		oracle.KindFinding: &oracle.Finding{},
 
 		eventlog.KindHeader:          &eventlog.HeaderBody{},

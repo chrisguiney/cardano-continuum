@@ -16,7 +16,7 @@ import (
 )
 
 // checkValue: utxo + fees + deposits + rewards + treasury + reserves equals
-// the genesis total. The key is the discrepancy, so one fault seen at every
+// the genesis total plus the inflow. The key is the discrepancy, so one fault seen at every
 // later snapshot is one finding.
 func checkValue(s Snapshot) []Finding {
 	v := s.Value
@@ -28,16 +28,18 @@ func checkValue(s Snapshot) []Finding {
 		sum, c = bits.Add64(sum, p, 0)
 		carry |= c
 	}
+	want, c := bits.Add64(v.Genesis, v.Inflow, 0)
+	carry |= c
 	var delta string
 	switch {
 	case carry != 0:
 		delta = "overflow"
-	case sum == v.Genesis:
+	case sum == want:
 		return nil
-	case sum < v.Genesis:
-		delta = "-" + uitoa(v.Genesis-sum)
+	case sum < want:
+		delta = "-" + uitoa(want-sum)
 	default:
-		delta = uitoa(sum - v.Genesis)
+		delta = uitoa(sum - want)
 	}
 	return []Finding{{
 		Kind: ValueNotConserved, Severity: Fatal,
@@ -45,7 +47,7 @@ func checkValue(s Snapshot) []Finding {
 		Facts: []Fact{
 			key("delta", delta), note("genesis", uitoa(v.Genesis)), note("utxo", uitoa(v.Utxo)),
 			note("fees", uitoa(v.Fees)), note("deposits", uitoa(v.Deposits)), note("rewards", uitoa(v.Rewards)),
-			note("treasury", uitoa(v.Treasury)), note("reserves", uitoa(v.Reserves)), note("at", pointText(v.At)),
+			note("treasury", uitoa(v.Treasury)), note("reserves", uitoa(v.Reserves)), note("inflow", uitoa(v.Inflow)), note("at", pointText(v.At)),
 		},
 	}}
 }

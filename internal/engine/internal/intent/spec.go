@@ -13,8 +13,10 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/agenda"
 	"github.com/chrisguiney/cardano-continuum/internal/build"
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
+	"github.com/chrisguiney/cardano-continuum/internal/contract"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
+	"github.com/chrisguiney/cardano-continuum/internal/grants"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
@@ -106,9 +108,7 @@ var specs = map[string]kind{
 		}},
 	string(profile.IntentWithdraw): {need: none, headroom: FeeHeadroom, deposit: noDeposit,
 		again: []submit.Class{submit.Class(fakechain.WithdrawalsNotInRewards)},
-		build: func(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, p *wire.Pending) (build.Built, error) {
-			return c.spec.Builder.Stake().Withdraw(ctx, w, build.Withdrawal{Spend: sp, Amount: p.Amount})
-		}},
+		build: buildWithdraw},
 	string(profile.IntentDelegateDRep): {need: none, headroom: FeeHeadroom, deposit: noDeposit,
 		build: func(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, p *wire.Pending) (build.Built, error) {
 			cred := c.env.Ring.DRep(population.ActorID(p.To))
@@ -231,6 +231,9 @@ func buildCommitteeAuth(ctx context.Context, c *core, w keys.Wallet, sp build.Sp
 // plan gives (planParams), or none while one is open.
 func buildPropose(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, p *wire.Pending) (build.Built, error) {
 	prop := build.Proposal{Spend: sp, Action: build.ActionType(p.GovType)}
+	if prop.Action == build.ActionTreasuryWithdrawals {
+		prop.Payees = treasuryPayees(c, p)
+	}
 	if prop.Action == build.ActionHardFork {
 		prop.Fork = hardFork(c.env.Chain.View(), p.Fork)
 	}
@@ -300,8 +303,14 @@ func buildUnlock(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, p 
 	cl := claimArgs(build.Template(p.Contract), p.Call, w.PaymentKeyHash(), c.env.Chain.Tip().Slot)
 
 	var co []keys.Signer
-	if p.Call == callRelease {
+	if p.Call == callRelease || p.Call == callDraw {
 		co = []keys.Signer{c.env.Roster.Wallet(population.ActorID(p.To)).PaymentSigner()}
+	}
+
+	var rest uint64
+	var restDatum common.Datum
+	if a, ok := contract.ParseDisbursementDatum(u.Output.Datum().Data); ok && p.Call == callDraw {
+		rest, restDatum = drawRest(a, u.Output.Amount().Uint64())
 	}
 	return c.spec.Builder.Plutus().Unlock(ctx, w, build.Unlock{
 		Spend:     sp,
@@ -311,7 +320,57 @@ func buildUnlock(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, p 
 		Signers:   cl.signers,
 		CoSigners: co,
 		From:      cl.from,
+		Rest:      rest,
+		RestDatum: restDatum,
 	})
+}
+
+// treasuryPayees are what proposal p's treasury withdrawal pays: the
+// treasury recipients registered to receive, drawn by grants.Draw from a
+// stream named by the intent against the treasury the view reckons.
+// Without any registered, the proposal asks for its proposer.
+func treasuryPayees(c *core, p *wire.Pending) []build.Payee {
+	v := c.env.Chain.View()
+	byProfile := map[string]population.ActorID{}
+	for _, id := range c.env.Roster.IDs() {
+		prof := c.env.Roster.Profile(id)
+		if prof == nil || !v.StakeRegistered(id) {
+			continue
+		}
+
+		if _, ok := grants.ByProfile(prof.Name); ok {
+			byProfile[prof.Name] = id
+		}
+	}
+
+	r := c.spec.Seed.Derive("grants", strconv.FormatUint(p.ID, 10)).Rand()
+	var out []build.Payee
+	for _, a := range grants.Draw(r, v.Treasury(), func(name string) bool { _, ok := byProfile[name]; return ok }) {
+		out = append(out, build.Payee{To: c.env.Roster.Wallet(byProfile[a.Kind]).StakeAddress(), Amount: a.Lovelace})
+	}
+	return out
+}
+
+// buildWithdraw withdraws the reward balance p.Amount; an award
+// (callAward) goes straight to the disbursement contract, drawable in
+// milestones tranches from milestoneEvery slots on, overseen by p.To.
+func buildWithdraw(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, p *wire.Pending) (build.Built, error) {
+	wd := build.Withdrawal{Spend: sp, Amount: p.Amount}
+	if p.Call == callAward {
+		me, admin := w.PaymentKeyHash(), c.env.Roster.Wallet(population.ActorID(p.To)).PaymentKeyHash()
+		period := c.spec.Builder.SlotTime(milestoneEvery) - c.spec.Builder.SlotTime(0)
+		d := contract.DisbursementDatum{
+			Beneficiary:   me[:],
+			Administrator: admin[:],
+			Next:          c.spec.Builder.SlotTime(c.env.Chain.Tip().Slot + milestoneEvery),
+			Period:        period,
+			// Rounding the tranche up leaves the last draw at most one
+			// tranche, which the validator lets it take whole.
+			Tranche: int64((p.Amount + milestones - 1) / milestones),
+		}
+		wd.Into, wd.Datum = &build.Disbursement, common.Datum{Data: d.Data()}
+	}
+	return c.spec.Builder.Stake().Withdraw(ctx, w, wd)
 }
 
 func buildPool(ctx context.Context, c *core, w keys.Wallet, sp build.Spend, p *wire.Pending) (build.Built, error) {

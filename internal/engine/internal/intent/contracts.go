@@ -2,6 +2,7 @@ package intent
 
 import (
 	"fmt"
+	"iter"
 	"math/rand/v2"
 	"strconv"
 
@@ -71,6 +72,17 @@ func (ct *Contracts) book(i uint64) error {
 		return fmt.Errorf("engine: book contract %d: %w", i, err)
 	}
 	return nil
+}
+
+// indexes are the deployed contracts' indexes, in order.
+func (ct *Contracts) indexes() iter.Seq[uint64] {
+	return func(yield func(uint64) bool) {
+		for i := range ct.n {
+			if !yield(i) {
+				return
+			}
+		}
+	}
 }
 
 // Count is the number of contracts deployed, the genesis ones included.

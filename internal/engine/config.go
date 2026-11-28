@@ -46,10 +46,12 @@
 package engine
 
 import (
+	"cmp"
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/chrisguiney/cardano-continuum/internal/grants"
 	"slices"
 	"strings"
 
@@ -124,6 +126,11 @@ type Chain struct {
 	// nil is fakechain.DefaultParams. Build must be taken from the same
 	// ones.
 	ChainParams *conway.ConwayProtocolParameters
+	// Treasury is the treasury's lovelace at the run's start: a fake
+	// chain's genesis treasury, and where the view's reckoning starts.
+	// The view cannot read a node's treasury, so on a real network it is
+	// an estimate; zero is DefaultTreasury.
+	Treasury uint64
 	// TTL is how many slots after its decision a payment stays valid.
 	TTL uint64
 	// NOpt is the protocol parameter nOpt, the view's saturation cap; zero
@@ -340,6 +347,10 @@ func (c *Config) fileHash() ([32]byte, error) {
 	var ps []profile.Profile
 	for _, p := range profilesIn(reg) {
 		if _, written := c.population(p.Name); written || (p.Name == proposerName && len(c.Network.Proposals) > 0) || c.exchange(p.Name) {
+			continue
+		}
+
+		if _, recipient := grants.ByProfile(p.Name); recipient && p.Agenda == "grantee" {
 			continue
 		}
 		ps = append(ps, p)
@@ -587,3 +598,11 @@ func ratio(r *cbor.Rat) string {
 	}
 	return r.RatString()
 }
+
+// DefaultTreasury is the treasury a run starts with when its Config sets
+// none: 100 million ADA, about what a devnet's treasury takes from the
+// reserves in four epochs at rho 0.003 and tau 0.2.
+const DefaultTreasury = 100_000_000_000_000
+
+// treasury is c.Treasury, or DefaultTreasury when unset.
+func (c *Config) treasury() uint64 { return cmp.Or(c.Treasury, DefaultTreasury) }

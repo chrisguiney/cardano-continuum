@@ -57,7 +57,9 @@ func views() []View {
 							proposals: []ProposalInfo{{ID: "p#0", Expires: 5, Type: "info", Pools: true}},
 							dreps:     []population.ActorID{3},
 						}
-						out = append(out, w, trading{world: w, pos: Position{Currency: "USD"}})
+						funded := w
+						funded.voteDeleg = true
+						out = append(out, w, trading{world: w, pos: Position{Currency: "USD"}}, awarded{world: funded, rewards: ada, calls: "draw"})
 					}
 				}
 			}
@@ -154,4 +156,52 @@ func TestIntentsUnknown(t *testing.T) {
 	if _, err := Intents("nope"); err == nil {
 		t.Fatal("want an error for an unknown agenda")
 	}
+}
+
+// awarded is a world in which the actor holds a treasury award and a
+// milestone draw is due.
+type awarded struct {
+	world
+	rewards profile.Lovelace
+	calls   string
+}
+
+func (a awarded) Rewards(population.ActorID) profile.Lovelace { return a.rewards }
+func (a awarded) Calls(population.ActorID) string             { return a.calls }
+
+// A treasury recipient registers its reward account, delegates its vote
+// so it may withdraw, withdraws an award once one is paid, and draws a
+// milestone when one is due; with nothing paid or due it waits.
+func TestGranteeTakesItsAward(t *testing.T) {
+	g := mustFor(t, "grantee")
+	a := actor(profile.Wallet, 0)
+	base := world{fakeView: fakeView{balance: 100 * ada}, dreps: []population.ActorID{3}}
+	if v := value(g.Score(a, base), profile.IntentRegisterStake); !(v > 0) {
+		t.Fatalf("unregistered recipient scores register_stake %v", v)
+	}
+	base.stake = true
+	if ss := g.Score(a, base); !(value(ss, profile.IntentDelegateDRep) > 0) || target(ss, profile.IntentDelegateDRep) != 3 {
+		t.Fatalf("registered recipient does not delegate its vote: %+v", ss)
+	}
+	base.voteDeleg = true
+	idle := g.Score(a, awarded{world: base})
+	if value(idle, profile.IntentWithdraw) != 0 || value(idle, profile.IntentScriptCall) != 0 {
+		t.Fatalf("recipient with nothing paid or due acts: %+v", idle)
+	}
+	paid := g.Score(a, awarded{world: base, rewards: 5 * ada, calls: "draw a milestone"})
+	if !(value(paid, profile.IntentWithdraw) > 0) || !(value(paid, profile.IntentScriptCall) > 0) {
+		t.Fatalf("recipient with an award and a draw due waits: %+v", paid)
+	}
+	if !strings.Contains(why(paid, profile.IntentWithdraw), "5000000") || !strings.Contains(why(paid, profile.IntentScriptCall), "draw a milestone") {
+		t.Fatalf("why box %q / %q", why(paid, profile.IntentWithdraw), why(paid, profile.IntentScriptCall))
+	}
+}
+
+func target(ss []Score, k profile.IntentKind) population.ActorID {
+	for _, s := range ss {
+		if s.Kind == k {
+			return s.Target
+		}
+	}
+	return 0
 }

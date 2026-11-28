@@ -15,6 +15,7 @@ import (
 	"github.com/chrisguiney/cardano-continuum/internal/chain"
 	"github.com/chrisguiney/cardano-continuum/internal/contract"
 	"github.com/chrisguiney/cardano-continuum/internal/engine/internal/wire"
+	"github.com/chrisguiney/cardano-continuum/internal/grants"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/population"
 	"github.com/chrisguiney/cardano-continuum/internal/profile"
@@ -120,6 +121,7 @@ func (ch *Chooser) Prepare(at sched.Time, a population.Actor, in agenda.Intent, 
 		if !ch.env.Chain.View().VoteDelegated(a.ID) {
 			return nil, "withdrawal needs a vote delegation"
 		}
+		ch.prepareAward(a.ID, p)
 	}
 	if _, ok := specs[p.KindOf()]; !ok {
 		return nil, "no builder for " + string(in.Kind)
@@ -273,6 +275,7 @@ var callPhrases = map[string]string{
 	callClaim:   "claim a position of its own",
 	callRelease: "release an escrow paid to it",
 	callRefund:  "refund its escrow past the deadline",
+	callDraw:    "draw a milestone of its treasury award",
 }
 
 // Calls describes the unlock a script call by actor id would make now,
@@ -318,7 +321,7 @@ func (ch *Chooser) unlockable(id population.ActorID) (unlock, bool) {
 		at[h] = append(at[h], u)
 	}
 
-	for i := range ch.ct.n {
+	for _, i := range append(slices.Collect(ch.ct.indexes()), build.DisburseContract) {
 		for _, u := range at[build.Contract(i).Hash()] {
 			ref := wire.Ref{Tx: wire.TxID(u.Id.Id()), Index: u.Id.Index()}
 			if busy[ref] {
@@ -342,15 +345,33 @@ func (ch *Chooser) callOn(id population.ActorID, i uint64, u common.Utxo, ref wi
 		return unlock{}, false
 	}
 
-	var dep population.ActorID
-	if call == callRelease {
-		e, _ := contract.ParseEscrowDatum(u.Output.Datum().Data)
-		var ok bool
-		if dep, ok = ch.env.Roster.Holder(keys.Credential(e.Depositor)); !ok {
-			return unlock{}, false
-		}
+	co, ok := ch.coSigner(call, u.Output.Datum())
+	if !ok {
+		return unlock{}, false
 	}
-	return unlock{ref: ref, amount: u.Output.Amount().Uint64(), contract: i, call: call, to: dep}, true
+	return unlock{ref: ref, amount: u.Output.Amount().Uint64(), contract: i, call: call, to: co}, true
+}
+
+// coSigner is the actor whose signature call needs beside the caller's:
+// an escrow release's depositor, a draw's administrator; zero for none.
+// ok is false when the datum names a party no actor holds.
+func (ch *Chooser) coSigner(call string, d *common.Datum) (population.ActorID, bool) {
+	var key []byte
+	switch call {
+	case callRelease:
+		e, _ := contract.ParseEscrowDatum(d.Data)
+		key = e.Depositor
+	case callDraw:
+		a, _ := contract.ParseDisbursementDatum(d.Data)
+		key = a.Administrator
+	default:
+		return 0, true
+	}
+
+	if len(key) != len(keys.Credential{}) {
+		return 0, false
+	}
+	return ch.env.Roster.Holder(keys.Credential(key))
 }
 
 // beneficiary picks whom an escrow of actor a pays: another script user
@@ -377,6 +398,37 @@ func (ch *Chooser) beneficiary(a population.Actor, r *rand.Rand) (population.Act
 // scriptUser reports a profile that makes script calls.
 func scriptUser(p *profile.Profile) bool {
 	return p != nil && (p.Weights[profile.IntentScriptCall] > 0 || p.Rates.Base[profile.IntentScriptCall] > 0)
+}
+
+// prepareAward makes a withdrawal take the whole reward balance, which
+// the ledger requires. A treasury recipient that draws in milestones
+// locks an award large enough for them at the disbursement contract under
+// the governance administrator, named in p.To.
+func (ch *Chooser) prepareAward(id population.ActorID, p *wire.Pending) {
+	p.Amount = ch.env.Chain.View().Rewards(common.Blake2b224(ch.env.Roster.Wallet(id).StakeKeyHash()))
+	prof := ch.env.Roster.Profile(id)
+	if prof == nil || p.Amount < milestones*minTranche {
+		return
+	}
+
+	k, ok := grants.ByProfile(prof.Name)
+	if !ok || !k.Milestones {
+		return
+	}
+
+	if admin, ok := ch.recipient(grants.Administrator); ok {
+		p.Call, p.Contract, p.To = callAward, build.DisburseContract, uint64(admin)
+	}
+}
+
+// recipient is the treasury recipient actor whose profile is name.
+func (ch *Chooser) recipient(name string) (population.ActorID, bool) {
+	for _, id := range ch.env.Roster.IDs() {
+		if p := ch.env.Roster.Profile(id); p != nil && p.Name == name {
+			return id, true
+		}
+	}
+	return 0, false
 }
 
 // tokens is the quantity of the mint token the actor holds at the tip.

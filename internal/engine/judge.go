@@ -32,6 +32,9 @@ type jhooks struct{ e *Engine }
 // Supply implements judge.Ledger.
 func (h jhooks) Supply() uint64 { return h.e.Summary().Supply }
 
+// Inflow implements judge.Ledger.
+func (h jhooks) Inflow() uint64 { return h.e.Summary().Inflow }
+
 // Balances implements judge.Ledger.
 func (h jhooks) Balances() map[uint64]uint64 { return h.e.pay.Balances() }
 

@@ -149,6 +149,7 @@ func New(cfg Config) (*Engine, error) {
 			return nil, fmt.Errorf("engine: genesis pool actor %d: %w", g.Actor, err)
 		}
 	}
+	gs.Treasury = cfg.treasury()
 	if err = e.win.Open(gs, window.Saved{}); err != nil {
 		return nil, fmt.Errorf("engine: view: %w", err)
 	}
@@ -200,10 +201,8 @@ func newEmpty(cfg Config) (*Engine, error) {
 	for _, f := range funds {
 		genesis += f.Lovelace
 	}
-	for i := range uint64(intent.Genesis) {
-		if err := e.win.Book().AddAddress(build.Contract(i).Address(cfg.NetworkID), scriptActor); err != nil {
-			return nil, fmt.Errorf("engine: book contract %d: %w", i, err)
-		}
+	if err := bookContracts(e.win.Book(), cfg.NetworkID); err != nil {
+		return nil, err
 	}
 	rootKeys, err := keys.New(cfg.Seed, cfg.NetworkID)
 	if err != nil {
@@ -282,8 +281,12 @@ type Summary struct {
 	// Supply is everything the settled state accounts for: owned outputs,
 	// fees, outputs to addresses outside the population (locked script
 	// outputs among them) and the deposits the engine's certificates and
-	// proposals hold. It equals the genesis total while value is conserved.
+	// proposals hold. It equals the genesis total plus Inflow while value
+	// is conserved.
 	Supply uint64
+	// Inflow is the lovelace settled reward withdrawals brought in: the
+	// treasury awards the recipients took.
+	Inflow uint64
 	// Tip is the last block the engine applied.
 	Tip eventlog.ChainPoint
 	// Pending is the number of payments not yet confirmed or released.
@@ -295,7 +298,13 @@ type Summary struct {
 // Summary is the engine's state at a glance.
 func (e *Engine) Summary() Summary {
 	sv := e.win.Saved()
-	return Summary{Supply: e.pay.Supply() + sv.Fees + sv.Foreign, Tip: e.win.Tip(), Pending: e.pay.Len(), Actors: e.co.Pop().Len()}
+	return Summary{
+		Supply:  e.pay.Supply() + sv.Fees + sv.Foreign,
+		Inflow:  sv.Inflow,
+		Tip:     e.win.Tip(),
+		Pending: e.pay.Len(),
+		Actors:  e.co.Pop().Len(),
+	}
 }
 
 // Handle implements eventlog.Engine: it applies one input and returns the
@@ -497,6 +506,7 @@ func (e *Engine) submitResult(ctx context.Context, at sched.Time, r SubmitResult
 // and the ledger reports the payments it settled or killed.
 func (e *Engine) applyBlock(ctx context.Context, at sched.Time, b wire.Block) error {
 	before, first := forkState(e.win.View(), e.cfg.HardFork), e.win.View().Tip().IsOrigin()
+	funds := e.win.View().Treasury()
 	lb, vb, err := e.win.Blocks(b, e.co)
 	if err != nil {
 		return err
@@ -510,6 +520,7 @@ func (e *Engine) applyBlock(ctx context.Context, at sched.Time, b wire.Block) er
 		return fmt.Errorf("engine: view: %w", err)
 	}
 	noteFork(e, at, before, first)
+	noteTreasury(e, at, funds, first)
 	if err := e.retry.InBlock(ctx, at, b); err != nil {
 		return err
 	}
@@ -553,12 +564,13 @@ func (e *Engine) rollback(ctx context.Context, p eventlog.ChainPoint) error {
 	if _, err := e.pay.Advance(ctx, chain.Event{Kind: chain.Backward, Point: c.To()}); err != nil {
 		return fmt.Errorf("engine: ledger: %w", err)
 	}
-	before := forkState(e.win.View(), e.cfg.HardFork)
+	before, funds := forkState(e.win.View(), e.cfg.HardFork), e.win.View().Treasury()
 	gone, err := e.win.Rollback(c)
 	if err != nil {
 		return fmt.Errorf("engine: view: %w", err)
 	}
 	noteFork(e, e.clk.Now(), before, false)
+	noteTreasury(e, e.clk.Now(), funds, false)
 	return e.retry.LeftView(ctx, e.clk.Now(), gone)
 }
 
@@ -592,6 +604,34 @@ func noteFork(e *Engine, at sched.Time, before wire.Protocol, first bool) {
 	e.jr.Emit(at, KindProtocol, 0, now)
 }
 
+// bookContracts names the script owner as the owner of the contracts that
+// exist from genesis and of the disbursement instance, so the view tracks
+// their outputs.
+func bookContracts(b *chain.Book, network uint8) error {
+	booked := []uint64{build.DisburseContract}
+	for i := range uint64(intent.Genesis) {
+		booked = append(booked, i)
+	}
+
+	for _, i := range booked {
+		if err := b.AddAddress(build.Contract(i).Address(network), scriptActor); err != nil {
+			return fmt.Errorf("engine: book contract %d: %w", i, err)
+		}
+	}
+	return nil
+}
+
+// noteTreasury logs a Treasury decision when the input moved the
+// treasury the view reckons from before (a payout, or a rollback of one)
+// or was the chain's first block (first), so the log states the starting
+// treasury too.
+func noteTreasury(e *Engine, at sched.Time, before uint64, first bool) {
+	v := e.win.View()
+	if now := v.Treasury(); first || now != before {
+		e.jr.Emit(at, KindTreasury, 0, wire.Treasury{Epoch: v.Epoch(), Before: before, After: now})
+	}
+}
+
 // poolStatus applies an observed pod state, then recovers.
 func (e *Engine) poolStatus(ctx context.Context, at sched.Time, s PoolStatus) error {
 	id := population.ActorID(s.Pool)
@@ -623,6 +663,11 @@ func (e *Engine) settle(at sched.Time, p *wire.Pending, tx TxID) error {
 	if p.Kind == unlockKind {
 		// The lock's script output counted as foreign when it settled.
 		e.win.Reclaim(p.Amount)
+	}
+	if p.Kind == string(profile.IntentWithdraw) {
+		// A reward withdrawal brings lovelace from outside the genesis
+		// total: a treasury award.
+		e.win.Inflow(p.Amount)
 	}
 	if p.Order != nil {
 		e.co.Desk.Settled(at, p)

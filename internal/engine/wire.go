@@ -36,6 +36,7 @@ type (
 	PoolStatus      = wire.PoolStatus
 	PoolTier        = wire.PoolTier
 	Protocol        = wire.Protocol
+	Treasury        = wire.Treasury
 	ProposalDigest  = wire.ProposalDigest
 	Fork            = wire.Fork
 	Quote           = wire.Quote
@@ -72,6 +73,7 @@ const (
 	KindIntentChosen = wire.KindIntentChosen
 	KindPoolTier     = wire.KindPoolTier
 	KindProtocol     = wire.KindProtocol
+	KindTreasury     = wire.KindTreasury
 	KindQuote        = wire.KindQuote
 	KindTraded       = wire.KindTraded
 	KindRefill       = wire.KindRefill

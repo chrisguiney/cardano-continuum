@@ -68,6 +68,9 @@ type Journal interface {
 type Ledger interface {
 	// Supply is everything the settled state accounts for.
 	Supply() uint64
+	// Inflow is what settled reward withdrawals brought in beside the
+	// genesis total.
+	Inflow() uint64
 	// Balances is each actor's settled balance.
 	Balances() map[uint64]uint64
 	// Holders is the planner ledger's reservations, as the monitors read them.
