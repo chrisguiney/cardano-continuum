@@ -66,7 +66,7 @@ func redeemerScript(t testing.TB) build.Script {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return build.Script{Name: "redeemer-is-7", Source: redeemerSource, V3: common.PlutusV3Script(wrapped)}
+	return build.Script{Name: "redeemer-is-7", Source: redeemerSource, Language: 3, Bytes: wrapped}
 }
 
 func seven() common.Datum     { return common.Datum{Data: data.NewInteger(big.NewInt(7))} }

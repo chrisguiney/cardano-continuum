@@ -10,13 +10,15 @@ import (
 	"github.com/blinklabs-io/plutigo/data"
 	"github.com/blinklabs-io/plutigo/syn"
 
+	"github.com/chrisguiney/cardano-continuum/internal/contract"
 	"github.com/chrisguiney/cardano-continuum/internal/fakechain"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 )
 
+// A hand-written script's bytes are its UPLC source compiled.
 func TestScriptsCompileFromSource(t *testing.T) {
 	t.Parallel()
-	for _, s := range []Script{AlwaysSucceeds, FreeMint} {
+	for _, s := range []Script{Burn(3)} {
 		prog, err := syn.Parse(s.Source)
 		if err != nil {
 			t.Fatal(err)
@@ -32,7 +34,7 @@ func TestScriptsCompileFromSource(t *testing.T) {
 		if got, want := hex.EncodeToString(s.Flat()), hex.EncodeToString(flat); got != want {
 			t.Fatalf("%s: flat %s, want %s", s.Name, got, want)
 		}
-		if s.Hash() != s.V3.Hash() {
+		if s.Hash() != common.PlutusV3Script(s.Bytes).Hash() {
 			t.Fatalf("%s: hash mismatch", s.Name)
 		}
 	}
@@ -178,10 +180,10 @@ func TestMint(t *testing.T) {
 	h.commit(got)
 }
 
-// Contract(i) is a family of always-succeeds validators, one address per
-// deployed contract: Contract(0) is AlwaysSucceeds, so a run with one
-// contract locks where it always did, and every other index has its own
-// hash and unlocks on the fake chain.
+// Contract(i) is one address per deployed contract: Contract(0) is
+// AlwaysSucceeds, so a run with one contract locks where it always did,
+// and every other index is a template instance with its own hash that
+// unlocks on the fake chain.
 func TestContractsHaveTheirOwnAddresses(t *testing.T) {
 	t.Parallel()
 	if Contract(0).Hash() != AlwaysSucceeds.Hash() {
@@ -197,8 +199,14 @@ func TestContractsHaveTheirOwnAddresses(t *testing.T) {
 	}
 
 	h := newHarness(t)
+	if err := h.chain.AdvanceTo(10); err != nil {
+		t.Fatal(err)
+	}
 	c := Contract(7)
-	got, err := h.b.Plutus().Lock(ctx, h.alice, Lock{Spend: h.spend(), Script: c, Amount: 5_000_000, Datum: unitDatum()})
+	owner := h.alice.PaymentKeyHash()
+	now := h.chain.Slot()
+	vest := contract.Vesting{Owner: owner[:], Until: h.b.SlotTime(now)}
+	got, err := h.b.Plutus().Lock(ctx, h.alice, Lock{Spend: h.spend(), Script: c, Amount: 5_000_000, Datum: common.Datum{Data: vest.Data()}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +216,7 @@ func TestContractsHaveTheirOwnAddresses(t *testing.T) {
 		t.Fatalf("%d outputs at contract 7, want 1", len(locked))
 	}
 	sp := h.spend()
-	un := Unlock{Spend: sp, Script: c, Locked: locked[0], Redeemer: unitDatum()}
+	un := Unlock{Spend: sp, Script: c, Locked: locked[0], Redeemer: unitDatum(), Signers: []common.Blake2b224{common.Blake2b224(owner)}, From: now}
 	got, err = h.b.Plutus().Unlock(ctx, h.alice, un)
 	if err != nil {
 		t.Fatal(err)

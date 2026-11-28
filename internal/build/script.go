@@ -29,9 +29,20 @@ type Lock struct {
 // output. Collateral is taken from the offered inputs.
 type Unlock struct {
 	Spend
-	Script   Script
-	Locked   common.Utxo
+	// Script is the validator Locked sits at.
+	Script Script
+	// Locked is the script output spent.
+	Locked common.Utxo
+	// Redeemer is the argument the validator is run with.
 	Redeemer common.Datum
+	// Signers are key hashes listed as required signers, which a validator
+	// reads from its context (extra_signatories). The wallet signs with its
+	// payment key only, so each must be that key's hash.
+	Signers []common.Blake2b224
+	// From is the slot the transaction is valid from, which a validator
+	// reads as its validity range's lower bound. Zero leaves it open:
+	// Apollo writes no validity start of 0, so slot 0 cannot be a bound.
+	From uint64
 }
 
 // Mint mints Quantity of Name under Policy into the change output; a
@@ -94,7 +105,13 @@ func (f Plutus) unlockSpec(u Unlock, budget *common.ExUnits) (spec, error) {
 				eu = *budget
 				a = a.DisableExecutionUnitsEstimation()
 			}
-			return a.AttachScript(u.Script.V3).CollectFrom(u.Locked, u.Redeemer, eu).AddCollateral(col).SetCollateralAmount(collateralAmount), nil
+			for _, k := range u.Signers {
+				a = a.AddRequiredSigner(k)
+			}
+			if u.From > 0 {
+				a = a.SetValidityStart(int64(u.From))
+			}
+			return a.AttachScript(u.Script.Witness()).CollectFrom(u.Locked, u.Redeemer, eu).AddCollateral(col).SetCollateralAmount(collateralAmount), nil
 		},
 	}, nil
 }
@@ -123,7 +140,7 @@ func (f Plutus) mintSpec(m Mint, budget *common.ExUnits) (spec, error) {
 			if budget != nil {
 				a = a.DisableExecutionUnitsEstimation()
 			}
-			return a.AttachScript(m.Policy.V3).Mint(unit, &m.Redeemer, budget).AddCollateral(col).SetCollateralAmount(int64(amount)), nil
+			return a.AttachScript(m.Policy.Witness()).Mint(unit, &m.Redeemer, budget).AddCollateral(col).SetCollateralAmount(int64(amount)), nil
 		},
 	}, nil
 }

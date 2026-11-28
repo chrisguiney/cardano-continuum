@@ -51,6 +51,7 @@ import (
 	"github.com/blinklabs-io/gouroboros/ledger/shelley"
 	mockledger "github.com/blinklabs-io/ouroboros-mock/ledger"
 
+	"github.com/chrisguiney/cardano-continuum/internal/contract"
 	"github.com/chrisguiney/cardano-continuum/internal/keys"
 	"github.com/chrisguiney/cardano-continuum/internal/protocol"
 )
@@ -217,8 +218,7 @@ func (b *Builder) protocolParams() backend.ProtocolParameters {
 }
 
 // walletAdapter satisfies apollo.Wallet for address and key-hash lookups.
-// Signing is done by sign, because keys.Wallet hashes the body itself while
-// Apollo hands over an already-computed hash.
+// The transaction's witnesses are added by sign.
 type walletAdapter struct{ w keys.Wallet }
 
 func (a walletAdapter) Address() common.Address { return a.w.Address() }
@@ -231,8 +231,12 @@ func (a walletAdapter) StakePubKeyHash() common.Blake2b224 {
 	return common.Blake2b224(a.w.StakeKeyHash())
 }
 
-func (walletAdapter) SignTxBody(common.Blake2b256) (common.VkeyWitness, error) {
-	return common.VkeyWitness{}, errors.New("build: signing goes through keys.Wallet.SignTxBody")
+// SignTxBody signs the body hash with the payment key. Apollo calls it
+// only for the evaluation copy of a transaction listing the wallet as a
+// required signer; the real witnesses come from sign.
+func (a walletAdapter) SignTxBody(h common.Blake2b256) (common.VkeyWitness, error) {
+	wit := a.w.PaymentSigner().SignHash(h)
+	return common.VkeyWitness{Vkey: wit.VKey, Signature: wit.Signature}, nil
 }
 
 // apollo returns a fresh Apollo for s, with an optional forced fee.
@@ -539,6 +543,25 @@ func (b *Builder) evaluate(txCbor []byte, utxos []common.Utxo) (map[common.Redee
 		return nil, fmt.Errorf("build: evaluate: %w", err)
 	}
 	return used, nil
+}
+
+// SlotTime is the POSIX time in milliseconds slot starts at, as script
+// contexts see it: the validity range a validator reads is in these units.
+func (b *Builder) SlotTime(slot uint64) int64 {
+	return b.params.SystemStart.Add(time.Duration(slot) * b.params.SlotLength).UnixMilli()
+}
+
+// Runs evaluates txCbor's redeemers as evaluate does and reports one
+// contract.Run per redeemer; utxos resolve the inputs. A script that fails
+// is a failed run, not an error; only an undecodable transaction is.
+func (b *Builder) Runs(txCbor []byte, utxos []common.Utxo) ([]contract.Run, error) {
+	tx, err := conway.NewConwayTransactionFromCbor(txCbor)
+	if err != nil {
+		return nil, fmt.Errorf("build: runs: decode: %w", err)
+	}
+
+	used, evalErr := b.evaluate(txCbor, utxos)
+	return runs(tx, utxos, used, evalErr), nil
 }
 
 // tokenKey identifies one native asset by hex policy and hex name.

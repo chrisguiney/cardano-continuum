@@ -45,6 +45,12 @@ func (s Signer) KeyHash() Credential { return Credential(common.Blake2b224Hash(s
 // VKey returns the 32-byte public key.
 func (s Signer) VKey() []byte { return append([]byte(nil), s.key.public()...) }
 
+// SignHash signs a transaction body hash computed elsewhere: Apollo
+// hands its evaluation witnesses the hash, not the body.
+func (s Signer) SignHash(h common.Blake2b256) Witness {
+	return Witness{VKey: s.VKey(), Signature: s.key.sign(h[:])}
+}
+
 // SignTxBody hashes the transaction body CBOR with Blake2b-256 and signs the
 // hash.
 func (s Signer) SignTxBody(body []byte) Witness {

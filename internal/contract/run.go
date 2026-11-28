@@ -1,5 +1,7 @@
 package contract
 
+import "github.com/blinklabs-io/gouroboros/ledger/common"
+
 // Run is one script execution a transaction asks for: one redeemer, the
 // script it runs and what evaluating it gave. The engine records one per
 // redeemer of each script transaction it submits.
@@ -41,4 +43,14 @@ type Units struct {
 	Mem int64 `json:"mem"`
 	// Steps is CPU steps.
 	Steps int64 `json:"steps"`
+}
+
+// Tag is the redeemer tag of r's purpose.
+func (r Run) Tag() (common.RedeemerTag, bool) {
+	for t, p := range tagPurposes {
+		if p == r.Purpose {
+			return t, true
+		}
+	}
+	return 0, false
 }

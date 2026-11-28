@@ -1,41 +1,94 @@
 package build
 
 import (
-	"encoding/hex"
 	"fmt"
 	"math"
+	"math/big"
 	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/blinklabs-io/gouroboros/cbor"
 	"github.com/blinklabs-io/gouroboros/ledger/common"
+	"github.com/blinklabs-io/plutigo/data"
 	"github.com/blinklabs-io/plutigo/syn"
+
+	"github.com/chrisguiney/cardano-continuum/internal/contract"
 )
 
-// Script is a compiled PlutusV3 validator from the builder's registry.
+// Script is a compiled Plutus script: a validator from the Aiken registry
+// (internal/contract) or an instance of one, or a hand-written UPLC
+// program for what Aiken cannot express (Burn).
 type Script struct {
+	// Name names the script: the validator, an instance of a
+	// parameterised one ("vesting#3"), or a hand-written script.
 	Name string
-	// Source is the untyped Plutus Core text the script is compiled from.
+	// Validator is the registry validator the script is, or is an
+	// instance of; empty for hand-written UPLC.
+	Validator string
+	// Source is the UPLC text a hand-written script is compiled from;
+	// empty for a registry script.
 	Source string
-	// V3 is the script as it appears in a witness set: the CBOR byte
+	// Language is the Plutus language version (1, 2 or 3).
+	Language uint8
+	// Bytes is the script as it appears in a witness set: the CBOR byte
 	// string wrapping the flat-encoded program.
-	V3   common.PlutusV3Script
+	Bytes []byte
+	// flat is the flat-encoded program inside Bytes.
 	flat []byte
 }
 
-// The registry. Both scripts ignore their argument and return unit, which
-// is how a PlutusV3 script succeeds; FreeMint applies a constant first so
-// its hash, and so its policy id, differs from AlwaysSucceeds'.
-//
-// Contract templates not yet here: always-fails, vesting, escrow, CIP-68
-// reference/user token pairs and the order-book DEX.
 var (
 	// AlwaysSucceeds locks funds anyone can spend with any redeemer.
-	AlwaysSucceeds = mustCompile("always-succeeds", "(program 1.1.0 (lam ctx (con unit ())))")
+	AlwaysSucceeds = mustValidator("always_succeeds")
 	// FreeMint is a minting policy anyone can mint or burn under.
-	FreeMint = mustCompile("free-mint", "(program 1.1.0 [(lam salt (lam ctx (con unit ()))) (con integer 1)])")
+	FreeMint = mustValidator("free_mint")
 )
+
+// known maps every script the builder has made, by hash, so a script run
+// names its validator and instance (Lookup).
+var known sync.Map // common.Blake2b224 -> Script
+
+// Lookup returns the script with hash h, if the builder has made it.
+func Lookup(h common.Blake2b224) (Script, bool) {
+	s, ok := known.Load(h)
+	if !ok {
+		return Script{}, false
+	}
+	return s.(Script), true
+}
+
+func remember(s Script) Script {
+	known.Store(s.Hash(), s)
+	return s
+}
+
+func mustValidator(name string) Script {
+	v, ok := contract.Named(name)
+	if !ok {
+		panic("build: no validator " + name + " in the contract registry")
+	}
+
+	s, err := fromValidator(v, name)
+	if err != nil {
+		panic("build: " + err.Error())
+	}
+	return remember(s)
+}
+
+// fromValidator makes a Script of v applied to args.
+func fromValidator(v contract.Validator, name string, args ...data.PlutusData) (Script, error) {
+	code, err := contract.Apply(v, args...)
+	if err != nil {
+		return Script{}, err
+	}
+
+	var flat []byte
+	if _, err := cbor.Decode(code, &flat); err != nil {
+		return Script{}, fmt.Errorf("unwrap %s: %w", name, err)
+	}
+	return Script{Name: name, Validator: v.Name, Language: v.Language, Bytes: code, flat: flat}, nil
+}
 
 // burns caches Burn's compiled policies by loop size.
 var burns sync.Map // int -> Script
@@ -55,7 +108,7 @@ func Burn(n int) Script {
 	s := mustCompile("burn-"+strconv.Itoa(n),
 		"(program 1.1.0 (lam ctx [["+num+" ["+num+" (lam y y)]] (con unit ())]))")
 	burns.Store(n, s)
-	return s
+	return remember(s)
 }
 
 // burnMemory is the memory a built Burn(n) declares per n*n: it spends
@@ -84,26 +137,51 @@ func numeral(n int) string {
 	return b.String()
 }
 
-// contracts caches Contract's compiled scripts by index: compiling parses
-// and flat-encodes, and the engine asks for a contract's address often.
+// contracts caches Contract's scripts by index: applying a parameter
+// decodes and re-encodes the program, and the engine asks for a
+// contract's address often.
 var contracts sync.Map // uint64 -> Script
 
+// Template is the registry validator deployed contract i runs. Contract 0
+// is the shared AlwaysSucceeds lock; after it the deployments alternate
+// between the vesting and escrow templates, so a run with any contracts
+// beyond the first calls both.
+func Template(i uint64) string {
+	switch {
+	case i == 0:
+		return AlwaysSucceeds.Validator
+	case i%2 == 1:
+		return "vesting"
+	}
+	return "escrow"
+}
+
 // Contract returns deployed contract i: AlwaysSucceeds for 0, and for
-// every other index the same validator applied to a salt naming i, so
-// each has its own hash and address. A run deploys contracts 0, 1, 2, ...
-// in order.
+// every other index its template applied to the nonce i, so each has its
+// own hash and address. A run deploys contracts 0, 1, 2, ... in order.
 func Contract(i uint64) Script {
 	if i == 0 {
 		return AlwaysSucceeds
 	}
+
 	if s, ok := contracts.Load(i); ok {
 		return s.(Script)
 	}
-	salt := hex.EncodeToString([]byte("contract-" + strconv.FormatUint(i, 10)))
-	s := mustCompile("contract-"+strconv.FormatUint(i, 10),
-		"(program 1.1.0 [(lam salt (lam ctx (con unit ()))) (con bytestring #"+salt+")])")
+
+	name := Template(i)
+	v, ok := contract.Named(name)
+	if !ok {
+		panic("build: no validator " + name + " in the contract registry")
+	}
+
+	s, err := fromValidator(v, name+"#"+strconv.FormatUint(i, 10), data.NewInteger(new(big.Int).SetUint64(i)))
+	if err != nil {
+		// Unreachable: the template takes exactly the nonce, and its
+		// flat round-trips (internal/contract's tests).
+		panic("build: " + err.Error())
+	}
 	contracts.Store(i, s)
-	return s
+	return remember(s)
 }
 
 func mustCompile(name, src string) Script {
@@ -132,14 +210,26 @@ func compile(name, src string) (Script, error) {
 	if err != nil {
 		return Script{}, fmt.Errorf("cbor: %w", err)
 	}
-	return Script{Name: name, Source: src, V3: common.PlutusV3Script(wrapped), flat: flat}, nil
+	return Script{Name: name, Source: src, Language: 3, Bytes: wrapped, flat: flat}, nil
 }
 
 // Flat returns the flat-encoded program.
 func (s Script) Flat() []byte { return append([]byte(nil), s.flat...) }
 
-// Hash returns the script hash, which is also its policy id.
-func (s Script) Hash() common.Blake2b224 { return s.V3.Hash() }
+// Witness returns the script as its language's witness-set type.
+func (s Script) Witness() common.Script {
+	switch s.Language {
+	case 1:
+		return common.PlutusV1Script(s.Bytes)
+	case 2:
+		return common.PlutusV2Script(s.Bytes)
+	}
+	return common.PlutusV3Script(s.Bytes)
+}
+
+// Hash returns the script hash, which is also its policy id: the
+// language's tag byte and Bytes, hashed by the witness type.
+func (s Script) Hash() common.Blake2b224 { return s.Witness().Hash() }
 
 // Address returns the enterprise address locked by the script.
 func (s Script) Address(networkID uint8) common.Address {

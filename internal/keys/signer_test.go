@@ -109,3 +109,19 @@ func TestSignersRedacted(t *testing.T) {
 		}
 	}
 }
+
+// SignHash signs a body hash another component computed, and agrees with
+// SignTxBody on the same body.
+func TestSignHash(t *testing.T) {
+	t.Parallel()
+	sig := newStore(t).Wallet(2).PaymentSigner()
+	body := []byte("tx body bytes")
+	h := common.Blake2b256Hash(body)
+	wit := sig.SignHash(h)
+	if err := common.VerifyVKeySignature(wit.VKey, wit.Signature, h[:]); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(wit.Signature, sig.SignTxBody(body).Signature) {
+		t.Fatal("SignHash and SignTxBody disagree")
+	}
+}
