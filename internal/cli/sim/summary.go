@@ -53,6 +53,11 @@ func summarize(out io.Writer, cfg engine.Config, r *engine.Runner, chain *fakech
 		epochs, e.Actors, len(funds), len(chain.Blocks()), recs)
 	w.Printf("payments: submitted %d, confirmed %d, released %d, skipped %d, pending %d\n",
 		kinds[engine.KindSubmitted], kinds[engine.KindConfirmed], kinds[engine.KindReleased], kinds[engine.KindSkipped], e.Pending)
+	sk, err := skippedLine(context.Background(), mem)
+	if err != nil {
+		return err
+	}
+	w.Printf("%s", sk)
 	w.Printf("value conserved: %t (genesis %d lovelace, fees %d)\n", conserved, genesis, chain.Fees())
 	t, err := engine.AuditLog(context.Background(), mem)
 	if err != nil {
